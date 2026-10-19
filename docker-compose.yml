@@ -22,6 +22,8 @@ x-java-common: &java-common
     REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
     ELASTIC_PASSWORD: ${ELASTIC_PASSWORD:?Set ELASTIC_PASSWORD in .env}
     CORVEX_MAIL_DOMAINS: ${CORVEX_MAIL_DOMAIN:-company.local}
+    CORVEX_DOMAIN: ${CORVEX_DOMAIN:-mail.company.local}
+    CORVEX_WEB_ORIGINS: ${CORVEX_WEB_ORIGINS:-https://${CORVEX_DOMAIN:-mail.company.local}}
   networks: [app, data]
   logging:
     driver: json-file
@@ -121,6 +123,7 @@ services:
       <<: *common-env
       CORVEX_JWT_PRIVATE_KEY_FILE: /run/secrets/jwt_private.pem
       CORVEX_TOTP_ENC_KEY: ${CORVEX_TOTP_ENC_KEY:-}
+      CORVEX_INTERNAL_API_TOKEN: ${CORVEX_INTERNAL_API_TOKEN:?Set CORVEX_INTERNAL_API_TOKEN in .env}
       CORVEX_LDAP_URL: ${CORVEX_LDAP_URL:-}
       CORVEX_LDAP_BASE: ${CORVEX_LDAP_BASE:-}
       CORVEX_ADMIN_SERVICE_URL: http://admin-service:8090
@@ -136,6 +139,7 @@ services:
     environment:
       <<: *common-env
       CORVEX_AUTH_SERVICE_URL: http://auth-service:8081
+      CORVEX_INTERNAL_API_TOKEN: ${CORVEX_INTERNAL_API_TOKEN:?Set CORVEX_INTERNAL_API_TOKEN in .env}
       CORVEX_BOOTSTRAP_ADMIN_USERNAME: ${CORVEX_BOOTSTRAP_ADMIN_USERNAME:-admin}
     depends_on: { postgres: { condition: service_healthy }, auth-service: { condition: service_healthy } }
 

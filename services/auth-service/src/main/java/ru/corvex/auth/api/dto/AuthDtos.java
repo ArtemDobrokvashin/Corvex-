@@ -98,7 +98,7 @@ public final class AuthDtos {
 
     public record CreateUserRequest(
             @NotBlank @Size(min = 2, max = 64) String username,
-            @NotBlank @Email(message = "неккоректный e-mail") @Size(max = 320) String email,
+            @NotBlank @Email(message = "некорректный e-mail") @Size(max = 320) String email,
             @NotBlank @Size(max = 256) String displayName,
             @NotBlank String password,
             @Size(max = 256) String department,

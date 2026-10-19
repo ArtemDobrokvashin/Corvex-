@@ -22,6 +22,7 @@ import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
+import java.security.interfaces.RSAPrivateCrtKey;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.security.spec.InvalidKeySpecException;
@@ -55,8 +56,11 @@ public class JwtKeyConfig {
             byte[] der = Base64.getDecoder().decode(pem);
             RSAPrivateKey privateKey = (RSAPrivateKey) KeyFactory.getInstance("RSA")
                     .generatePrivate(new PKCS8EncodedKeySpec(der));
+            java.math.BigInteger publicExponent = privateKey instanceof RSAPrivateCrtKey crtKey
+                    ? crtKey.getPublicExponent()
+                    : java.math.BigInteger.valueOf(65537);
             RSAPublicKey publicKey = (RSAPublicKey) KeyFactory.getInstance("RSA")
-                    .generatePublic(new RSAPublicKeySpec(privateKey.getModulus(), java.math.BigInteger.valueOf(65537)));
+                    .generatePublic(new RSAPublicKeySpec(privateKey.getModulus(), publicExponent));
             log.info("JWT signing key loaded from {}", path);
             return new RSAKey.Builder(publicKey).privateKey(privateKey).keyID(KEY_ID).build();
         }

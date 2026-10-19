@@ -7,6 +7,8 @@ import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBr
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 
+import java.util.List;
+
 /**
  * STOMP поверх WebSocket с внешним брокером RabbitMQ (stomp plugin, 61613).
  * Внешний брокер — осознанный выбор вместо встроенного SimpleBroker: он позволяет поднять
@@ -21,10 +23,13 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Value("${spring.rabbitmq.host:rabbitmq}")
     private String relayHost;
 
+    @Value("${corvex.chat.allowed-origin-patterns:https://mail.company.local}")
+    private List<String> allowedOriginPatterns;
+
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws/chat")
-                .setAllowedOriginPatterns("https://*.corp.local", "https://mail.*")
+                .setAllowedOriginPatterns(allowedOriginPatterns.toArray(String[]::new))
                 .withSockJS();
     }
 

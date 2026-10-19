@@ -17,7 +17,7 @@ logging:
   pattern.console: '%d{yyyy-MM-dd''T''HH:mm:ss.SSSXXX} [%thread] %-5level %logger{36} [%X{requestId}] - %msg%n'
 corvex:
   smtp:
-    enabled: ${CORVEX_SMTP_ENABLED:true}
+    enabled: ${CORVEX_SMTP_ENABLED:false}
     inbound-port: 2525
   mail:
     domains: ${CORVEX_MAIL_DOMAINS:company.local}

@@ -3,9 +3,11 @@ package ru.corvex.mailstorage.storage;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -18,7 +20,7 @@ import java.util.UUID;
 /**
  * Файловый слой хранилища почты. Два разных механизма — сознательно:
  * <ol>
- *   <li><b>Maildir</b> для целых .eml: запись в {@code tmp/} → fsync → атомарный rename в {@code new/}.
+ *   <li><b>Maildir</b> для целых .eml: запись в {@code tmp/} → fsync файла → rename в {@code new/}.
  *       Сбой в середине записи никогда не даёт «битое» письмо в папке; формат совместим со
  *       стандартными инструментами восстановления и миграции (doveadm, imapsync и т.д.).</li>
  *   <li><b>Контентно-адресуемое хранилище вложений</b> по SHA-256: один и тот же файл,
@@ -48,32 +50,57 @@ public class MaildirStorage {
 
         String name = System.currentTimeMillis() + "." + UUID.randomUUID() + ".eml";
         Path tmp = dir.resolve("tmp").resolve(name);
-        Files.copy(eml, tmp);
-        Path target = dir.resolve("new").resolve(name);
         try {
-            Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(tmp, target); // ФС тома на некоторых Windows-конфигурациях не обещает атомарность — rename в пределах каталога всё равно одна операция ФС
+            writeAndSync(eml, tmp);
+            Path target = dir.resolve("new").resolve(name);
+            try {
+                Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(tmp, target); // rename в пределах каталога всё равно одна операция ФС
+            }
+            return mailRoot.relativize(target);
+        } catch (IOException e) {
+            Files.deleteIfExists(tmp);
+            throw e;
         }
-        return mailRoot.relativize(target);
     }
 
     /** Сохраняет вложение; возвращает SHA-256 (он же ключ дедупликации и FK в mail_db.attachments). */
     public String storeAttachment(InputStream in) throws IOException {
+        Files.createDirectories(attachmentRoot);
         MessageDigest sha = sha256();
         Path tmp = Files.createTempFile(attachmentRoot, "upload-", ".part");
-        try (var dis = new DigestInputStream(in, sha); var out = Files.newOutputStream(tmp)) {
-            dis.transferTo(out);
+        try {
+            try (var dis = new DigestInputStream(in, sha); var out = new FileOutputStream(tmp.toFile())) {
+                dis.transferTo(out);
+                out.getChannel().force(true);
+            }
+            String hash = HexFormat.of().formatHex(sha.digest());
+            Path target = attachmentRoot.resolve(hash.substring(0, 2)).resolve(hash.substring(2, 4)).resolve(hash);
+            Files.createDirectories(target.getParent());
+            if (Files.exists(target)) {
+                Files.deleteIfExists(tmp); // дубль — физическая копия уже есть
+            } else {
+                try {
+                    Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
+                } catch (AtomicMoveNotSupportedException e) {
+                    Files.move(tmp, target);
+                } catch (FileAlreadyExistsException e) {
+                    Files.deleteIfExists(tmp); // параллельная загрузка того же файла выиграла гонку
+                }
+            }
+            return hash;
+        } catch (IOException e) {
+            Files.deleteIfExists(tmp);
+            throw e;
         }
-        String hash = HexFormat.of().formatHex(sha.digest());
-        Path target = attachmentRoot.resolve(hash.substring(0, 2)).resolve(hash.substring(2, 4)).resolve(hash);
-        Files.createDirectories(target.getParent());
-        if (Files.exists(target)) {
-            Files.delete(tmp); // дубль — физическая копия уже есть
-        } else {
-            Files.move(tmp, target);
+    }
+
+    private static void writeAndSync(InputStream in, Path target) throws IOException {
+        try (var out = new FileOutputStream(target.toFile())) {
+            in.transferTo(out);
+            out.getChannel().force(true);
         }
-        return hash;
     }
 
     private static MessageDigest sha256() {
@@ -86,8 +113,11 @@ public class MaildirStorage {
 
     /** Защита от path traversal: в путь попадают только безопасные сегменты. */
     private static String sanitize(String segment) {
+        if (segment == null) {
+            throw new IllegalArgumentException("Недопустимый сегмент пути: null");
+        }
         String s = segment.replaceAll("[^A-Za-z0-9@._-]", "_");
-        if (s.contains("..") || s.isBlank()) {
+        if (s.contains("..") || ".".equals(s) || s.isBlank()) {
             throw new IllegalArgumentException("Недопустимый сегмент пути: " + segment);
         }
         return s;

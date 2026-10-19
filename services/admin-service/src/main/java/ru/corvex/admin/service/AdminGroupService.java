@@ -122,6 +122,10 @@ public class AdminGroupService {
 
     @Transactional
     public void replaceUserGroups(UUID userId, Collection<UserGroup> newGroups) {
+        boolean keepsSuperAdmin = newGroups.stream().anyMatch(UserGroup::isSuperAdmin);
+        if (!keepsSuperAdmin) {
+            assertNotSoleSuperAdmin(userId);
+        }
         jdbc.update("DELETE FROM user_group_members WHERE user_id = ?", userId);
         for (UserGroup g : newGroups) {
             jdbc.update("INSERT INTO user_group_members(user_id, group_id) VALUES (?, ?)", userId, g.getId());
@@ -139,7 +143,28 @@ public class AdminGroupService {
 
     @Transactional
     public void removeUserMemberships(UUID userId) {
+        assertNotSoleSuperAdmin(userId);
         jdbc.update("DELETE FROM user_group_members WHERE user_id = ?", userId);
+    }
+
+    /**
+     * Страховка от полной потери административного доступа: последнего члена
+     * SUPER_ADMIN нельзя лишить членства, заблокировать или отключить через API.
+     */
+    @Transactional(readOnly = true)
+    public void assertNotSoleSuperAdmin(UUID userId) {
+        UserGroup superAdmin = groups.findByCode(UserGroup.SUPER_ADMIN_CODE).orElse(null);
+        if (superAdmin == null) {
+            return;
+        }
+        Long memberships = jdbc.queryForObject(
+                "SELECT count(*) FROM user_group_members WHERE group_id = ?", Long.class, superAdmin.getId());
+        Long ownMembership = jdbc.queryForObject(
+                "SELECT count(*) FROM user_group_members WHERE group_id = ? AND user_id = ?",
+                Long.class, superAdmin.getId(), userId);
+        if (ownMembership != null && ownMembership > 0 && memberships != null && memberships <= 1) {
+            throw ApiException.unprocessable("Нельзя оставить систему без супер-администратора");
+        }
     }
 
     public List<String> groupCodesOf(UUID userId) {

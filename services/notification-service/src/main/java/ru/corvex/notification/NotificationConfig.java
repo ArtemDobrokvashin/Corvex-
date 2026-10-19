@@ -49,18 +49,27 @@ public class NotificationConfig {
             if (alerts instanceof List<?> list) {
                 for (Object item : list) {
                     if (item instanceof Map<?, ?> alert) {
-                        Map<?, ?> labels = (Map<?, ?>) alert.getOrDefault("labels", Map.of());
-                        Map<?, ?> ann = (Map<?, ?>) alert.getOrDefault("annotations", Map.of());
+                        Map<?, ?> labels = asMap(alert.get("labels"));
+                        Map<?, ?> ann = asMap(alert.get("annotations"));
                         var event = new AlertListener.AlertEvent(
-                                String.valueOf(labels.getOrDefault("alertName", "alert")),
-                                String.valueOf(labels.getOrDefault("severity", "warning")),
-                                String.valueOf(labels.getOrDefault("application", labels.getOrDefault("instance", "corvex"))),
-                                String.valueOf(ann.getOrDefault("summary", "")),
-                                String.valueOf(ann.getOrDefault("description", String.valueOf(alert.getOrDefault("status", "firing")))));
+                                text(labels, "alertName", "alert"),
+                                text(labels, "severity", "warning"),
+                                text(labels, "application", text(labels, "instance", "corvex")),
+                                text(ann, "summary", ""),
+                                text(ann, "description", text(alert, "status", "firing")));
                         rabbit.convertAndSend(ALERTS_QUEUE, event);
                     }
                 }
             }
+        }
+
+        private static Map<?, ?> asMap(Object value) {
+            return value instanceof Map<?, ?> map ? map : Map.of();
+        }
+
+        private static String text(Map<?, ?> values, String key, String fallback) {
+            Object value = values.get(key);
+            return value == null ? fallback : String.valueOf(value);
         }
     }
 }

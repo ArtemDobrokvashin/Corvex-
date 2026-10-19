@@ -195,4 +195,9 @@
   .message-markdown code {
     @apply rounded bg-black/[0.055] px-1 py-0.5 font-mono text-[0.86em];
   }
+
+  .emoji-text {
+    font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+    font-variant-emoji: emoji;
+  }
 }

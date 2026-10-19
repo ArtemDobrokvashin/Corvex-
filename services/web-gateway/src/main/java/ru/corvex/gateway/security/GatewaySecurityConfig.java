@@ -25,7 +25,7 @@ public class GatewaySecurityConfig {
                 .csrf(ServerHttpSecurity.CsrfSpec::disable) // API на Bearer-токенах; cookie-refresh защищён SameSite=Strict
                 .authorizeExchange(ex -> ex
                         .pathMatchers("/api/v1/auth/login", "/api/v1/auth/refresh",
-                                "/api/v1/auth/mfa/verify", "/actuator/health/**",
+                                "/api/v1/auth/mfa/verify", "/api/v1/auth/logout", "/actuator/health/**",
                                 "/.well-known/autoconfig/**", "/autodiscover/**").permitAll()
                         // Права на /api/v1/admin/** проверяет сам admin-service по claim permissions (SCOPE_admin в токене нет и быть не должно)
                         .anyExchange().authenticated())

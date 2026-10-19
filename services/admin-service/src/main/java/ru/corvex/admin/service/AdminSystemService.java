@@ -7,6 +7,7 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
 import ru.corvex.admin.api.ApiException;
 import ru.corvex.admin.api.dto.AdminDtos.AnalyticsResponse;
@@ -99,10 +100,14 @@ public class AdminSystemService {
         return result;
     }
 
+    @Transactional
     public Map<String, String> patchSettings(Map<String, String> patch, Actor actor) {
         if (patch == null || patch.isEmpty()) {
             throw ApiException.badRequest("Пустой набор настроек");
         }
+        // Сначала валидируем и нормализуем ВЕСЬ набор. Иначе ошибка на последнем
+        // ключе оставила бы часть настроек уже записанными без аудита/целостного PATCH.
+        Map<String, String> normalized = new LinkedHashMap<>();
         for (Map.Entry<String, String> e : patch.entrySet()) {
             if (!DEFAULT_SETTINGS.containsKey(e.getKey())) {
                 throw ApiException.unprocessable("Неизвестная настройка: " + e.getKey());
@@ -110,6 +115,9 @@ public class AdminSystemService {
             if (e.getValue() == null) {
                 throw ApiException.badRequest("Значение настройки не может быть null: " + e.getKey());
             }
+            normalized.put(e.getKey(), validateSettingValue(e.getKey(), e.getValue()));
+        }
+        for (Map.Entry<String, String> e : normalized.entrySet()) {
             jdbc.update("""
                     INSERT INTO server_settings(key, value, updated_by, updated_at)
                     VALUES (?, ?, CAST(? AS uuid), now())
@@ -117,8 +125,52 @@ public class AdminSystemService {
                     """, e.getKey(), e.getValue(),
                     actor == null || actor.id() == null ? null : actor.id().toString());
         }
-        audit.record(actor, "SETTINGS_CHANGED", "settings", null, Map.of("keys", List.copyOf(patch.keySet())));
+        audit.record(actor, "SETTINGS_CHANGED", "settings", null, Map.of("keys", List.copyOf(normalized.keySet())));
         return settings();
+    }
+
+    private static String validateSettingValue(String key, String rawValue) {
+        String value = rawValue.trim();
+        if (value.isBlank()) {
+            throw invalidSettingValue(key, rawValue);
+        }
+        try {
+            return switch (key) {
+                case "mail.maxMessageSizeMb", "chat.maxFileSizeMb" -> {
+                    int parsed = Integer.parseInt(value);
+                    if (parsed < 1 || parsed > 1024) throw new NumberFormatException("out of range");
+                    yield Integer.toString(parsed);
+                }
+                case "mail.defaultQuotaBytes" -> {
+                    long parsed = Long.parseLong(value);
+                    if (parsed < 0 || parsed > 1_000_000_000_000_000L) throw new NumberFormatException("out of range");
+                    yield Long.toString(parsed);
+                }
+                case "mail.spamThreshold" -> {
+                    double parsed = Double.parseDouble(value);
+                    if (!Double.isFinite(parsed) || parsed < -100 || parsed > 100) throw new NumberFormatException("out of range");
+                    yield Double.toString(parsed);
+                }
+                case "security.passwordMinLength" -> {
+                    int parsed = Integer.parseInt(value);
+                    if (parsed < 8 || parsed > 128) throw new NumberFormatException("out of range");
+                    yield Integer.toString(parsed);
+                }
+                case "mail.pop3.enabled", "security.requireTotp" -> {
+                    if (!"true".equalsIgnoreCase(value) && !"false".equalsIgnoreCase(value)) {
+                        throw new NumberFormatException("not a boolean");
+                    }
+                    yield Boolean.toString(Boolean.parseBoolean(value));
+                }
+                default -> value;
+            };
+        } catch (NumberFormatException e) {
+            throw invalidSettingValue(key, rawValue);
+        }
+    }
+
+    private static ApiException invalidSettingValue(String key, String value) {
+        return ApiException.unprocessable("Некорректное значение настройки " + key + ": " + value);
     }
 
     // ---------- Здоровье ----------

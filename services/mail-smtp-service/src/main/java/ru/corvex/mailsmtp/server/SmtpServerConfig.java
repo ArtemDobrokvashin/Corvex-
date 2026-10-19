@@ -58,7 +58,7 @@ public class SmtpServerConfig {
 
         SmtpListener(InboundMessageHandlerFactory factory,
                      @Value("${corvex.smtp.inbound-port:2525}") int port,
-                     @Value("${corvex.smtp.enabled:true}") boolean enabled) {
+                     @Value("${corvex.smtp.enabled:false}") boolean enabled) {
             this.factory = factory;
             this.port = port;
             this.enabled = enabled;

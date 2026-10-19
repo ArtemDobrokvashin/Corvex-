@@ -43,7 +43,7 @@ spring:
       globalcors:
         cors-configurations:
           '[/**]':
-            allowedOriginPatterns: "https://*.corp.local"
+            allowedOriginPatterns: "${CORVEX_WEB_ORIGINS:https://${CORVEX_DOMAIN:mail.company.local}}"
             allowedMethods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
             allowedHeaders: ["*"]
             allowCredentials: true

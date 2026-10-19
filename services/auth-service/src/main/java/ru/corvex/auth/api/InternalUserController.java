@@ -24,9 +24,9 @@ import ru.corvex.auth.service.InternalUserService;
 import java.util.UUID;
 
 /**
- * Внутренний API для admin-service и почтовых протоколов (IMAP/SMTP).
- * Доступность ограничена сетью: gateway маршрутизирует только /api/v1/**,
- * сюда могут попасть лишь контейнеры docker-сети app. Служебный токен/mTLS — этап 5.
+ * Внутренний API для admin-service и будущих почтовых протоколов (IMAP/SMTP).
+ * Gateway маршрутизирует только /api/v1/**, а InternalApiTokenFilter дополнительно
+ * требует X-Corvex-Internal-Token. mTLS остаётся дальнейшим усилением этапа 5.
  */
 @RestController
 @RequestMapping("/internal")

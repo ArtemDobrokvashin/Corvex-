@@ -44,6 +44,13 @@ if (-not (Test-Path .env)) {
   Write-Host "[OK] .env created with unique random secrets."
 } else {
   Write-Warning ".env already exists - secrets NOT regenerated. If it still contains 'change-me-strong-password', delete .env and re-run this script (BEFORE first docker compose up; changing DB passwords later requires changing them inside PostgreSQL too)."
+  # Upgrade path: installs created before the internal-API token was introduced
+  # receive only this new secret; every existing value remains untouched.
+  $existingEnv = Get-Content .env -Raw
+  if ($existingEnv -notmatch '(?m)^CORVEX_INTERNAL_API_TOKEN=') {
+    Add-Content .env "`nCORVEX_INTERNAL_API_TOKEN=$(New-RandomSecret 48)" -Encoding UTF8
+    Write-Host "[OK] Added missing CORVEX_INTERNAL_API_TOKEN to existing .env."
+  }
 }
 
 Write-Host ""

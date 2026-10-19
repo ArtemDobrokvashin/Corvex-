@@ -11,7 +11,7 @@ import java.util.UUID;
 
 /**
  * Эффективные группы/права пользователя для auth-service (выпуск JWT и /me).
- * Только внутренняя сеть: gateway маршрутизирует исключительно /api/v1/**.
+ * Только внутренняя сеть и X-Corvex-Internal-Token: gateway публикует лишь /api/v1/**.
  */
 @RestController
 @RequestMapping("/internal")

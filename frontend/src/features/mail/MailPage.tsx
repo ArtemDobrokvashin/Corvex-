@@ -27,8 +27,11 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { DEMO_FOLDERS, DEMO_MAILS, DemoMail } from '../../api/demoData';
+import { demoFolders, demoMails, DemoMail } from '../../api/demoData';
+import { EmojiPickerButton } from '../../components/EmojiPicker';
 import { Avatar, EmptyState, IconButton, cleanPersonName, emailFromHeader } from '../../components/ui';
+import { countLabel, formatBytes, useI18n } from '../../i18n';
+import { insertTextAtSelection, truncateGraphemes } from '../../lib/text';
 
 interface ComposeDraft {
   to: string;
@@ -47,15 +50,17 @@ const FOLDER_ICONS: Record<string, typeof Inbox> = {
 
 /** Почта Quiet Work: папки → сканируемый список → письмо как документ, composer поверх контекста. */
 export default function MailPage() {
+  const { locale, t } = useI18n();
+  const folders = demoFolders(locale);
   const [searchParams, setSearchParams] = useSearchParams();
   const [folder, setFolder] = useState('INBOX');
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
-  const [mails, setMails] = useState<DemoMail[]>(DEMO_MAILS);
+  const [mails, setMails] = useState<DemoMail[]>(() => demoMails(locale));
   const [activeId, setActiveId] = useState<string>('m1');
   const [mobileReading, setMobileReading] = useState(false);
   const [composeDraft, setComposeDraft] = useState<ComposeDraft | null>(null);
-  const [folderCounts, setFolderCounts] = useState<Record<string, number>>(() => Object.fromEntries(DEMO_FOLDERS.map((f) => [f.id, f.unread])));
+  const [folderCounts, setFolderCounts] = useState<Record<string, number>>(() => Object.fromEntries(demoFolders(locale).map((f) => [f.id, f.unread])));
   const searchRef = useRef<HTMLInputElement>(null);
 
   const visible = useMemo(() => {
@@ -69,7 +74,15 @@ export default function MailPage() {
 
   const active = mails.find((m) => m.id === activeId && m.folder === folder) ?? visible[0] ?? null;
   const activeIndex = active ? visible.findIndex((m) => m.id === active.id) : -1;
-  const currentFolder = DEMO_FOLDERS.find((f) => f.id === folder);
+  const currentFolder = folders.find((f) => f.id === folder);
+
+  useEffect(() => {
+    const localized = demoMails(locale);
+    setMails((prev) => prev.map((mail) => {
+      const translated = localized.find((candidate) => candidate.id === mail.id);
+      return translated ? { ...translated, folder: mail.folder, seen: mail.seen, flagged: mail.flagged } : mail;
+    }));
+  }, [locale]);
 
   useEffect(() => {
     if (searchParams.get('compose') === '1') {
@@ -144,11 +157,11 @@ export default function MailPage() {
     setMails((prev) => [{
       id: `sent-${Date.now()}`,
       folder: 'SENT',
-      from: 'Вы',
-      subject: draft.subject || '(без темы)',
-      snippet: draft.body.slice(0, 110),
+      from: t('Вы'),
+      subject: draft.subject || t('(без темы)'),
+      snippet: truncateGraphemes(draft.body, 110),
       body: draft.body,
-      date: 'Сейчас',
+      date: t('Сейчас'),
       seen: true,
       flagged: false,
       hasAttachments: false,
@@ -162,16 +175,16 @@ export default function MailPage() {
         {/* Папки */}
         <aside className="hidden w-[238px] shrink-0 flex-col border-r border-line bg-chrome p-3 xl:flex">
           <div className="flex items-center justify-between px-2 pb-3 pt-1">
-            <h1 className="text-[17px] font-semibold tracking-[-0.02em]">Почта</h1>
-            <span className="text-xs text-faint">{folderCounts.INBOX ?? 0} новых</span>
+            <h1 className="text-[17px] font-semibold tracking-[-0.02em]">{t('Почта')}</h1>
+            <span className="text-xs text-faint">{countLabel(locale, folderCounts.INBOX ?? 0, ['новое', 'новых', 'новых'], ['new', 'new'])}</span>
           </div>
           <button type="button" onClick={() => setComposeDraft({ to: '', subject: '', body: '' })} className="btn-primary w-full">
-            <PenSquare size={16} /> Написать <span className="ml-auto hidden xl:inline-flex"><span className="kbd border-white/20 bg-white/10 text-white/70 shadow-none">C</span></span>
+            <PenSquare size={16} /> {t('Написать')} <span className="ml-auto hidden xl:inline-flex"><span className="kbd border-white/20 bg-white/10 text-white/70 shadow-none">C</span></span>
           </button>
 
-          <p className="section-label mb-1.5 mt-6">Папки</p>
-          <nav className="space-y-0.5" aria-label="Папки почты">
-            {DEMO_FOLDERS.map((f) => {
+          <p className="section-label mb-1.5 mt-6">{t('Папки')}</p>
+          <nav className="space-y-0.5" aria-label={t('Папки почты')}>
+            {folders.map((f) => {
               const Icon = FOLDER_ICONS[f.id] ?? Folder;
               const count = folderCounts[f.id] ?? 0;
               return (
@@ -185,9 +198,9 @@ export default function MailPage() {
           </nav>
 
           <div className="mt-auto rounded-xl bg-black/[0.035] p-3">
-            <div className="flex items-center gap-2 text-xs font-medium text-ink-soft"><HardDrive size={14} className="text-muted" />Ящик</div>
+            <div className="flex items-center gap-2 text-xs font-medium text-ink-soft"><HardDrive size={14} className="text-muted" />{t('Ящик')}</div>
             <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-black/[0.08]"><div className="h-full w-[62%] rounded-full bg-accent" /></div>
-            <p className="mt-2 text-[11px] leading-relaxed text-muted">3,1 из 5 ГБ использовано</p>
+            <p className="mt-2 text-[11px] leading-relaxed text-muted">{t('Использовано {used} из {total}', { used: formatBytes(locale, 3.1 * 1024 ** 3), total: formatBytes(locale, 5 * 1024 ** 3) })}</p>
           </div>
         </aside>
 
@@ -195,25 +208,25 @@ export default function MailPage() {
         <section className={`${mobileReading ? 'hidden md:flex' : 'flex'} relative min-w-0 flex-1 flex-col border-r border-line bg-surface md:w-[322px] md:flex-none lg:w-[356px] xl:w-[392px]`}>
           <header className="shrink-0 border-b border-line px-4 pb-3 pt-4">
             <div className="flex items-center gap-2">
-              <h2 className="min-w-0 flex-1 truncate text-[17px] font-semibold tracking-[-0.02em]">{currentFolder?.name ?? 'Почта'}</h2>
+              <h2 className="min-w-0 flex-1 truncate text-[17px] font-semibold tracking-[-0.02em]">{currentFolder?.name ?? t('Почта')}</h2>
               <span className="text-xs text-faint">{visible.length}</span>
-              <IconButton icon={ArrowUpDown} label="Сортировка" className="h-8 w-8" size={16} />
-              <IconButton icon={SlidersHorizontal} label="Фильтры" className="h-8 w-8" size={16} />
+              <IconButton icon={ArrowUpDown} label={t('Сортировка')} className="h-8 w-8" size={16} />
+              <IconButton icon={SlidersHorizontal} label={t('Фильтры')} className="h-8 w-8" size={16} />
             </div>
             <div className="relative mt-3">
               <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-faint" />
-              <input ref={searchRef} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Поиск по теме, отправителю, тексту" className="search-field" />
+              <input ref={searchRef} value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('Поиск по теме, отправителю, тексту')} className="search-field" />
               <span className="kbd absolute right-3 top-1/2 hidden -translate-y-1/2 sm:inline-flex">/</span>
             </div>
-            <div className="mt-3 flex rounded-full bg-black/[0.04] p-1" role="tablist" aria-label="Фильтр писем">
+            <div className="mt-3 flex rounded-full bg-black/[0.04] p-1" role="tablist" aria-label={t('Фильтр писем')}>
               {(['all', 'unread'] as const).map((value) => (
                 <button key={value} type="button" role="tab" aria-selected={filter === value} onClick={() => setFilter(value)} className={`h-8 flex-1 rounded-full text-[13px] font-medium transition ${filter === value ? 'bg-surface text-ink shadow-soft' : 'text-muted hover:text-ink'}`}>
-                  {value === 'all' ? 'Все' : 'Непрочитанные'}
+                  {value === 'all' ? t('Все') : t('Непрочитанные')}
                 </button>
               ))}
             </div>
             <div className="-mb-1 mt-3 flex gap-1.5 overflow-x-auto pb-1 xl:hidden">
-              {DEMO_FOLDERS.map((f) => (
+              {folders.map((f) => (
                 <button key={f.id} type="button" onClick={() => selectFolder(f.id)} className={`chip shrink-0 ${folder === f.id ? 'chip-accent' : ''}`}>{f.name}{(folderCounts[f.id] ?? 0) > 0 && ` · ${folderCounts[f.id]}`}</button>
               ))}
             </div>
@@ -225,27 +238,27 @@ export default function MailPage() {
               return (
                 <div
                   key={m.id}
-                  role="button"
-                  tabIndex={0}
+                  // Клик по строке — удобство для мыши. Семантический клавиатурный/
+                  // screen-reader путь — настоящая кнопка темы ниже: role=button на
+                  // контейнере создал бы недопустимую вложенную интерактивность со звездой.
                   onClick={() => open(m)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(m); } }}
                   className={`group relative flex cursor-pointer gap-3 border-b border-line/70 px-4 py-3.5 transition duration-150 ${selected ? 'bg-accent-soft/70' : 'hover:bg-chrome'}`}
                 >
                   {selected && <span className="absolute inset-y-3 left-0 w-[3px] rounded-full bg-accent" />}
                   <Avatar name={m.from} size={38} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      {!m.seen && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-label="Непрочитано" />}
+                      {!m.seen && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-label={t('Непрочитано')} />}
                       <span className={`min-w-0 flex-1 truncate text-sm ${m.seen ? 'font-medium text-ink-soft' : 'font-semibold text-ink'}`}>{cleanPersonName(m.from)}</span>
                       <span className="shrink-0 text-[11px] text-faint">{m.date}</span>
                     </div>
                     <div className="mt-1 flex items-center gap-1.5">
-                      <span className={`min-w-0 flex-1 truncate text-sm ${m.seen ? 'text-ink-soft' : 'font-medium text-ink'}`}>{m.subject}</span>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); open(m); }} className={`min-w-0 flex-1 truncate rounded text-left text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${m.seen ? 'text-ink-soft' : 'font-medium text-ink'}`}>{m.subject}</button>
                       {m.hasAttachments && <Paperclip size={13} className="shrink-0 text-faint" />}
                       <button
                         type="button"
-                        title={m.flagged ? 'Убрать из важных' : 'Отметить важным'}
-                        aria-label={m.flagged ? 'Убрать из важных' : 'Отметить важным'}
+                        title={m.flagged ? t('Убрать из важных') : t('Отметить важным')}
+                        aria-label={m.flagged ? t('Убрать из важных') : t('Отметить важным')}
                         onClick={(e) => { e.stopPropagation(); toggleFlag(m); }}
                         className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition ${m.flagged ? 'text-amber-500' : 'text-faint opacity-0 hover:bg-black/[0.05] hover:text-ink group-hover:opacity-100'}`}
                       >
@@ -258,12 +271,12 @@ export default function MailPage() {
               );
             })}
             {visible.length === 0 && (
-              <EmptyState icon={MailOpen} title="Здесь пока тихо" description={search ? 'По этому запросу писем не нашлось. Попробуйте другое слово или сбросьте фильтр.' : 'В этой папке нет писем для выбранного фильтра.'} />
+              <EmptyState icon={MailOpen} title={t('Здесь пока тихо')} description={search ? t('По этому запросу писем не нашлось. Попробуйте другое слово или сбросьте фильтр.') : t('В этой папке нет писем для выбранного фильтра.')} />
             )}
           </div>
 
           <button type="button" onClick={() => setComposeDraft({ to: '', subject: '', body: '' })} className="btn-primary absolute bottom-4 right-4 z-30 rounded-full shadow-pop md:hidden">
-            <PenSquare size={16} /> Написать
+            <PenSquare size={16} /> {t('Написать')}
           </button>
         </section>
 
@@ -272,17 +285,17 @@ export default function MailPage() {
           {active ? (
             <>
               <header className="flex h-14 shrink-0 items-center gap-1 border-b border-line px-3 sm:px-4">
-                <button type="button" onClick={() => setMobileReading(false)} className="btn-ghost px-2 md:hidden"><ArrowLeft size={16} /> К списку</button>
-                <IconButton icon={Archive} label="В архив" onClick={() => moveActive('ARCHIVE')} />
-                <IconButton icon={Trash2} label="Удалить" onClick={() => moveActive('TRASH')} />
-                <button type="button" onClick={() => toggleFlag(active)} className={`icon-btn ${active.flagged ? 'text-amber-500 hover:text-amber-600' : ''}`} aria-label="Важное">
+                <button type="button" onClick={() => setMobileReading(false)} className="btn-ghost px-2 md:hidden"><ArrowLeft size={16} /> {t('К списку')}</button>
+                <IconButton icon={Archive} label={t('В архив')} onClick={() => moveActive('ARCHIVE')} />
+                <IconButton icon={Trash2} label={t('Удалить')} onClick={() => moveActive('TRASH')} />
+                <button type="button" onClick={() => toggleFlag(active)} className={`icon-btn ${active.flagged ? 'text-amber-500 hover:text-amber-600' : ''}`} aria-label={t('Важное')}>
                   <Star size={18} fill={active.flagged ? 'currentColor' : 'none'} />
                 </button>
-                <IconButton icon={MoreHorizontal} label="Ещё действия" />
+                <IconButton icon={MoreHorizontal} label={t('Ещё действия')} />
                 <div className="ml-auto hidden items-center gap-1 sm:flex">
-                  <span className="mr-1 hidden text-xs text-faint xl:inline">{Math.max(activeIndex + 1, 1)} из {visible.length}</span>
-                  <IconButton icon={ChevronUp} label="Предыдущее письмо" onClick={() => step(-1)} disabled={activeIndex <= 0} />
-                  <IconButton icon={ChevronDown} label="Следующее письмо" onClick={() => step(1)} disabled={activeIndex < 0 || activeIndex >= visible.length - 1} />
+                  <span className="mr-1 hidden text-xs text-faint xl:inline">{t('{current} из {total}', { current: Math.max(activeIndex + 1, 1), total: visible.length })}</span>
+                  <IconButton icon={ChevronUp} label={t('Предыдущее письмо')} onClick={() => step(-1)} disabled={activeIndex <= 0} />
+                  <IconButton icon={ChevronDown} label={t('Следующее письмо')} onClick={() => step(1)} disabled={activeIndex < 0 || activeIndex >= visible.length - 1} />
                 </div>
               </header>
 
@@ -290,7 +303,7 @@ export default function MailPage() {
                 <article className="mx-auto w-full max-w-[760px] animate-fade-in px-5 py-7 sm:px-8 sm:py-9">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="chip chip-accent">{currentFolder?.name ?? active.folder}</span>
-                    {active.flagged && <span className="chip border-amber-200 bg-amber-50 text-amber-800">Важное</span>}
+                    {active.flagged && <span className="chip border-amber-200 bg-amber-50 text-amber-800">{t('Важное')}</span>}
                   </div>
                   <h2 className="mt-4 text-[27px] font-semibold leading-tight tracking-[-0.025em] text-ink sm:text-[31px]">{active.subject}</h2>
 
@@ -298,7 +311,7 @@ export default function MailPage() {
                     <Avatar name={active.from} size={44} />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[15px] font-semibold">{cleanPersonName(active.from)}</div>
-                      <div className="mt-0.5 truncate text-[13px] text-muted">{emailFromHeader(active.from) || 'внутренний отправитель'} · мне</div>
+                      <div className="mt-0.5 truncate text-[13px] text-muted">{emailFromHeader(active.from) || t('внутренний отправитель')} · {t('мне')}</div>
                     </div>
                     <time className="shrink-0 text-[13px] text-faint">{active.date}</time>
                   </div>
@@ -307,10 +320,10 @@ export default function MailPage() {
                     <div className="mt-6 flex items-center gap-3 rounded-xl border border-line bg-chrome px-4 py-3">
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-dark"><FileCheck2 size={19} /></span>
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium">Файл во вложении</div>
-                        <div className="text-xs text-muted">Проверено антивирусом · безопасно открыть</div>
+                        <div className="truncate text-sm font-medium">{t('Файл во вложении')}</div>
+                        <div className="text-xs text-muted">{t('Проверено антивирусом · безопасно открыть')}</div>
                       </div>
-                      <button type="button" className="btn-secondary h-9 px-3 text-[13px]">Скачать</button>
+                      <button type="button" className="btn-secondary h-9 px-3 text-[13px]">{t('Скачать')}</button>
                     </div>
                   )}
 
@@ -320,13 +333,13 @@ export default function MailPage() {
 
                   <div className="mt-9 flex flex-wrap gap-2 border-t border-line pt-5">
                     <button type="button" className="btn-primary" onClick={() => setComposeDraft({ to: emailFromHeader(active.from), subject: `Re: ${active.subject}`, body: '' })}>
-                      <Reply size={16} /> Ответить
+                      <Reply size={16} /> {t('Ответить')}
                     </button>
-                    <button type="button" className="btn-secondary" onClick={() => setComposeDraft({ to: '', subject: `Fwd: ${active.subject}`, body: `\n\n--- Пересылаемое письмо ---\n${active.body}` })}>
-                      <Forward size={16} /> Переслать
+                    <button type="button" className="btn-secondary" onClick={() => setComposeDraft({ to: '', subject: `Fwd: ${active.subject}`, body: `\n\n--- ${t('Пересылаемое письмо')} ---\n${active.body}` })}>
+                      <Forward size={16} /> {t('Переслать')}
                     </button>
                     <button type="button" className="btn-ghost ml-auto" onClick={() => moveActive('ARCHIVE')}>
-                      <Archive size={16} /> В архив
+                      <Archive size={16} /> {t('В архив')}
                     </button>
                   </div>
                 </article>
@@ -334,11 +347,11 @@ export default function MailPage() {
             </>
           ) : (
             <div className="flex min-h-0 flex-1 flex-col">
-              <EmptyState icon={Inbox} title="Выберите письмо" description="Откройте письмо из списка или двигайтесь по нему клавишами J и K." />
+              <EmptyState icon={Inbox} title={t('Выберите письмо')} description={t('Откройте письмо из списка или двигайтесь по нему клавишами J и K.')} />
               <div className="-mt-16 flex items-center justify-center gap-4 pb-10 text-xs text-faint">
-                <span className="flex items-center gap-1.5"><span className="kbd">J</span><span className="kbd">K</span> навигация</span>
-                <span className="flex items-center gap-1.5"><span className="kbd">C</span> написать</span>
-                <span className="flex items-center gap-1.5"><span className="kbd">/</span> поиск</span>
+                <span className="flex items-center gap-1.5"><span className="kbd">J</span><span className="kbd">K</span> {t('навигация')}</span>
+                <span className="flex items-center gap-1.5"><span className="kbd">C</span> {t('написать')}</span>
+                <span className="flex items-center gap-1.5"><span className="kbd">/</span> {t('поиск')}</span>
               </div>
             </div>
           )}
@@ -358,11 +371,23 @@ export default function MailPage() {
 }
 
 function ComposePanel({ initial, onClose, onSend }: { initial: ComposeDraft; onClose: () => void; onSend: (draft: ComposeDraft) => void }) {
+  const { t } = useI18n();
   const [draft, setDraft] = useState(initial);
   const [showCc, setShowCc] = useState(false);
   const [files, setFiles] = useState<string[]>([]);
   const [sent, setSent] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+
+  const insertEmoji = (emoji: string) => {
+    const element = bodyRef.current;
+    const next = insertTextAtSelection(draft.body, emoji, element?.selectionStart ?? null, element?.selectionEnd ?? null);
+    setDraft({ ...draft, body: next.value });
+    requestAnimationFrame(() => {
+      element?.focus();
+      element?.setSelectionRange(next.cursor, next.cursor);
+    });
+  };
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -371,41 +396,42 @@ function ComposePanel({ initial, onClose, onSend }: { initial: ComposeDraft; onC
   };
 
   return (
-    <section className="fixed inset-x-0 bottom-0 z-50 flex max-h-[94dvh] animate-rise-in flex-col overflow-hidden border border-line bg-surface shadow-composer sm:inset-x-auto sm:bottom-4 sm:right-4 sm:h-[min(640px,92dvh)] sm:w-[min(590px,calc(100vw-2rem))] sm:rounded-2xl" aria-label="Новое письмо">
+    <section className="fixed inset-x-0 bottom-0 z-50 flex max-h-[94dvh] animate-rise-in flex-col overflow-hidden border border-line bg-surface shadow-composer sm:inset-x-auto sm:bottom-4 sm:right-4 sm:h-[min(640px,92dvh)] sm:w-[min(590px,calc(100vw-2rem))] sm:rounded-2xl" aria-label={t('Новое письмо')}>
       <header className="flex h-11 shrink-0 items-center bg-ink px-4 text-white">
-        <h3 className="flex-1 text-sm font-medium">{initial.subject ? 'Ответ / пересылка' : 'Новое письмо'}</h3>
-        <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white" aria-label="Свернуть черновик"><Minus size={16} /></button>
-        <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white" aria-label="Закрыть черновик"><X size={16} /></button>
+        <h3 className="flex-1 text-sm font-medium">{initial.subject ? t('Ответ / пересылка') : t('Новое письмо')}</h3>
+        <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white" aria-label={t('Свернуть черновик')}><Minus size={16} /></button>
+        <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white" aria-label={t('Закрыть черновик')}><X size={16} /></button>
       </header>
 
       {sent ? (
         <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
           <span className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600"><CheckCircle2 size={27} /></span>
-          <h4 className="mt-4 text-lg font-semibold">Письмо отправлено</h4>
-          <p className="mt-1 text-sm text-muted">Копия сохранена в папке «Отправленные».</p>
+          <h4 className="mt-4 text-lg font-semibold">{t('Письмо отправлено')}</h4>
+          <p className="mt-1 text-sm text-muted">{t('Копия сохранена в папке «Отправленные».')}</p>
         </div>
       ) : (
         <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
           <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
-            <label htmlFor="compose-to" className="w-12 shrink-0 text-[13px] text-faint">Кому</label>
+            <label htmlFor="compose-to" className="w-12 shrink-0 text-[13px] text-faint">{t('Кому')}</label>
             <input id="compose-to" required type="email" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} placeholder="user@company.local" className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-faint focus:ring-0" />
-            {!showCc && <button type="button" onClick={() => setShowCc(true)} className="shrink-0 text-xs font-medium text-muted hover:text-ink">Копия</button>}
+            {!showCc && <button type="button" onClick={() => setShowCc(true)} className="shrink-0 text-xs font-medium text-muted hover:text-ink">{t('Копия')}</button>}
           </div>
           {showCc && (
             <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
-              <label htmlFor="compose-cc" className="w-12 shrink-0 text-[13px] text-faint">Копия</label>
+              <label htmlFor="compose-cc" className="w-12 shrink-0 text-[13px] text-faint">{t('Копия')}</label>
               <input id="compose-cc" type="email" placeholder="user@company.local" className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-faint focus:ring-0" />
             </div>
           )}
           <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
-            <label htmlFor="compose-subject" className="w-12 shrink-0 text-[13px] text-faint">Тема</label>
-            <input id="compose-subject" required value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder="О чём письмо?" className="min-w-0 flex-1 border-0 bg-transparent text-sm font-medium outline-none placeholder:font-normal placeholder:text-faint focus:ring-0" />
+            <label htmlFor="compose-subject" className="w-12 shrink-0 text-[13px] text-faint">{t('Тема')}</label>
+            <input id="compose-subject" required value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder={t('О чём письмо?')} className="min-w-0 flex-1 border-0 bg-transparent text-sm font-medium outline-none placeholder:font-normal placeholder:text-faint focus:ring-0" />
           </div>
           <textarea
+            ref={bodyRef}
             required
             value={draft.body}
             onChange={(e) => setDraft({ ...draft, body: e.target.value })}
-            placeholder="Напишите сообщение…"
+            placeholder={t('Напишите сообщение…')}
             className="min-h-[180px] flex-1 resize-none border-0 bg-transparent px-4 py-4 text-[15px] leading-relaxed outline-none placeholder:text-faint focus:ring-0"
           />
           {files.length > 0 && (
@@ -414,11 +440,12 @@ function ComposePanel({ initial, onClose, onSend }: { initial: ComposeDraft; onC
             </div>
           )}
           <footer className="flex shrink-0 items-center gap-2 border-t border-line px-3 py-3">
-            <button className="btn-accent"><Send size={15} /> Отправить</button>
+            <button className="btn-accent"><Send size={15} /> {t('Отправить')}</button>
             <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => setFiles(Array.from(e.target.files ?? []).map((f) => f.name))} />
-            <IconButton icon={Paperclip} label="Прикрепить файлы" onClick={() => fileRef.current?.click()} />
-            <span className="ml-1 hidden text-[11px] text-faint sm:inline">Подпись добавится автоматически</span>
-            <IconButton icon={Trash2} label="Удалить черновик" className="ml-auto" onClick={onClose} />
+            <IconButton icon={Paperclip} label={t('Прикрепить файлы')} onClick={() => fileRef.current?.click()} />
+            <EmojiPickerButton onPick={insertEmoji} />
+            <span className="ml-1 hidden text-[11px] text-faint sm:inline">{t('Подпись добавится автоматически')}</span>
+            <IconButton icon={Trash2} label={t('Удалить черновик')} className="ml-auto" onClick={onClose} />
           </footer>
         </form>
       )}

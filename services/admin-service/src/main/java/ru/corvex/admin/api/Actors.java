@@ -25,8 +25,25 @@ final class Actors {
         }
         String ip = null;
         if (request != null) {
-            String xff = request.getHeader("X-Forwarded-For");
-            ip = xff != null && !xff.isBlank() ? xff.split(",")[0].trim() : request.getRemoteAddr();
+            String realIp = request.getHeader("X-Real-IP");
+            if (realIp != null && !realIp.isBlank()) {
+                ip = realIp.trim();
+            } else {
+                String xff = request.getHeader("X-Forwarded-For");
+                if (xff != null && !xff.isBlank()) {
+                    String[] parts = xff.split(",");
+                    ip = request.getRemoteAddr();
+                    for (int i = parts.length - 1; i >= 0; i--) {
+                        String candidate = parts[i].trim();
+                        if (!candidate.isBlank()) {
+                            ip = candidate;
+                            break;
+                        }
+                    }
+                } else {
+                    ip = request.getRemoteAddr();
+                }
+            }
         }
         return new AuditService.Actor(id, name, ip);
     }

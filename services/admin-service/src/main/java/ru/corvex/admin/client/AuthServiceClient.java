@@ -13,7 +13,9 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
+import org.springframework.context.i18n.LocaleContextHolder;
 import ru.corvex.admin.api.ApiException;
+import ru.corvex.admin.security.InternalApiTokenFilter;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -54,11 +56,21 @@ public class AuthServiceClient {
     private final RestClient client;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public AuthServiceClient(@Value("${corvex.auth-service-url:http://auth-service:8081}") String baseUrl) {
+    public AuthServiceClient(@Value("${corvex.auth-service-url:http://auth-service:8081}") String baseUrl,
+                             @Value("${corvex.internal.api-token:}") String internalApiToken) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout((int) Duration.ofSeconds(3).toMillis());
         factory.setReadTimeout((int) Duration.ofSeconds(10).toMillis());
-        this.client = RestClient.builder().baseUrl(baseUrl).requestFactory(factory).build();
+        this.client = RestClient.builder().baseUrl(baseUrl).requestFactory(factory)
+                .defaultHeader(InternalApiTokenFilter.HEADER, internalApiToken == null ? "" : internalApiToken)
+                .requestInterceptor((request, body, execution) -> {
+                    var locale = LocaleContextHolder.getLocale();
+                    if (locale != null) {
+                        request.getHeaders().setAcceptLanguageAsLocales(List.of(locale));
+                    }
+                    return execution.execute(request, body);
+                })
+                .build();
     }
 
     public RemoteUser createUser(String username, String email, String displayName, String password,

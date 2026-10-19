@@ -45,8 +45,17 @@ public class ChatMessageController {
     @MessageMapping("/rooms/{roomId}/send")
     public void send(@DestinationVariable UUID roomId, SendMessageRequest request, Principal principal,
                      @AuthenticationPrincipal Jwt jwt) {
-        UUID authorId = UUID.fromString(jwt.getSubject());
-        // TODO(Stage-2): ChatMessageService.persist(roomId, authorId, request) —
+        if (jwt == null || jwt.getSubject() == null || request == null
+                || request.bodyMarkdown() == null || request.bodyMarkdown().isBlank()) {
+            return;
+        }
+        UUID authorId;
+        try {
+            authorId = UUID.fromString(jwt.getSubject());
+        } catch (IllegalArgumentException e) {
+            return;
+        }
+        // TODO(Stage-4): ChatMessageService.persist(roomId, authorId, request) —
         // проверка членства/прав, запись в chat_db, упоминания, индексация в Elasticsearch, push офлайн-участникам.
         var view = new ChatMessageView(UUID.randomUUID(), roomId, authorId,
                 request.bodyMarkdown(), request.threadRootId(), request.clientMessageId());
@@ -55,6 +64,9 @@ public class ChatMessageController {
 
     @MessageMapping("/rooms/{roomId}/typing")
     public void typing(@DestinationVariable UUID roomId, Principal principal) {
+        if (principal == null || principal.getName() == null) {
+            return;
+        }
         broker.convertAndSend("/topic/rooms/" + roomId + "/typing",
                 java.util.Map.of("user", principal.getName()));
     }

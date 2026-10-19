@@ -1,4 +1,5 @@
 import { ApiError, apiFetch, setAccessToken } from './httpClient';
+import { getCurrentLocale, localizeApiDetail, translate, type Locale } from '../i18n';
 import type { SessionUser } from '../store/sessionStore';
 
 /** Клиент auth-service по контракту docs/api/auth-api.yaml. */
@@ -110,15 +111,18 @@ export async function deleteAppPassword(id: string): Promise<void> {
 }
 
 /** Человекочитаемый текст ошибки для форм входа/админки. */
-export function errorText(e: unknown): string {
+export function errorText(e: unknown, locale: Locale = getCurrentLocale()): string {
+  const t = (source: string) => translate(locale, source);
   if (e instanceof ApiError) {
-    if (e.status === 401) return e.detail || 'Неверный логин или пароль';
-    if (e.status === 423) return e.detail || 'Слишком много неверных попыток, попробуйте позже';
-    if (e.status === 403) return e.detail || 'Доступ запрещён';
-    if (e.status >= 500) return 'Сервер недоступен или произошла ошибка. Попробуйте позже';
-    return e.detail || e.message;
+    const localized = localizeApiDetail(e.detail, locale);
+    const detail = /^HTTP \d+/.test(localized) ? '' : localized;
+    if (e.status === 401) return detail || t('Неверный логин или пароль');
+    if (e.status === 423) return detail || t('Слишком много неверных попыток, попробуйте позже');
+    if (e.status === 403) return detail || t('Доступ запрещён');
+    if (e.status >= 500) return t('Сервер недоступен или произошла ошибка. Попробуйте позже');
+    return detail || t('Некорректный запрос');
   }
-  return 'Сеть недоступна: сервер не отвечает';
+  return t('Сеть недоступна: сервер не отвечает');
 }
 
 /** Истинная недоступность сервера (не путать с неверным паролем!) — основание предложить демо. */

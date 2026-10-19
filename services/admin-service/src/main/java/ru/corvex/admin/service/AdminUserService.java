@@ -79,18 +79,26 @@ public class AdminUserService {
         if (req.email() != null) { patch.put("email", req.email()); changed.add("email"); }
         if (req.department() != null) { patch.put("department", req.department()); changed.add("department"); }
         if (req.quotaBytes() != null) { patch.put("quotaBytes", req.quotaBytes()); changed.add("quotaBytes"); }
-        if (req.status() != null) { patch.put("status", req.status()); changed.add("status"); }
+        if (req.status() != null) {
+            if (!"ACTIVE".equalsIgnoreCase(req.status().trim())) {
+                groupService.assertNotSoleSuperAdmin(userId);
+            }
+            patch.put("status", req.status());
+            changed.add("status");
+        }
         RemoteUser updated = authClient.patchUser(userId, patch);
         audit.record(actor, "USER_UPDATED", "user", userId.toString(), Map.of("changedFields", changed));
         return toView(updated, groupService.groupCodesOf(userId));
     }
 
     public void block(UUID userId, Actor actor) {
+        groupService.assertNotSoleSuperAdmin(userId);
         authClient.blockUser(userId); // auth попутно отзывает все refresh-сессии
         audit.record(actor, "USER_BLOCKED", "user", userId.toString(), Map.of());
     }
 
     public void disable(UUID userId, Actor actor) {
+        groupService.assertNotSoleSuperAdmin(userId);
         authClient.disableUser(userId);
         groupService.removeUserMemberships(userId);
         audit.record(actor, "USER_DISABLED", "user", userId.toString(), Map.of());

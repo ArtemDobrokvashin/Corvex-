@@ -12,14 +12,18 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.LocaleResolver;
+import org.springframework.web.servlet.i18n.AcceptHeaderLocaleResolver;
 
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
  * Безопасность auth-service и JWKS-эндпоинт, на который ссылаются gateway и все сервисы
  * (CORVEX_JWK_SET_URI=http://auth-service:8081/oauth2/jwks).
  * Публичны: вход/refresh/подтверждение 2FA/logout (там входных токенов ещё нет),
- * JWKS, healthcheck и /internal/** (последний ограничен сетью — gateway его не маршрутизирует).
+ * JWKS, healthcheck и /internal/** (последний защищён InternalApiTokenFilter; gateway его не маршрутизирует).
  */
 @Configuration
 public class AuthSecurityConfig {
@@ -37,6 +41,15 @@ public class AuthSecurityConfig {
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()))
                 .build();
+    }
+
+    /** Публичный API говорит на русском по умолчанию и на английском по Accept-Language. */
+    @Bean
+    LocaleResolver localeResolver() {
+        AcceptHeaderLocaleResolver resolver = new AcceptHeaderLocaleResolver();
+        resolver.setDefaultLocale(Locale.forLanguageTag("ru"));
+        resolver.setSupportedLocales(List.of(Locale.forLanguageTag("ru"), Locale.ENGLISH));
+        return resolver;
     }
 
     /**

@@ -18,8 +18,9 @@ import java.util.UUID;
  * <ul>
  *   <li>access-токен короткоживущий (15 мин по умолчанию), подпись RSA — сервисы проверяют
  *       токен локально по JWKS (GET /oauth2/jwks), без похода в auth-service на каждый запрос;</li>
- *   <li>refresh-токен — НЕ JWT, а непрозрачный UUID: хранится (хэш) в Redis, вращается при каждом
- *       использовании, отдаётся клиенту только HttpOnly+Secure+SameSite=Strict cookie;</li>
+ *   <li>refresh-токен — НЕ JWT, а непрозрачные 32 случайных байта: SHA-256-хэш хранится
+ *       в PostgreSQL, токен вращается при каждом использовании и отдаётся клиенту только
+ *       HttpOnly+Secure+SameSite=Strict cookie;</li>
  *   <li>права (permissions) кладутся в claim — gateway и сервисы авторизуют без запроса в БД,
  *       цена — отзыв прав действует не мгновенно, а в пределах TTL access-токена (документируется!).</li>
  * </ul>
@@ -50,6 +51,7 @@ public class TokenService {
                 .subject(userId.toString())
                 .id(UUID.randomUUID().toString())          // jti — для blacklist при форс-отзыве
                 .claim("preferred_username", username)
+                .claim("groups", groups)                    // коды групп нужны /me и сервисам без похода в admin-service
                 .claim("permissions", permissions)          // итоговая сумма прав всех групп пользователя
                 .claim("amr", mfaVerified ? java.util.List.of("pwd", "otp") : java.util.List.of("pwd"))
                 .build();

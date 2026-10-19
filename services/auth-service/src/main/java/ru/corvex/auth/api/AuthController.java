@@ -176,9 +176,21 @@ public class AuthController {
     }
 
     private static String clientIp(HttpServletRequest req) {
+        // X-Real-IP перезаписывает доверенный edge-nginx. Первый элемент XFF
+        // может прислать сам клиент, поэтому для fallback берём последний.
+        String realIp = req.getHeader("X-Real-IP");
+        if (realIp != null && !realIp.isBlank()) {
+            return realIp.trim();
+        }
         String xff = req.getHeader("X-Forwarded-For");
         if (xff != null && !xff.isBlank()) {
-            return xff.split(",")[0].trim();
+            String[] parts = xff.split(",");
+            for (int i = parts.length - 1; i >= 0; i--) {
+                String candidate = parts[i].trim();
+                if (!candidate.isBlank()) {
+                    return candidate;
+                }
+            }
         }
         return req.getRemoteAddr();
     }

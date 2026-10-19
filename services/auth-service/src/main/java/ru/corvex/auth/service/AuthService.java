@@ -316,6 +316,11 @@ public class AuthService {
     public TotpSetup totpSetup(UUID userId) {
         User user = users.findById(userId)
                 .orElseThrow(() -> ApiException.unauthorized("Пользователь не существует"));
+        if (user.isTotpEnabled()) {
+            // Иначе украденный access-токен мог бы одной setup-операцией выключить 2FA:
+            // сначала требуется штатный disable с действующим TOTP-кодом.
+            throw ApiException.badRequest("2FA уже включена. Сначала отключите её текущим кодом");
+        }
         String secret = TotpService.generateSecret();
         user.setTotpSecretEnc(totpCipher.encrypt(secret));
         user.setTotpEnabled(false); // включится только после confirm первым кодом

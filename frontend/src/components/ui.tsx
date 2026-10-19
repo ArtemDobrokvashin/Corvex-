@@ -1,5 +1,7 @@
 import { ButtonHTMLAttributes, ReactNode } from 'react';
 import { AlertCircle, CheckCircle2, Info, LucideIcon } from 'lucide-react';
+import { useT } from '../i18n';
+import { firstGraphemes } from '../lib/text';
 
 const AVATAR_COLORS: Array<[string, string]> = [
   ['#E4E9FF', '#2F47B8'],
@@ -24,8 +26,8 @@ export function emailFromHeader(value: string) {
 function initials(name: string) {
   const words = cleanPersonName(name).split(/\s+/).filter(Boolean);
   if (words.length === 0) return '?';
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  return `${words[0][0] ?? ''}${words[1][0] ?? ''}`.toUpperCase();
+  if (words.length === 1) return firstGraphemes(words[0], 2).toUpperCase();
+  return `${firstGraphemes(words[0], 1)}${firstGraphemes(words[1], 1)}`.toUpperCase();
 }
 
 export function Avatar({
@@ -144,14 +146,16 @@ export function IconButton({
   );
 }
 
-export function LoadingScreen({ label = 'Загружаем рабочее пространство' }: { label?: string }) {
+export function LoadingScreen({ label }: { label?: string }) {
+  const t = useT();
+  const effectiveLabel = label ?? t('Загружаем рабочее пространство');
   return (
     <div className="flex h-full flex-col items-center justify-center bg-canvas px-6 text-center">
       <LogoMark size={48} />
       <div className="mt-5 h-1 w-36 overflow-hidden rounded-full bg-black/[0.07]">
         <div className="h-full w-1/2 animate-pulse rounded-full bg-ink" />
       </div>
-      <p className="mt-4 text-sm text-muted">{label}…</p>
+      <p className="mt-4 text-sm text-muted">{effectiveLabel}…</p>
     </div>
   );
 }
