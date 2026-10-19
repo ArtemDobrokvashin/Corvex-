@@ -44,7 +44,7 @@
 | Проект обещает «enterprise-ready», но прячет ограничения | Открытый аудит, честные ворота готовности и SMTP, выключенный до durable-доставки |
 
 > [!IMPORTANT]
-> **Статус сегодня:** Stage 1 — настоящий вход, пользователи, RBAC и админка. Боевая доставка почты — Stage 2, IMAP/POP3 — Stage 3, сохраняемый чат — Stage 4. Не направляйте production MX на Corvex, пока не закрыты ворота в [`docs/READINESS.md`](docs/READINESS.md).
+> **Статус сегодня:** Stage 1 — настоящий вход, пользователи, RBAC и админка; Stage 2A — входящий почтовый конвейер в коде (durable spool → SpamAssassin → ClamAV → Maildir/поиск). Исходящие/DKIM — Stage 2B, IMAP/POP3 — Stage 3, сохраняемый чат — Stage 4. Не направляйте production MX на Corvex, пока не закрыты ворота в [`docs/READINESS.md`](docs/READINESS.md).
 
 ### Попробовать за 2 минуты
 
@@ -100,12 +100,12 @@ npm run dev
 | Этап | Содержимое | Статус |
 |---|---|---|
 | 1 | Identity, пользователи, группы, RBAC, аудит, админка | ✅ код готов; нужен первый Maven/Docker smoke на целевом хосте |
-| 2 | Durable SMTP-доставка, storage, spam/AV, поиск, исходящая очередь | 🚧 следующий главный этап |
+| 2 | Durable SMTP-доставка, storage, spam/AV, поиск, исходящая очередь | 🚧 Stage 2A inbound в коде; 2B — submission/исходящие/DKIM |
 | 3 | IMAP/POP3 на Apache James, Outlook/Thunderbird | 📐 контракты и порты готовы |
 | 4 | Persistent realtime-чат, файлы, presence | 📐 UI и STOMP-каркас готовы |
 | 5 | AD/LDAP, mTLS, production hardening | 📐 спроектировано |
 
-SMTP выключен по умолчанию на всех уровнях, пока письмо нельзя гарантированно сохранить. Corvex не должен ответить `250 OK` и потерять сообщение.
+SMTP выключен по умолчанию на всех уровнях до живого Maven/Docker smoke. Даже с durable spool Corvex не должен ответить `250 OK`, пока сквозной путь письма не подтверждён на целевом хосте.
 
 ### Установка на Windows Server
 
@@ -208,7 +208,7 @@ The promise is deliberately simple: **a company's correspondence should belong t
 | “Enterprise-ready” hides the fine print | A public audit, explicit readiness gates, and SMTP disabled until durable delivery |
 
 > [!IMPORTANT]
-> **Current status:** Stage 1 provides real sign-in, users, RBAC, and administration. Production mail delivery is Stage 2, IMAP/POP3 is Stage 3, and persistent chat is Stage 4. Do not point production MX records at Corvex until the gates in [`docs/READINESS.md`](docs/READINESS.md) pass.
+> **Current status:** Stage 1 provides real sign-in, users, RBAC, and administration; Stage 2A adds the inbound mail pipeline in code (durable spool → SpamAssassin → ClamAV → Maildir/search). Outbound/DKIM is Stage 2B, IMAP/POP3 is Stage 3, and persistent chat is Stage 4. Do not point production MX records at Corvex until the gates in [`docs/READINESS.md`](docs/READINESS.md) pass.
 
 ### Try it in 2 minutes
 
@@ -264,12 +264,12 @@ Reproduce the captures with [`docs/screenshots/README.md`](docs/screenshots/READ
 | Stage | Scope | Status |
 |---|---|---|
 | 1 | Identity, users, groups, RBAC, audit, administration | ✅ code complete; needs the first Maven/Docker smoke on a target host |
-| 2 | Durable SMTP delivery, storage, spam/AV, search, outbound queue | 🚧 next major stage |
+| 2 | Durable SMTP delivery, storage, spam/AV, search, outbound queue | 🚧 Stage 2A inbound in code; 2B is submission/outbound/DKIM |
 | 3 | Apache James IMAP/POP3, Outlook/Thunderbird | 📐 contracts and ports ready |
 | 4 | Persistent realtime chat, files, presence | 📐 UI and STOMP skeleton ready |
 | 5 | AD/LDAP, mTLS, production hardening | 📐 designed |
 
-SMTP is disabled by default at every layer until a message can be stored durably. Corvex must never say `250 OK` and lose mail.
+SMTP is disabled by default at every layer until the live Maven/Docker smoke passes. Even with a durable spool, Corvex must not say `250 OK` until the end-to-end path is proven on a target host.
 
 ### Install on Windows Server
 

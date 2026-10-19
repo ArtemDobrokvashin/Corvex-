@@ -8,6 +8,10 @@ spring:
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USER:corvex}
     password: ${RABBITMQ_PASSWORD:change-me}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
 management:
   endpoints.web.exposure.include: health,info,prometheus,metrics
   endpoint.health.probes.enabled: true
@@ -16,6 +20,12 @@ logging:
   # Структурные JSON-логи -> Promtail -> Loki (см. docs/01-architecture.md)
   pattern.console: '%d{yyyy-MM-dd''T''HH:mm:ss.SSSXXX} [%thread] %-5level %logger{36} [%X{requestId}] - %msg%n'
 corvex:
+  clamd:
+    host: ${CORVEX_CLAMD_HOST:clamav}
+    port: ${CORVEX_CLAMD_PORT:3310}
+  storage:
+    base-url: ${CORVEX_STORAGE_BASE_URL:http://mail-storage-service:8085}
   security:
+    internal-token: ${CORVEX_INTERNAL_API_TOKEN:}
     # Публичный ключ auth-service (JWKS): каждый сервис сам валидирует JWT (RS256)
     jwk-set-uri: ${CORVEX_JWK_SET_URI:http://auth-service:8081/oauth2/jwks}

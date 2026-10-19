@@ -71,6 +71,10 @@ per caller или mTLS остаются усилением Stage 5, а не те
 
 - `auth-service  POST /internal/verify-password {username, password|appPassword}` —
   для IMAP/POP3/SMTP аутентификации;
-- `mail-storage-service POST /internal/raw` — приём сырого .eml от smtp-сервиса;
+- `auth-service  GET /internal/users/by-email?email=...` — Stage 2 разрешение получателя
+  в владельца ящика (id/status/quota) для SMTP RCPT-проверки и доставки storage;
+- `mail-storage-service POST /internal/raw` — потоковый приём сырого .eml от smtp-сервиса
+  в durable spool; `GET /internal/raw/{rawRef}` читают spam/AV, `DELETE` чистит spool
+  после доставки или неудачной публикации события;
 - `notification-service POST /internal/alerts/webhook` — вебхук Alertmanager;
 - `admin-service → auth-service /internal/users/**` — управление учётками из админки.

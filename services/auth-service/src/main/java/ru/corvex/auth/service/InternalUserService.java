@@ -91,6 +91,18 @@ public class InternalUserService {
         return UserView.of(u, List.of(), List.of());
     }
 
+    /**
+     * Разрешение почтового адресата в владельца ящика для этапа 2.
+     * mail-storage-service не читает auth_db напрямую: по e-mail он получает только
+     * id/status/quota активного пользователя и уже сам считает занятое место по mail_db.
+     */
+    @Transactional(readOnly = true)
+    public UserView getByEmail(String email) {
+        User u = users.findByEmailIgnoreCase(AuthService.normalize(email))
+                .orElseThrow(() -> ApiException.notFound("Пользователь не найден: " + email));
+        return UserView.of(u, List.of(), List.of());
+    }
+
     @Transactional(readOnly = true)
     public UserPage list(String q, String status, String department, int page, int size) {
         User.Status st = parseStatus(status);

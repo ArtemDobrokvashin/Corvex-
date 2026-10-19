@@ -149,21 +149,26 @@ services:
     environment:
       <<: *common-env
       ELASTICSEARCH_URIS: http://elasticsearch:9200
+      CORVEX_AUTH_SERVICE_URL: http://auth-service:8081
+      CORVEX_INTERNAL_API_TOKEN: ${CORVEX_INTERNAL_API_TOKEN:?Set CORVEX_INTERNAL_API_TOKEN in .env}
     volumes:
       - mail-data:/data/mail
       - attachment-data:/data/attachments
-    depends_on: { postgres: { condition: service_healthy }, elasticsearch: { condition: service_healthy } }
+    depends_on: { postgres: { condition: service_healthy }, elasticsearch: { condition: service_healthy }, rabbitmq: { condition: service_healthy }, auth-service: { condition: service_healthy } }
 
   mail-smtp-service:
     <<: *java-common
     build: ./services/mail-smtp-service
     environment:
       <<: *common-env
-      # ВНИМАНИЕ: включать ТОЛЬКО когда mail-storage перестанет быть заглушкой (этап 2 плана),
-      # иначе принятые письма будут подтверждены отправителю (250 OK) и потеряны. См. docs/READINESS.md
+      # ВНИМАНИЕ: Stage 2A inbound pipeline уже пишет durable spool и ждёт publisher confirm,
+      # но включать на проде только после smoke на JDK/Docker-хосте. См. docs/READINESS.md
       CORVEX_SMTP_ENABLED: ${CORVEX_SMTP_ENABLED:-false}
+      CORVEX_AUTH_SERVICE_URL: http://auth-service:8081
+      CORVEX_STORAGE_BASE_URL: http://mail-storage-service:8085
+      CORVEX_INTERNAL_API_TOKEN: ${CORVEX_INTERNAL_API_TOKEN:?Set CORVEX_INTERNAL_API_TOKEN in .env}
     ports: ["25:2525", "587:2587"]   # внутри — непривилегированные порты (non-root), наружу — стандартные
-    depends_on: { rabbitmq: { condition: service_healthy } }
+    depends_on: { rabbitmq: { condition: service_healthy }, auth-service: { condition: service_healthy }, mail-storage-service: { condition: service_healthy }, mail-spam-service: { condition: service_healthy }, mail-antivirus-service: { condition: service_healthy } }
 
   mail-imap-service:
     <<: *java-common
@@ -182,12 +187,20 @@ services:
   mail-spam-service:
     <<: *java-common
     build: ./services/mail-spam-service
-    depends_on: [spamd, rabbitmq]
+    environment:
+      <<: *common-env
+      CORVEX_STORAGE_BASE_URL: http://mail-storage-service:8085
+      CORVEX_INTERNAL_API_TOKEN: ${CORVEX_INTERNAL_API_TOKEN:?Set CORVEX_INTERNAL_API_TOKEN in .env}
+    depends_on: { spamd: { condition: service_started }, rabbitmq: { condition: service_healthy }, mail-storage-service: { condition: service_healthy } }
 
   mail-antivirus-service:
     <<: *java-common
     build: ./services/mail-antivirus-service
-    depends_on: { clamav: { condition: service_healthy } }
+    environment:
+      <<: *common-env
+      CORVEX_STORAGE_BASE_URL: http://mail-storage-service:8085
+      CORVEX_INTERNAL_API_TOKEN: ${CORVEX_INTERNAL_API_TOKEN:?Set CORVEX_INTERNAL_API_TOKEN in .env}
+    depends_on: { clamav: { condition: service_healthy }, rabbitmq: { condition: service_healthy }, mail-storage-service: { condition: service_healthy } }
 
   chat-service:
     <<: *java-common

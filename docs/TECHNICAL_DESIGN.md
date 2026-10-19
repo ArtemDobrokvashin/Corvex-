@@ -78,8 +78,11 @@ SUPER_ADMIN, пользователи, группы и union прав, ауди�
 modern+legacy варианты и полностью поддерживает RU/EN; ошибки auth/admin API
 также локализуются по `Accept-Language`.
 
-По этапам плана остаются постоянная доставка и поиск почты (Stage 2), адаптеры
-Apache James за портами IMAP/POP3 (Stage 3), persistent realtime-чат и файлы
-(Stage 4), LDAP и production hardening (Stage 5). Границы и остаточные риски
-зафиксированы в аудите `12-full-audit-2026-10.md`; SMTP до Stage 2 выключен по
-умолчанию, чтобы принятое письмо нельзя было подтвердить и потерять.
+Stage 2A входящей почты также реализован в коде: потоковый durable spool сырого
+`.eml`, конвейер spam→AV→delivery с DLQ, MIME/Maildir/CAS, квоты, Elasticsearch
+и read-side webmail API. По этапам плана остаются runtime-приёмка Stage 2A на
+JDK/Docker-хосте, Stage 2B (submission, исходящие, DKIM/DSN), адаптеры Apache James
+за портами IMAP/POP3 (Stage 3), persistent realtime-чат и файлы (Stage 4), LDAP и
+production hardening (Stage 5). Границы и остаточные риски зафиксированы в аудите
+`12-full-audit-2026-10.md`; SMTP по-прежнему выключен по умолчанию до живого smoke,
+чтобы принятое письмо нельзя было подтвердить и потерять.

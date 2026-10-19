@@ -138,6 +138,11 @@ Corvex **нельзя пока выводить в боевую почту ил�
 
 #### P0-02. Почтовый конвейер Stage 2 не завершён
 
+> **Обновление после аудита (Stage 2A):** inbound-половина закрыта в коде — durable raw spool,
+> потоковый лимит, exchange/queues/DLQ, spam/AV consumers, MIME/Maildir/CAS/квоты/ES и
+> read-side webmail API. Открытыми остаются runtime-smoke на JDK/Docker-хосте и Stage 2B:
+> submission AUTH/TLS, исходящая очередь retry/DSN и DKIM/SPF/DMARC-проверка на пилоте.
+
 - `RawMessageStoreClient` возвращает UUID, но не сохраняет `.eml`.
 - Exchange/queues/bindings для `corvex.mail` и `mail.inbound.received` не задекларированы.
 - SMTP читает DATA через `readAllBytes()` до проверки лимита: большое письмо сначала целиком попадёт в heap. Нужен потоковый лимит на уровне SubEtha/storage.

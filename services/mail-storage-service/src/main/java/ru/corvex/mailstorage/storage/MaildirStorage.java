@@ -65,14 +65,18 @@ public class MaildirStorage {
         }
     }
 
-    /** Сохраняет вложение; возвращает SHA-256 (он же ключ дедупликации и FK в mail_db.attachments). */
-    public String storeAttachment(InputStream in) throws IOException {
+    public record StoredAttachment(String sha256, long sizeBytes) {
+    }
+
+    /** Сохраняет вложение; SHA-256 — ключ дедупликации и FK в mail_db.attachments. */
+    public StoredAttachment storeAttachment(InputStream in) throws IOException {
         Files.createDirectories(attachmentRoot);
         MessageDigest sha = sha256();
         Path tmp = Files.createTempFile(attachmentRoot, "upload-", ".part");
+        long sizeBytes;
         try {
             try (var dis = new DigestInputStream(in, sha); var out = new FileOutputStream(tmp.toFile())) {
-                dis.transferTo(out);
+                sizeBytes = dis.transferTo(out);
                 out.getChannel().force(true);
             }
             String hash = HexFormat.of().formatHex(sha.digest());
@@ -89,11 +93,26 @@ public class MaildirStorage {
                     Files.deleteIfExists(tmp); // параллельная загрузка того же файла выиграла гонку
                 }
             }
-            return hash;
+            return new StoredAttachment(hash, sizeBytes);
         } catch (IOException e) {
             Files.deleteIfExists(tmp);
             throw e;
         }
+    }
+
+    /** Открывает .eml по относительному пути из БД, не позволяя выйти за пределы mailRoot. */
+    public InputStream openMessage(String relativePath) throws IOException {
+        Path resolved = resolveMessagePath(relativePath);
+        return Files.newInputStream(resolved);
+    }
+
+    Path resolveMessagePath(String relativePath) {
+        Path root = mailRoot.toAbsolutePath().normalize();
+        Path resolved = root.resolve(relativePath).normalize();
+        if (!resolved.startsWith(root)) {
+            throw new IllegalArgumentException("Путь письма выходит за пределы хранилища");
+        }
+        return resolved;
     }
 
     private static void writeAndSync(InputStream in, Path target) throws IOException {

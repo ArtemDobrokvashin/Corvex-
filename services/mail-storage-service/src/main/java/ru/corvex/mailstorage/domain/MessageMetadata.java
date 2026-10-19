@@ -45,6 +45,13 @@ public class MessageMetadata {
     @Column(name = "message_id_header", length = 998)
     private String messageIdHeader;
 
+    /**
+     * Идентификатор сырого spool-объекта этапа 2. Вместе с owner_id это ключ идемпотентности
+     * доставки: повторное событие RabbitMQ для того же получателя не создаёт второй экземпляр письма.
+     */
+    @Column(name = "raw_ref", length = 64)
+    private String rawRef;
+
     @Column(name = "sender", nullable = false, length = 320)
     private String sender;
 

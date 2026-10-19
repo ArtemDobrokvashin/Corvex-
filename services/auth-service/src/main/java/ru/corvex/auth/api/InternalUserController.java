@@ -54,6 +54,11 @@ public class InternalUserController {
         return users.getByUsername(username);
     }
 
+    @GetMapping("/users/by-email")
+    UserView byEmail(@RequestParam String email) {
+        return users.getByEmail(email);
+    }
+
     @GetMapping("/users")
     UserPage list(@RequestParam(required = false) String q,
                   @RequestParam(required = false) String status,
