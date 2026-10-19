@@ -90,6 +90,7 @@ React 18 + TypeScript, отдельная legacy-сборка для Chrome 109 
 | [`docs/INSTALL.md`](docs/INSTALL.md) | подробная установка и эксплуатация (есть [English version](docs/INSTALL.en.md)) |
 | [`docs/01…10-*.md`](docs/) | архитектура, структура проекта, API, схемы БД, Docker, код, фронтенд, Windows Server, план разработки, тестовая стратегия |
 | [`docs/api/*.yaml`](docs/api/) | OpenAPI-контракты: auth, mail, chat, admin |
+| [`docs/11-modern-design-analysis.md`](docs/11-modern-design-analysis.md) | анализ Gmail/Outlook/Slack/Superhuman/Linear и дизайн-система Quiet Work |
 
 ## Структура репозитория
 
@@ -97,7 +98,7 @@ React 18 + TypeScript, отдельная legacy-сборка для Chrome 109 
 services/   12 микросервисов Spring Boot (у каждого свой Dockerfile и миграции Flyway)
 frontend/   React-интерфейс: вход+2FA, почта, чат, админ-панель
 infra/      nginx, PostgreSQL init, Prometheus/Alertmanager, Grafana, Loki, RabbitMQ
-docs/       технический проект (10 разделов) + OpenAPI + инструкции
+docs/       технический проект (11 разделов) + OpenAPI + инструкции
 scripts/    first-run.ps1 (инициализация), backup.ps1 (резервное копирование)
 docker-compose.yml   вся платформа одной командой: 25 сервисов, 4 сети, 12 томов
 ```
@@ -202,6 +203,7 @@ Chrome 109 (Windows 7). Diagrams, sequences and rationale for every choice (ADRs
 | [`docs/INSTALL.en.md`](docs/INSTALL.en.md) | detailed installation & operations ([Russian version](docs/INSTALL.md)) |
 | [`docs/01…10-*.md`](docs/) | architecture, project layout, APIs, DB schemas, Docker, code tour, frontend, Windows Server deployment, delivery plan, test strategy (RU) |
 | [`docs/api/*.yaml`](docs/api/) | OpenAPI contracts: auth, mail, chat, admin |
+| [`docs/11-modern-design-analysis.md`](docs/11-modern-design-analysis.md) | Gmail/Outlook/Slack/Superhuman/Linear benchmark and the Quiet Work design system (RU) |
 
 ## Repository layout
 
@@ -209,7 +211,7 @@ Chrome 109 (Windows 7). Diagrams, sequences and rationale for every choice (ADRs
 services/   12 Spring Boot microservices (each with its own Dockerfile & Flyway migrations)
 frontend/   React UI: login + 2FA, mail, chat, admin panel
 infra/      nginx, PostgreSQL init, Prometheus/Alertmanager, Grafana, Loki, RabbitMQ
-docs/       technical design (10 sections) + OpenAPI + guides
+docs/       technical design (11 sections) + OpenAPI + guides
 scripts/    first-run.ps1 (initialisation), backup.ps1 (backups)
 docker-compose.yml   the whole platform in one command: 25 services, 4 networks, 12 volumes
 ```

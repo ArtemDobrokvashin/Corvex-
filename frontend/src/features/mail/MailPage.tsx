@@ -1,126 +1,427 @@
-import { useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import {
+  Archive,
+  ArrowLeft,
+  ArrowUpDown,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  FileCheck2,
+  FilePenLine,
+  Folder,
+  Forward,
+  HardDrive,
+  Inbox,
+  MailOpen,
+  Minus,
+  MoreHorizontal,
+  OctagonAlert,
+  Paperclip,
+  PenSquare,
+  Reply,
+  Search,
+  Send,
+  SlidersHorizontal,
+  Star,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { DEMO_FOLDERS, DEMO_MAILS, DemoMail } from '../../api/demoData';
+import { Avatar, EmptyState, IconButton, cleanPersonName, emailFromHeader } from '../../components/ui';
 
-/** Почта: папки → список (виртуализация при >200 писем — этап 3) → чтение. На мобильном — один столбец с кнопкой «назад». */
+interface ComposeDraft {
+  to: string;
+  subject: string;
+  body: string;
+}
+
+const FOLDER_ICONS: Record<string, typeof Inbox> = {
+  INBOX: Inbox,
+  SENT: Send,
+  DRAFTS: FilePenLine,
+  ARCHIVE: Archive,
+  SPAM: OctagonAlert,
+  TRASH: Trash2,
+};
+
+/** Почта Quiet Work: папки → сканируемый список → письмо как документ, composer поверх контекста. */
 export default function MailPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [folder, setFolder] = useState('INBOX');
   const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [mails, setMails] = useState<DemoMail[]>(DEMO_MAILS);
-  const [active, setActive] = useState<DemoMail | null>(null);
-  const [composing, setComposing] = useState(false);
+  const [activeId, setActiveId] = useState<string>('m1');
+  const [mobileReading, setMobileReading] = useState(false);
+  const [composeDraft, setComposeDraft] = useState<ComposeDraft | null>(null);
+  const [folderCounts, setFolderCounts] = useState<Record<string, number>>(() => Object.fromEntries(DEMO_FOLDERS.map((f) => [f.id, f.unread])));
+  const searchRef = useRef<HTMLInputElement>(null);
 
-  const visible = useMemo(
-    () => mails.filter((m) => m.folder === folder && (m.subject + m.from + m.snippet).toLowerCase().includes(search.toLowerCase())),
-    [mails, folder, search],
-  );
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return mails.filter((m) => (
+      m.folder === folder
+      && (filter === 'all' || !m.seen)
+      && (!q || `${m.subject} ${m.from} ${m.snippet} ${m.body}`.toLowerCase().includes(q))
+    ));
+  }, [mails, folder, search, filter]);
 
-  const open = (m: DemoMail) => {
-    setActive(m);
-    setComposing(false);
-    setMails((prev) => prev.map((x) => (x.id === m.id ? { ...x, seen: true } : x)));
+  const active = mails.find((m) => m.id === activeId && m.folder === folder) ?? visible[0] ?? null;
+  const activeIndex = active ? visible.findIndex((m) => m.id === active.id) : -1;
+  const currentFolder = DEMO_FOLDERS.find((f) => f.id === folder);
+
+  useEffect(() => {
+    if (searchParams.get('compose') === '1') {
+      setComposeDraft({ to: '', subject: '', body: '' });
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  const open = (m: DemoMail, fromKeyboard = false) => {
+    setActiveId(m.id);
+    if (!fromKeyboard) setMobileReading(true);
+    if (!m.seen) {
+      setMails((prev) => prev.map((x) => (x.id === m.id ? { ...x, seen: true } : x)));
+      setFolderCounts((prev) => ({ ...prev, [m.folder]: Math.max(0, (prev[m.folder] ?? 0) - 1) }));
+    }
+  };
+
+  const selectFolder = (id: string) => {
+    setFolder(id);
+    setMobileReading(false);
+    const first = mails.find((m) => m.folder === id);
+    if (first) setActiveId(first.id);
+  };
+
+  const moveActive = (targetFolder: string) => {
+    if (!active) return;
+    const next = visible[activeIndex + 1] ?? visible[activeIndex - 1];
+    setMails((prev) => prev.map((m) => (m.id === active.id ? { ...m, folder: targetFolder } : m)));
+    if (next && next.id !== active.id) setActiveId(next.id);
+    setMobileReading(false);
+  };
+
+  const toggleFlag = (mail: DemoMail) => {
+    setMails((prev) => prev.map((m) => (m.id === mail.id ? { ...m, flagged: !m.flagged } : m)));
+  };
+
+  const step = (delta: number) => {
+    if (visible.length === 0) return;
+    const nextIndex = activeIndex < 0 ? 0 : Math.min(visible.length - 1, Math.max(0, activeIndex + delta));
+    open(visible[nextIndex], true);
+  };
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const typing = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT' || target?.isContentEditable;
+      if (e.key === 'Escape' && composeDraft) {
+        setComposeDraft(null);
+        return;
+      }
+      if (typing || composeDraft || e.ctrlKey || e.metaKey || e.altKey) return;
+      const key = e.key.toLowerCase();
+      if (key === '/' ) {
+        e.preventDefault();
+        searchRef.current?.focus();
+      } else if (key === 'j' || key === 'о' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        step(1);
+      } else if (key === 'k' || key === 'л' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        step(-1);
+      } else if (key === 'c' || key === 'с') {
+        e.preventDefault();
+        setComposeDraft({ to: '', subject: '', body: '' });
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  });
+
+  const addSentMail = (draft: ComposeDraft) => {
+    setMails((prev) => [{
+      id: `sent-${Date.now()}`,
+      folder: 'SENT',
+      from: 'Вы',
+      subject: draft.subject || '(без темы)',
+      snippet: draft.body.slice(0, 110),
+      body: draft.body,
+      date: 'Сейчас',
+      seen: true,
+      flagged: false,
+      hasAttachments: false,
+    }, ...prev]);
+    setComposeDraft(null);
   };
 
   return (
-    <div className="flex h-full min-h-0">
-      {/* Папки */}
-      <aside className={`w-60 shrink-0 border-r bg-white p-3 ${active || composing ? 'hidden md:block' : ''}`}>
-        <button onClick={() => { setComposing(true); setActive(null); }}
-          className="mb-3 w-full rounded-lg bg-brand px-4 py-2.5 font-medium text-white hover:bg-brand-dark">
-          ✉️ Написать письмо
-        </button>
-        <nav className="space-y-0.5">
-          {DEMO_FOLDERS.map((f) => (
-            <button key={f.id} onClick={() => { setFolder(f.id); setActive(null); setComposing(false); }}
-              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm ${folder === f.id ? 'bg-blue-50 font-semibold text-brand-dark' : 'hover:bg-slate-50'}`}>
-              <span>{f.name}</span>
-              {f.unread > 0 && <span className="rounded-full bg-brand px-2 py-0.5 text-xs text-white">{f.unread}</span>}
-            </button>
-          ))}
-        </nav>
-        <div className="mt-6 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
-          <div className="mb-1 flex justify-between"><span>Ящик: 5 ГБ</span><span>62%</span></div>
-          <div className="h-2 rounded bg-slate-200"><div className="h-2 w-[62%] rounded bg-brand" /></div>
-          <p className="mt-2">Квота задаётся администратором (ADMIN_QUOTAS_MANAGE).</p>
-        </div>
-      </aside>
+    <div className="h-full lg:p-3 xl:p-4">
+      <div className="flex h-full min-h-0 overflow-hidden bg-surface lg:rounded-[18px] lg:border lg:border-line lg:shadow-soft">
+        {/* Папки */}
+        <aside className="hidden w-[238px] shrink-0 flex-col border-r border-line bg-chrome p-3 xl:flex">
+          <div className="flex items-center justify-between px-2 pb-3 pt-1">
+            <h1 className="text-[17px] font-semibold tracking-[-0.02em]">Почта</h1>
+            <span className="text-xs text-faint">{folderCounts.INBOX ?? 0} новых</span>
+          </div>
+          <button type="button" onClick={() => setComposeDraft({ to: '', subject: '', body: '' })} className="btn-primary w-full">
+            <PenSquare size={16} /> Написать <span className="ml-auto hidden xl:inline-flex"><span className="kbd border-white/20 bg-white/10 text-white/70 shadow-none">C</span></span>
+          </button>
 
-      {/* Список писем */}
-      <section className={`w-full max-w-md shrink-0 border-r bg-white md:w-96 ${active || composing ? 'hidden lg:block' : ''}`}>
-        <div className="border-b p-3">
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Поиск: тема, отправитель, текст…"
-            className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-brand" />
-        </div>
-        <div className="scroll-area h-[calc(100%-57px)] divide-y">
-          {visible.map((m) => (
-            <button key={m.id} onClick={() => open(m)} className={`block w-full p-3 text-left hover:bg-slate-50 ${active?.id === m.id ? 'bg-blue-50' : ''}`}>
-              <div className="flex items-baseline justify-between gap-2">
-                <span className={`truncate text-sm ${m.seen ? '' : 'font-bold'}`}>{m.from}</span>
-                <span className="shrink-0 text-xs text-slate-500">{m.date}</span>
-              </div>
-              <div className={`truncate text-sm ${m.seen ? 'text-slate-700' : 'font-semibold'}`}>
-                {m.flagged && '⭐ '}{m.hasAttachments && '📎 '}{m.subject}
-              </div>
-              <div className="truncate text-sm text-slate-500">{m.snippet}</div>
-            </button>
-          ))}
-          {visible.length === 0 && <p className="p-6 text-center text-sm text-slate-500">Писем не найдено</p>}
-        </div>
-      </section>
+          <p className="section-label mb-1.5 mt-6">Папки</p>
+          <nav className="space-y-0.5" aria-label="Папки почты">
+            {DEMO_FOLDERS.map((f) => {
+              const Icon = FOLDER_ICONS[f.id] ?? Folder;
+              const count = folderCounts[f.id] ?? 0;
+              return (
+                <button key={f.id} type="button" onClick={() => selectFolder(f.id)} className={`nav-row ${folder === f.id ? 'nav-row-active' : ''}`}>
+                  <Icon size={16} strokeWidth={1.8} />
+                  <span className="min-w-0 flex-1 truncate">{f.name}</span>
+                  {count > 0 && <span className={`text-xs ${folder === f.id ? 'font-semibold text-accent' : 'font-medium text-faint'}`}>{count}</span>}
+                </button>
+              );
+            })}
+          </nav>
 
-      {/* Чтение / редактор */}
-      <main className="scroll-area min-w-0 flex-1 bg-slate-50 p-4 md:p-6">
-        {composing ? (
-          <Compose onClose={() => setComposing(false)} onSend={() => setComposing(false)} />
-        ) : active ? (
-          <article className="mx-auto max-w-3xl rounded-xl bg-white p-5 shadow-sm">
-            <button className="mb-3 text-sm text-brand lg:hidden" onClick={() => setActive(null)}>← К списку</button>
-            <h1 className="text-xl font-semibold">{active.subject}</h1>
-            <p className="mt-1 text-sm text-slate-600">{active.from} · {active.date}</p>
-            {active.hasAttachments && (
-              <div className="mt-3 rounded-lg border bg-slate-50 px-3 py-2 text-sm">📎 Вложение проверено антивирусом (ClamAV): <b>чисто</b> · <button className="text-brand underline">Скачать</button></div>
-            )}
-            <pre className="mt-4 whitespace-pre-wrap font-sans text-[15px] leading-relaxed">{active.body}</pre>
-            <div className="mt-6 flex flex-wrap gap-2">
-              <button className="rounded-lg bg-brand px-4 py-2 text-sm text-white" onClick={() => setComposing(true)}>Ответить</button>
-              <button className="rounded-lg border px-4 py-2 text-sm">Переслать</button>
-              <button className="rounded-lg border px-4 py-2 text-sm">В архив</button>
-              <button className="rounded-lg border border-red-200 px-4 py-2 text-sm text-red-600">Удалить</button>
+          <div className="mt-auto rounded-xl bg-black/[0.035] p-3">
+            <div className="flex items-center gap-2 text-xs font-medium text-ink-soft"><HardDrive size={14} className="text-muted" />Ящик</div>
+            <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-black/[0.08]"><div className="h-full w-[62%] rounded-full bg-accent" /></div>
+            <p className="mt-2 text-[11px] leading-relaxed text-muted">3,1 из 5 ГБ использовано</p>
+          </div>
+        </aside>
+
+        {/* Список писем */}
+        <section className={`${mobileReading ? 'hidden md:flex' : 'flex'} relative min-w-0 flex-1 flex-col border-r border-line bg-surface md:w-[322px] md:flex-none lg:w-[356px] xl:w-[392px]`}>
+          <header className="shrink-0 border-b border-line px-4 pb-3 pt-4">
+            <div className="flex items-center gap-2">
+              <h2 className="min-w-0 flex-1 truncate text-[17px] font-semibold tracking-[-0.02em]">{currentFolder?.name ?? 'Почта'}</h2>
+              <span className="text-xs text-faint">{visible.length}</span>
+              <IconButton icon={ArrowUpDown} label="Сортировка" className="h-8 w-8" size={16} />
+              <IconButton icon={SlidersHorizontal} label="Фильтры" className="h-8 w-8" size={16} />
             </div>
-          </article>
-        ) : (
-          <div className="flex h-full items-center justify-center text-slate-400">Выберите письмо</div>
-        )}
-      </main>
+            <div className="relative mt-3">
+              <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-faint" />
+              <input ref={searchRef} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Поиск по теме, отправителю, тексту" className="search-field" />
+              <span className="kbd absolute right-3 top-1/2 hidden -translate-y-1/2 sm:inline-flex">/</span>
+            </div>
+            <div className="mt-3 flex rounded-full bg-black/[0.04] p-1" role="tablist" aria-label="Фильтр писем">
+              {(['all', 'unread'] as const).map((value) => (
+                <button key={value} type="button" role="tab" aria-selected={filter === value} onClick={() => setFilter(value)} className={`h-8 flex-1 rounded-full text-[13px] font-medium transition ${filter === value ? 'bg-surface text-ink shadow-soft' : 'text-muted hover:text-ink'}`}>
+                  {value === 'all' ? 'Все' : 'Непрочитанные'}
+                </button>
+              ))}
+            </div>
+            <div className="-mb-1 mt-3 flex gap-1.5 overflow-x-auto pb-1 xl:hidden">
+              {DEMO_FOLDERS.map((f) => (
+                <button key={f.id} type="button" onClick={() => selectFolder(f.id)} className={`chip shrink-0 ${folder === f.id ? 'chip-accent' : ''}`}>{f.name}{(folderCounts[f.id] ?? 0) > 0 && ` · ${folderCounts[f.id]}`}</button>
+              ))}
+            </div>
+          </header>
+
+          <div className="scroll-area min-h-0 flex-1">
+            {visible.map((m) => {
+              const selected = active?.id === m.id;
+              return (
+                <div
+                  key={m.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => open(m)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(m); } }}
+                  className={`group relative flex cursor-pointer gap-3 border-b border-line/70 px-4 py-3.5 transition duration-150 ${selected ? 'bg-accent-soft/70' : 'hover:bg-chrome'}`}
+                >
+                  {selected && <span className="absolute inset-y-3 left-0 w-[3px] rounded-full bg-accent" />}
+                  <Avatar name={m.from} size={38} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      {!m.seen && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-label="Непрочитано" />}
+                      <span className={`min-w-0 flex-1 truncate text-sm ${m.seen ? 'font-medium text-ink-soft' : 'font-semibold text-ink'}`}>{cleanPersonName(m.from)}</span>
+                      <span className="shrink-0 text-[11px] text-faint">{m.date}</span>
+                    </div>
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <span className={`min-w-0 flex-1 truncate text-sm ${m.seen ? 'text-ink-soft' : 'font-medium text-ink'}`}>{m.subject}</span>
+                      {m.hasAttachments && <Paperclip size={13} className="shrink-0 text-faint" />}
+                      <button
+                        type="button"
+                        title={m.flagged ? 'Убрать из важных' : 'Отметить важным'}
+                        aria-label={m.flagged ? 'Убрать из важных' : 'Отметить важным'}
+                        onClick={(e) => { e.stopPropagation(); toggleFlag(m); }}
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition ${m.flagged ? 'text-amber-500' : 'text-faint opacity-0 hover:bg-black/[0.05] hover:text-ink group-hover:opacity-100'}`}
+                      >
+                        <Star size={14} fill={m.flagged ? 'currentColor' : 'none'} />
+                      </button>
+                    </div>
+                    <p className="mt-0.5 line-clamp-2 text-[13px] leading-snug text-muted">{m.snippet}</p>
+                  </div>
+                </div>
+              );
+            })}
+            {visible.length === 0 && (
+              <EmptyState icon={MailOpen} title="Здесь пока тихо" description={search ? 'По этому запросу писем не нашлось. Попробуйте другое слово или сбросьте фильтр.' : 'В этой папке нет писем для выбранного фильтра.'} />
+            )}
+          </div>
+
+          <button type="button" onClick={() => setComposeDraft({ to: '', subject: '', body: '' })} className="btn-primary absolute bottom-4 right-4 z-30 rounded-full shadow-pop md:hidden">
+            <PenSquare size={16} /> Написать
+          </button>
+        </section>
+
+        {/* Чтение */}
+        <main className={`${mobileReading ? 'flex' : 'hidden md:flex'} min-w-0 flex-1 flex-col bg-surface`}>
+          {active ? (
+            <>
+              <header className="flex h-14 shrink-0 items-center gap-1 border-b border-line px-3 sm:px-4">
+                <button type="button" onClick={() => setMobileReading(false)} className="btn-ghost px-2 md:hidden"><ArrowLeft size={16} /> К списку</button>
+                <IconButton icon={Archive} label="В архив" onClick={() => moveActive('ARCHIVE')} />
+                <IconButton icon={Trash2} label="Удалить" onClick={() => moveActive('TRASH')} />
+                <button type="button" onClick={() => toggleFlag(active)} className={`icon-btn ${active.flagged ? 'text-amber-500 hover:text-amber-600' : ''}`} aria-label="Важное">
+                  <Star size={18} fill={active.flagged ? 'currentColor' : 'none'} />
+                </button>
+                <IconButton icon={MoreHorizontal} label="Ещё действия" />
+                <div className="ml-auto hidden items-center gap-1 sm:flex">
+                  <span className="mr-1 hidden text-xs text-faint xl:inline">{Math.max(activeIndex + 1, 1)} из {visible.length}</span>
+                  <IconButton icon={ChevronUp} label="Предыдущее письмо" onClick={() => step(-1)} disabled={activeIndex <= 0} />
+                  <IconButton icon={ChevronDown} label="Следующее письмо" onClick={() => step(1)} disabled={activeIndex < 0 || activeIndex >= visible.length - 1} />
+                </div>
+              </header>
+
+              <div className="scroll-area min-h-0 flex-1">
+                <article className="mx-auto w-full max-w-[760px] animate-fade-in px-5 py-7 sm:px-8 sm:py-9">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="chip chip-accent">{currentFolder?.name ?? active.folder}</span>
+                    {active.flagged && <span className="chip border-amber-200 bg-amber-50 text-amber-800">Важное</span>}
+                  </div>
+                  <h2 className="mt-4 text-[27px] font-semibold leading-tight tracking-[-0.025em] text-ink sm:text-[31px]">{active.subject}</h2>
+
+                  <div className="mt-7 flex items-start gap-3 border-b border-line pb-6">
+                    <Avatar name={active.from} size={44} />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[15px] font-semibold">{cleanPersonName(active.from)}</div>
+                      <div className="mt-0.5 truncate text-[13px] text-muted">{emailFromHeader(active.from) || 'внутренний отправитель'} · мне</div>
+                    </div>
+                    <time className="shrink-0 text-[13px] text-faint">{active.date}</time>
+                  </div>
+
+                  {active.hasAttachments && (
+                    <div className="mt-6 flex items-center gap-3 rounded-xl border border-line bg-chrome px-4 py-3">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-dark"><FileCheck2 size={19} /></span>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium">Файл во вложении</div>
+                        <div className="text-xs text-muted">Проверено антивирусом · безопасно открыть</div>
+                      </div>
+                      <button type="button" className="btn-secondary h-9 px-3 text-[13px]">Скачать</button>
+                    </div>
+                  )}
+
+                  <div className="mt-7 text-[15.5px] leading-[1.75] text-ink-soft">
+                    {active.body.split('\n').map((paragraph, i) => paragraph.trim() ? <p key={i} className="mb-4 whitespace-pre-wrap">{paragraph}</p> : null)}
+                  </div>
+
+                  <div className="mt-9 flex flex-wrap gap-2 border-t border-line pt-5">
+                    <button type="button" className="btn-primary" onClick={() => setComposeDraft({ to: emailFromHeader(active.from), subject: `Re: ${active.subject}`, body: '' })}>
+                      <Reply size={16} /> Ответить
+                    </button>
+                    <button type="button" className="btn-secondary" onClick={() => setComposeDraft({ to: '', subject: `Fwd: ${active.subject}`, body: `\n\n--- Пересылаемое письмо ---\n${active.body}` })}>
+                      <Forward size={16} /> Переслать
+                    </button>
+                    <button type="button" className="btn-ghost ml-auto" onClick={() => moveActive('ARCHIVE')}>
+                      <Archive size={16} /> В архив
+                    </button>
+                  </div>
+                </article>
+              </div>
+            </>
+          ) : (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <EmptyState icon={Inbox} title="Выберите письмо" description="Откройте письмо из списка или двигайтесь по нему клавишами J и K." />
+              <div className="-mt-16 flex items-center justify-center gap-4 pb-10 text-xs text-faint">
+                <span className="flex items-center gap-1.5"><span className="kbd">J</span><span className="kbd">K</span> навигация</span>
+                <span className="flex items-center gap-1.5"><span className="kbd">C</span> написать</span>
+                <span className="flex items-center gap-1.5"><span className="kbd">/</span> поиск</span>
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
+
+      {composeDraft && (
+        <ComposePanel
+          key={`${composeDraft.to}-${composeDraft.subject}`}
+          initial={composeDraft}
+          onClose={() => setComposeDraft(null)}
+          onSend={addSentMail}
+        />
+      )}
     </div>
   );
 }
 
-function Compose({ onClose, onSend }: { onClose: () => void; onSend: () => void }) {
+function ComposePanel({ initial, onClose, onSend }: { initial: ComposeDraft; onClose: () => void; onSend: (draft: ComposeDraft) => void }) {
+  const [draft, setDraft] = useState(initial);
+  const [showCc, setShowCc] = useState(false);
+  const [files, setFiles] = useState<string[]>([]);
   const [sent, setSent] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const submit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setSent(true);
+    window.setTimeout(() => onSend(draft), 900);
+  };
+
   return (
-    <div className="mx-auto max-w-3xl rounded-xl bg-white p-5 shadow-sm">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Новое письмо</h2>
-        <button onClick={onClose} className="text-slate-500">✕</button>
-      </div>
+    <section className="fixed inset-x-0 bottom-0 z-50 flex max-h-[94dvh] animate-rise-in flex-col overflow-hidden border border-line bg-surface shadow-composer sm:inset-x-auto sm:bottom-4 sm:right-4 sm:h-[min(640px,92dvh)] sm:w-[min(590px,calc(100vw-2rem))] sm:rounded-2xl" aria-label="Новое письмо">
+      <header className="flex h-11 shrink-0 items-center bg-ink px-4 text-white">
+        <h3 className="flex-1 text-sm font-medium">{initial.subject ? 'Ответ / пересылка' : 'Новое письмо'}</h3>
+        <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white" aria-label="Свернуть черновик"><Minus size={16} /></button>
+        <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white" aria-label="Закрыть черновик"><X size={16} /></button>
+      </header>
+
       {sent ? (
-        <div className="rounded-lg bg-green-50 p-4 text-green-800">✓ Письмо поставлено в очередь отправки (mail-smtp-service), копия — в «Отправленных».</div>
+        <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600"><CheckCircle2 size={27} /></span>
+          <h4 className="mt-4 text-lg font-semibold">Письмо отправлено</h4>
+          <p className="mt-1 text-sm text-muted">Копия сохранена в папке «Отправленные».</p>
+        </div>
       ) : (
-        <form onSubmit={(e) => { e.preventDefault(); setSent(true); setTimeout(onSend, 1600); }} className="space-y-3">
-          <input required type="email" placeholder="Кому: user@company.local" className="w-full rounded-lg border px-3 py-2 outline-none focus:border-brand" />
-          <input placeholder="Копия" className="w-full rounded-lg border px-3 py-2 outline-none focus:border-brand" />
-          <input required placeholder="Тема" className="w-full rounded-lg border px-3 py-2 outline-none focus:border-brand" />
-          <textarea required rows={9} placeholder="Текст письма… (подпись подставится автоматически)" className="w-full rounded-lg border px-3 py-2 outline-none focus:border-brand" />
-          <label className="block cursor-pointer rounded-lg border border-dashed p-3 text-center text-sm text-slate-500">
-            📎 Прикрепить файлы (до 25 МБ, проверяются ClamAV до отправки)
-            <input type="file" multiple className="hidden" />
-          </label>
-          <div className="flex gap-2">
-            <button className="rounded-lg bg-brand px-5 py-2 text-white">Отправить</button>
-            <button type="button" className="rounded-lg border px-4 py-2" onClick={onClose}>Сохранить черновик</button>
+        <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
+          <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
+            <label htmlFor="compose-to" className="w-12 shrink-0 text-[13px] text-faint">Кому</label>
+            <input id="compose-to" required type="email" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} placeholder="user@company.local" className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-faint focus:ring-0" />
+            {!showCc && <button type="button" onClick={() => setShowCc(true)} className="shrink-0 text-xs font-medium text-muted hover:text-ink">Копия</button>}
           </div>
+          {showCc && (
+            <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
+              <label htmlFor="compose-cc" className="w-12 shrink-0 text-[13px] text-faint">Копия</label>
+              <input id="compose-cc" type="email" placeholder="user@company.local" className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-faint focus:ring-0" />
+            </div>
+          )}
+          <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
+            <label htmlFor="compose-subject" className="w-12 shrink-0 text-[13px] text-faint">Тема</label>
+            <input id="compose-subject" required value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder="О чём письмо?" className="min-w-0 flex-1 border-0 bg-transparent text-sm font-medium outline-none placeholder:font-normal placeholder:text-faint focus:ring-0" />
+          </div>
+          <textarea
+            required
+            value={draft.body}
+            onChange={(e) => setDraft({ ...draft, body: e.target.value })}
+            placeholder="Напишите сообщение…"
+            className="min-h-[180px] flex-1 resize-none border-0 bg-transparent px-4 py-4 text-[15px] leading-relaxed outline-none placeholder:text-faint focus:ring-0"
+          />
+          {files.length > 0 && (
+            <div className="flex shrink-0 flex-wrap gap-2 px-4 pb-3">
+              {files.map((name) => <span key={name} className="chip"><Paperclip size={12} />{name}</span>)}
+            </div>
+          )}
+          <footer className="flex shrink-0 items-center gap-2 border-t border-line px-3 py-3">
+            <button className="btn-accent"><Send size={15} /> Отправить</button>
+            <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => setFiles(Array.from(e.target.files ?? []).map((f) => f.name))} />
+            <IconButton icon={Paperclip} label="Прикрепить файлы" onClick={() => fileRef.current?.click()} />
+            <span className="ml-1 hidden text-[11px] text-faint sm:inline">Подпись добавится автоматически</span>
+            <IconButton icon={Trash2} label="Удалить черновик" className="ml-auto" onClick={onClose} />
+          </footer>
         </form>
       )}
-    </div>
+    </section>
   );
 }

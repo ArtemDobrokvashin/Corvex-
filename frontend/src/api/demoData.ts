@@ -40,7 +40,7 @@ export const DEMO_MAILS: DemoMail[] = [
 
 export interface DemoRoom { id: string; title: string; kind: string; unread: number; online?: boolean }
 export const DEMO_ROOMS: DemoRoom[] = [
-  { id: 'r1', title: '📢 Объявления компании', kind: 'Системный канал · только чтение', unread: 1 },
+  { id: 'r1', title: 'Объявления компании', kind: 'Системный канал · только чтение', unread: 1 },
   { id: 'r2', title: 'Петрова Анна', kind: 'Личные сообщения', unread: 2, online: true },
   { id: 'r3', title: 'Бухгалтерия', kind: 'Групповой чат · 8 участников', unread: 0 },
   { id: 'r4', title: 'Руководство', kind: 'Приватный канал · 5 участников', unread: 0 },

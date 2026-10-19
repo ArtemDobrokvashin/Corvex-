@@ -24,6 +24,7 @@
 | 8 | Развёртывание на Windows Server (12 шагов, DNS-чек-лист, траблшутинг) | [08-deployment-windows-server.md](08-deployment-windows-server.md) |
 | 9 | План разработки (7 этапов, 32 недели, MVP на 12-й, риски) | [09-development-plan.md](09-development-plan.md) |
 | 10 | Тестовая стратегия (unit/integration/e2e/нагрузка/безопасность/операционные) | [10-test-strategy.md](10-test-strategy.md) |
+| 11 | Анализ современного дизайна и дизайн-система Quiet Work | [11-modern-design-analysis.md](11-modern-design-analysis.md) |
 
 ## Зафиксированный стек
 
@@ -34,7 +35,7 @@
   Elasticsearch 8 (поиск), Maildir + контентно-адресуемые вложения на ФС;
 - **Почтовая гигиена:** SpamAssassin, ClamAV, DKIM/SPF/DMARC, TLS везде;
 - **Frontend:** React 18 + TypeScript + Vite (`plugin-legacy` → Babel под Chrome 109),
-  Tailwind CSS 3, Zustand, react-router, адаптив от 320 px;
+  Tailwind CSS 3, Inter Variable, Lucide, Zustand, react-router, адаптив от 320 px;
 - **Инфраструктура:** Docker Compose, nginx (TLS/HSTS), Prometheus + Alertmanager +
   Grafana, Loki + Promtail, email-алерты через отдельный канал.
 

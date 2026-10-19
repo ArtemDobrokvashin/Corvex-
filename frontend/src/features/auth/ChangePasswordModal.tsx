@@ -1,5 +1,7 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useMemo, useState } from 'react';
+import { Check, KeyRound, Loader2 } from 'lucide-react';
 import { changePassword, errorText } from '../../api/authApi';
+import { Notice } from '../../components/ui';
 
 /**
  * Обязательная смена временного пароля (mustChangePassword от сервера).
@@ -8,13 +10,19 @@ import { changePassword, errorText } from '../../api/authApi';
 export default function ChangePasswordModal({ onChanged }: { onChanged: () => void }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [next, setNext] = useState('');
+  const [repeat, setRepeat] = useState('');
+
+  const checks = useMemo(() => [
+    { label: 'Не короче 10 символов', ok: next.length >= 10 },
+    { label: 'Есть буквы и цифры', ok: /[A-Za-zА-Яа-я]/.test(next) && /[0-9]/.test(next) },
+    { label: 'Повтор совпадает', ok: next.length > 0 && next === repeat },
+  ], [next, repeat]);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
     const current = String(data.get('current') ?? '');
-    const next = String(data.get('next') ?? '');
-    const repeat = String(data.get('repeat') ?? '');
     if (next !== repeat) {
       setError('Новые пароли не совпадают');
       return;
@@ -36,22 +44,40 @@ export default function ChangePasswordModal({ onChanged }: { onChanged: () => vo
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
-      <form onSubmit={onSubmit} className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-        <h2 className="mb-1 text-lg font-semibold">Смените временный пароль</h2>
-        <p className="mb-4 text-sm text-slate-500">Администратор выдал вам временный пароль. Задайте постоянный — без этого работа недоступна.</p>
-        <label className="mb-3 block text-sm">Временный (текущий) пароль
-          <input name="current" required type="password" autoComplete="current-password" className="mt-1 w-full rounded-lg border px-3 py-2.5 outline-none focus:border-brand" />
-        </label>
-        <label className="mb-3 block text-sm">Новый пароль
-          <input name="next" required type="password" autoComplete="new-password" className="mt-1 w-full rounded-lg border px-3 py-2.5 outline-none focus:border-brand" />
-        </label>
-        <label className="mb-4 block text-sm">Повторите новый пароль
-          <input name="repeat" required type="password" autoComplete="new-password" className="mt-1 w-full rounded-lg border px-3 py-2.5 outline-none focus:border-brand" />
-        </label>
-        {error && <p className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-        <button disabled={loading} className="w-full rounded-lg bg-brand py-2.5 font-medium text-white hover:bg-brand-dark disabled:opacity-60">
-          {loading ? 'Сохранение…' : 'Сменить пароль'}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-[3px]">
+      <form onSubmit={onSubmit} className="w-full max-w-[420px] animate-scale-in rounded-[20px] border border-line bg-surface p-6 shadow-pop sm:p-7">
+        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-soft text-accent-dark"><KeyRound size={22} /></span>
+        <h2 className="mt-5 text-[22px] font-semibold tracking-[-0.025em]">Задайте постоянный пароль</h2>
+        <p className="mb-6 mt-2 text-sm leading-relaxed text-muted">Администратор выдал временный пароль. Он перестанет подходить сразу после этой смены.</p>
+
+        <div className="space-y-4">
+          <div>
+            <label className="field-label" htmlFor="change-current">Временный пароль</label>
+            <input id="change-current" name="current" required type="password" autoComplete="current-password" className="field" />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="change-next">Новый пароль</label>
+            <input id="change-next" name="next" required type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} className="field" />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="change-repeat">Повторите пароль</label>
+            <input id="change-repeat" name="repeat" required type="password" autoComplete="new-password" value={repeat} onChange={(e) => setRepeat(e.target.value)} className="field" />
+          </div>
+        </div>
+
+        <ul className="mt-4 space-y-1.5" aria-label="Требования к паролю">
+          {checks.map((check) => (
+            <li key={check.label} className={`flex items-center gap-2 text-xs ${check.ok ? 'text-emerald-700' : 'text-faint'}`}>
+              <span className={`flex items-center justify-center rounded-full ${check.ok ? 'bg-emerald-100' : 'bg-black/[0.05]'}`} style={{ width: 18, height: 18 }}><Check size={11} strokeWidth={2.4} /></span>
+              {check.label}
+            </li>
+          ))}
+        </ul>
+
+        {error && <Notice tone="error" className="mt-5">{error}</Notice>}
+        <button disabled={loading} className="btn-primary mt-6 h-11 w-full">
+          {loading && <Loader2 size={16} className="animate-spin" />}
+          {loading ? 'Сохраняем…' : 'Сменить пароль и продолжить'}
         </button>
       </form>
     </div>
