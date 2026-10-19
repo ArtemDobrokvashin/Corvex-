@@ -280,7 +280,7 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
         <form onSubmit={(e) => { e.preventDefault(); load(0); }} className="flex flex-wrap items-center gap-2">
           <div className="relative">
             <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Поиск людей…')} className="search-field h-10 w-[220px] pl-9 pr-3" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Поиск людей…')} aria-label={t('Поиск людей…')} className="search-field h-10 w-[220px] pl-9 pr-3" />
           </div>
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="field h-10 w-[168px] py-0" aria-label={t('Фильтр по статусу')}>
             <option value="">{t('Все статусы')}</option>
@@ -322,14 +322,14 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
           <thead>
             <tr className="bg-chrome/80 text-left text-[11px] uppercase tracking-[0.07em] text-faint">
               <th className="px-5 py-3 font-semibold">{t('Пользователь')}</th><th className="px-4 py-3 font-semibold">{t('Отдел')}</th><th className="px-4 py-3 font-semibold">{t('Группы')}</th>
-              <th className="px-4 py-3 font-semibold">{t('Статус')}</th><th className="px-4 py-3 font-semibold">{t('Ящик')}</th><th className="px-4 py-3 font-semibold">{t('Последний вход')}</th><th className="px-4 py-3 text-right font-semibold">{t('Действия')}</th>
+              <th className="px-4 py-3 font-semibold">{t('Статус')}</th><th className="px-4 py-3 font-semibold">{t('Ящик')}</th><th className="px-4 py-3 font-semibold">{t('Последний вход')}</th><th className="sticky right-0 bg-chrome px-4 py-3 text-right font-semibold shadow-[-14px_0_18px_-18px_rgba(24,24,27,0.45)]">{t('Действия')}</th>
             </tr>
           </thead>
           <tbody>
             {displayedUsers.map((u) => {
               const used = u.quotaBytes > 0 ? Math.min(100, Math.round((u.usedBytes / u.quotaBytes) * 100)) : 0;
               return (
-                <tr key={u.id} className="border-t border-line align-top transition hover:bg-chrome/70">
+                <tr key={u.id} className="group border-t border-line align-top transition hover:bg-chrome/70">
                   <td className="px-5 py-4">
                     <div className="flex items-start gap-3">
                       <Avatar name={u.displayName} size={39} />
@@ -356,7 +356,7 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
                   <td className="px-4 py-4"><StatusPill status={u.status} /></td>
                   <td className="min-w-[110px] px-4 py-4"><div className="text-[13px] text-ink-soft">{formatBytes(locale, u.quotaBytes)}</div><div className="mt-1.5 h-1 overflow-hidden rounded-full bg-black/[0.07]"><div className="h-full rounded-full bg-accent" style={{ width: `${used}%` }} /></div><div className="mt-1 text-[10px] text-faint">{t('{used}% занято', { used })}</div></td>
                   <td className="whitespace-nowrap px-4 py-4 text-muted">{fmtDate(u.lastLoginAt)}</td>
-                  <td className="px-4 py-4">
+                  <td className="sticky right-0 bg-surface px-4 py-4 shadow-[-14px_0_18px_-18px_rgba(24,24,27,0.45)] transition group-hover:bg-chrome">
                     <div className="flex justify-end gap-1">
                       {canManageGroups && <button type="button" onClick={() => { setEditingGroupsFor(u.id); setSelectedGroups(u.groups); }} className="icon-btn" title={t('Назначить группы')} aria-label={t('Назначить группы')}><Users size={17} /></button>}
                       <button type="button" onClick={() => toggleBlock(u)} className="icon-btn" title={u.status === 'ACTIVE' ? t('Заблокировать') : t('Разблокировать')} aria-label={u.status === 'ACTIVE' ? t('Заблокировать') : t('Разблокировать')}>

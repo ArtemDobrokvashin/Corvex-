@@ -11,9 +11,9 @@ export interface EmojiOption {
 export const EMOJI_OPTIONS: EmojiOption[] = [
   { emoji: '😀', ru: 'улыбка', en: 'grinning face' },
   { emoji: '😂', ru: 'смех до слёз', en: 'face with tears of joy' },
-  { emoji: '🙂', ru: 'лёгкая улыбка', en: 'slightly smiling face' },
+  { emoji: '☺️', ru: 'лёгкая улыбка', en: 'smiling face' },
   { emoji: '😉', ru: 'подмигивание', en: 'winking face' },
-  { emoji: '🤔', ru: 'задумчивость', en: 'thinking face' },
+  { emoji: '💭', ru: 'задумчивость', en: 'thought balloon' },
   { emoji: '👍', ru: 'большой палец вверх', en: 'thumbs up' },
   { emoji: '👏', ru: 'аплодисменты', en: 'clapping hands' },
   { emoji: '🙏', ru: 'спасибо', en: 'folded hands' },
@@ -29,16 +29,22 @@ export const EMOJI_OPTIONS: EmojiOption[] = [
   { emoji: '❤️', ru: 'красное сердце', en: 'red heart' },
   { emoji: '🔥', ru: 'огонь', en: 'fire' },
   { emoji: '⭐', ru: 'звезда', en: 'star' },
-  { emoji: '👩‍💻', ru: 'женщина-технолог', en: 'woman technologist' },
-  { emoji: '👨‍💻', ru: 'мужчина-технолог', en: 'man technologist' },
-  { emoji: '🇷🇺', ru: 'флаг России', en: 'flag of Russia' },
-  { emoji: '🇬🇧', ru: 'флаг Великобритании', en: 'flag of the United Kingdom' },
+  { emoji: '💻', ru: 'ноутбук', en: 'laptop' },
+  { emoji: '📌', ru: 'закрепить', en: 'pushpin' },
+  { emoji: '📞', ru: 'телефон', en: 'telephone receiver' },
+  { emoji: '✉️', ru: 'конверт', en: 'envelope' },
 ];
 
 /**
  * Small built-in picker. Emoji are native Unicode text, not images: they copy,
  * search and travel through JSON exactly like any other characters, while the
  * operating system supplies the familiar color glyphs.
+ *
+ * The catalogue deliberately uses older, mostly single-code-point emoji and
+ * avoids flags, ZWJ professions and skin-tone sequences: stock Windows fonts
+ * do not render country flags, and the mandatory Windows 7 fallback is much
+ * smaller than modern emoji fonts. Complex emoji pasted by users are still
+ * preserved safely by the grapheme utilities; only their glyph depends on OS.
  */
 export function EmojiPickerButton({
   onPick,

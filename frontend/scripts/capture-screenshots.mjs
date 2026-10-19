@@ -1,6 +1,14 @@
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { chromium } from 'playwright';
+
+let chromium;
+try {
+  ({ chromium } = await import('playwright'));
+} catch {
+  // playwright-core is enough when CHROMIUM_PATH points at a local browser
+  // (for example a portable Chromium in a restricted CI/sandbox image).
+  ({ chromium } = await import('playwright-core'));
+}
 
 const baseUrl = (process.env.SCREENSHOT_BASE_URL ?? 'http://127.0.0.1:4173').replace(/\/$/, '');
 const outputDir = path.resolve(process.env.SCREENSHOT_DIR ?? 'artifacts/screenshots');
@@ -125,7 +133,11 @@ async function captureMobile(browser) {
 }
 
 await mkdir(outputDir, { recursive: true });
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({
+  headless: true,
+  executablePath: process.env.CHROMIUM_PATH || undefined,
+  args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+});
 try {
   for (const cfg of locales) {
     await captureLocale(browser, cfg);

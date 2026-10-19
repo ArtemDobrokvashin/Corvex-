@@ -123,7 +123,9 @@ Set-ExecutionPolicy -Scope Process Bypass   # если политики запр
 | Переменная | Что поставить |
 |---|---|
 | `CORVEX_DOMAIN` | веб-имя, например `mail.company.local` |
+| `CORVEX_WEB_ORIGINS` | обычно оставить пустым: Compose сам подставит `https://$CORVEX_DOMAIN`; заполнять только для дополнительных браузерных origin через запятую |
 | `CORVEX_MAIL_DOMAIN` | почтовый домен адресов, например `company.local` |
+| `CORVEX_INTERNAL_API_TOKEN` | **обязательный** секрет внутренних auth/admin API; `first-run.ps1` генерирует его и добавляет в старый `.env`, если переменной ещё нет. Не оставлять `change-me-strong-password` |
 | `CORVEX_SMTP_ENABLED` | оставить `false` до этапа 2 (защита от потери почты, см. READINESS) |
 | `CORVEX_LDAP_URL`, `CORVEX_LDAP_BASE` | заполнить при наличии Active Directory, иначе оставить как есть (логины будут локальными — этап 5 плана) |
 | `CORVEX_ALERT_RECIPIENTS` | **внешний** ящик администратора для алертов |

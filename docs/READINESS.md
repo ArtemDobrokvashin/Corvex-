@@ -1,13 +1,17 @@
 # Готовность к запуску на сервере / Production readiness
 
 **Короткий ответ: этап 1 выполнен — вход, пользователи и админка работают на
-настоящем бэкенде; как рабочую корпоративную почту для сотрудников — пока нет.** Ниже — честный аудит по состоянию этого коммита,
-включая блокеры, исправленные при аудите, и обязательные ворота перед пилотом.
+настоящем бэкенде; интерфейс и ошибки API доступны на русском и английском.
+Как рабочую корпоративную почту для сотрудников — пока нет.** Ниже — честный
+аудит по состоянию этого коммита, включая блокеры, исправленные при аудите, и
+обязательные ворота перед пилотом. Полный реестр находок октября 2026 года:
+[`12-full-audit-2026-10.md`](12-full-audit-2026-10.md).
 
 _English summary: the repository can be deployed as an architecture skeleton/demo
 (all containers are expected to start, the web UI works in clearly-labelled demo mode).
 Identity & admin (stage 1) are implemented: real login with Argon2id, rotating
-refresh tokens, TOTP, user management, RBAC groups and audit. It is **not** yet a
+refresh tokens, TOTP, user management, RBAC groups and audit. The UI and public
+API errors support Russian and English. It is **not** yet a
 working mail server: IMAP/POP3 engines and the mail delivery pipeline are stages 2–3. Do not point your MX
 records at it yet. SMTP listener is disabled by default on purpose (data-loss guard)._
 
@@ -17,19 +21,19 @@ records at it yet. SMTP listener is disabled by default on purpose (data-loss gu
 
 | Компонент | Статус | Что именно |
 |---|---|---|
-| Frontend (почта/чат/админка) | 🟢 вход и админка / 🟡 почта+чат | Собирается (modern + legacy для Chrome 109). Вход, смена пароля, 2FA, пароли приложений и админ-панель (пользователи/группы/аудит) работают с настоящим API; демо-режим — только явной кнопкой витрины. Почта и чат пока на демо-данных (этапы 2 и 4), о чём в реальном режиме честно предупреждает плашка модуля |
+| Frontend (почта/чат/админка) | 🟢 вход и админка / 🟡 почта+чат | Собирается (modern + legacy для Chrome 109), 12 unit-тестов проходят. Интерфейс полностью RU/EN, есть нативный Unicode emoji-picker и графемно-безопасная работа с текстом. Вход, смена пароля, 2FA, пароли приложений и админ-панель работают с настоящим API; демо-режим — только явной кнопкой витрины. Почта и чат пока на демо-данных (этапы 2 и 4), о чём честно предупреждает плашка модуля |
 | Docker Compose (25 сервисов) | 🟡 | Вся инфраструктура и порядок старта по healthcheck описаны; в этой песочнице нет Docker, поэтому **фактический `docker compose up` на вашем сервере будет первым настоящим дымовым тестом** |
 | Инфраструктура (PostgreSQL, Redis, RabbitMQ, Elasticsearch, SpamAssassin, ClamAV, nginx, Prometheus/Grafana/Loki) | 🟢 конфиги | Официальные образы, сети, тома, алерты настроены. Требуется первый реальный запуск для подтверждения |
 | Схемы БД (Flyway) | 🟢 | 4 базы, миграции и сид групп/прав готовы |
-| auth-service | 🟢 этап 1 | Полный контур входа: сущности пользователей, Argon2id, login (lockout после 5 неудач/15 мин), вращающиеся refresh в HttpOnly cookie с детектом кражи, /me, смена пароля, TOTP setup/confirm/disable, пароли приложений, internal API (CRUD для админки, verify-password для протоколов, статистика), сид суперадмина при первом старте. Осталось на этап 5: AD/LDAP и политики из админки |
-| web-gateway | 🟢 | Маршруты, JWT-проверка по JWKS и rate-limit работают с реальными токенами; ошибочный `SCOPE_admin` убран — права по claim `permissions` проверяет admin-service |
+| auth-service | 🟢 этап 1 | Полный контур входа: сущности пользователей, Argon2id, login (lockout после 5 неудач/15 мин), вращающиеся refresh в HttpOnly cookie с детектом кражи, /me, смена пароля, TOTP setup/confirm/disable без опасного повторного setup, пароли приложений, internal API (CRUD для админки, verify-password для протоколов, статистика), сид суперадмина при первом старте. Публичные ошибки локализуются RU/EN; `/internal/**` защищён fail-closed `X-Corvex-Internal-Token`. Осталось на этап 5: AD/LDAP и политики из админки |
+| web-gateway | 🟢 | Маршруты, JWT-проверка по JWKS и rate-limit работают с реальными токенами; ошибочный `SCOPE_admin` убран — права по claim `permissions` проверяет admin-service. Rate-limit теперь видит реальный IP из доверенного nginx, а logout доступен с валидной refresh-cookie после истечения access token |
 | mail-smtp-service | 🟡⚠️ | SubEtha-листенер стартует и ставит письма в очередь, но хранилище сырых писем — **заглушка этапа 2 (тело не сохраняется)**. Поэтому `CORVEX_SMTP_ENABLED=false` по умолчанию — защита от потери почты |
 | mail-imap / mail-pop3 | 🔴 | Порты опубликованы, протокольных движков (Apache James за портами) ещё нет — Outlook/Thunderbird не подключатся (этап 3) |
 | mail-storage-service | 🔴/🟡 | Сущности и Maildir+CAS код есть; REST, потребителей конвейера доставки и индексации в Elasticsearch нет (этап 2) |
 | mail-spam / mail-antivirus | 🟡 | Рабочие клиенты SPAMC/INSTREAM; потребителей событий конвейера нет (этап 2) |
 | chat-service | 🟡 | STOMP-конфигурация и контроллер есть; персистенции сообщений, проверки членства, REST истории нет (этап 4). В UI чат работает на демо-состоянии |
 | chat-file-service | 🟡 | Только каркас приложения |
-| admin-service | 🟢 этап 1 | REST по контракту: пользователи (через internal API auth, с компенсацией при сбое), группы и чекбоксы 24 прав, назначение групп, настройки KV, аудит всех действий, сводное здоровье сервисов, базовая аналитика по пользователям/входам, запрос бэкапа в аудит. Внутренний access-эндпоинт отдаёт auth права для JWT; при старте назначает бутстрап-пользователю SUPER_ADMIN |
+| admin-service | 🟢 этап 1 | REST по контракту: пользователи (через защищённый токеном internal API auth, с компенсацией при сбое), группы и чекбоксы 24 прав, назначение групп, валидируемые одной транзакцией настройки KV, аудит всех действий, сводное здоровье сервисов, базовая аналитика по пользователям/входам, запрос бэкапа в аудит. Последнего SUPER_ADMIN нельзя лишить членства, заблокировать или отключить. Внутренний access-эндпоинт отдаёт auth группы и права для JWT; при старте назначает бутстрап-пользователю SUPER_ADMIN |
 | notification-service | 🟡 | Цепочка Alertmanager → вебхук → очередь → email теперь замкнута кодом; не тестировалась живьём |
 | Скрипты PowerShell | 🟡 | `first-run.ps1`/`backup.ps1` написаны аккуратно, но на настоящем Windows не выполнялись |
 | Сборка Java | 🟡 | Найденные аудитом ошибки компиляции/контекста исправлены статически (см. §2), но в песочнице **невозможна проверка `mvn package`**: нет JDK, а Maven Central сетью песочницы заблокирован. Первая сборка образов на сервере — обязательный гейт |
@@ -68,6 +72,7 @@ records at it yet. SMTP listener is disabled by default on purpose (data-loss gu
 
 - [ ] `mvn` сборка всех образов на целевом сервере зелёная, `docker compose ps` — все `healthy` 72 часа без рестартов;
 - [x] Этап 1: login/refresh/me, Argon2id+lockout, создание пользователей из админки, группы/права, аудит, сид суперадмина — **реализован в коде**, остаётся живая проверка сборкой на сервере;
+- [x] RU/EN интерфейс и ошибки API, emoji/Unicode-тесты, internal API token, доверенный клиентский IP и защита последнего SUPER_ADMIN — **реализованы в коде**; Java-тесты локализаторов/фильтра ждут первого Maven-запуска;
 - [ ] Этап 2: настоящее сохранение .eml (storage), конвейер spam→AV→доставка с DLQ, исходящие с DKIM, anti-open-relay тест в CI;
 - [ ] Этап 3: IMAP поверх James (IDLE/UIDPLUS/MOVE/QUOTA), POP3, app-passwords; приёмка в Outlook и Thunderbird;
 - [ ] DNS по чек-листу + mail-tester ≥ 9/10;

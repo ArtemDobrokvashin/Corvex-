@@ -183,7 +183,7 @@ export default function ChatPage() {
             </div>
             <div className="relative mt-3">
               <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-faint" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('Поиск людей и каналов')} className="search-field bg-black/[0.04]" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('Поиск людей и каналов')} aria-label={t('Поиск людей и каналов')} className="search-field bg-black/[0.04]" />
             </div>
           </header>
 

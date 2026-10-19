@@ -110,7 +110,9 @@ inside PostgreSQL. On a blank test stand you can start over with
 | Variable | Set to |
 |---|---|
 | `CORVEX_DOMAIN` | web host, e.g. `mail.company.local` |
+| `CORVEX_WEB_ORIGINS` | normally leave empty: Compose derives `https://$CORVEX_DOMAIN`; set only for additional comma-separated browser origins |
 | `CORVEX_MAIL_DOMAIN` | mail domain of addresses, e.g. `company.local` |
+| `CORVEX_INTERNAL_API_TOKEN` | **required** secret for the internal auth/admin APIs; `first-run.ps1` generates it and appends it to an older `.env` when missing. Never keep `change-me-strong-password` |
 | `CORVEX_SMTP_ENABLED` | keep `false` until stage 2 (data-loss guard, see READINESS) |
 | `CORVEX_LDAP_URL`, `CORVEX_LDAP_BASE` | fill if you have Active Directory (stage 5), otherwise leave |
 | `CORVEX_ALERT_RECIPIENTS` | the admin's **external** mailbox |

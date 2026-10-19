@@ -1,228 +1,344 @@
-# Corvex — корпоративная коммуникационная платформа / Corporate Communication Platform
+<div align="center">
 
-**[🇷🇺 Русский](#-русский)** · **[🇬🇧 English](#-english)**
+<img src="frontend/public/corvex.svg" width="88" alt="Corvex logo" />
+
+# Corvex
+
+**Corporate mail & team chat that stays on your server.**<br />
+**Корпоративная почта и сообщения, которые остаются дома.**
+
+[Русский](#русский) · [English](#english) · [Screenshots](#скриншоты) · [Quick start](#попробовать-за-2-минуты) · [Install](#установка-на-windows-server) · [Docs](#документация) · [Support Corvex](#поддержать-corvex)
+
+[![GitHub stars](https://img.shields.io/github/stars/ArtemDobrokvashin/Corvex-?style=social)](https://github.com/ArtemDobrokvashin/Corvex-/stargazers)
+[![Last commit](https://img.shields.io/github/last-commit/ArtemDobrokvashin/Corvex-)](https://github.com/ArtemDobrokvashin/Corvex-/commits)
+![Stage 1](https://img.shields.io/badge/stage_1-identity_%26_admin-3157d5)
+![RU EN](https://img.shields.io/badge/interface-RU%20%2F%20EN-3157d5)
+![Chrome 109](https://img.shields.io/badge/browser-Chrome_109%2B-3157d5)
+![Free for now](https://img.shields.io/badge/price-free_for_now-2ea44f)
+[![Telegram](https://img.shields.io/badge/Telegram-Artem__Dobrokvashin-26A5E4?logo=telegram&logoColor=white)](https://t.me/Artem_Dobrokvashin)
+
+[![Corvex Mail](docs/screenshots/mail-ru.png)](docs/screenshots/mail-ru.png)
+
+<sub>Real production-build screenshot. Mail is shown with clearly labelled demo data; identity and administration already run on real APIs.</sub>
+
+</div>
+
+> ⭐ **If Corvex is useful to you, star the repository and tell the author you deployed it.** Corvex has no hidden telemetry and does not phone home — voluntary stars, feedback, and [`ADOPTERS.md`](ADOPTERS.md) entries are how real usage becomes visible.
 
 ---
 
-# 🇷🇺 Русский
+## Русский
 
-## Что это
+### Почта и команды — на вашем сервере, а не в чужом облаке
 
-**Corvex** — самодостаточная корпоративная коммуникационная платформа, которая
-разворачивается на собственном сервере компании и объединяет:
+**Corvex** — self-hosted платформа корпоративных коммуникаций для организаций до 1000 сотрудников: собственный почтовый сервер, современный веб-клиент, командный чат, гибкая админ-панель, 2FA, мониторинг и резервное копирование в одном Docker-развёртывании.
 
-- собственный почтовый сервер **SMTP / IMAP / POP3** (Outlook, Thunderbird);
-- веб-клиент электронной почты;
-- корпоративный чат реального времени (личные, групповые, каналы);
-- админ-панель с гибкой системой прав (группы и чекбоксы из 24 привилегий);
-- мониторинг с автоматическими email-алертами администратору.
+Главное обещание простое: **переписка компании должна принадлежать компании**. Без обязательной аренды внешнего облака, без платы за пользователя на текущем этапе и без зависимости от того, доступен ли чужой SaaS сегодня утром.
 
-Единый веб-интерфейс «почта + чат + админка», единая аутентификация
-(локальные учётные записи + Active Directory/LDAP, JWT, опционально 2FA TOTP).
-Целевой масштаб — до **1000 сотрудников на одном сервере**. Клиенты: Windows
-7/10/11 (включая Chrome 109), Яндекс Браузер, Edge, Firefox, планшеты и смартфоны.
+| Типичная боль | Как отвечает Corvex |
+|---|---|
+| Почта и чаты живут у внешнего провайдера | Данные, пользователи и аудит остаются на сервере организации |
+| Старый парк Windows 7 / Chrome 109 нельзя просто выбросить | Отдельный legacy-бандл и адаптивный интерфейс для ПК, планшетов и телефонов |
+| Админка либо «всё можно», либо «ничего нельзя» | 6 групп и 24 атомарных права-чекбокса; права суммируются по группам |
+| Интерфейс переведён наполовину, ошибки API — на другом языке | Полные RU/EN: интерфейс, даты, числа, demo-данные и публичные ошибки API |
+| Проект обещает «enterprise-ready», но прячет ограничения | Открытый аудит, честные ворота готовности и SMTP, выключенный до durable-доставки |
 
-## Статус — честно и коротко
+> [!IMPORTANT]
+> **Статус сегодня:** Stage 1 — настоящий вход, пользователи, RBAC и админка. Боевая доставка почты — Stage 2, IMAP/POP3 — Stage 3, сохраняемый чат — Stage 4. Не направляйте production MX на Corvex, пока не закрыты ворота в [`docs/READINESS.md`](docs/READINESS.md).
 
-**Этап 1 выполнен: настоящий вход, пользователи и админка; рабочая почта — ещё нет.**
-Вход (Argon2id, JWT с вращающимся refresh, TOTP 2FA), управление пользователями,
-группы с 24 правами и аудит работают на реальном бэкенде; демо-режим остался явной
-кнопкой витрины. Движки IMAP/POP3 и конвейер доставки писем — этапы 2–3 плана.
-Боевые MX-записи на сервер пока направлять нельзя.
+### Попробовать за 2 минуты
 
-👉 Подробный аудит по каждому компоненту: [`docs/READINESS.md`](docs/READINESS.md)
-
-## Быстрый старт
-
-### Вариант 1 — только посмотреть интерфейс (2 минуты, нужен Node.js)
+Нужен только Node.js:
 
 ```bash
-cd frontend
+git clone -b arena/3732db07-corvex https://github.com/ArtemDobrokvashin/Corvex-.git
+cd Corvex-/frontend
 npm install
-npm run dev            # http://localhost:5173
+npm run dev
 ```
 
-Откроется экран входа; вход с любыми данными ведёт в демо-режим (жёлтая плашка):
-почта, чат и админ-панель с чекбоксами прав полностью кликабельны на учебных данных.
+Откройте `http://localhost:5173` и нажмите **«Посмотреть демо без сервера»**. Почта и чат покажут учебные данные с жёлтой плашкой; в полном стеке вход и администрирование работают через настоящие API.
 
-### Вариант 2 — весь стек на сервере (Docker)
+Понравилось? Поставьте ⭐ на GitHub и добавьте организацию в [`ADOPTERS.md`](ADOPTERS.md) — скрытой телеметрии в Corvex нет, поэтому автор иначе не увидит ваше внедрение.
+
+### Скриншоты
+
+Все кадры ниже — реальные скриншоты production-сборки в Chromium. Почта и сообщения используют демо-данные до этапов 2 и 4.
+
+<table>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/login-ru.png"><img src="docs/screenshots/login-ru.png" alt="Экран входа Corvex на русском" /></a><br /><sub>Вход и RU/EN переключатель</sub></td>
+    <td width="50%"><a href="docs/screenshots/chat-ru.png"><img src="docs/screenshots/chat-ru.png" alt="Сообщения Corvex с открытым emoji-picker" /></a><br /><sub>Сообщения, реакции и цветные Unicode-эмодзи</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/admin-ru.png"><img src="docs/screenshots/admin-ru.png" alt="Администрирование пользователей Corvex на русском" /></a><br /><sub>Пользователи, группы, статусы и квоты</sub></td>
+    <td width="50%" align="center"><a href="docs/screenshots/mail-mobile-ru.png"><img src="docs/screenshots/mail-mobile-ru.png" width="280" alt="Мобильная почта Corvex на русском" /></a><br /><sub>Мобильная почта</sub></td>
+  </tr>
+</table>
+
+Как воспроизводимо переснять кадры: [`docs/screenshots/README.md`](docs/screenshots/README.md).
+
+### Возможности
+
+#### Уже работает на реальном бэкенде
+
+- **Identity:** Argon2id, lockout после 5 неудач на 15 минут, JWT RS256 на 15 минут, вращающиеся refresh-сессии в HttpOnly `SameSite=Strict` cookie и детект повторного использования refresh-токена.
+- **2FA и клиенты:** TOTP setup/confirm/disable, MFA-шаг при входе и пароли приложений для будущих IMAP/SMTP-клиентов.
+- **Администрирование:** пользователи, квоты, блокировка/отключение, 6 системных и пользовательские группы, 24 права, аудит, настройки, health и базовая аналитика.
+- **Защита от самоблокировки:** последнего `SUPER_ADMIN` нельзя лишить группы, заблокировать или отключить через API.
+- **RU/EN до конца:** переключаются интерфейс, demo-данные, системные группы, формат дат/чисел/байт и `ProblemDetail` ошибки auth/admin по `Accept-Language`.
+- **Эмодзи без картинок и CDN:** нативный Unicode picker, вставка в курсор, реакции и графемно-безопасная обрезка сложного текста.
+
+#### Запроектировано и строится по этапам
+
+- **Почта:** SubEtha SMTP, Apache James IMAP/POP3, Maildir + SHA-256 CAS, SpamAssassin, ClamAV, Elasticsearch, DKIM/SPF/DMARC.
+- **Чат:** STOMP/RabbitMQ, persistent rooms, membership authorization, файлы, presence и push-события.
+- **Enterprise:** AD/LDAP, mTLS между сервисами, мгновенный отзыв JWT, расширенный hardening и нагрузочные ворота до 1000 сотрудников.
+
+### Статус и roadmap
+
+| Этап | Содержимое | Статус |
+|---|---|---|
+| 1 | Identity, пользователи, группы, RBAC, аудит, админка | ✅ код готов; нужен первый Maven/Docker smoke на целевом хосте |
+| 2 | Durable SMTP-доставка, storage, spam/AV, поиск, исходящая очередь | 🚧 следующий главный этап |
+| 3 | IMAP/POP3 на Apache James, Outlook/Thunderbird | 📐 контракты и порты готовы |
+| 4 | Persistent realtime-чат, файлы, presence | 📐 UI и STOMP-каркас готовы |
+| 5 | AD/LDAP, mTLS, production hardening | 📐 спроектировано |
+
+SMTP выключен по умолчанию на всех уровнях, пока письмо нельзя гарантированно сохранить. Corvex не должен ответить `250 OK` и потерять сообщение.
+
+### Установка на Windows Server
+
+> Команда ниже выбирает текущую ветку аудита. После слияния в `main` уберите `-b arena/3732db07-corvex`.
 
 ```powershell
-git clone https://github.com/ArtemDobrokvashin/Corvex-.git C:\Corvex
+git clone -b arena/3732db07-corvex https://github.com/ArtemDobrokvashin/Corvex-.git C:\Corvex
 cd C:\Corvex
-git checkout arena/3732db07-corvex
 
-.\scripts\first-run.ps1     # секреты, ключ JWT, пилотный TLS-сертификат, файл .env
-notepad .env                # указать CORVEX_DOMAIN и CORVEX_MAIL_DOMAIN
+.\scripts\first-run.ps1     # уникальные секреты, JWT-ключ, internal API token, пилотный TLS, .env
+notepad .env                # CORVEX_DOMAIN, CORVEX_MAIL_DOMAIN, получатели алертов
 
+docker compose config
 docker compose up -d --build                 # 12 микросервисов + инфраструктура
-docker compose --profile monitoring up -d    # Prometheus, Grafana, Loki, алерты
-docker compose ps                            # дождаться healthy у всех сервисов
+docker compose --profile monitoring up -d    # Prometheus, Grafana, Loki, Alertmanager
+docker compose ps                            # первый настоящий smoke-gate: все healthy
 ```
 
-Открыть `https://mail.<ваш-домен>`. Первый вход — суперадминистратор `admin`;
-пароль задаётся `CORVEX_BOOTSTRAP_ADMIN_PASSWORD` либо печатается один раз в лог:
-`docker compose logs auth-service | Select-String BOOTSTRAP`.
+Откройте `https://mail.<ваш-домен>`. Первый пользователь — `admin`; пароль задаётся `CORVEX_BOOTSTRAP_ADMIN_PASSWORD` или один раз печатается в лог:
 
-📖 **Подробная инструкция** (Hyper-V/Docker Desktop/Linux, брандмауэр, DNS
-MX/SPF/DKIM/DMARC, сертификаты, дымовые тесты, бэкапы, устранение проблем):
-[`docs/INSTALL.md`](docs/INSTALL.md)
+```powershell
+docker compose logs auth-service | Select-String BOOTSTRAP
+```
 
-## Архитектура в одном абзаце
+Полная инструкция: [`docs/INSTALL.md`](docs/INSTALL.md) — Hyper-V/Docker, брандмауэр, TLS, DNS, сертификаты, бэкапы и траблшутинг.
 
-12 микросервисов на Spring Boot 3 / Java 17 за единым API-шлюзом: аутентификация
-(AD + локальная, JWT RS256, TOTP), SMTP-приём/отправка на SubEtha SMTP, IMAP/POP3
-на библиотеках Apache James, хранилище почты Maildir + метаданные в PostgreSQL +
-дедупликация вложений по SHA-256, спам-фильтр SpamAssassin и антивирус ClamAV,
-чат на WebSocket/STOMP с брокером RabbitMQ, полнотекстовый поиск на Elasticsearch,
-кэш и присутствие на Redis. Входящее письмо проходит асинхронный конвейер
-`SMTP → антиспам → антивирус → доставка → индексация → push`. Фронтенд —
-React 18 + TypeScript, отдельная legacy-сборка для Chrome 109 (Windows 7).
-Диаграммы, последовательности и обоснование каждого выбора (ADR):
-[`docs/01-architecture.md`](docs/01-architecture.md).
+### Архитектура
 
-## Документация
+12 сервисов Java 17 / Spring Boot за единым gateway:
+
+- `auth-service` владеет учётками, паролями, TOTP и сессиями;
+- `admin-service` — группами, правами, настройками и аудитом;
+- `web-gateway` проверяет JWT и ограничивает частоту запросов;
+- `mail-smtp`, `mail-imap`, `mail-pop3` отделяют протоколы от бизнес-логики;
+- `mail-storage` — Maildir и вложения по SHA-256 с дедупликацией;
+- `mail-spam`, `mail-antivirus` — тонкие клиенты SpamAssassin и ClamAV;
+- `chat-service`, `chat-file-service` — STOMP и файлы;
+- `notification-service` превращает Alertmanager webhook в email администраторам.
+
+Данные: PostgreSQL 16 (database-per-service), Redis, RabbitMQ, Elasticsearch, Maildir + CAS. Наблюдаемость: Prometheus, Grafana, Loki. Один `docker-compose.yml`: 25 контейнеров, 4 сети, 12 томов.
+
+Диаграммы и ADR: [`docs/01-architecture.md`](docs/01-architecture.md).
+
+### Безопасность и приватность
+
+- Refresh-токен не хранится в открытом виде: в PostgreSQL лежит SHA-256 от 32 случайных байт.
+- Внутренние auth/admin API не маршрутизируются наружу и требуют `X-Corvex-Internal-Token`; без секрета — fail-closed `503`.
+- nginx — единственный доверенный edge для клиентского IP; поддельный первый `X-Forwarded-For` не попадает в rate-limit и аудит.
+- Повторный TOTP setup не заменяет уже включённую 2FA без текущего кода.
+- Настройки валидируются на сервере и пишутся одной транзакцией.
+- Markdown санитизируется; внешние изображения в чате запрещены как tracking pixels.
+- **Нет скрытой телеметрии, рекламных трекеров и license phone-home.** Если когда-нибудь появится проверка обновлений, она должна быть явной, документированной и отключаемой.
+
+Полный аудит: [`docs/12-full-audit-2026-10.md`](docs/12-full-audit-2026-10.md).
+
+### Документация
 
 | Документ | Содержание |
 |---|---|
-| [`docs/TECHNICAL_DESIGN.md`](docs/TECHNICAL_DESIGN.md) | мастер-документ технического проекта и трассировка к требованиям |
-| [`docs/READINESS.md`](docs/READINESS.md) | готовность к серверу: что работает, что нет, ворота пилота |
-| [`docs/INSTALL.md`](docs/INSTALL.md) | подробная установка и эксплуатация (есть [English version](docs/INSTALL.en.md)) |
-| [`docs/01…10-*.md`](docs/) | архитектура, структура проекта, API, схемы БД, Docker, код, фронтенд, Windows Server, план разработки, тестовая стратегия |
-| [`docs/api/*.yaml`](docs/api/) | OpenAPI-контракты: auth, mail, chat, admin |
-| [`docs/11-modern-design-analysis.md`](docs/11-modern-design-analysis.md) | анализ Gmail/Outlook/Slack/Superhuman/Linear и дизайн-система Quiet Work |
+| [`docs/TECHNICAL_DESIGN.md`](docs/TECHNICAL_DESIGN.md) | мастер-документ технического проекта |
+| [`docs/12-full-audit-2026-10.md`](docs/12-full-audit-2026-10.md) | полный аудит фронтенда, бэкенда и инфраструктуры |
+| [`docs/READINESS.md`](docs/READINESS.md) | честный статус по компонентам и ворота пилота |
+| [`docs/INSTALL.md`](docs/INSTALL.md) | установка и эксплуатация; есть [`INSTALL.en.md`](docs/INSTALL.en.md) |
+| [`docs/11-modern-design-analysis.md`](docs/11-modern-design-analysis.md) | Gmail/Outlook/Slack/Superhuman/Linear и дизайн-система Quiet Work |
+| [`docs/api/*.yaml`](docs/api/) | OpenAPI: auth, mail, chat, admin |
+| [`ADOPTERS.md`](ADOPTERS.md) | кто использует Corvex и как добавить организацию |
+| [`SUPPORT.md`](SUPPORT.md) | куда писать о багах, безопасности, донатах и коммерческой помощи |
 
-## Структура репозитория
+### Поддержать Corvex
 
-```
-services/   12 микросервисов Spring Boot (у каждого свой Dockerfile и миграции Flyway)
-frontend/   React-интерфейс: вход+2FA, почта, чат, админ-панель
-infra/      nginx, PostgreSQL init, Prometheus/Alertmanager, Grafana, Loki, RabbitMQ
-docs/       технический проект (11 разделов) + OpenAPI + инструкции
-scripts/    first-run.ps1 (инициализация), backup.ps1 (резервное копирование)
-docker-compose.yml   вся платформа одной командой: 25 сервисов, 4 сети, 12 томов
-```
+Corvex развивается как авторский проект. Сейчас он **бесплатен для self-hosted развёртывания**, но разработка, тесты и поддержка стоят времени. Есть четыре способа помочь проекту выстрелить:
 
-## Порты наружу
+1. **⭐ Поставьте звезду на GitHub.** Это главный публичный сигнал, что проект нужен.
+2. **Расскажите о внедрении.** Добавьте организацию в [`ADOPTERS.md`](ADOPTERS.md) или напишите автору приватно. Без телеметрии это единственный способ увидеть реальные установки.
+3. **Поддержите деньгами.** Добровольный донат можно согласовать напрямую с автором: **Artem Dobrokvashin — [https://t.me/Artem_Dobrokvashin](https://t.me/Artem_Dobrokvashin)**. Реквизиты в репозитории не публикуются.
+4. **Закажите помощь.** Можно обсудить внедрение, планирование миграции, обучение администраторов, приоритетные исправления и заказные интеграции.
 
-`443` веб/API/чат · `80` редирект и Let's Encrypt · `25/587` SMTP · `993/143` IMAP ·
-`995/110` POP3. Базы и очереди наружу не публикуются никогда.
+Планируемая устойчивая модель — не брать базовую почту в заложники: ядро для собственного сервера остаётся бесплатным на текущем этапе, а доход должны давать добровольная поддержка, услуги внедрения/сопровождения и, в будущем, отдельные enterprise-добавки и priority support. Если появится платная редакция, её условия будут опубликованы отдельно и честно.
 
-## Дорожная карта
+### Лицензия
 
-MVP веб-почты — неделя 12, IMAP/POP3 и поиск — недели 13–18, полный чат —
-19–24, AD/2FA и hardening — 25–27, нагрузка и пилот — 28–32.
-Подробно: [`docs/09-development-plan.md`](docs/09-development-plan.md).
+На текущем этапе автор предоставляет Corvex **бесплатно** для развёртывания на собственном сервере: без подписки и без платы за пользователя. Отдельный юридический текст лицензии будет добавлен перед публичным релизом; если организации нужны письменные условия уже сейчас, свяжитесь с автором до внедрения.
 
 ---
 
-# 🇬🇧 English
+## English
 
-## What it is
+### Mail and team conversations that stay home
 
-**Corvex** is a self-hosted corporate communication platform that runs on a
-company's own server and combines:
+**Corvex** is a self-hosted corporate communication platform for organizations of up to 1,000 employees: an own mail server, a modern webmail client, team chat, a flexible administration panel, 2FA, monitoring, and backups in one Docker deployment.
 
-- its own mail server — **SMTP / IMAP / POP3** (Outlook, Thunderbird);
-- a webmail client;
-- a real-time corporate chat (DMs, group chats, channels);
-- an admin panel with a flexible permission system (groups with 24 checkbox privileges);
-- monitoring with automatic email alerts to administrators.
+The promise is deliberately simple: **a company's correspondence should belong to the company**. No mandatory external cloud, no per-seat rent at the current stage, and no morning outage caused by somebody else's SaaS.
 
-One web UI ("mail + chat + admin"), one identity system (local accounts +
-Active Directory/LDAP, JWT, optional TOTP 2FA). Target scale: **up to 1,000
-employees on a single server**. Clients: Windows 7/10/11 (including Chrome 109),
-Yandex Browser, Edge, Firefox, tablets and smartphones.
+| Common pain | Corvex answer |
+|---|---|
+| Mail and chat live with an external provider | Data, users, and audit stay on your organization's server |
+| The Windows 7 / Chrome 109 fleet cannot simply be discarded | A dedicated legacy bundle plus responsive phone/tablet layouts |
+| Administration is either “everything” or “nothing” | 6 groups and 24 atomic checkbox permissions, unioned across groups |
+| Half the UI is translated and API errors are not | Complete RU/EN across UI, dates, numbers, demo data, and public API errors |
+| “Enterprise-ready” hides the fine print | A public audit, explicit readiness gates, and SMTP disabled until durable delivery |
 
-## Status — honest and short
+> [!IMPORTANT]
+> **Current status:** Stage 1 provides real sign-in, users, RBAC, and administration. Production mail delivery is Stage 2, IMAP/POP3 is Stage 3, and persistent chat is Stage 4. Do not point production MX records at Corvex until the gates in [`docs/READINESS.md`](docs/READINESS.md) pass.
 
-**Stage 1 is done: real sign-in, users and admin panel; a working mail server —
-not yet.** Authentication (Argon2id, JWT with rotating refresh tokens, TOTP 2FA),
-user management, groups with 24 permissions and audit run on the real backend;
-demo mode remains an explicit showcase button. The IMAP/POP3 engines and the
-mail delivery pipeline are roadmap stages 2–3.
-Do not point production MX records at it yet.
+### Try it in 2 minutes
 
-👉 Per-component audit: [`docs/READINESS.md`](docs/READINESS.md)
-
-## Quick start
-
-### Option 1 — just look at the UI (2 minutes, needs Node.js)
+Only Node.js is required:
 
 ```bash
-cd frontend
+git clone -b arena/3732db07-corvex https://github.com/ArtemDobrokvashin/Corvex-.git
+cd Corvex-/frontend
 npm install
-npm run dev            # http://localhost:5173
+npm run dev
 ```
 
-Sign in with any credentials to enter demo mode (yellow banner): mail, chat and
-the admin panel with permission checkboxes are fully clickable on sample data.
+Open `http://localhost:5173` and click **“View the demo without a server.”** Mail and Messages show clearly labelled sample data; in the full stack, sign-in and Administration use real APIs.
 
-### Option 2 — full stack on a server (Docker)
+Like what you see? Star the repository and add your organization to [`ADOPTERS.md`](ADOPTERS.md). Corvex contains no hidden telemetry, so the author cannot otherwise see your deployment.
+
+### Screenshots
+
+All frames below are real captures of the production frontend build in Chromium. Mail and Messages use demo data until Stages 2 and 4.
+
+<table>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/login-en.png"><img src="docs/screenshots/login-en.png" alt="Corvex sign-in in English" /></a><br /><sub>Sign-in with the RU/EN switch</sub></td>
+    <td width="50%"><a href="docs/screenshots/mail-en.png"><img src="docs/screenshots/mail-en.png" alt="Corvex Mail in English" /></a><br /><sub>Mail in the Quiet Work three-pane layout</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/chat-en.png"><img src="docs/screenshots/chat-en.png" alt="Corvex Messages with the emoji picker open in English" /></a><br /><sub>Messages, reactions, and native color emoji</sub></td>
+    <td width="50%"><a href="docs/screenshots/admin-en.png"><img src="docs/screenshots/admin-en.png" alt="Corvex Administration users in English" /></a><br /><sub>Users, groups, statuses, and quotas</sub></td>
+  </tr>
+</table>
+
+Reproduce the captures with [`docs/screenshots/README.md`](docs/screenshots/README.md).
+
+### Features
+
+#### Working on the real backend today
+
+- **Identity:** Argon2id, 15-minute lockout after 5 failures, 15-minute RS256 JWTs, rotating refresh sessions in an HttpOnly `SameSite=Strict` cookie, and refresh-token reuse detection.
+- **2FA and clients:** TOTP setup/confirm/disable, an MFA sign-in step, and app passwords for future IMAP/SMTP clients.
+- **Administration:** users, quotas, block/disable, 6 system plus custom groups, 24 permissions, audit, settings, service health, and basic sign-in analytics.
+- **No accidental lock-out:** the last `SUPER_ADMIN` cannot lose membership, be blocked, or be disabled through the API.
+- **RU/EN end to end:** UI, demo data, system groups, dates/numbers/bytes, and auth/admin `ProblemDetail` errors localized by `Accept-Language`.
+- **Emoji without images or a CDN:** a native Unicode picker, cursor-aware insertion, reactions, and grapheme-safe text handling.
+
+#### Designed and being built in stages
+
+- **Mail:** SubEtha SMTP, Apache James IMAP/POP3, Maildir + SHA-256 CAS, SpamAssassin, ClamAV, Elasticsearch, DKIM/SPF/DMARC.
+- **Chat:** STOMP/RabbitMQ, persistent rooms, membership authorization, files, presence, and push events.
+- **Enterprise:** AD/LDAP, service-to-service mTLS, instant JWT revocation, hardening, and load gates for 1,000 employees.
+
+### Status and roadmap
+
+| Stage | Scope | Status |
+|---|---|---|
+| 1 | Identity, users, groups, RBAC, audit, administration | ✅ code complete; needs the first Maven/Docker smoke on a target host |
+| 2 | Durable SMTP delivery, storage, spam/AV, search, outbound queue | 🚧 next major stage |
+| 3 | Apache James IMAP/POP3, Outlook/Thunderbird | 📐 contracts and ports ready |
+| 4 | Persistent realtime chat, files, presence | 📐 UI and STOMP skeleton ready |
+| 5 | AD/LDAP, mTLS, production hardening | 📐 designed |
+
+SMTP is disabled by default at every layer until a message can be stored durably. Corvex must never say `250 OK` and lose mail.
+
+### Install on Windows Server
+
+> The command below selects the current audit branch. After it is merged into `main`, drop `-b arena/3732db07-corvex`.
 
 ```powershell
-git clone https://github.com/ArtemDobrokvashin/Corvex-.git C:\Corvex
+git clone -b arena/3732db07-corvex https://github.com/ArtemDobrokvashin/Corvex-.git C:\Corvex
 cd C:\Corvex
-git checkout arena/3732db07-corvex
 
-.\scripts\first-run.ps1     # secrets, JWT key, pilot TLS certificate, .env file
-notepad .env                # set CORVEX_DOMAIN and CORVEX_MAIL_DOMAIN
+.\scripts\first-run.ps1     # unique secrets, JWT key, internal API token, pilot TLS, .env
+notepad .env                # CORVEX_DOMAIN, CORVEX_MAIL_DOMAIN, alert recipients
 
+docker compose config
 docker compose up -d --build                 # 12 microservices + infrastructure
-docker compose --profile monitoring up -d    # Prometheus, Grafana, Loki, alerts
-docker compose ps                            # wait until everything is (healthy)
+docker compose --profile monitoring up -d    # Prometheus, Grafana, Loki, Alertmanager
+docker compose ps                            # first real smoke gate: everything healthy
 ```
 
-Open `https://mail.<your-domain>`. First sign-in is the bootstrap superadmin `admin`;
-the password comes from `CORVEX_BOOTSTRAP_ADMIN_PASSWORD` or is printed once in the log:
-`docker compose logs auth-service | grep BOOTSTRAP`.
+Open `https://mail.<your-domain>`. The first user is `admin`; set `CORVEX_BOOTSTRAP_ADMIN_PASSWORD` or read the one-time password from the log:
 
-📖 **Detailed guide** (Hyper-V / Docker Desktop / Linux, firewall, DNS
-MX/SPF/DKIM/DMARC, certificates, smoke tests, backups, troubleshooting):
-[`docs/INSTALL.en.md`](docs/INSTALL.en.md)
+```powershell
+docker compose logs auth-service | Select-String BOOTSTRAP
+```
 
-## Architecture in one paragraph
+Complete guide: [`docs/INSTALL.en.md`](docs/INSTALL.en.md).
 
-Twelve Spring Boot 3 / Java 17 microservices behind a single API gateway:
-authentication (AD + local, JWT RS256, TOTP), SMTP send/receive on SubEtha SMTP,
-IMAP/POP3 on Apache James protocol libraries, mail storage as Maildir + metadata
-in PostgreSQL + SHA-256-deduplicated attachments, SpamAssassin spam filtering
-and ClamAV antivirus, chat on WebSocket/STOMP brokered by RabbitMQ, full-text
-search on Elasticsearch, cache and presence on Redis. Inbound mail flows through
-an asynchronous pipeline `SMTP → spam → antivirus → delivery → indexing → push`.
-The frontend is React 18 + TypeScript with a dedicated legacy bundle for
-Chrome 109 (Windows 7). Diagrams, sequences and rationale for every choice (ADRs):
-[`docs/01-architecture.md`](docs/01-architecture.md).
+### Architecture
 
-## Documentation
+Twelve Java 17 / Spring Boot services sit behind one gateway. Auth owns accounts, passwords, TOTP, and sessions; Admin owns groups, permissions, settings, and audit; Gateway verifies JWTs and rate limits. Mail protocols are separated from Maildir/SHA-256 storage, spam uses SpamAssassin, antivirus uses ClamAV, chat uses STOMP/RabbitMQ, and notifications turn Alertmanager webhooks into administrator email.
+
+Data lives in PostgreSQL 16 (database-per-service), Redis, RabbitMQ, Elasticsearch, and Maildir + CAS. Observability uses Prometheus, Grafana, and Loki. One `docker-compose.yml` defines 25 containers, 4 networks, and 12 volumes.
+
+Diagrams and ADRs: [`docs/01-architecture.md`](docs/01-architecture.md).
+
+### Security and privacy
+
+- Refresh tokens are never stored raw: PostgreSQL keeps SHA-256 of 32 random bytes.
+- Internal auth/admin APIs are not routed by the gateway and require `X-Corvex-Internal-Token`; with no secret they fail closed with `503`.
+- nginx is the only trusted edge for client IP; a spoofed first `X-Forwarded-For` cannot poison rate limits or audit.
+- Re-running TOTP setup cannot replace already enabled 2FA without a current code.
+- Admin settings are validated on the server and written in one transaction.
+- Chat Markdown is sanitized and external images are forbidden as tracking pixels.
+- **No hidden telemetry, advertising trackers, or license phone-home.** Any future update check must be explicit, documented, and disableable.
+
+Full audit: [`docs/12-full-audit-2026-10.md`](docs/12-full-audit-2026-10.md).
+
+### Documentation
 
 | Document | Contents |
 |---|---|
-| [`docs/TECHNICAL_DESIGN.md`](docs/TECHNICAL_DESIGN.md) | master technical design + traceability to requirements (RU) |
-| [`docs/READINESS.md`](docs/READINESS.md) | server readiness: what works, what does not, pilot gates (RU + EN summary) |
-| [`docs/INSTALL.en.md`](docs/INSTALL.en.md) | detailed installation & operations ([Russian version](docs/INSTALL.md)) |
-| [`docs/01…10-*.md`](docs/) | architecture, project layout, APIs, DB schemas, Docker, code tour, frontend, Windows Server deployment, delivery plan, test strategy (RU) |
-| [`docs/api/*.yaml`](docs/api/) | OpenAPI contracts: auth, mail, chat, admin |
-| [`docs/11-modern-design-analysis.md`](docs/11-modern-design-analysis.md) | Gmail/Outlook/Slack/Superhuman/Linear benchmark and the Quiet Work design system (RU) |
+| [`docs/TECHNICAL_DESIGN.md`](docs/TECHNICAL_DESIGN.md) | master technical design |
+| [`docs/12-full-audit-2026-10.md`](docs/12-full-audit-2026-10.md) | full frontend/backend/infrastructure audit |
+| [`docs/READINESS.md`](docs/READINESS.md) | honest component status and pilot gates |
+| [`docs/INSTALL.en.md`](docs/INSTALL.en.md) | installation and operations; Russian: [`INSTALL.md`](docs/INSTALL.md) |
+| [`docs/api/*.yaml`](docs/api/) | OpenAPI: auth, mail, chat, admin |
+| [`ADOPTERS.md`](ADOPTERS.md) | who uses Corvex and how to add an organization |
+| [`SUPPORT.md`](SUPPORT.md) | bugs, security reports, donations, and commercial help |
 
-## Repository layout
+### Support Corvex
 
-```
-services/   12 Spring Boot microservices (each with its own Dockerfile & Flyway migrations)
-frontend/   React UI: login + 2FA, mail, chat, admin panel
-infra/      nginx, PostgreSQL init, Prometheus/Alertmanager, Grafana, Loki, RabbitMQ
-docs/       technical design (11 sections) + OpenAPI + guides
-scripts/    first-run.ps1 (initialisation), backup.ps1 (backups)
-docker-compose.yml   the whole platform in one command: 25 services, 4 networks, 12 volumes
-```
+Corvex is an author-led project. It is currently **free for self-hosted deployment**, but development, testing, and support take real time. Four actions make a disproportionate difference:
 
-## Published ports
+1. **⭐ Star the repository.** Stars are the main public signal that the project should exist.
+2. **Tell the author you deployed it.** Add your organization to [`ADOPTERS.md`](ADOPTERS.md) or send a private note. With no telemetry, this is the only way real installations become visible.
+3. **Donate.** Arrange voluntary support directly with the author: **Artem Dobrokvashin — [https://t.me/Artem_Dobrokvashin](https://t.me/Artem_Dobrokvashin)**. Payment details are intentionally not published here.
+4. **Buy help.** Discuss deployment assistance, migration planning, administrator training, priority fixes, or custom integrations.
 
-`443` web/API/chat · `80` redirect & Let's Encrypt · `25/587` SMTP · `993/143` IMAP ·
-`995/110` POP3. Databases and queues are never published.
+The intended sustainable model is not to hold basic mail hostage: keep the self-hosted core free at the current stage, and earn from voluntary support, services, maintenance, and possible future enterprise add-ons/priority support. If a paid edition appears, its terms will be published separately and plainly.
 
-## Roadmap
+### License
 
-Webmail MVP — week 12; IMAP/POP3 and search — weeks 13–18; full chat — 19–24;
-AD/2FA and hardening — 25–27; load testing and pilot — 28–32.
-Details: [`docs/09-development-plan.md`](docs/09-development-plan.md).
+At the current stage, the author provides Corvex **free of charge** for self-hosted deployment: no subscription and no per-user fee. A standalone legal license text will be added before a public release; if your organization needs written terms now, contact the author before adoption.

@@ -7,8 +7,10 @@
 ## 3.1. Общие соглашения
 
 - База: `https://mail.<домен>/api/v1`, снаружи виден только gateway.
-- Авторизация: `Authorization: Bearer <JWT RS256>`; права — claim `permissions`
-  (коды из `Permission`), каждый сервис проверяет подписи и права сам.
+- Авторизация: `Authorization: Bearer <JWT RS256>`; группы — claim `groups`, права —
+  claim `permissions` (коды из `Permission`), каждый сервис проверяет подпись и права сам.
+- Локаль публичных ошибок: `Accept-Language: ru` или `en`; auth/admin локализуют
+  известные `detail` на HTTP-границе, неизвестная диагностика не маскируется.
 - Ошибки — RFC 7807 Problem Details: `{type, title, status, detail, requestId}`.
 - Пагинация длинных лент (письма, сообщения чата) — **курсорная** (не OFFSET):
   список из 200 тыс. писем не деградирует на глубоких страницах.
@@ -61,8 +63,11 @@ SEND     /app/rooms/{roomId}/typing    {}
 
 ## 3.5. Внутренние (internal) API
 
-Не пробрасываются через gateway; доступны только из сети `app`, защищены mTLS-сеткой
-Docker-сети и служебным JWT с audience `internal`:
+Не пробрасываются через gateway и доступны только из сети `app`. Реализованные
+auth/admin `/internal/**` дополнительно требуют заголовок
+`X-Corvex-Internal-Token` с секретом `CORVEX_INTERNAL_API_TOKEN`; без секрета
+сервис отвечает `503` (fail closed), с неверным — `401`. Отдельные credentials
+per caller или mTLS остаются усилением Stage 5, а не текущим состоянием:
 
 - `auth-service  POST /internal/verify-password {username, password|appPassword}` —
   для IMAP/POP3/SMTP аутентификации;

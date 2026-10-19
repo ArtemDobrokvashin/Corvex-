@@ -293,6 +293,7 @@ export default function AppShell() {
                   }
                 }}
                 placeholder={t('Перейти или выполнить действие…')}
+                aria-label={t('Быстрый переход')}
                 className="h-14 min-w-0 flex-1 border-0 bg-transparent text-[15px] outline-none placeholder:text-faint focus:ring-0"
               />
               <span className="kbd">Esc</span>
