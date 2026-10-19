@@ -1,0 +1,131 @@
+openapi: 3.0.3
+info:
+  title: Corvex Admin API
+  version: 1.0.0
+  description: Пользователи, группы и чекбоксы прав, квоты, настройки, аудит, аналитика. Каждое действие пишется в audit_log.
+servers:
+  - url: https://mail.company.local/api/v1
+paths:
+  /admin/users:
+    get:
+      summary: Список пользователей (ADMIN_USERS_MANAGE), фильтр по статусу/подразделению/источнику
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [ACTIVE, BLOCKED, DISABLED] } }
+        - { name: page, in: query, schema: { type: integer, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, default: 50 } }
+      responses: { '200': { description: Страница пользователей }, '403': { description: Нет права ADMIN_USERS_MANAGE } }
+    post:
+      summary: Создать локального пользователя (ящик и системные папки создаются транзакционно через события)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, email, displayName, tempPassword]
+              properties:
+                username: { type: string }
+                email: { type: string, format: email }
+                displayName: { type: string }
+                tempPassword: { type: string, format: password }
+                department: { type: string }
+                groupCodes: { type: array, items: { type: string }, default: [USER] }
+                quotaBytes: { type: integer, format: int64 }
+      responses: { '201': { description: Создан }, '409': { description: Логин или email занят } }
+  /admin/users/{userId}:
+    patch:
+      summary: Изменить профиль/квоту/подразделение
+      parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Обновлён } }
+    delete:
+      summary: Удалить (ящик архивируется на срок из настроек, затем удаляется физически)
+      parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '204': { description: Удаления запланировано/выполнено } }
+  /admin/users/{userId}/block:
+    post:
+      summary: Заблокировать и отозвать все сессии
+      parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '204': { description: Заблокирован } }
+  /admin/users/{userId}/groups:
+    put:
+      summary: Назначить группы пользователя (полная замена)
+      parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [groupCodes], properties: { groupCodes: { type: array, items: { type: string } } } }
+      responses: { '200': { description: Группы обновлены, действующие access-токены живут до своего TTL ≤15 мин } }
+  /admin/groups:
+    get:
+      summary: Все группы с правами (для экрана чекбоксов)
+      responses:
+        '200':
+          description: Группы
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    code: { type: string }
+                    name: { type: string }
+                    isSystem: { type: boolean }
+                    enabled: { type: boolean }
+                    permissions: { type: array, items: { type: string } }
+    post:
+      summary: Создать пользовательскую группу
+      responses: { '201': { description: Создана } }
+  /admin/groups/{groupCode}/permissions:
+    put:
+      summary: Сохранить чекбоксы прав группы (ADMIN_GROUPS_MANAGE)
+      parameters: [{ name: groupCode, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [permissions], properties: { permissions: { type: array, items: { type: string, enum: [MAIL_READ_OWN, MAIL_SEND_INTERNAL, MAIL_SEND_EXTERNAL, MAIL_MANAGE_FOLDERS, MAIL_BULK_SEND, MAIL_DELEGATE_ACCESS, MAIL_EXPORT, CHAT_READ, CHAT_WRITE, CHAT_CREATE_GROUP, CHAT_CREATE_CHANNEL, CHAT_MODERATE, CHAT_SEND_FILES, CHAT_VOICE_VIDEO, ADMIN_USERS_MANAGE, ADMIN_GROUPS_MANAGE, ADMIN_QUOTAS_MANAGE, ADMIN_SECURITY_POLICY, ADMIN_MAIL_POLICY, ADMIN_SERVER_CONFIG, ADMIN_BACKUP, ANALYTICS_VIEW_OWN_UNIT, ANALYTICS_VIEW_COMPANY, AUDIT_VIEW] } } } }
+      responses: { '200': { description: Права сохранены }, '422': { description: Попытка отнять у SUPER_ADMIN критичные права отклонена } }
+  /admin/settings:
+    get:
+      summary: Серверные настройки (лимиты вложений, политики паролей/2FA, пороги спама, квоты по умолчанию)
+      responses: { '200': { description: Карта настроек } }
+    patch:
+      summary: Изменить настройки (кэш потребителей инвалидируется событием settings.changed)
+      responses: { '200': { description: Применено } }
+  /admin/audit:
+    get:
+      summary: Журнал аудита (AUDIT_VIEW) — кто, что, когда, с какого IP
+      parameters:
+        - { name: actorId, in: query, schema: { type: string, format: uuid } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses: { '200': { description: Записи аудита } }
+  /admin/analytics/activity:
+    get:
+      summary: Активность (ANALYTICS_VIEW_COMPANY или _OWN_UNIT) — письма/сообщения/активные пользователи, без содержимого
+      parameters:
+        - { name: period, in: query, schema: { type: string, enum: [day, week, month] } }
+        - { name: department, in: query, schema: { type: string } }
+      responses: { '200': { description: Агрегаты } }
+  /admin/system/health:
+    get:
+      summary: Сводное здоровье всех сервисов и очередей для дашборда админки
+      responses:
+        '200':
+          description: Состояния
+          content:
+            application/json:
+              schema: { type: object, properties: { services: { type: array, items: { type: object, properties: { name: { type: string }, status: { type: string, enum: [UP, DOWN, DEGRADED] }, version: { type: string } } } }, diskFreeBytes: { type: integer, format: int64 }, mailQueueDepth: { type: integer } } }
+  /admin/backup/run:
+    post:
+      summary: Ручной запуск резервного копирования (ADMIN_BACKUP)
+      responses: { '202': { description: Задание принято } }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+security:
+  - bearerAuth: []

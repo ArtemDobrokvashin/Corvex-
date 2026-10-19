@@ -1,0 +1,21 @@
+server:
+  port: 8083
+spring:
+  application:
+    name: mail-imap-service
+  rabbitmq:
+    host: ${RABBITMQ_HOST:rabbitmq}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:corvex}
+    password: ${RABBITMQ_PASSWORD:change-me}
+management:
+  endpoints.web.exposure.include: health,info,prometheus,metrics
+  endpoint.health.probes.enabled: true
+  metrics.tags.application: mail-imap-service
+logging:
+  # Структурные JSON-логи -> Promtail -> Loki (см. docs/01-architecture.md)
+  pattern.console: '%d{yyyy-MM-dd''T''HH:mm:ss.SSSXXX} [%thread] %-5level %logger{36} [%X{requestId}] - %msg%n'
+corvex:
+  security:
+    # Публичный ключ auth-service (JWKS): каждый сервис сам валидирует JWT (RS256)
+    jwk-set-uri: ${CORVEX_JWK_SET_URI:http://auth-service:8081/oauth2/jwks}

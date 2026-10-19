@@ -1,0 +1,145 @@
+openapi: 3.0.3
+info:
+  title: Corvex Auth API
+  version: 1.0.0
+  description: Аутентификация (локальная + AD/LDAP), JWT, refresh-вращение, TOTP 2FA, app-passwords для IMAP/SMTP клиентов.
+servers:
+  - url: https://mail.company.local/api/v1
+paths:
+  /auth/login:
+    post:
+      summary: Вход по логину/паролю (локальная учётка или AD bind)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string, example: 'i.ivanov' }
+                password: { type: string, format: password }
+      responses:
+        '200':
+          description: Успех без 2FA; refresh — HttpOnly cookie, access — в теле
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '202':
+          description: Требуется TOTP — вернуть mfaTicket на /auth/mfa/verify
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { mfaRequired: { type: boolean, example: true }, mfaTicket: { type: string } }
+        '401': { description: Неверные учётные данные }
+        '423': { description: Учётная запись временно заблокирована (брутфорс-защита) }
+        '429': { description: Превышен лимит попыток (gateway rate limit) }
+  /auth/mfa/verify:
+    post:
+      summary: Проверка TOTP-кода вторым шагом входа
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mfaTicket, code]
+              properties:
+                mfaTicket: { type: string }
+                code: { type: string, pattern: '^[0-9]{6}$' }
+      responses:
+        '200': { description: Токены выданы, content: { application/json: { schema: { $ref: '#/components/schemas/TokenResponse' } } } }
+        '401': { description: Неверный код }
+  /auth/refresh:
+    post:
+      summary: Обновление access-токена по refresh-cookie (токен вращается, старый инвалидируется)
+      security: []
+      responses:
+        '200': { description: Новый access-токен, content: { application/json: { schema: { $ref: '#/components/schemas/TokenResponse' } } } }
+        '401': { description: Refresh недействителен/отозван }
+  /auth/logout:
+    post:
+      summary: Выход — отзыв refresh-сессии и jti access-токена (Redis blacklist до конца TTL)
+      responses: { '204': { description: Сессия завершена } }
+  /auth/me:
+    get:
+      summary: Профиль текущего пользователя и его эффективные права
+      responses:
+        '200':
+          description: Профиль
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  username: { type: string }
+                  email: { type: string, format: email }
+                  displayName: { type: string }
+                  source: { type: string, enum: [LOCAL, AD_LDAP] }
+                  groups: { type: array, items: { type: string } }
+                  permissions: { type: array, items: { type: string } }
+                  quotaBytes: { type: integer, format: int64 }
+                  usedBytes: { type: integer, format: int64 }
+  /auth/mfa/totp/setup:
+    post:
+      summary: Начать привязку TOTP — вернуть секрет и otpauth URI для QR
+      responses:
+        '200':
+          description: Данные привязки
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { secret: { type: string }, otpauthUri: { type: string } }
+  /auth/mfa/totp/confirm:
+    post:
+      summary: Подтвердить привязку первым кодом и включить 2FA
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [code], properties: { code: { type: string } } }
+      responses: { '204': { description: 2FA включена } }
+  /auth/app-passwords:
+    get:
+      summary: Пароли приложений для внешних клиентов (Outlook/Thunderbird по IMAP/SMTP)
+      responses:
+        '200':
+          description: Список (сами пароли не отдаются повторно)
+          content:
+            application/json:
+              schema: { type: array, items: { type: object, properties: { id: { type: string, format: uuid }, label: { type: string }, createdAt: { type: string, format: date-time }, lastUsedAt: { type: string, format: date-time } } } }
+    post:
+      summary: Создать пароль приложения (значение показывается один раз)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [label], properties: { label: { type: string, example: 'Thunderbird дома' } } }
+      responses:
+        '201':
+          description: Создан
+          content:
+            application/json:
+              schema: { type: object, properties: { id: { type: string, format: uuid }, password: { type: string } } }
+  /oauth2/jwks:
+    get:
+      summary: Публичные ключи RS256 для проверки JWT всеми сервисами
+      security: []
+      responses: { '200': { description: JWKS } }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  schemas:
+    TokenResponse:
+      type: object
+      properties:
+        accessToken: { type: string }
+        tokenType: { type: string, example: Bearer }
+        expiresIn: { type: integer, example: 900 }
+security:
+  - bearerAuth: []

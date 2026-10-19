@@ -1,0 +1,174 @@
+openapi: 3.0.3
+info:
+  title: Corvex Chat API
+  version: 1.0.0
+  description: |
+    REST — комнаты, история, поиск, файлы. Реальное время — STOMP/WebSocket (не OpenAPI, контракт в docs/03-api-contracts.md):
+    CONNECT /ws/chat (Bearer JWT), SEND /app/rooms/{id}/send, SUBSCRIBE /topic/rooms/{id}, /user/queue/notifications.
+servers:
+  - url: https://mail.company.local/api/v1
+paths:
+  /chat/rooms:
+    get:
+      summary: Комнаты пользователя (личные, группы, каналы) с последним сообщением и непрочитанными
+      responses:
+        '200':
+          description: Список, сортировка по активности
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/RoomSummary' } }
+    post:
+      summary: Создать групповой чат (CHAT_CREATE_GROUP) или канал (CHAT_CREATE_CHANNEL)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, memberIds]
+              properties:
+                kind: { type: string, enum: [GROUP, CHANNEL_PUBLIC, CHANNEL_PRIVATE] }
+                title: { type: string }
+                memberIds: { type: array, items: { type: string, format: uuid } }
+      responses: { '201': { description: Создана }, '403': { description: Нет права создавать каналы } }
+  /chat/rooms/direct/{userId}:
+    post:
+      summary: Открыть (или получить существующий) личный диалог
+      parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Комната, content: { application/json: { schema: { $ref: '#/components/schemas/RoomSummary' } } } }
+  /chat/rooms/{roomId}/messages:
+    get:
+      summary: История (курсорная пагинация назад от новых), включая треды по threadRootId
+      parameters:
+        - { name: roomId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: before, in: query, schema: { type: string }, description: ID сообщения-курсора }
+        - { name: threadRootId, in: query, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 200 } }
+      responses:
+        '200':
+          description: Страница сообщений
+          content:
+            application/json:
+              schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/ChatMessage' } }, hasMore: { type: boolean } } }
+        '403': { description: Пользователь не участник комнаты }
+  /chat/messages/{messageId}:
+    patch:
+      summary: Редактировать своё сообщение (старый текст уходит в message_edit_history)
+      parameters: [{ name: messageId, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [bodyMarkdown], properties: { bodyMarkdown: { type: string, maxLength: 32000 } } }
+      responses: { '200': { description: 'Обновлено, событие разослано подписчикам комнаты' } }
+    delete:
+      summary: Удалить (мягко — «сообщение удалено»); чужое — только с CHAT_MODERATE
+      parameters: [{ name: messageId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '204': { description: Удалено } }
+  /chat/messages/{messageId}/reactions:
+    put:
+      summary: Поставить/снять эмодзи-реакцию (идемпотентно)
+      parameters: [{ name: messageId, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [emoji], properties: { emoji: { type: string, example: '👍' } } }
+      responses: { '204': { description: Готово } }
+  /chat/messages/{messageId}/pin:
+    put:
+      summary: Закрепить сообщение в комнате
+      parameters: [{ name: messageId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '204': { description: Закреплено } }
+    delete:
+      summary: Открепить
+      parameters: [{ name: messageId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '204': { description: Откреплено } }
+  /chat/rooms/{roomId}/read:
+    post:
+      summary: Отметить прочитанным до сообщения (индикаторы доставлено/прочитано)
+      parameters: [{ name: roomId, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [lastReadMessageId], properties: { lastReadMessageId: { type: string, format: uuid } } }
+      responses: { '204': { description: Отмечено } }
+  /chat/search:
+    get:
+      summary: Поиск по истории чатов (Elasticsearch, только комнаты пользователя)
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string } }
+        - { name: roomId, in: query, schema: { type: string, format: uuid } }
+      responses: { '200': { description: Совпадения с контекстом } }
+  /chat/presence:
+    get:
+      summary: Статусы присутствия по списку пользователей (Redis, online/away/dnd/offline)
+      parameters:
+        - { name: userIds, in: query, required: true, schema: { type: array, items: { type: string, format: uuid } } }
+      responses:
+        '200':
+          description: Карта userId → статус
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: { type: string, enum: [ONLINE, AWAY, DND, OFFLINE] } }
+    put:
+      summary: Установить свой статус (ONLINE/AWAY/DND)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [status], properties: { status: { type: string, enum: [ONLINE, AWAY, DND] } } }
+      responses: { '204': { description: Установлен } }
+  /files:
+    post:
+      summary: Загрузить файл/изображение/голосовое для чата (chat-file-service, AV-сканирование синхронно для ≤25 МБ)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+                roomId: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Загружено
+          content:
+            application/json:
+              schema: { type: object, properties: { fileRef: { type: string }, fileName: { type: string }, sizeBytes: { type: integer, format: int64 }, contentType: { type: string }, previewUrl: { type: string, nullable: true } } }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  schemas:
+    RoomSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [DIRECT, GROUP, CHANNEL_PUBLIC, CHANNEL_PRIVATE, SYSTEM] }
+        title: { type: string, nullable: true }
+        readOnly: { type: boolean }
+        unreadCount: { type: integer }
+        mentionCount: { type: integer }
+        lastMessage: { $ref: '#/components/schemas/ChatMessage' }
+    ChatMessage:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        roomId: { type: string, format: uuid }
+        authorId: { type: string, format: uuid }
+        kind: { type: string, enum: [TEXT, FILE, IMAGE, VOICE, VIDEO, SYSTEM] }
+        bodyMarkdown: { type: string, nullable: true }
+        threadRootId: { type: string, format: uuid, nullable: true }
+        fileRef: { type: string, nullable: true }
+        pinned: { type: boolean }
+        editedAt: { type: string, format: date-time, nullable: true }
+        deleted: { type: boolean }
+        reactions:
+          type: array
+          items: { type: object, properties: { emoji: { type: string }, count: { type: integer }, userIds: { type: array, items: { type: string, format: uuid } } } }
+        createdAt: { type: string, format: date-time }
+security:
+  - bearerAuth: []

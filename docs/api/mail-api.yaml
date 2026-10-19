@@ -1,0 +1,210 @@
+openapi: 3.0.3
+info:
+  title: Corvex Mail API
+  version: 1.0.0
+  description: |
+    REST API веб-клиента почты поверх mail-storage-service (отправка уходит в mail-smtp-service через RabbitMQ).
+    Внешние клиенты ходят не сюда, а по IMAP/POP3/SMTP. Списки — курсорная пагинация, тела писем отдаются
+    санитизированным HTML (XSS) + plain text.
+servers:
+  - url: https://mail.company.local/api/v1
+paths:
+  /mail/folders:
+    get:
+      summary: Дерево папок текущего пользователя со счётчиками непрочитанных
+      responses:
+        '200':
+          description: Папки
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string, format: uuid }
+                    parentId: { type: string, format: uuid, nullable: true }
+                    name: { type: string }
+                    specialUse: { type: string, enum: [INBOX, SENT, DRAFTS, TRASH, SPAM, ARCHIVE], nullable: true }
+                    unreadCount: { type: integer }
+                    totalCount: { type: integer }
+    post:
+      summary: Создать папку (MAIL_MANAGE_FOLDERS)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties: { name: { type: string }, parentId: { type: string, format: uuid, nullable: true } }
+      responses: { '201': { description: Создана }, '409': { description: Имя занято в этом родителе } }
+  /mail/folders/{folderId}:
+    patch:
+      summary: Переименовать/переместить папку (системные переименовывать нельзя)
+      parameters: [{ name: folderId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Обновлена } }
+    delete:
+      summary: Удалить папку (письма — в Корзину)
+      parameters: [{ name: folderId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '204': { description: Удалена } }
+  /mail/folders/{folderId}/messages:
+    get:
+      summary: Список писем папки (курсор по internalDate+id, только метаданные и сниппет)
+      parameters:
+        - { name: folderId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 200 } }
+        - { name: sort, in: query, schema: { type: string, enum: [dateDesc, dateAsc], default: dateDesc } }
+      responses:
+        '200':
+          description: Страница писем
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/MessageSummary' } }
+                  nextCursor: { type: string, nullable: true }
+  /mail/messages/{messageId}:
+    get:
+      summary: Полное письмо — заголовки, санитизированный HTML, plain text, список вложений
+      parameters: [{ name: messageId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Письмо, content: { application/json: { schema: { $ref: '#/components/schemas/MessageDetail' } } } }
+    delete:
+      summary: В Корзину; из Корзины — окончательно
+      parameters: [{ name: messageId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '204': { description: Готово } }
+  /mail/messages/{messageId}/flags:
+    patch:
+      summary: Изменить флаги (seen/flagged) — синхронизируется с IMAP-состоянием
+      parameters: [{ name: messageId, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: { seen: { type: boolean }, flagged: { type: boolean } }
+      responses: { '200': { description: Флаги обновлены } }
+  /mail/messages/bulk-move:
+    post:
+      summary: Пакетное перемещение писем в папку
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [messageIds, targetFolderId]
+              properties:
+                messageIds: { type: array, items: { type: string, format: uuid }, maxItems: 1000 }
+                targetFolderId: { type: string, format: uuid }
+      responses: { '202': { description: Принято к выполнению (асинхронно при больших объёмах) } }
+  /mail/messages/send:
+    post:
+      summary: Отправить письмо (MAIL_SEND_INTERNAL / MAIL_SEND_EXTERNAL проверяются по доменам получателей)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to, subject]
+              properties:
+                to: { type: array, items: { type: string, format: email } }
+                cc: { type: array, items: { type: string, format: email } }
+                bcc: { type: array, items: { type: string, format: email } }
+                subject: { type: string }
+                htmlBody: { type: string }
+                textBody: { type: string }
+                signatureId: { type: string, format: uuid, nullable: true }
+                attachmentIds: { type: array, items: { type: string } }
+                inReplyTo: { type: string, nullable: true }
+      responses:
+        '202': { description: Поставлено в очередь отправки, копия сохранена в Отправленных }
+        '403': { description: Нет права на внешнюю отправку }
+        '413': { description: Превышен лимит размера письма }
+        '507': { description: Превышена дисковая квота отправителя }
+  /mail/drafts:
+    post:
+      summary: Создать/обновить черновик (автосохранение редактора)
+      responses: { '201': { description: Черновик сохранён } }
+  /mail/attachments:
+    post:
+      summary: Загрузить вложение до отправки (потоково, AV-сканирование до публикации)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { type: object, properties: { file: { type: string, format: binary } } }
+      responses:
+        '201':
+          description: Загружено
+          content:
+            application/json:
+              schema: { type: object, properties: { sha256: { type: string }, sizeBytes: { type: integer, format: int64 }, avStatus: { type: string, enum: [PENDING, CLEAN, INFECTED, ERROR] } } }
+  /mail/messages/{messageId}/attachments/{partIndex}:
+    get:
+      summary: Скачать вложение (403 при avStatus=INFECTED/ERROR)
+      parameters:
+        - { name: messageId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: partIndex, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: Файл, content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+        '403': { description: Вложение заблокировано антивирусом }
+  /mail/search:
+    get:
+      summary: Полнотекстовый поиск (Elasticsearch — тема, отправитель, получатель, тело, имена/текст вложений)
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string }, example: 'from:buhgalteria счёт has:attachment after:2026-01-01' }
+        - { name: limit, in: query, schema: { type: integer, default: 50 } }
+      responses:
+        '200': { description: Результаты с подсветкой, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/MessageSummary' } }, tookMs: { type: integer } } } } } }
+  /mail/rules:
+    get: { summary: Правила автосортировки пользователя, responses: { '200': { description: Список по позиции } } }
+    post: { summary: Создать правило (условия/действия JSON — см. схему mail_rules), responses: { '201': { description: Создано } } }
+  /mail/contacts:
+    get: { summary: Адресная книга с группами, responses: { '200': { description: Контакты } } }
+    post: { summary: Добавить контакт, responses: { '201': { description: Добавлен } } }
+  /mail/signatures:
+    get: { summary: Подписи пользователя, responses: { '200': { description: Список } } }
+    post: { summary: Создать подпись, responses: { '201': { description: Создана } } }
+  /mail/vacation:
+    get: { summary: Настройки автоответа (отпуск), responses: { '200': { description: Настройки } } }
+    put: { summary: Включить/изменить автоответ, responses: { '200': { description: Сохранено } } }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  schemas:
+    MessageSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        folderId: { type: string, format: uuid }
+        sender: { type: string }
+        subject: { type: string }
+        snippet: { type: string }
+        internalDate: { type: string, format: date-time }
+        sizeBytes: { type: integer, format: int64 }
+        seen: { type: boolean }
+        flagged: { type: boolean }
+        hasAttachments: { type: boolean }
+        spamScore: { type: number, nullable: true }
+    MessageDetail:
+      allOf:
+        - $ref: '#/components/schemas/MessageSummary'
+        - type: object
+          properties:
+            to: { type: array, items: { type: string } }
+            cc: { type: array, items: { type: string } }
+            sanitizedHtml: { type: string }
+            textBody: { type: string }
+            attachments:
+              type: array
+              items:
+                type: object
+                properties: { partIndex: { type: integer }, fileName: { type: string }, sizeBytes: { type: integer, format: int64 }, contentType: { type: string }, avStatus: { type: string } }
+security:
+  - bearerAuth: []
