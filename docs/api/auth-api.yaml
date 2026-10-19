@@ -77,6 +77,11 @@ paths:
                 properties:
                   id: { type: string, format: uuid }
                   username: { type: string }
+                  status: { type: string, enum: [ACTIVE, BLOCKED, DISABLED] }
+                  department: { type: string, nullable: true }
+                  mustChangePassword: { type: boolean }
+                  totpEnabled: { type: boolean }
+                  username: { type: string }
                   email: { type: string, format: email }
                   displayName: { type: string }
                   source: { type: string, enum: [LOCAL, AD_LDAP] }
@@ -84,6 +89,37 @@ paths:
                   permissions: { type: array, items: { type: string } }
                   quotaBytes: { type: integer, format: int64 }
                   usedBytes: { type: integer, format: int64 }
+  /auth/change-password:
+    post:
+      summary: Смена своего пароля (прочие refresh-сессии отзываются)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string, format: password }
+                newPassword: { type: string, format: password, description: 'Минимум 10 символов, буквы+цифры' }
+      responses:
+        '204': { description: Пароль изменён }
+        '401': { description: Текущий пароль неверен }
+        '422': { description: Новый пароль не проходит политику }
+  /auth/mfa/totp/disable:
+    post:
+      summary: Отключить 2FA (требуется текущий TOTP-код)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [code], properties: { code: { type: string } } }
+      responses: { '204': { description: 2FA отключена } }
+  /auth/app-passwords/{id}:
+    delete:
+      summary: Отозвать пароль приложения
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '204': { description: Отозван } }
   /auth/mfa/totp/setup:
     post:
       summary: Начать привязку TOTP — вернуть секрет и otpauth URI для QR

@@ -39,8 +39,8 @@ public class TokenService {
     public record AccessToken(String value, Instant expiresAt) {
     }
 
-    public AccessToken issueAccessToken(UUID userId, String username, Collection<String> permissions,
-                                        boolean mfaVerified) {
+    public AccessToken issueAccessToken(UUID userId, String username, Collection<String> groups,
+                                        Collection<String> permissions, boolean mfaVerified) {
         Instant now = Instant.now();
         Instant expiresAt = now.plus(accessTtl);
         JwtClaimsSet claims = JwtClaimsSet.builder()

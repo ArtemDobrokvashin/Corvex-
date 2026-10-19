@@ -123,12 +123,20 @@ services:
       CORVEX_TOTP_ENC_KEY: ${CORVEX_TOTP_ENC_KEY:-}
       CORVEX_LDAP_URL: ${CORVEX_LDAP_URL:-}
       CORVEX_LDAP_BASE: ${CORVEX_LDAP_BASE:-}
+      CORVEX_ADMIN_SERVICE_URL: http://admin-service:8090
+      CORVEX_BOOTSTRAP_ADMIN_USERNAME: ${CORVEX_BOOTSTRAP_ADMIN_USERNAME:-admin}
+      CORVEX_BOOTSTRAP_ADMIN_PASSWORD: ${CORVEX_BOOTSTRAP_ADMIN_PASSWORD:-}
+      CORVEX_BOOTSTRAP_ADMIN_EMAIL: ${CORVEX_BOOTSTRAP_ADMIN_EMAIL:-}
     volumes: ["${CORVEX_SECRETS_DIR:-./infra/secrets}:/run/secrets:ro"]
     depends_on: { postgres: { condition: service_healthy }, redis: { condition: service_healthy } }
 
   admin-service:
     <<: *java-common
     build: ./services/admin-service
+    environment:
+      <<: *common-env
+      CORVEX_AUTH_SERVICE_URL: http://auth-service:8081
+      CORVEX_BOOTSTRAP_ADMIN_USERNAME: ${CORVEX_BOOTSTRAP_ADMIN_USERNAME:-admin}
     depends_on: { postgres: { condition: service_healthy }, auth-service: { condition: service_healthy } }
 
   mail-storage-service:

@@ -167,9 +167,12 @@ config — adjust it), user `admin`, password from `GRAFANA_PASSWORD` in `.env`.
 
 ## 9. Post-launch smoke tests
 
-1. **Web UI opens:** `https://mail.<domain>` → Corvex login. Signing in with any
-   credentials currently enters the clearly labelled **demo mode** (login API is
-   stage 1): mail, chat and admin screens are fully clickable on sample data.
+1. **Web UI & first sign-in:** `https://mail.<domain>` → Corvex login. On the very
+   first start a superadmin is created: username from `CORVEX_BOOTSTRAP_ADMIN_USERNAME`
+   (`admin`), password from `CORVEX_BOOTSTRAP_ADMIN_PASSWORD` — or, if that is empty,
+   generated and printed ONCE in the log: `docker compose logs auth-service | grep BOOTSTRAP`.
+   The UI forces a password change, then lets you create users/groups in the admin panel.
+   (The "View demo without a server" button stays for the standalone showcase.)
 2. **Gateway alive:** `curl.exe -k https://mail.<domain>/api/v1/auth/me` → `401` expected.
 3. **JWKS:** `docker compose exec web-gateway wget -qO- http://auth-service:8081/oauth2/jwks` → JSON public key.
 4. **Migrations applied:** `docker compose logs auth-service | Select-String Flyway` (repeat for admin/chat/mail-storage services).
@@ -222,5 +225,5 @@ migrations automatically). Rollback: restore previous commit/image tags and
 | nginx: `cannot load certificate` | Files missing in `infra\certs` — run step 4 or 6 |
 | ClamAV takes very long | First run downloads ~200 MB of signatures; offline — load databases into the `clamav-data` volume manually |
 | Elasticsearch restart-loops | Needs ≥2.5 GB RAM; on a Linux VM also `sudo sysctl -w vm.max_map_count=262144` (persist in `/etc/sysctl.conf`) |
-| Yellow "demo mode" banner in the UI | Expected at the current stage (no login API yet); disappears after stage 1 |
+| Yellow "demo mode" banner in the UI | You entered via the demo button, or the backend is unreachable; sign out and use a real account (bootstrap admin) |
 | External mail never arrives | By design for now: stage 2 is pending and SMTP is disabled. Afterwards: ports 25 reachable, MX/PTR correct, mail-tester.com ≥ 9/10 |

@@ -27,7 +27,7 @@ public class GatewaySecurityConfig {
                         .pathMatchers("/api/v1/auth/login", "/api/v1/auth/refresh",
                                 "/api/v1/auth/mfa/verify", "/actuator/health/**",
                                 "/.well-known/autoconfig/**", "/autodiscover/**").permitAll()
-                        .pathMatchers("/api/v1/admin/**").hasAuthority("SCOPE_admin")
+                        // Права на /api/v1/admin/** проверяет сам admin-service по claim permissions (SCOPE_admin в токене нет и быть не должно)
                         .anyExchange().authenticated())
                 .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()))
                 .build();

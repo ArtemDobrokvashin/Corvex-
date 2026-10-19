@@ -24,10 +24,11 @@
 
 ## Статус — честно и коротко
 
-**Каркас и технический проект готовы; рабочая почта для сотрудников — пока нет.**
-Интерфейс полностью работает в помеченном демо-режиме, весь стек поднимается
-одной командой, но эндпоинты входа, движки IMAP/POP3 и конвейер доставки писем —
-этапы 1–3 плана разработки. Боевые MX-записи на сервер пока направлять нельзя.
+**Этап 1 выполнен: настоящий вход, пользователи и админка; рабочая почта — ещё нет.**
+Вход (Argon2id, JWT с вращающимся refresh, TOTP 2FA), управление пользователями,
+группы с 24 правами и аудит работают на реальном бэкенде; демо-режим остался явной
+кнопкой витрины. Движки IMAP/POP3 и конвейер доставки писем — этапы 2–3 плана.
+Боевые MX-записи на сервер пока направлять нельзя.
 
 👉 Подробный аудит по каждому компоненту: [`docs/READINESS.md`](docs/READINESS.md)
 
@@ -59,7 +60,9 @@ docker compose --profile monitoring up -d    # Prometheus, Grafana, Loki, але
 docker compose ps                            # дождаться healthy у всех сервисов
 ```
 
-Открыть `https://mail.<ваш-домен>`.
+Открыть `https://mail.<ваш-домен>`. Первый вход — суперадминистратор `admin`;
+пароль задаётся `CORVEX_BOOTSTRAP_ADMIN_PASSWORD` либо печатается один раз в лог:
+`docker compose logs auth-service | Select-String BOOTSTRAP`.
 
 📖 **Подробная инструкция** (Hyper-V/Docker Desktop/Linux, брандмауэр, DNS
 MX/SPF/DKIM/DMARC, сертификаты, дымовые тесты, бэкапы, устранение проблем):
@@ -132,10 +135,11 @@ Yandex Browser, Edge, Firefox, tablets and smartphones.
 
 ## Status — honest and short
 
-**The architecture, contracts and service skeletons are done; a working mail
-server for real employees is not — yet.** The UI runs fully in a clearly labelled
-demo mode and the whole stack starts with one command, but login endpoints, the
-IMAP/POP3 engines and the mail delivery pipeline are roadmap stages 1–3.
+**Stage 1 is done: real sign-in, users and admin panel; a working mail server —
+not yet.** Authentication (Argon2id, JWT with rotating refresh tokens, TOTP 2FA),
+user management, groups with 24 permissions and audit run on the real backend;
+demo mode remains an explicit showcase button. The IMAP/POP3 engines and the
+mail delivery pipeline are roadmap stages 2–3.
 Do not point production MX records at it yet.
 
 👉 Per-component audit: [`docs/READINESS.md`](docs/READINESS.md)
@@ -168,7 +172,9 @@ docker compose --profile monitoring up -d    # Prometheus, Grafana, Loki, alerts
 docker compose ps                            # wait until everything is (healthy)
 ```
 
-Open `https://mail.<your-domain>`.
+Open `https://mail.<your-domain>`. First sign-in is the bootstrap superadmin `admin`;
+the password comes from `CORVEX_BOOTSTRAP_ADMIN_PASSWORD` or is printed once in the log:
+`docker compose logs auth-service | grep BOOTSTRAP`.
 
 📖 **Detailed guide** (Hyper-V / Docker Desktop / Linux, firewall, DNS
 MX/SPF/DKIM/DMARC, certificates, smoke tests, backups, troubleshooting):

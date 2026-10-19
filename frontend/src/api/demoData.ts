@@ -71,11 +71,54 @@ export const PERMISSION_LABELS: Record<string, string> = {
   AUDIT_VIEW: 'Журнал аудита',
 };
 
-export const DEMO_GROUPS: { code: string; name: string; members: number; permissions: string[] }[] = [
-  { code: 'SUPER_ADMIN', name: 'Супер администратор', members: 1, permissions: Object.keys(PERMISSION_LABELS) },
-  { code: 'ADMIN', name: 'Администратор', members: 3, permissions: ['MAIL_READ_OWN','MAIL_SEND_INTERNAL','MAIL_SEND_EXTERNAL','MAIL_MANAGE_FOLDERS','CHAT_READ','CHAT_WRITE','CHAT_CREATE_GROUP','CHAT_CREATE_CHANNEL','CHAT_MODERATE','CHAT_SEND_FILES','ADMIN_USERS_MANAGE','ADMIN_GROUPS_MANAGE','ADMIN_QUOTAS_MANAGE','ADMIN_SECURITY_POLICY','ADMIN_MAIL_POLICY','ADMIN_BACKUP','ANALYTICS_VIEW_COMPANY','AUDIT_VIEW'] },
-  { code: 'DIRECTOR', name: 'Директор', members: 2, permissions: ['MAIL_READ_OWN','MAIL_SEND_INTERNAL','MAIL_SEND_EXTERNAL','MAIL_MANAGE_FOLDERS','MAIL_DELEGATE_ACCESS','MAIL_EXPORT','CHAT_READ','CHAT_WRITE','CHAT_CREATE_GROUP','CHAT_SEND_FILES','CHAT_VOICE_VIDEO','ANALYTICS_VIEW_COMPANY'] },
-  { code: 'ACCOUNTANT', name: 'Бухгалтер', members: 8, permissions: ['MAIL_READ_OWN','MAIL_SEND_INTERNAL','MAIL_SEND_EXTERNAL','MAIL_MANAGE_FOLDERS','MAIL_BULK_SEND','CHAT_READ','CHAT_WRITE','CHAT_CREATE_GROUP','CHAT_SEND_FILES'] },
-  { code: 'MANAGER', name: 'Руководитель', members: 24, permissions: ['MAIL_READ_OWN','MAIL_SEND_INTERNAL','MAIL_SEND_EXTERNAL','MAIL_MANAGE_FOLDERS','CHAT_READ','CHAT_WRITE','CHAT_CREATE_GROUP','CHAT_SEND_FILES','CHAT_VOICE_VIDEO','ANALYTICS_VIEW_OWN_UNIT'] },
-  { code: 'USER', name: 'Обычный пользователь', members: 812, permissions: ['MAIL_READ_OWN','MAIL_SEND_INTERNAL','MAIL_SEND_EXTERNAL','MAIL_MANAGE_FOLDERS','CHAT_READ','CHAT_WRITE','CHAT_CREATE_GROUP','CHAT_SEND_FILES'] },
+export const DEMO_GROUPS: { code: string; name: string; isSystem: boolean; enabled: boolean; memberCount: number; permissions: string[] }[] = [
+  { code: 'SUPER_ADMIN', name: 'Супер администратор', isSystem: true, enabled: true, memberCount: 1, permissions: Object.keys(PERMISSION_LABELS) },
+  { code: 'ADMIN', name: 'Администратор', isSystem: true, enabled: true, memberCount: 3, permissions: ['MAIL_READ_OWN','MAIL_SEND_INTERNAL','MAIL_SEND_EXTERNAL','MAIL_MANAGE_FOLDERS','CHAT_READ','CHAT_WRITE','CHAT_CREATE_GROUP','CHAT_CREATE_CHANNEL','CHAT_MODERATE','CHAT_SEND_FILES','ADMIN_USERS_MANAGE','ADMIN_GROUPS_MANAGE','ADMIN_QUOTAS_MANAGE','ADMIN_SECURITY_POLICY','ADMIN_MAIL_POLICY','ADMIN_BACKUP','ANALYTICS_VIEW_COMPANY','AUDIT_VIEW'] },
+  { code: 'DIRECTOR', name: 'Директор', isSystem: true, enabled: true, memberCount: 2, permissions: ['MAIL_READ_OWN','MAIL_SEND_INTERNAL','MAIL_SEND_EXTERNAL','MAIL_MANAGE_FOLDERS','MAIL_DELEGATE_ACCESS','MAIL_EXPORT','CHAT_READ','CHAT_WRITE','CHAT_CREATE_GROUP','CHAT_SEND_FILES','CHAT_VOICE_VIDEO','ANALYTICS_VIEW_COMPANY'] },
+  { code: 'ACCOUNTANT', name: 'Бухгалтер', isSystem: true, enabled: true, memberCount: 8, permissions: ['MAIL_READ_OWN','MAIL_SEND_INTERNAL','MAIL_SEND_EXTERNAL','MAIL_MANAGE_FOLDERS','MAIL_BULK_SEND','CHAT_READ','CHAT_WRITE','CHAT_CREATE_GROUP','CHAT_SEND_FILES'] },
+  { code: 'MANAGER', name: 'Руководитель', isSystem: true, enabled: true, memberCount: 24, permissions: ['MAIL_READ_OWN','MAIL_SEND_INTERNAL','MAIL_SEND_EXTERNAL','MAIL_MANAGE_FOLDERS','CHAT_READ','CHAT_WRITE','CHAT_CREATE_GROUP','CHAT_SEND_FILES','CHAT_VOICE_VIDEO','ANALYTICS_VIEW_OWN_UNIT'] },
+  { code: 'USER', name: 'Обычный пользователь', isSystem: true, enabled: true, memberCount: 812, permissions: ['MAIL_READ_OWN','MAIL_SEND_INTERNAL','MAIL_SEND_EXTERNAL','MAIL_MANAGE_FOLDERS','CHAT_READ','CHAT_WRITE','CHAT_CREATE_GROUP','CHAT_SEND_FILES'] },
+];
+
+export interface DemoAdminUser {
+  id: string;
+  username: string;
+  email: string;
+  displayName: string;
+  source: string;
+  status: string;
+  department: string | null;
+  groups: string[];
+  quotaBytes: number;
+  usedBytes: number;
+  mustChangePassword: boolean;
+  totpEnabled: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+}
+
+export const DEMO_USERS: DemoAdminUser[] = [
+  { id: 'demo-u1', username: 'admin', email: 'admin@company.local', displayName: 'Супер администратор', source: 'LOCAL', status: 'ACTIVE', department: 'IT', groups: ['SUPER_ADMIN'], quotaBytes: 5368709120, usedBytes: 0, mustChangePassword: false, totpEnabled: true, lastLoginAt: '2026-10-19T08:15:00Z', createdAt: '2026-10-01T00:00:00Z' },
+  { id: 'demo-u2', username: 'i.ivanov', email: 'Ivanov@company.local', displayName: 'Ivanov', source: 'LOCAL', status: 'ACTIVE', department: 'Руководство', groups: ['DIRECTOR'], quotaBytes: 10737418240, usedBytes: 0, mustChangePassword: false, totpEnabled: false, lastLoginAt: '2026-10-19T07:40:00Z', createdAt: '2026-10-02T00:00:00Z' },
+  { id: 'demo-u3', username: 'a.petrova', email: 'a.petrova@company.local', displayName: 'Петрова Анна', source: 'LOCAL', status: 'ACTIVE', department: 'Бухгалтерия', groups: ['ACCOUNTANT'], quotaBytes: 5368709120, usedBytes: 0, mustChangePassword: true, totpEnabled: false, lastLoginAt: null, createdAt: '2026-10-18T00:00:00Z' },
+  { id: 'demo-u4', username: 'd.kozlov', email: 'd.kozlov@company.local', displayName: 'Козлов Дмитрий', source: 'LOCAL', status: 'BLOCKED', department: 'IT', groups: ['MANAGER', 'USER'], quotaBytes: 5368709120, usedBytes: 0, mustChangePassword: false, totpEnabled: false, lastLoginAt: '2026-10-15T11:02:00Z', createdAt: '2026-10-03T00:00:00Z' },
+];
+
+export interface DemoAuditEntry {
+  id: number;
+  actorId: string | null;
+  actorName: string | null;
+  action: string;
+  entity: string | null;
+  entityId: string | null;
+  details: Record<string, unknown>;
+  ipAddress: string | null;
+  createdAt: string;
+}
+
+export const DEMO_AUDIT: DemoAuditEntry[] = [
+  { id: 5, actorId: 'demo-u1', actorName: 'admin', action: 'USER_BLOCKED', entity: 'user', entityId: 'demo-u4', details: {}, ipAddress: '192.168.1.10', createdAt: '2026-10-18T15:20:00Z' },
+  { id: 4, actorId: 'demo-u1', actorName: 'admin', action: 'USER_CREATED', entity: 'user', entityId: 'demo-u3', details: { username: 'a.petrova', groups: ['ACCOUNTANT'] }, ipAddress: '192.168.1.10', createdAt: '2026-10-18T09:05:00Z' },
+  { id: 3, actorId: 'demo-u1', actorName: 'admin', action: 'GROUP_PERMISSIONS_CHANGED', entity: 'group', entityId: 'ACCOUNTANT', details: { added: ['MAIL_BULK_SEND'], removed: [] }, ipAddress: '192.168.1.10', createdAt: '2026-10-17T12:44:00Z' },
+  { id: 2, actorId: null, actorName: 'system', action: 'BOOTSTRAP_SUPERADMIN_ASSIGNED', entity: 'user', entityId: 'demo-u1', details: { group: 'SUPER_ADMIN' }, ipAddress: null, createdAt: '2026-10-01T00:01:00Z' },
 ];
