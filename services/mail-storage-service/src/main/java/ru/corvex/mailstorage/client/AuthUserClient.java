@@ -35,16 +35,23 @@ public class AuthUserClient {
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
     }
 
-    public record MailboxOwner(UUID id, String email, String status, long quotaBytes) {
+    public record MailboxOwner(UUID id, String email, String displayName, String status, long quotaBytes) {
         public boolean active() {
             return "ACTIVE".equalsIgnoreCase(status);
         }
     }
 
     public Optional<MailboxOwner> findByEmail(String email) {
-        String url = baseUrl + "/internal/users/by-email?email="
-                + URLEncoder.encode(email, StandardCharsets.UTF_8);
-        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+        String path = "/internal/users/by-email?email=" + URLEncoder.encode(email, StandardCharsets.UTF_8);
+        return fetch(path, email);
+    }
+
+    public Optional<MailboxOwner> findById(UUID id) {
+        return fetch("/internal/users/" + id, null);
+    }
+
+    private Optional<MailboxOwner> fetch(String path, String fallbackEmail) {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + path))
                 .timeout(Duration.ofSeconds(5))
                 .header(InternalTokenGuard.HEADER, tokens.tokenOrFail())
                 .GET()
@@ -60,7 +67,8 @@ public class AuthUserClient {
             JsonNode body = mapper.readTree(response.body());
             return Optional.of(new MailboxOwner(
                     UUID.fromString(body.path("id").asText()),
-                    body.path("email").asText(email),
+                    body.path("email").asText(fallbackEmail),
+                    body.path("displayName").asText(""),
                     body.path("status").asText(""),
                     body.path("quotaBytes").asLong(0)));
         } catch (IOException e) {

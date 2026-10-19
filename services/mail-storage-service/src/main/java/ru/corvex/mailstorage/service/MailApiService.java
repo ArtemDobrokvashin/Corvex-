@@ -125,6 +125,27 @@ public class MailApiService {
         return toListItem(m, hasAttachments(m.getId()));
     }
 
+    @Transactional
+    public MailDtos.MessageListItem moveMessage(UUID ownerId, UUID messageId, UUID targetFolderId) throws IOException {
+        MessageMetadata m = loadOwned(ownerId, messageId);
+        MailFolder target = folders.findByIdAndOwnerId(targetFolderId, ownerId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Папка назначения не найдена"));
+        if (m.getFolder().getId().equals(target.getId())) {
+            return toListItem(m, hasAttachments(m.getId()));
+        }
+        target = folders.lockById(target.getId()).orElseThrow();
+        long uid = target.getUidNext();
+        target.setUidNext(uid + 1);
+        folders.save(target);
+
+        String newPath = maildir.moveMessageToFolder(m.getMaildirPath(), target.getName(), m.isSeen()).toString();
+        m.setFolder(target);
+        m.setUid(uid);
+        m.setMaildirPath(newPath);
+        m = messages.save(m);
+        return toListItem(m, hasAttachments(m.getId()));
+    }
+
     private MessageMetadata loadOwned(UUID ownerId, UUID messageId) {
         return messages.findByIdAndOwnerId(messageId, ownerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Письмо не найдено"));

@@ -115,6 +115,36 @@ public class MaildirStorage {
         return resolved;
     }
 
+    /**
+     * Перемещает .eml между Maildir-папками одного ящика. Первый сегмент относительного пути —
+     * уже санитизированный mailbox из storeMessage, поэтому владельцу не нужен повторный lookup.
+     */
+    public Path moveMessageToFolder(String relativePath, String targetFolder, boolean seen) throws IOException {
+        Path source = resolveMessagePath(relativePath);
+        Path relative = mailRoot.toAbsolutePath().normalize().relativize(source);
+        if (relative.getNameCount() < 1) {
+            throw new IllegalArgumentException("Некорректный путь письма");
+        }
+        String mailbox = relative.getName(0).toString();
+        Path dir = mailRoot.resolve(mailbox).resolve(sanitize(targetFolder));
+        Files.createDirectories(dir.resolve("tmp"));
+        Files.createDirectories(dir.resolve("new"));
+        Files.createDirectories(dir.resolve("cur"));
+        String name = source.getFileName().toString();
+        Path target = dir.resolve(seen ? "cur" : "new").resolve(name);
+        if (Files.exists(target) && !target.equals(source)) {
+            target = target.resolveSibling(System.currentTimeMillis() + "." + UUID.randomUUID() + ".eml");
+        }
+        if (!target.equals(source)) {
+            try {
+                Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(source, target);
+            }
+        }
+        return mailRoot.relativize(target);
+    }
+
     private static void writeAndSync(InputStream in, Path target) throws IOException {
         try (var out = new FileOutputStream(target.toFile())) {
             in.transferTo(out);

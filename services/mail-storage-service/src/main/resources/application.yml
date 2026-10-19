@@ -43,6 +43,7 @@ corvex:
   auth:
     base-url: ${CORVEX_AUTH_SERVICE_URL:http://auth-service:8081}
   mail:
+    domains: ${CORVEX_MAIL_DOMAINS:company.local}
     root: ${CORVEX_MAIL_ROOT:/data/mail}
     attachments: ${CORVEX_ATTACHMENT_ROOT:/data/attachments}
     spool: ${CORVEX_MAIL_SPOOL:/data/mail/_spool}

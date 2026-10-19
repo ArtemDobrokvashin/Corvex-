@@ -25,6 +25,9 @@ public class StoragePipelineAmqpConfig {
     public static final String QUEUE = "mail.storage.av-checked";
     public static final String DLQ = QUEUE + ".dlq";
     public static final String ROUTING_AV_CHECKED = "mail.av.checked";
+    public static final String BOUNCE_QUEUE = "mail.storage.outbound-bounced";
+    public static final String BOUNCE_DLQ = BOUNCE_QUEUE + ".dlq";
+    public static final String ROUTING_BOUNCED = "mail.outbound.bounced";
 
     @Bean
     Declarables storagePipelineDeclarables() {
@@ -35,9 +38,17 @@ public class StoragePipelineAmqpConfig {
                 .withArgument("x-dead-letter-routing-key", DLQ)
                 .build();
         Queue dlq = QueueBuilder.durable(DLQ).build();
+        Queue bounceQueue = QueueBuilder.durable(BOUNCE_QUEUE)
+                .withArgument("x-dead-letter-exchange", DLX)
+                .withArgument("x-dead-letter-routing-key", BOUNCE_DLQ)
+                .build();
+        Queue bounceDlq = QueueBuilder.durable(BOUNCE_DLQ).build();
         Binding binding = BindingBuilder.bind(queue).to(exchange).with(ROUTING_AV_CHECKED);
         Binding dlqBinding = BindingBuilder.bind(dlq).to(dlx).with(DLQ);
-        return new Declarables(exchange, dlx, queue, dlq, binding, dlqBinding);
+        Binding bounceBinding = BindingBuilder.bind(bounceQueue).to(exchange).with(ROUTING_BOUNCED);
+        Binding bounceDlqBinding = BindingBuilder.bind(bounceDlq).to(dlx).with(BOUNCE_DLQ);
+        return new Declarables(exchange, dlx, queue, dlq, bounceQueue, bounceDlq,
+                binding, dlqBinding, bounceBinding, bounceDlqBinding);
     }
 
     @Bean

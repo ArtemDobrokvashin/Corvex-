@@ -11,6 +11,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.stereotype.Component;
+import org.subethamail.smtp.AuthenticationHandlerFactory;
+import org.subethamail.smtp.auth.EasyAuthenticationHandlerFactory;
+import org.subethamail.smtp.auth.LoginFailedException;
 import org.subethamail.smtp.server.SMTPServer;
 
 import java.io.IOException;
@@ -23,7 +26,10 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -44,6 +50,21 @@ public class SmtpServerConfig {
     @Bean
     TopicExchange corvexMailExchange() {
         return new TopicExchange(InboundMessageHandlerFactory.EXCHANGE, true, false);
+    }
+
+    @Bean
+    AuthenticationHandlerFactory submissionAuthenticationHandlerFactory(SubmissionIdentityClient identities) {
+        return new EasyAuthenticationHandlerFactory((username, password) -> {
+            try {
+                if (identities.authenticate(username, password).isEmpty()) {
+                    throw new LoginFailedException("Authentication failed");
+                }
+            } catch (IllegalStateException e) {
+                // SMTP AUTH не различает временную недоступность бэкенда отдельным кодом на этом уровне;
+                // клиент увидит отказ AUTH, а причина останется в логах сервиса.
+                throw new LoginFailedException("Authentication temporarily unavailable");
+            }
+        });
     }
 
     @Bean
@@ -185,40 +206,77 @@ public class SmtpServerConfig {
 
     @Component
     static class SmtpListener {
-        private final InboundMessageHandlerFactory factory;
-        private final int port;
+        private final InboundMessageHandlerFactory inboundFactory;
+        private final SubmissionMessageHandlerFactory submissionFactory;
+        private final AuthenticationHandlerFactory submissionAuthFactory;
+        private final int inboundPort;
+        private final int submissionPort;
         private final boolean enabled;
         private final String hostname;
-        private SMTPServer server;
+        private final String tlsCertChainFile;
+        private final String tlsPrivateKeyFile;
+        private final List<SMTPServer> servers = new ArrayList<>();
 
-        SmtpListener(InboundMessageHandlerFactory factory,
-                     @Value("${corvex.smtp.inbound-port:2525}") int port,
+        SmtpListener(InboundMessageHandlerFactory inboundFactory,
+                     SubmissionMessageHandlerFactory submissionFactory,
+                     AuthenticationHandlerFactory submissionAuthFactory,
+                     @Value("${corvex.smtp.inbound-port:2525}") int inboundPort,
+                     @Value("${corvex.smtp.submission-port:2587}") int submissionPort,
                      @Value("${corvex.smtp.enabled:false}") boolean enabled,
-                     @Value("${corvex.smtp.hostname:${CORVEX_DOMAIN:mail.company.local}}") String hostname) {
-            this.factory = factory;
-            this.port = port;
+                     @Value("${corvex.smtp.hostname:${CORVEX_DOMAIN:mail.company.local}}") String hostname,
+                     @Value("${corvex.smtp.tls.cert-chain-file:${CORVEX_SMTP_TLS_CERT_FILE:/certs/fullchain.pem}}") String tlsCertChainFile,
+                     @Value("${corvex.smtp.tls.private-key-file:${CORVEX_SMTP_TLS_KEY_FILE:/certs/privkey.pem}}") String tlsPrivateKeyFile) {
+            this.inboundFactory = inboundFactory;
+            this.submissionFactory = submissionFactory;
+            this.submissionAuthFactory = submissionAuthFactory;
+            this.inboundPort = inboundPort;
+            this.submissionPort = submissionPort;
             this.enabled = enabled;
             this.hostname = hostname;
+            this.tlsCertChainFile = tlsCertChainFile;
+            this.tlsPrivateKeyFile = tlsPrivateKeyFile;
         }
 
         @PostConstruct
         void start() {
             if (!enabled) {
-                log.warn("SMTP listener disabled by corvex.smtp.enabled=false");
+                log.warn("SMTP listeners disabled by corvex.smtp.enabled=false");
                 return;
             }
-            server = new SMTPServer(factory);
-            server.setHostName(hostname);
-            server.setPort(port);
-            server.start();
-            log.info("SMTP inbound listener started on port {} (docker maps 25->>{})", port, port);
+            Optional<javax.net.ssl.SSLContext> tls = SmtpTlsSupport.buildContext(tlsCertChainFile, tlsPrivateKeyFile);
+
+            SMTPServer inbound = tls
+                    .map(ctx -> (SMTPServer) new SmtpTlsSupport.PemTlsSmtpServer(inboundFactory, null, ctx))
+                    .orElseGet(() -> new SMTPServer(inboundFactory));
+            inbound.setHostName(hostname);
+            inbound.setPort(inboundPort);
+            inbound.setEnableTLS(tls.isPresent());
+            inbound.setRequireTLS(false);
+            inbound.start();
+            servers.add(inbound);
+            log.info("SMTP inbound listener started on port {} (STARTTLS {})", inboundPort, tls.isPresent() ? "enabled" : "unavailable");
+
+            if (tls.isEmpty()) {
+                log.warn("SMTP submission listener NOT started: TLS cert/key not found at {} / {} (AUTH без TLS запрещён)",
+                        tlsCertChainFile, tlsPrivateKeyFile);
+                return;
+            }
+            SMTPServer submission = new SmtpTlsSupport.PemTlsSmtpServer(submissionFactory, submissionAuthFactory, tls.get());
+            submission.setHostName(hostname);
+            submission.setPort(submissionPort);
+            submission.setEnableTLS(true);
+            submission.setRequireTLS(true);
+            submission.setRequireAuth(true);
+            submission.setAuthenticationHandlerFactory(submissionAuthFactory);
+            submission.start();
+            servers.add(submission);
+            log.info("SMTP submission listener started on port {} (AUTH + required STARTTLS)", submissionPort);
         }
 
         @PreDestroy
         void stop() {
-            if (server != null) {
-                server.stop();
-            }
+            servers.forEach(SMTPServer::stop);
+            servers.clear();
         }
     }
 }

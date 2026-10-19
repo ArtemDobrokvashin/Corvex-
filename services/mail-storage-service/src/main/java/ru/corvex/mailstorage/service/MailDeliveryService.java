@@ -125,8 +125,69 @@ public class MailDeliveryService {
         m.setAvStatus(parseAvStatus(event.avStatus()));
         m = messages.saveAndFlush(m);
 
-        insertRecipients(m.getId(), parsed, recipient);
+        insertRecipients(m.getId(), parsed, recipient, true);
         insertAttachments(m.getId(), parsed, m.getAvStatus().name());
+        return Optional.of(new DeliveryResult(m.getId(), owner.id(), folder.getId(), uid, owner.email(), parsed));
+    }
+
+    /**
+     * Копия исходящего письма в Sent отправителя. Для неё используется отдельный spool-ref,
+     * поэтому локальная доставка тому же человеку (письмо самому себе) не конфликтует по raw_ref.
+     */
+    @Transactional
+    public Optional<DeliveryResult> storeSentCopy(AuthUserClient.MailboxOwner owner, String rawRef, long sizeBytes)
+            throws IOException {
+        if (!owner.active() || messages.existsByRawRefAndOwnerId(rawRef, owner.id())) {
+            return Optional.empty();
+        }
+        long used = messages.sumSizeByOwnerId(owner.id());
+        if (owner.quotaBytes() > 0 && used + sizeBytes > owner.quotaBytes()) {
+            log.warn("Sent-копия не сохранена для {}: квота превышена (used={} incoming={} quota={})",
+                    owner.email(), used, sizeBytes, owner.quotaBytes());
+            return Optional.empty();
+        }
+
+        MimeMailParser.ParsedMail parsed;
+        try (InputStream in = spool.open(rawRef)) {
+            parsed = parser.parse(in, true);
+        } catch (MessagingException e) {
+            throw new IllegalStateException("Не удалось разобрать исходящее письмо " + rawRef, e);
+        }
+
+        MailFolder folder = ensureFolder(owner.id(), "SENT", "Sent");
+        folder = folders.lockById(folder.getId()).orElseThrow();
+        long uid = folder.getUidNext();
+        folder.setUidNext(uid + 1);
+        folders.save(folder);
+
+        String maildirPath;
+        try (InputStream in = spool.open(rawRef)) {
+            maildirPath = maildir.storeMessage(owner.email(), folder.getName(), in).toString();
+        }
+
+        MessageMetadata m = new MessageMetadata();
+        m.setOwnerId(owner.id());
+        m.setFolder(folder);
+        m.setUid(uid);
+        m.setMessageIdHeader(truncate(parsed.messageIdHeader(), 998));
+        m.setRawRef(rawRef);
+        m.setSender(truncate(firstNonBlank(parsed.sender(), owner.email()), 320));
+        m.setSubject(truncate(parsed.subject(), 998));
+        m.setSnippet(truncate(parsed.snippet(), 512));
+        m.setInternalDate(parsed.internalDate() == null ? Instant.now() : parsed.internalDate());
+        m.setSizeBytes(sizeBytes);
+        m.setMaildirPath(maildirPath);
+        m.setSeen(true);
+        m.setAnswered(false);
+        m.setFlagged(false);
+        m.setDraft(false);
+        m.setDeleted(false);
+        m.setSpamScore(null);
+        m.setAvStatus(MessageMetadata.AvStatus.CLEAN);
+        m = messages.saveAndFlush(m);
+
+        insertRecipients(m.getId(), parsed, owner.email(), false);
+        insertAttachments(m.getId(), parsed, MessageMetadata.AvStatus.CLEAN.name());
         return Optional.of(new DeliveryResult(m.getId(), owner.id(), folder.getId(), uid, owner.email(), parsed));
     }
 
@@ -144,11 +205,12 @@ public class MailDeliveryService {
                 });
     }
 
-    private void insertRecipients(UUID messageId, MimeMailParser.ParsedMail parsed, String envelopeRecipient) {
+    private void insertRecipients(UUID messageId, MimeMailParser.ParsedMail parsed, String envelopeRecipient,
+                                  boolean addEnvelopeAsBcc) {
         Set<String> seenAddresses = new LinkedHashSet<>();
         parsed.to().forEach(a -> insertRecipient(messageId, "TO", a, seenAddresses));
         parsed.cc().forEach(a -> insertRecipient(messageId, "CC", a, seenAddresses));
-        if (!seenAddresses.contains(envelopeRecipient.toLowerCase(Locale.ROOT))) {
+        if (addEnvelopeAsBcc && !seenAddresses.contains(envelopeRecipient.toLowerCase(Locale.ROOT))) {
             insertRecipient(messageId, "BCC", new MimeMailParser.ParsedAddress(envelopeRecipient, null), seenAddresses);
         }
     }

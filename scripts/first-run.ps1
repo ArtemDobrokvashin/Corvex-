@@ -1,6 +1,6 @@
 <#
   Corvex first-run initializer (run ONCE, before the first 'docker compose up'):
-    1) generates the RSA key pair for JWT signing (infra\secrets),
+    1) generates RSA key pairs for JWT and DKIM signing (infra\secrets),
     2) creates a 90-day self-signed TLS certificate for pilots (infra\certs),
     3) creates .env from .env.example with a DIFFERENT random secret per variable.
   Safe to re-run: existing keys/certs/.env are never overwritten.
@@ -22,6 +22,16 @@ if (-not (Test-Path infra\secrets\jwt_private.pem)) {
   docker run --rm -v "${PWD}\infra\secrets:/out" alpine sh -c "apk add --no-cache openssl >/dev/null && openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out /out/jwt_private.pem && openssl rsa -in /out/jwt_private.pem -pubout -out /out/jwt_public.pem"
   Write-Host "[OK] JWT key pair: infra\secrets\jwt_private.pem (+ jwt_public.pem)"
 } else { Write-Host "[skip] infra\secrets\jwt_private.pem already exists" }
+
+# --- 1b. DKIM signing key (selector corvex1) ---
+if (-not (Test-Path infra\secrets\dkim_private.pem)) {
+  docker run --rm -v "${PWD}\infra\secrets:/out" alpine sh -c "apk add --no-cache openssl >/dev/null && openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /out/dkim_private.pem && openssl rsa -in /out/dkim_private.pem -pubout -out /out/dkim_public.pem"
+  Write-Host "[OK] DKIM key pair: infra\secrets\dkim_private.pem (+ dkim_public.pem)"
+} else { Write-Host "[skip] infra\secrets\dkim_private.pem already exists" }
+if (Test-Path infra\secrets\dkim_public.pem) {
+  $dkimPublicKey = (Get-Content infra\secrets\dkim_public.pem | Where-Object { $_ -notmatch '-----' }) -join ''
+  Write-Host "[DNS] corvex1._domainkey TXT `"v=DKIM1; k=rsa; p=$dkimPublicKey`""
+}
 
 # --- 2. Pilot self-signed TLS (replace with Let's Encrypt / corporate CA for production) ---
 if (-not (Test-Path infra\certs\fullchain.pem)) {

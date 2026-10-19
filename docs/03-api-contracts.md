@@ -27,6 +27,14 @@
 | Чат | `/chat/**`, `/files` | rooms, direct-диалоги, history, edit/delete, reactions, pin, read, search, presence, загрузка файлов |
 | Админ | `/admin/**` | users (CRUD/block/groups), groups+permissions, settings, audit, analytics/activity, system/health, backup/run |
 
+Фактически реализованный на Stage 2 срез почты существенно уже целевой карты выше:
+`GET /mail/folders`, `GET /mail/folders/{id}/messages?cursorUid=&limit=`,
+`GET /mail/messages/{id}`, `PATCH /mail/messages/{id}/flags`,
+`POST /mail/messages/{id}/move {targetFolderId}` и
+`POST /mail/messages/send {to, cc, bcc, subject, bodyText, bodyHtml?, attachments[], saveToSent}`.
+Черновики, отдельная загрузка/выгрузка вложений, поиск, правила, контакты, подписи и
+vacation пока остаются целевым контрактом следующих этапов.
+
 ## 3.3. WebSocket/STOMP (контракт чата)
 
 ```
@@ -51,7 +59,7 @@ SEND     /app/rooms/{roomId}/typing    {}
 | `mail.spam.checked` | spam → av | сырой ref + score/threshold/checked |
 | `mail.av.checked` | av → storage | статус по каждому вложению |
 | `mail.delivered` | storage → imap, web-уведомления | mailbox/folder/uid — триггер IDLE |
-| `mail.outbound.queued` | storage/imap-submit → smtp-воркер | задание отправки, DKIM на воркере |
+| `mail.outbound.queued` | storage / SMTP submission → smtp-воркер | задание отправки; DKIM, MX, TTL-retry до 72 часов на воркере |
 | `mail.outbound.sent` / `.bounced` | smtp → storage | финальный статус, генерация DSN |
 | `chat.message.created` | chat → storage-индексатор ES | идемпотентная индексация по id |
 | `corvex.alerts` (очередь) | notification webhook ← Alertmanager | алерты мониторинга → email админам |

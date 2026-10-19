@@ -54,10 +54,12 @@ notepad .env              # домены, LDAP при наличии AD, пол�
 ## Шаг 6. Настоящий TLS-сертификат (для продакшена)
 
 - Публичный домен: Let's Encrypt — `win-acme` на хосте или certbot-контейнер;
-  положите `fullchain.pem`/`privkey.pem` в `infra/certs` (общие для nginx, IMAP,
-  POP3 — один сертификат на имя `mail.<домен>`).
+  положите `fullchain.pem`/`privkey.pem` в `infra/certs` (общие для nginx, SMTP
+  STARTTLS/submission, IMAP и POP3 — один сертификат на имя `mail.<домен>`).
 - Внутренний домен компании: сертификат корпоративного CA, корневой CA должен быть
   в доверенных на всех клиентских машинах (групповой политикой).
+- Для SMTP-листенера приватный ключ должен быть незашифрованным PKCS#8 PEM
+  (`BEGIN PRIVATE KEY`); SEC1/PKCS#1 сначала конвертируйте через `openssl pkcs8 -topk8 -nocrypt`.
 
 ## Шаг 7. DNS — без этого почта не заработает (чек-лист)
 
@@ -67,7 +69,7 @@ notepad .env              # домены, LDAP при наличии AD, пол�
 | `MX company.local` | `10 mail.company.local` | куда Интернет шлёт вам почту |
 | `PTR` (у провайдера) | `mail.company.local` | без rDNS крупные провайдеры режут почту |
 | `TXT @` (SPF) | `v=spf1 mx -all` (на пилоте `~all`) | кто вправе слать от вашего домена |
-| `TXT corvex1._domainkey` (DKIM) | публичный ключ из админки (Настройки → Почта → DKIM) | подпись исходящих |
+| `TXT corvex1._domainkey` (DKIM) | `v=DKIM1; k=rsa; p=<публичный ключ>`: значение печатает `scripts/first-run.ps1`; исходный публичный ключ — `infra/secrets/dkim_public.pem`, приватный `infra/secrets/dkim_private.pem` монтируется в `mail-smtp-service` read-only | подпись исходящих |
 | `TXT _dmarc` | `v=DMARC1; p=none; rua=mailto:dmarc@company.local` → через месяц `p=quarantine` | политика подделок и отчёты |
 | `CNAME autoconfig`, SRV `_imaps._tcp` и т.п. | на `mail.company.local` | автоконфиг Thunderbird/Outlook — пользователи не вводят серверы руками |
 

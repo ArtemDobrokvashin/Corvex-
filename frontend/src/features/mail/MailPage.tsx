@@ -28,15 +28,42 @@ import {
   X,
 } from 'lucide-react';
 import { demoFolders, demoMails, DemoMail } from '../../api/demoData';
+import { mailApi, MailFolderView, MailMessageListItem, SendAttachment } from '../../api/mailApi';
 import { EmojiPickerButton } from '../../components/EmojiPicker';
 import { Avatar, EmptyState, IconButton, cleanPersonName, emailFromHeader } from '../../components/ui';
-import { countLabel, formatBytes, useI18n } from '../../i18n';
+import { countLabel, formatBytes, formatDateTime, useI18n } from '../../i18n';
 import { insertTextAtSelection, truncateGraphemes } from '../../lib/text';
+import { useSession } from '../../store/sessionStore';
 
 interface ComposeDraft {
   to: string;
+  cc?: string;
   subject: string;
   body: string;
+}
+
+type FolderTab = ReturnType<typeof demoFolders>[number];
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function splitAddresses(value?: string): string[] {
+  return (value ?? '').split(/[;,]/).map((part) => part.trim()).filter(Boolean);
+}
+
+async function fileToAttachment(file: File): Promise<SendAttachment> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return {
+    fileName: file.name,
+    contentType: file.type || 'application/octet-stream',
+    contentBase64: btoa(binary),
+  };
 }
 
 const FOLDER_ICONS: Record<string, typeof Inbox> = {
@@ -51,16 +78,29 @@ const FOLDER_ICONS: Record<string, typeof Inbox> = {
 /** Почта Quiet Work: папки → сканируемый список → письмо как документ, composer поверх контекста. */
 export default function MailPage() {
   const { locale, t } = useI18n();
-  const folders = demoFolders(locale);
+  const demoMode = useSession((s) => s.demoMode);
+  const [realFolders, setRealFolders] = useState<MailFolderView[]>([]);
+  const folders = useMemo<FolderTab[]>(() => {
+    const localized = demoFolders(locale);
+    if (demoMode) return localized;
+    return realFolders.map((f) => {
+      const key = f.specialUse ?? f.id;
+      return { id: key, name: localized.find((d) => d.id === key)?.name ?? f.name, unread: f.unread };
+    });
+  }, [demoMode, locale, realFolders]);
   const [searchParams, setSearchParams] = useSearchParams();
   const [folder, setFolder] = useState('INBOX');
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
-  const [mails, setMails] = useState<DemoMail[]>(() => demoMails(locale));
-  const [activeId, setActiveId] = useState<string>('m1');
+  const [mails, setMails] = useState<DemoMail[]>(() => (demoMode ? demoMails(locale) : []));
+  const [activeId, setActiveId] = useState<string>(demoMode ? 'm1' : '');
   const [mobileReading, setMobileReading] = useState(false);
   const [composeDraft, setComposeDraft] = useState<ComposeDraft | null>(null);
-  const [folderCounts, setFolderCounts] = useState<Record<string, number>>(() => Object.fromEntries(demoFolders(locale).map((f) => [f.id, f.unread])));
+  const [folderCounts, setFolderCounts] = useState<Record<string, number>>(
+    () => (demoMode ? Object.fromEntries(demoFolders(locale).map((f) => [f.id, f.unread])) : {}),
+  );
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadedBodies, setLoadedBodies] = useState<Record<string, string>>({});
   const searchRef = useRef<HTMLInputElement>(null);
 
   const visible = useMemo(() => {
@@ -73,16 +113,78 @@ export default function MailPage() {
   }, [mails, folder, search, filter]);
 
   const active = mails.find((m) => m.id === activeId && m.folder === folder) ?? visible[0] ?? null;
+  const activeBody = active ? (loadedBodies[active.id] ?? active.body) : '';
   const activeIndex = active ? visible.findIndex((m) => m.id === active.id) : -1;
   const currentFolder = folders.find((f) => f.id === folder);
 
+  const toMailView = (item: MailMessageListItem, folderKey: string): DemoMail => ({
+    id: item.id,
+    folder: folderKey,
+    from: item.sender,
+    subject: item.subject,
+    snippet: item.snippet ?? '',
+    body: item.snippet ?? '',
+    date: formatDateTime(locale, item.date),
+    seen: item.seen,
+    flagged: item.flagged,
+    hasAttachments: item.hasAttachments,
+  });
+
   useEffect(() => {
+    if (!demoMode) return;
     const localized = demoMails(locale);
     setMails((prev) => prev.map((mail) => {
       const translated = localized.find((candidate) => candidate.id === mail.id);
       return translated ? { ...translated, folder: mail.folder, seen: mail.seen, flagged: mail.flagged } : mail;
     }));
-  }, [locale]);
+  }, [locale, demoMode]);
+
+  useEffect(() => {
+    if (demoMode) return;
+    let cancelled = false;
+    mailApi.folders()
+      .then((items) => {
+        if (cancelled) return;
+        setRealFolders(items);
+        setFolderCounts(Object.fromEntries(items.map((f) => [f.specialUse ?? f.id, f.unread])));
+        const inbox = items.find((f) => f.specialUse === 'INBOX') ?? items[0];
+        if (inbox) setFolder(inbox.specialUse ?? inbox.id);
+      })
+      .catch((error) => { if (!cancelled) setLoadError(errorMessage(error)); });
+    return () => { cancelled = true; };
+  }, [demoMode]);
+
+  const selectedRealFolder = realFolders.find((f) => (f.specialUse ?? f.id) === folder);
+  const selectedRealFolderId = selectedRealFolder?.id;
+
+  useEffect(() => {
+    if (demoMode || !selectedRealFolderId) return;
+    let cancelled = false;
+    setLoadError(null);
+    mailApi.messages(selectedRealFolderId)
+      .then((items) => {
+        if (cancelled) return;
+        const mapped = items.map((item) => toMailView(item, folder));
+        setMails((prev) => [...prev.filter((m) => m.folder !== folder), ...mapped]);
+        if (mapped[0]) setActiveId(mapped[0].id);
+      })
+      .catch((error) => { if (!cancelled) setLoadError(errorMessage(error)); });
+    return () => { cancelled = true; };
+    // toMailView зависит только от locale; folder/selectedRealFolderId — триггер загрузки.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demoMode, folder, selectedRealFolderId, locale]);
+
+  const activeRealId = !demoMode && active ? active.id : null;
+  useEffect(() => {
+    if (!activeRealId || loadedBodies[activeRealId] != null) return;
+    let cancelled = false;
+    mailApi.message(activeRealId)
+      .then((detail) => {
+        if (!cancelled) setLoadedBodies((prev) => ({ ...prev, [activeRealId]: detail.bodyText ?? '' }));
+      })
+      .catch((error) => { if (!cancelled) setLoadError(errorMessage(error)); });
+    return () => { cancelled = true; };
+  }, [activeRealId, loadedBodies]);
 
   useEffect(() => {
     if (searchParams.get('compose') === '1') {
@@ -97,6 +199,9 @@ export default function MailPage() {
     if (!m.seen) {
       setMails((prev) => prev.map((x) => (x.id === m.id ? { ...x, seen: true } : x)));
       setFolderCounts((prev) => ({ ...prev, [m.folder]: Math.max(0, (prev[m.folder] ?? 0) - 1) }));
+      if (!demoMode) {
+        void mailApi.flags(m.id, { seen: true }).catch((error) => setLoadError(errorMessage(error)));
+      }
     }
   };
 
@@ -110,6 +215,22 @@ export default function MailPage() {
   const moveActive = (targetFolder: string) => {
     if (!active) return;
     const next = visible[activeIndex + 1] ?? visible[activeIndex - 1];
+    if (!demoMode) {
+      const target = realFolders.find((f) => (f.specialUse ?? f.id) === targetFolder);
+      if (!target) return;
+      void mailApi.move(active.id, target.id)
+        .then((item) => {
+          setMails((prev) => prev.map((m) => (
+            m.id === active.id
+              ? { ...toMailView(item, targetFolder), body: loadedBodies[active.id] ?? m.body }
+              : m
+          )));
+          if (next && next.id !== active.id) setActiveId(next.id);
+          setMobileReading(false);
+        })
+        .catch((error) => setLoadError(errorMessage(error)));
+      return;
+    }
     setMails((prev) => prev.map((m) => (m.id === active.id ? { ...m, folder: targetFolder } : m)));
     if (next && next.id !== active.id) setActiveId(next.id);
     setMobileReading(false);
@@ -117,6 +238,9 @@ export default function MailPage() {
 
   const toggleFlag = (mail: DemoMail) => {
     setMails((prev) => prev.map((m) => (m.id === mail.id ? { ...m, flagged: !m.flagged } : m)));
+    if (!demoMode) {
+      void mailApi.flags(mail.id, { flagged: !mail.flagged }).catch((error) => setLoadError(errorMessage(error)));
+    }
   };
 
   const step = (delta: number) => {
@@ -153,20 +277,41 @@ export default function MailPage() {
     return () => window.removeEventListener('keydown', onKeyDown);
   });
 
-  const addSentMail = (draft: ComposeDraft) => {
-    setMails((prev) => [{
-      id: `sent-${Date.now()}`,
-      folder: 'SENT',
-      from: t('Вы'),
-      subject: draft.subject || t('(без темы)'),
-      snippet: truncateGraphemes(draft.body, 110),
-      body: draft.body,
-      date: t('Сейчас'),
-      seen: true,
-      flagged: false,
-      hasAttachments: false,
-    }, ...prev]);
-    setComposeDraft(null);
+  const addSentMail = async (draft: ComposeDraft, files: File[]) => {
+    if (demoMode) {
+      setMails((prev) => [{
+        id: `sent-${Date.now()}`,
+        folder: 'SENT',
+        from: t('Вы'),
+        subject: draft.subject || t('(без темы)'),
+        snippet: truncateGraphemes(draft.body, 110),
+        body: draft.body,
+        date: t('Сейчас'),
+        seen: true,
+        flagged: false,
+        hasAttachments: files.length > 0,
+      }, ...prev]);
+      return;
+    }
+
+    const attachments = await Promise.all(files.map(fileToAttachment));
+    await mailApi.send({
+      to: splitAddresses(draft.to),
+      cc: splitAddresses(draft.cc),
+      subject: draft.subject,
+      bodyText: draft.body,
+      attachments,
+      saveToSent: true,
+    });
+
+    const refreshed = await mailApi.folders();
+    setRealFolders(refreshed);
+    setFolderCounts(Object.fromEntries(refreshed.map((f) => [f.specialUse ?? f.id, f.unread])));
+    const sentFolder = refreshed.find((f) => f.specialUse === 'SENT');
+    if (sentFolder && folder === 'SENT') {
+      const items = await mailApi.messages(sentFolder.id);
+      setMails((prev) => [...prev.filter((m) => m.folder !== 'SENT'), ...items.map((item) => toMailView(item, 'SENT'))]);
+    }
   };
 
   return (
@@ -233,6 +378,9 @@ export default function MailPage() {
           </header>
 
           <div className="scroll-area min-h-0 flex-1">
+            {loadError && (
+              <div className="m-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">{loadError}</div>
+            )}
             {visible.map((m) => {
               const selected = active?.id === m.id;
               return (
@@ -328,14 +476,14 @@ export default function MailPage() {
                   )}
 
                   <div className="mt-7 text-[15.5px] leading-[1.75] text-ink-soft">
-                    {active.body.split('\n').map((paragraph, i) => paragraph.trim() ? <p key={i} className="mb-4 whitespace-pre-wrap">{paragraph}</p> : null)}
+                    {activeBody.split('\n').map((paragraph, i) => paragraph.trim() ? <p key={i} className="mb-4 whitespace-pre-wrap">{paragraph}</p> : null)}
                   </div>
 
                   <div className="mt-9 flex flex-wrap gap-2 border-t border-line pt-5">
                     <button type="button" className="btn-primary" onClick={() => setComposeDraft({ to: emailFromHeader(active.from), subject: `Re: ${active.subject}`, body: '' })}>
                       <Reply size={16} /> {t('Ответить')}
                     </button>
-                    <button type="button" className="btn-secondary" onClick={() => setComposeDraft({ to: '', subject: `Fwd: ${active.subject}`, body: `\n\n--- ${t('Пересылаемое письмо')} ---\n${active.body}` })}>
+                    <button type="button" className="btn-secondary" onClick={() => setComposeDraft({ to: '', subject: `Fwd: ${active.subject}`, body: `\n\n--- ${t('Пересылаемое письмо')} ---\n${activeBody}` })}>
                       <Forward size={16} /> {t('Переслать')}
                     </button>
                     <button type="button" className="btn-ghost ml-auto" onClick={() => moveActive('ARCHIVE')}>
@@ -370,12 +518,14 @@ export default function MailPage() {
   );
 }
 
-function ComposePanel({ initial, onClose, onSend }: { initial: ComposeDraft; onClose: () => void; onSend: (draft: ComposeDraft) => void }) {
+function ComposePanel({ initial, onClose, onSend }: { initial: ComposeDraft; onClose: () => void; onSend: (draft: ComposeDraft, files: File[]) => Promise<void> }) {
   const { t } = useI18n();
   const [draft, setDraft] = useState(initial);
-  const [showCc, setShowCc] = useState(false);
-  const [files, setFiles] = useState<string[]>([]);
+  const [showCc, setShowCc] = useState(Boolean(initial.cc));
+  const [files, setFiles] = useState<File[]>([]);
   const [sent, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
 
@@ -391,8 +541,19 @@ function ComposePanel({ initial, onClose, onSend }: { initial: ComposeDraft; onC
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setSent(true);
-    window.setTimeout(() => onSend(draft), 900);
+    void (async () => {
+      setSending(true);
+      setSendError(null);
+      try {
+        await onSend(draft, files);
+        setSent(true);
+        window.setTimeout(onClose, 900);
+      } catch (error) {
+        setSendError(errorMessage(error));
+      } finally {
+        setSending(false);
+      }
+    })();
   };
 
   return (
@@ -413,13 +574,13 @@ function ComposePanel({ initial, onClose, onSend }: { initial: ComposeDraft; onC
         <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
           <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
             <label htmlFor="compose-to" className="w-12 shrink-0 text-[13px] text-faint">{t('Кому')}</label>
-            <input id="compose-to" required type="email" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} placeholder="user@company.local" className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-faint focus:ring-0" />
+            <input id="compose-to" required type="text" inputMode="email" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} placeholder="user@company.local" className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-faint focus:ring-0" />
             {!showCc && <button type="button" onClick={() => setShowCc(true)} className="shrink-0 text-xs font-medium text-muted hover:text-ink">{t('Копия')}</button>}
           </div>
           {showCc && (
             <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
               <label htmlFor="compose-cc" className="w-12 shrink-0 text-[13px] text-faint">{t('Копия')}</label>
-              <input id="compose-cc" type="email" placeholder="user@company.local" className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-faint focus:ring-0" />
+              <input id="compose-cc" type="text" inputMode="email" value={draft.cc ?? ''} onChange={(e) => setDraft({ ...draft, cc: e.target.value })} placeholder="user@company.local" className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-faint focus:ring-0" />
             </div>
           )}
           <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
@@ -436,12 +597,15 @@ function ComposePanel({ initial, onClose, onSend }: { initial: ComposeDraft; onC
           />
           {files.length > 0 && (
             <div className="flex shrink-0 flex-wrap gap-2 px-4 pb-3">
-              {files.map((name) => <span key={name} className="chip"><Paperclip size={12} />{name}</span>)}
+              {files.map((file, index) => <span key={`${file.name}-${index}`} className="chip"><Paperclip size={12} />{file.name}</span>)}
             </div>
           )}
+          {sendError && (
+            <div className="mx-4 mb-3 shrink-0 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">{sendError}</div>
+          )}
           <footer className="flex shrink-0 items-center gap-2 border-t border-line px-3 py-3">
-            <button className="btn-accent"><Send size={15} /> {t('Отправить')}</button>
-            <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => setFiles(Array.from(e.target.files ?? []).map((f) => f.name))} />
+            <button className="btn-accent" disabled={sending}><Send size={15} /> {t('Отправить')}</button>
+            <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => setFiles(Array.from(e.target.files ?? []))} />
             <IconButton icon={Paperclip} label={t('Прикрепить файлы')} onClick={() => fileRef.current?.click()} />
             <EmojiPickerButton onPick={insertEmoji} />
             <span className="ml-1 hidden text-[11px] text-faint sm:inline">{t('Подпись добавится автоматически')}</span>

@@ -165,10 +165,19 @@ services:
       # но включать на проде только после smoke на JDK/Docker-хосте. См. docs/READINESS.md
       CORVEX_SMTP_ENABLED: ${CORVEX_SMTP_ENABLED:-false}
       CORVEX_AUTH_SERVICE_URL: http://auth-service:8081
+      CORVEX_ADMIN_SERVICE_URL: http://admin-service:8090
       CORVEX_STORAGE_BASE_URL: http://mail-storage-service:8085
       CORVEX_INTERNAL_API_TOKEN: ${CORVEX_INTERNAL_API_TOKEN:?Set CORVEX_INTERNAL_API_TOKEN in .env}
+      CORVEX_DKIM_DOMAIN: ${CORVEX_MAIL_DOMAIN:-company.local}
+      CORVEX_DKIM_SELECTOR: ${CORVEX_DKIM_SELECTOR:-corvex1}
+      CORVEX_DKIM_PRIVATE_KEY_FILE: /run/secrets/dkim_private.pem
+      CORVEX_SMTP_TLS_CERT_FILE: /certs/fullchain.pem
+      CORVEX_SMTP_TLS_KEY_FILE: /certs/privkey.pem
+    volumes:
+      - "${CORVEX_SECRETS_DIR:-./infra/secrets}:/run/secrets:ro"
+      - "${CORVEX_CERTS_DIR:-./infra/certs}:/certs:ro"
     ports: ["25:2525", "587:2587"]   # внутри — непривилегированные порты (non-root), наружу — стандартные
-    depends_on: { rabbitmq: { condition: service_healthy }, auth-service: { condition: service_healthy }, mail-storage-service: { condition: service_healthy }, mail-spam-service: { condition: service_healthy }, mail-antivirus-service: { condition: service_healthy } }
+    depends_on: { rabbitmq: { condition: service_healthy }, auth-service: { condition: service_healthy }, admin-service: { condition: service_healthy }, mail-storage-service: { condition: service_healthy }, mail-spam-service: { condition: service_healthy }, mail-antivirus-service: { condition: service_healthy } }
 
   mail-imap-service:
     <<: *java-common

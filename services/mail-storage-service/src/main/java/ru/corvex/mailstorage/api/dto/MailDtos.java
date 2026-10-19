@@ -44,4 +44,28 @@ public final class MailDtos {
 
     public record UpdateFlagsRequest(Boolean seen, Boolean flagged, Boolean answered, Boolean deleted) {
     }
+
+    public record MoveMessageRequest(UUID targetFolderId) {
+    }
+
+    public record SendAttachment(String fileName, String contentType, String contentBase64) {
+    }
+
+    public record SendMessageRequest(
+            List<String> to,
+            List<String> cc,
+            List<String> bcc,
+            String subject,
+            String bodyText,
+            String bodyHtml,
+            List<SendAttachment> attachments,
+            Boolean saveToSent) {
+    }
+
+    public record SendMessageResult(
+            String messageIdHeader,
+            UUID sentMessageId,
+            List<String> localRecipients,
+            List<String> externalRecipients) {
+    }
 }

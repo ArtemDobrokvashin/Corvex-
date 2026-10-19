@@ -83,7 +83,6 @@ const EN: Record<string, string> = {
   'Завершить текущую сессию': 'End the current session',
   'Восстанавливаем сессию': 'Restoring your session',
   'Переходим ко входу': 'Taking you to sign in',
-  'Почтовый модуль появится на этапе 2 — письма ниже демонстрационные. Вход и админка уже работают с сервером.': 'The mail module arrives in Stage 2—the messages below are a demo. Sign-in and Administration already use the server.',
   'Realtime-чат появится на этапе 4 — ниже демонстрация будущего интерфейса.': 'Realtime chat arrives in Stage 4—the interface below is a preview.',
   'Быстрый переход': 'Quick switcher',
   'Профиль': 'Profile',

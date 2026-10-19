@@ -131,11 +131,9 @@ export default function AppShell() {
   if (!user) return <LoadingScreen label={t('Переходим ко входу')} />;
 
   const canAdmin = has('ADMIN_USERS_MANAGE') || has('ADMIN_GROUPS_MANAGE');
-  const moduleNotice = !demoMode && location.pathname.startsWith('/mail')
-    ? t('Почтовый модуль появится на этапе 2 — письма ниже демонстрационные. Вход и админка уже работают с сервером.')
-    : !demoMode && location.pathname.startsWith('/chat')
-      ? t('Realtime-чат появится на этапе 4 — ниже демонстрация будущего интерфейса.')
-      : null;
+  const moduleNotice = !demoMode && location.pathname.startsWith('/chat')
+    ? t('Realtime-чат появится на этапе 4 — ниже демонстрация будущего интерфейса.')
+    : null;
   const nextLocale = locale === 'ru' ? 'en' : 'ru';
 
   const navItem = (to: string, label: string, Icon: typeof Mail, badge?: number) => (
