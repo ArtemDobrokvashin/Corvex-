@@ -15,6 +15,6 @@ COPY --from=build /src/target/*.jar app.jar
 USER corvex
 EXPOSE 8084 110 995
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75 -XX:+UseG1GC -Duser.timezone=Europe/Moscow"
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=60s \
   CMD wget -qO- http://127.0.0.1:8084/actuator/health || exit 1
 ENTRYPOINT ["sh","-c","java $JAVA_OPTS -jar app.jar"]

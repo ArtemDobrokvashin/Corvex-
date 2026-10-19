@@ -62,7 +62,7 @@ public class InboundMessageHandlerFactory implements MessageHandlerFactory {
             }
 
             @Override
-            public String data(InputStream data) throws IOException {
+            public void data(InputStream data) throws IOException {
                 byte[] eml = data.readAllBytes();
                 if (eml.length > MAX_MESSAGE_BYTES) {
                     throw new RejectException(552, "Message exceeds maximum size");
@@ -73,7 +73,6 @@ public class InboundMessageHandlerFactory implements MessageHandlerFactory {
                 rabbit.convertAndSend("corvex.mail", "mail.inbound.received", event);
                 log.info("Inbound mail accepted: from={} rcpt={} size={} rawRef={}",
                         mailFrom, recipients, eml.length, rawRef);
-                return rawRef; // SubEtha вернёт этот id отправителю в ответе 250 — удобно для трассировки
             }
 
             @Override

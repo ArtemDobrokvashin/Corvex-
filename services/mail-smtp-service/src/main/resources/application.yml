@@ -16,6 +16,11 @@ logging:
   # Структурные JSON-логи -> Promtail -> Loki (см. docs/01-architecture.md)
   pattern.console: '%d{yyyy-MM-dd''T''HH:mm:ss.SSSXXX} [%thread] %-5level %logger{36} [%X{requestId}] - %msg%n'
 corvex:
+  smtp:
+    enabled: ${CORVEX_SMTP_ENABLED:true}
+    inbound-port: 2525
+  mail:
+    domains: ${CORVEX_MAIL_DOMAINS:company.local}
   security:
     # Публичный ключ auth-service (JWKS): каждый сервис сам валидирует JWT (RS256)
     jwk-set-uri: ${CORVEX_JWK_SET_URI:http://auth-service:8081/oauth2/jwks}

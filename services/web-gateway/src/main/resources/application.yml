@@ -25,13 +25,11 @@ spring:
           filters:
             - name: RequestRateLimiter
               args: { redis-rate-limiter.replenishRate: 50, redis-rate-limiter.burstCapacity: 100, key-resolver: "#{@userKeyResolver}" }
-            - name: CircuitBreaker
-              args: { name: mail, fallbackUri: forward:/fallback/mail }
         - id: chat-rest
           uri: http://chat-service:8088
           predicates: [Path=/api/v1/chat/**]
         - id: chat-ws
-          uri: lb:ws://chat-service
+          uri: ws://chat-service:8088
           predicates: [Path=/ws/chat/**]
         - id: chat-files
           uri: http://chat-file-service:8089

@@ -1,6 +1,11 @@
 server:
   port: 8090
 spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${CORVEX_JWK_SET_URI:http://auth-service:8081/oauth2/jwks}
   application:
     name: admin-service
   datasource:

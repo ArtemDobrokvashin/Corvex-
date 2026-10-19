@@ -1,6 +1,12 @@
 server:
   port: 8091
 spring:
+  mail:
+    host: ${ALERT_SMTP_HOST:mail-smtp-service}
+    port: ${ALERT_SMTP_PORT:2525}
+    properties:
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
   application:
     name: notification-service
   rabbitmq:
@@ -16,6 +22,9 @@ logging:
   # Структурные JSON-логи -> Promtail -> Loki (см. docs/01-architecture.md)
   pattern.console: '%d{yyyy-MM-dd''T''HH:mm:ss.SSSXXX} [%thread] %-5level %logger{36} [%X{requestId}] - %msg%n'
 corvex:
+  alert:
+    recipients: ${CORVEX_ALERT_RECIPIENTS:admin@company.local}
+    from: ${CORVEX_ALERT_FROM:corvex-alert@company.local}
   security:
     # Публичный ключ auth-service (JWKS): каждый сервис сам валидирует JWT (RS256)
     jwk-set-uri: ${CORVEX_JWK_SET_URI:http://auth-service:8081/oauth2/jwks}

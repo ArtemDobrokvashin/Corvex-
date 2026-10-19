@@ -18,6 +18,10 @@ x-java-common: &java-common
     RABBITMQ_USER: ${RABBITMQ_USER:-corvex}
     RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
     CORVEX_JWK_SET_URI: http://auth-service:8081/oauth2/jwks
+    REDIS_HOST: redis
+    REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+    ELASTIC_PASSWORD: ${ELASTIC_PASSWORD:?Set ELASTIC_PASSWORD in .env}
+    CORVEX_MAIL_DOMAINS: ${CORVEX_MAIL_DOMAIN:-company.local}
   networks: [app, data]
   logging:
     driver: json-file
@@ -62,8 +66,10 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-corvex}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
-      # нужен rabbitmq_stomp (STOMP-брокер-реле чата) — плагин включается в entrypoint-обёртке образа infra/rabbitmq
-    volumes: [rabbitmq-data:/var/lib/rabbitmq]
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+      # rabbitmq_stomp нужен как брокер-реле чата: официальный способ включения плагинов образа
+      - ./infra/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 15s
@@ -139,6 +145,11 @@ services:
   mail-smtp-service:
     <<: *java-common
     build: ./services/mail-smtp-service
+    environment:
+      <<: *common-env
+      # ВНИМАНИЕ: включать ТОЛЬКО когда mail-storage перестанет быть заглушкой (этап 2 плана),
+      # иначе принятые письма будут подтверждены отправителю (250 OK) и потеряны. См. docs/READINESS.md
+      CORVEX_SMTP_ENABLED: ${CORVEX_SMTP_ENABLED:-false}
     ports: ["25:2525", "587:2587"]   # внутри — непривилегированные порты (non-root), наружу — стандартные
     depends_on: { rabbitmq: { condition: service_healthy } }
 
