@@ -17,19 +17,24 @@ public final class ProtocolDtos {
     private ProtocolDtos() {
     }
 
-    /** Папка в терминах IMAP: UIDNEXT/UIDVALIDITY + счётчики для SELECT/STATUS. */
+    /** Папка в терминах IMAP: UIDNEXT/UIDVALIDITY/HIGHESTMODSEQ + счётчики для SELECT/STATUS. */
     public record FolderInfo(UUID id, UUID parentId, String name, String specialUse,
-                             long uidNext, long uidValidity, long messageCount, long unseenCount) {
+                             long uidNext, long uidValidity, long highestModseq,
+                             long messageCount, long unseenCount) {
     }
 
     public record CreateFolderRequest(String name, UUID parentId) {
     }
 
-    public record RenameFolderRequest(String name) {
+    /**
+     * IMAP RENAME может одновременно менять имя и родителя. parentId=null при moveToRoot=false
+     * означает «родителя не трогать» (совместимость со старым клиентом); перенос в корень — явно.
+     */
+    public record RenameFolderRequest(String name, UUID parentId, boolean moveToRoot) {
     }
 
     /** Метаданные письма без тела: POP3 LIST/UIDL и IMAP FETCH (ENVELOPE строится из сырого тела). */
-    public record MessageMeta(UUID id, long uid, String messageIdHeader, String sender,
+    public record MessageMeta(UUID id, long uid, long modseq, String messageIdHeader, String sender,
                               String subject, Instant internalDate, long sizeBytes,
                               boolean seen, boolean answered, boolean flagged,
                               boolean draft, boolean deleted) {
@@ -47,7 +52,7 @@ public final class ProtocolDtos {
     public record ExpungeResponse(List<Long> expungedUids) {
     }
 
-    public record AppendResponse(UUID messageId, long uid) {
+    public record AppendResponse(UUID messageId, long uid, long modseq) {
     }
 
     public record CopyRequest(List<Long> uids, UUID targetFolderId, boolean move) {

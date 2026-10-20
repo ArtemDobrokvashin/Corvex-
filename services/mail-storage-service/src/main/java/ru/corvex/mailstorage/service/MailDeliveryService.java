@@ -97,6 +97,8 @@ public class MailDeliveryService {
         folder = folders.lockById(folder.getId()).orElseThrow();
         long uid = folder.getUidNext();
         folder.setUidNext(uid + 1);
+        long modseq = Math.max(1, folder.getHighestModseq()) + 1;
+        folder.setHighestModseq(modseq);
         folders.save(folder);
 
         String maildirPath;
@@ -108,6 +110,7 @@ public class MailDeliveryService {
         m.setOwnerId(owner.id());
         m.setFolder(folder);
         m.setUid(uid);
+        m.setModseq(modseq);
         m.setMessageIdHeader(truncate(parsed.messageIdHeader(), 998));
         m.setRawRef(event.rawRef());
         m.setSender(truncate(firstNonBlank(parsed.sender(), normalizeAddress(event.mailFrom())), 320));
@@ -158,6 +161,8 @@ public class MailDeliveryService {
         folder = folders.lockById(folder.getId()).orElseThrow();
         long uid = folder.getUidNext();
         folder.setUidNext(uid + 1);
+        long modseq = Math.max(1, folder.getHighestModseq()) + 1;
+        folder.setHighestModseq(modseq);
         folders.save(folder);
 
         String maildirPath;
@@ -169,6 +174,7 @@ public class MailDeliveryService {
         m.setOwnerId(owner.id());
         m.setFolder(folder);
         m.setUid(uid);
+        m.setModseq(modseq);
         m.setMessageIdHeader(truncate(parsed.messageIdHeader(), 998));
         m.setRawRef(rawRef);
         m.setSender(truncate(firstNonBlank(parsed.sender(), owner.email()), 320));
@@ -201,6 +207,7 @@ public class MailDeliveryService {
                     f.setSpecialUse(specialUse);
                     f.setUidNext(1);
                     f.setUidValidity(Math.max(1, Instant.now().getEpochSecond()));
+                    f.setHighestModseq(1);
                     return folders.saveAndFlush(f);
                 });
     }

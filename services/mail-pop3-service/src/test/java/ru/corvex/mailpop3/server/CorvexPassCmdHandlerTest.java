@@ -29,7 +29,7 @@ class CorvexPassCmdHandlerTest {
         when(auth.authenticate("ivanov@corp.local", "secret"))
                 .thenReturn(Optional.of(new Pop3AuthClient.AuthenticatedUser(userId, "ivanov@corp.local")));
         when(storage.findInbox(userId)).thenReturn(Optional.of(
-                new ProtocolStorageClient.FolderInfo(UUID.randomUUID(), null, "INBOX", "INBOX", 1, 1, 0, 0)));
+                new ProtocolStorageClient.FolderInfo(UUID.randomUUID(), null, "INBOX", "INBOX", 1, 1, 1, 0, 0)));
 
         assertNotNull(handler.auth(null, Username.of("ivanov@corp.local"), "secret"));
     }

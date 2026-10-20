@@ -113,6 +113,7 @@ public class ProtocolMailService {
         f.setSpecialUse(null);
         f.setUidNext(1);
         f.setUidValidity(Math.max(1, Instant.now().getEpochSecond()));
+        f.setHighestModseq(1);
         return toFolderInfo(folders.saveAndFlush(f));
     }
 
@@ -124,8 +125,22 @@ public class ProtocolMailService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Системную папку переименовать нельзя");
         }
         String newName = validateFolderName(req.name());
-        UUID parentId = folder.getParent() == null ? null : folder.getParent().getId();
-        if (!folder.getName().equalsIgnoreCase(newName) && folders.existsSibling(ownerId, parentId, newName)) {
+        MailFolder targetParent;
+        if (req.moveToRoot()) {
+            targetParent = null;
+        } else if (req.parentId() != null) {
+            targetParent = loadFolder(ownerId, req.parentId());
+        } else {
+            targetParent = folder.getParent();
+        }
+        UUID targetParentId = targetParent == null ? null : targetParent.getId();
+        UUID currentParentId = folder.getParent() == null ? null : folder.getParent().getId();
+        boolean parentChanged = !java.util.Objects.equals(currentParentId, targetParentId);
+        if (parentChanged && targetParent != null && isDescendantOrSelf(ownerId, folderId, targetParent)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Нельзя переместить папку внутрь себя или потомка");
+        }
+        if ((!folder.getName().equalsIgnoreCase(newName) || parentChanged)
+                && folders.existsSibling(ownerId, targetParentId, newName)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Папка с таким именем уже существует");
         }
         String oldName = folder.getName();
@@ -138,6 +153,11 @@ public class ProtocolMailService {
                 messages.save(m);
             }
             folder.setName(newName);
+        }
+        if (parentChanged) {
+            folder.setParent(targetParent);
+        }
+        if (!oldName.equals(newName) || parentChanged) {
             folders.save(folder);
         }
         return toFolderInfo(folder);
@@ -197,17 +217,28 @@ public class ProtocolMailService {
     public ProtocolDtos.MessageMeta updateFlags(UUID ownerId, UUID folderId, long uid, ProtocolDtos.FlagsUpdate flags) {
         MessageMetadata m = messages.findByFolder_IdAndUidAndOwnerId(folderId, uid, ownerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Письмо не найдено"));
+        boolean beforeSeen = m.isSeen();
+        boolean beforeAnswered = m.isAnswered();
+        boolean beforeFlagged = m.isFlagged();
+        boolean beforeDraft = m.isDraft();
+        boolean beforeDeleted = m.isDeleted();
         if (flags.seen() != null) m.setSeen(flags.seen());
         if (flags.answered() != null) m.setAnswered(flags.answered());
         if (flags.flagged() != null) m.setFlagged(flags.flagged());
         if (flags.draft() != null) m.setDraft(flags.draft());
         if (flags.deleted() != null) m.setDeleted(flags.deleted());
+        boolean changed = beforeSeen != m.isSeen() || beforeAnswered != m.isAnswered()
+                || beforeFlagged != m.isFlagged() || beforeDraft != m.isDraft() || beforeDeleted != m.isDeleted();
+        if (changed) {
+            MailFolder folder = folders.lockById(folderId).orElseThrow();
+            m.setModseq(nextModSeq(folder));
+        }
         return toMeta(messages.save(m));
     }
 
     @Transactional
     public ProtocolDtos.ExpungeResponse expunge(UUID ownerId, UUID folderId, ProtocolDtos.ExpungeRequest req) {
-        loadFolder(ownerId, folderId);
+        MailFolder folder = folders.lockById(loadFolder(ownerId, folderId).getId()).orElseThrow();
         List<MessageMetadata> victims;
         if (req == null || req.uids() == null || req.uids().isEmpty()) {
             victims = messages.findAllByFolder_IdAndOwnerIdAndDeletedTrue(folderId, ownerId);
@@ -225,6 +256,9 @@ public class ProtocolMailService {
             messages.delete(m);
             expunged.add(m.getUid());
         }
+        if (!expunged.isEmpty()) {
+            nextModSeq(folder); // CONDSTORE/QRESYNC: удаление тоже двигает HIGHESTMODSEQ папки
+        }
         return new ProtocolDtos.ExpungeResponse(expunged);
     }
 
@@ -232,8 +266,12 @@ public class ProtocolMailService {
     @Transactional
     public void hardDeleteMessage(UUID ownerId, UUID messageId) {
         MessageMetadata m = loadMessage(ownerId, messageId);
+        UUID folderId = m.getFolder() == null ? null : m.getFolder().getId();
         deleteFileQuietly(m);
         messages.delete(m);
+        if (folderId != null) {
+            folders.lockById(folderId).ifPresent(this::nextModSeq);
+        }
     }
 
     /**
@@ -264,7 +302,7 @@ public class ProtocolMailService {
             MailFolder folder = folders.lockById(loadFolder(ownerId, folderId).getId()).orElseThrow();
             long uid = folder.getUidNext();
             folder.setUidNext(uid + 1);
-            folders.save(folder);
+            long modseq = nextModSeq(folder);
 
             boolean seen = flagSet.contains("\\seen");
             String maildirPath;
@@ -275,6 +313,7 @@ public class ProtocolMailService {
             m.setOwnerId(ownerId);
             m.setFolder(folder);
             m.setUid(uid);
+            m.setModseq(modseq);
             m.setMessageIdHeader(truncate(parsed.messageIdHeader(), 998));
             m.setSender(truncate(parsed.sender() == null ? owner.email() : parsed.sender(), 320));
             m.setSubject(truncate(parsed.subject() == null ? "" : parsed.subject(), 998));
@@ -291,7 +330,7 @@ public class ProtocolMailService {
             m.setSpamScore(null);
             m.setAvStatus(MessageMetadata.AvStatus.CLEAN); // письмо кладёт сам владелец, как Sent-копию
             m = messages.saveAndFlush(m);
-            return new ProtocolDtos.AppendResponse(m.getId(), uid);
+            return new ProtocolDtos.AppendResponse(m.getId(), uid, modseq);
         } finally {
             try {
                 spool.delete(stored.rawRef());
@@ -313,11 +352,12 @@ public class ProtocolMailService {
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Письмо не найдено: uid=" + uid));
             long newUid = target.getUidNext();
             target.setUidNext(newUid + 1);
-            folders.save(target);
+            long newModseq = nextModSeq(target);
             if (req.move()) {
                 Path newPath = maildir.moveMessageToFolder(src.getMaildirPath(), target.getName(), src.isSeen());
                 src.setFolder(target);
                 src.setUid(newUid);
+                src.setModseq(newModseq);
                 src.setMaildirPath(newPath.toString());
                 messages.save(src);
             } else {
@@ -326,6 +366,7 @@ public class ProtocolMailService {
                 copy.setOwnerId(ownerId);
                 copy.setFolder(target);
                 copy.setUid(newUid);
+                copy.setModseq(newModseq);
                 copy.setMessageIdHeader(src.getMessageIdHeader());
                 copy.setSender(src.getSender());
                 copy.setSubject(src.getSubject());
@@ -376,15 +417,38 @@ public class ProtocolMailService {
     private ProtocolDtos.FolderInfo toFolderInfo(MailFolder f) {
         return new ProtocolDtos.FolderInfo(
                 f.getId(), f.getParent() == null ? null : f.getParent().getId(),
-                f.getName(), f.getSpecialUse(), f.getUidNext(), f.getUidValidity(),
+                f.getName(), f.getSpecialUse(), f.getUidNext(), f.getUidValidity(), f.getHighestModseq(),
                 messages.countByFolder_Id(f.getId()), messages.countByFolder_IdAndSeenFalse(f.getId()));
     }
 
     static ProtocolDtos.MessageMeta toMeta(MessageMetadata m) {
         return new ProtocolDtos.MessageMeta(
-                m.getId(), m.getUid(), m.getMessageIdHeader(), m.getSender(), m.getSubject(),
+                m.getId(), m.getUid(), m.getModseq(), m.getMessageIdHeader(), m.getSender(), m.getSubject(),
                 m.getInternalDate(), m.getSizeBytes(),
                 m.isSeen(), m.isAnswered(), m.isFlagged(), m.isDraft(), m.isDeleted());
+    }
+
+    /** MODSEQ выделяется из той же заблокированной строки папки, что и UID. */
+    private long nextModSeq(MailFolder folder) {
+        long next = Math.max(1, folder.getHighestModseq()) + 1;
+        folder.setHighestModseq(next);
+        folders.save(folder);
+        return next;
+    }
+
+    private boolean isDescendantOrSelf(UUID ownerId, UUID folderId, MailFolder candidateParent) {
+        java.util.Map<UUID, MailFolder> byId = new java.util.HashMap<>();
+        folders.findAllByOwnerIdOrderBySpecialUseAscNameAsc(ownerId).forEach(f -> byId.put(f.getId(), f));
+        MailFolder current = candidateParent;
+        int guard = 0;
+        while (current != null && guard++ < 128) {
+            if (folderId.equals(current.getId())) {
+                return true;
+            }
+            UUID parentId = current.getParent() == null ? null : current.getParent().getId();
+            current = parentId == null ? null : byId.get(parentId);
+        }
+        return false;
     }
 
     private void deleteFileQuietly(MessageMetadata m) {
