@@ -145,6 +145,68 @@ public class MaildirStorage {
         return mailRoot.relativize(target);
     }
 
+    /** Копия .eml в другую папку того же ящика (IMAP COPY): новое имя файла, исходник не тронут. */
+    public Path copyMessageToFolder(String relativePath, String targetFolder, boolean seen) throws IOException {
+        Path source = resolveMessagePath(relativePath);
+        Path relative = mailRoot.toAbsolutePath().normalize().relativize(source);
+        if (relative.getNameCount() < 1) {
+            throw new IllegalArgumentException("Некорректный путь письма");
+        }
+        String mailbox = relative.getName(0).toString();
+        Path dir = mailRoot.resolve(mailbox).resolve(sanitize(targetFolder));
+        Files.createDirectories(dir.resolve("tmp"));
+        Files.createDirectories(dir.resolve("new"));
+        Files.createDirectories(dir.resolve("cur"));
+        String name = System.currentTimeMillis() + "." + UUID.randomUUID() + ".eml";
+        Path target = dir.resolve(seen ? "cur" : "new").resolve(name);
+        Files.copy(source, target);
+        return mailRoot.relativize(target);
+    }
+
+    /** Физическое удаление .eml (EXPUNGE / POP3 DELE+QUIT). Отсутствие файла — не ошибка. */
+    public void deleteMessage(String relativePath) throws IOException {
+        Files.deleteIfExists(resolveMessagePath(relativePath));
+    }
+
+    /**
+     * Переименование каталога папки на ФС (IMAP RENAME). Пути писем в БД обновляет вызывающий
+     * сервис в той же транзакции; если каталога ещё нет (папка пустая и файлов не было) — no-op.
+     */
+    public void renameFolderDir(String mailbox, String oldFolder, String newFolder) throws IOException {
+        Path base = mailRoot.resolve(sanitize(mailbox));
+        Path from = base.resolve(sanitize(oldFolder));
+        Path to = base.resolve(sanitize(newFolder));
+        if (!Files.exists(from) || from.equals(to)) {
+            return;
+        }
+        if (Files.exists(to)) {
+            throw new FileAlreadyExistsException(to.toString());
+        }
+        try {
+            Files.move(from, to, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException e) {
+            Files.move(from, to);
+        }
+    }
+
+    /** Рекурсивное удаление каталога папки (IMAP DELETE) после удаления строк БД. Best-effort. */
+    public void deleteFolderDir(String mailbox, String folder) throws IOException {
+        Path rootAbs = mailRoot.toAbsolutePath().normalize();
+        Path dir = rootAbs.resolve(sanitize(mailbox)).resolve(sanitize(folder)).normalize();
+        if (!Files.exists(dir) || !dir.startsWith(rootAbs)) {
+            return;
+        }
+        try (var walk = Files.walk(dir)) {
+            walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                try {
+                    Files.deleteIfExists(p);
+                } catch (IOException ignored) {
+                    // best-effort: осиротевший каталог не должен блокировать удаление папки в БД
+                }
+            });
+        }
+    }
+
     private static void writeAndSync(InputStream in, Path target) throws IOException {
         try (var out = new FileOutputStream(target.toFile())) {
             in.transferTo(out);

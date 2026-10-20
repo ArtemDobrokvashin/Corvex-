@@ -110,5 +110,16 @@ per caller или mTLS остаются усилением Stage 5, а не те
 - `mail-storage-service POST /internal/raw` — потоковый приём сырого .eml от smtp-сервиса
   в durable spool; `GET /internal/raw/{rawRef}` читают spam/AV, `DELETE` чистит spool
   после доставки или неудачной публикации события;
+- `mail-storage-service /internal/protocol/users/{userId}/...` — протокольный API этапа 3
+  для IMAP/POP3 (тот же fail-closed токен): `GET/POST /folders`, `GET /folders/{id}/status`,
+  `PATCH/DELETE /folders/{id}`, `GET /folders/{id}/messages?afterUid=&limit=`,
+  `GET /folders/{id}/messages/{uid}/raw` и `GET /messages/{id}/raw` (сырой .eml),
+  `PATCH .../messages/{uid}/flags` (частичные флаги, `null` = не трогать),
+  `POST /folders/{id}/expunge` (пустой список = все `\Deleted`),
+  `POST /folders/{id}/messages` (APPEND: octet-stream + `X-Corvex-Internal-Date`/`X-Corvex-Flags`),
+  `POST /folders/{id}/copy` (COPY/MOVE, ответ — пары UID), `DELETE /messages/{id}`
+  (POP3 DELE на QUIT), `GET /quota`. Каждый объект сверяется по `owner_id` из пути:
+  чужая папка/письмо — `404`; системные папки нельзя удалить/переименовать (`409`);
+  APPEND сверх квоты владельца — `507`;
 - `notification-service POST /internal/alerts/webhook` — вебхук Alertmanager;
 - `admin-service → auth-service /internal/users/**` — управление учётками из админки.

@@ -3,8 +3,10 @@
 **Короткий ответ: этап 1 выполнен, Stages 2A/2B и Stage 4 реализованы в коде — входящий и
 исходящий почтовые конвейеры, submission 587, DKIM, retry/DSN, настоящий webmail
 на `/api/v1/mail/**`, а также persistent-чат на `/api/v1/chat/**`, `/ws/chat` и
-`/api/v1/files/**`. Как рабочую корпоративную почту для сотрудников — пока нет:
-нужен runtime-smoke на JDK/Docker-хосте, затем IMAP/POP3 этапа 3.** Ниже — честный
+`/api/v1/files/**`. Этап 3 начат в коде: внутренний протокольный API хранилища и POP3
+на Apache James написаны и выключены по умолчанию, IMAP готов на уровне клиентов/модели,
+движок James подключается следующей итерацией. Как рабочую корпоративную почту для
+сотрудников — пока нет: нужен runtime-smoke на JDK/Docker-хосте.** Ниже — честный
 аудит по состоянию этого коммита, включая блокеры, исправленные при аудите, и
 обязательные ворота перед пилотом. Полный реестр находок октября 2026 года:
 [`12-full-audit-2026-10.md`](12-full-audit-2026-10.md).
@@ -14,7 +16,9 @@ chat are implemented in code: durable inbound spooling, spam/AV/Maildir delivery
 outbound MX queue with retry/DSN, DKIM signing, authenticated submission, a
 server-backed webmail, and PostgreSQL-backed rooms/messages with STOMP realtime,
 presence, reactions/pins/read receipts and antivirus-checked files. It is still **not**
-a production mail/chat server: the Java/Docker runtime gate and Stage 3 IMAP/POP3 remain.
+a production mail/chat server: the Java/Docker runtime gate remains, Stage 3 has the
+storage protocol API and James-based POP3 in code (disabled by default), and the IMAP
+engine is wired in the next iteration.
 Do not point production MX records at it yet. SMTP stays disabled by default until the
 runtime smoke passes._
 
@@ -31,7 +35,7 @@ runtime smoke passes._
 | auth-service | 🟢 этап 1 | Полный контур входа: сущности пользователей, Argon2id, login (lockout после 5 неудач/15 мин), вращающиеся refresh в HttpOnly cookie с детектом кражи, /me, смена пароля, TOTP setup/confirm/disable без опасного повторного setup, пароли приложений, internal API (CRUD для админки, verify-password для протоколов, статистика), сид суперадмина при первом старте. Публичные ошибки локализуются RU/EN; `/internal/**` защищён fail-closed `X-Corvex-Internal-Token`. Осталось на этап 5: AD/LDAP и политики из админки |
 | web-gateway | 🟢 | Маршруты, JWT-проверка по JWKS и rate-limit работают с реальными токенами; ошибочный `SCOPE_admin` убран — права по claim `permissions` проверяет admin-service. Rate-limit теперь видит реальный IP из доверенного nginx, а logout доступен с валидной refresh-cookie после истечения access token |
 | mail-smtp-service | 🟡 Stages 2A/2B в коде | SubEtha-приём: RCPT проверяется по домену и существующему активному ящику auth-service; DATA потоково пишется в durable spool storage (лимит до heap), событие публикуется с publisher confirm, при недоступности storage/RabbitMQ — SMTP `451`. Добавлены исходящая MX-очередь (dnsjava, STARTTLS, retry 5m/15m/1h/4h до 72ч, DSN), DKIM rsa-sha256 relaxed/relaxed и submission 587 с обязательным STARTTLS+AUTH и проверкой прав/отправителя. `CORVEX_SMTP_ENABLED=false` по умолчанию до runtime-smoke |
-| mail-imap / mail-pop3 | 🔴 | Порты опубликованы, протокольных движков (Apache James за портами) ещё нет — Outlook/Thunderbird не подключатся (этап 3) |
+| mail-imap / mail-pop3 | 🟡 POP3 и фундамент этапа 3 в коде / 🔴 IMAP-движок | Внутренний протокольный API в mail-storage (папки/UID/флаги/expunge/APPEND/COPY-MOVE/квота), POP3-сервис на Apache James protocols 3.2: снапшот INBOX, UIDL=UUID письма, DELE на QUIT, implicit TLS 995, plain 110 только по явному флагу, `CORVEX_POP3_ENABLED=false` по умолчанию до сборки и клиентского smoke. IMAP: готовы `ImapAuthClient`/`ImapStorageClient`, модель путей папок и STORE-флагов; James MailboxManager/MessageManager подключается следующей итерацией на JDK-хосте (таблица SPI ↔ хранилище в README сервиса) |
 | mail-storage-service | 🟡 Stages 2A/2B в коде | Internal raw API (`POST/GET/DELETE /internal/raw`), потребитель `mail.av.checked`, MIME-разбор, идемпотентная доставка по `raw_ref+owner`, Maildir+CAS вложений, папки/UID под блокировкой, квота по auth+mail_db, индексация Elasticsearch и webmail API `/api/v1/mail/**`: folders/list/detail/flags/move/send, Sent-копия, локальная/внешняя маршрутизация и генерация DSN по `mail.outbound.bounced`. Нужна живая проверка Maven/Docker |
 | mail-spam / mail-antivirus | 🟡 Stage 2A в коде | Потребители конвейера подключены: spam читает spool и публикует `mail.spam.checked` (fail-open при недоступном spamd), AV потоково сканирует ClamAV INSTREAM и публикует `mail.av.checked` (ERROR блокирует вложения по статусу). Очереди durable, 5 retry, DLQ |
 | chat-service | 🟡 Stage 4 в коде | Flyway V2, JPA-сущности/репозитории комнат, участников, сообщений, edit-history, реакций и упоминаний; REST для rooms/direct/members, cursor-history, идемпотентной отправки по `clientMessageId`, edit/soft-delete, reactions, pin, монотонных read-позиций, membership-scoped поиска, каталога и presence. STOMP: Bearer JWT на `CONNECT`, перепроверка членства/права записи на `SUBSCRIBE`/`SEND`, события после коммита БД, typing и mention/queue ошибок. Redis presence с TTL сессии 120 с. Unit-тесты написаны, но Maven/Spring/Flyway runtime ещё не подтверждён |
@@ -69,7 +73,7 @@ runtime smoke passes._
 - ⛔ Направлять настоящие MX-записи и переносить рабочие ящики;
 - ⛔ Включать `CORVEX_SMTP_ENABLED=true` с внешним доступом к 25 порту;
 - ⛔ Давать сотрудникам доступ как к боевой «почте» или «корпоративному чату»: webmail и persistent-чат уже серверные в коде, но Java/Docker runtime-smoke, Flyway/Spring-старт и сквозная проверка STOMP/файлов ещё не пройдены;
-- ⛔ Подключать Outlook/Thunderbird (IMAP/POP3 движков нет).
+- ⛔ Подключать Outlook/Thunderbird как боевые клиенты (IMAP-движка ещё нет; POP3 написан, но не прошёл сборку и клиентский smoke — включён только осознанно для тестов на стенде).
 
 ## 5. Ворота готовности к пилоту (50 ящиков)
 
@@ -82,7 +86,9 @@ runtime smoke passes._
 - [ ] Runtime Stage 2B: webmail отправляет локально и во внешний MX; submission принимает app-password по STARTTLS; внешняя проверка подтверждает DKIM/SPF/DMARC; при 4xx письмо retry-ится, при 5xx отправитель получает DSN;
 - [x] Stage 4 в коде: Flyway V2, persistent комнаты/сообщения/реакции/упоминания, cursor-history и идемпотентный `clientMessageId`, STOMP с Bearer на CONNECT и перепроверкой SUBSCRIBE/SEND, presence, настоящий frontend без demo-данных в реальной сессии, файлы CAS+ClamAV с проверкой членства на upload/download; unit-тесты сервисов чата и файлов написаны;
 - [ ] Runtime Stage 4: на JDK/Docker-хосте два пользователя обмениваются сообщениями в direct/группе, история переживает рестарт, не-участник не читает комнату и не скачивает файл, повтор `clientMessageId` не создаёт дубль, EICAR отклоняется антивирусом, STOMP переживает refresh JWT;
-- [ ] Этап 3: IMAP поверх James (IDLE/UIDPLUS/MOVE/QUOTA), POP3, app-passwords; приёмка в Outlook и Thunderbird;
+- [x] Этап 3 в коде (часть 1): внутренний протокольный API mail-storage (папки/UID/флаги/expunge/APPEND/COPY-MOVE/квота, owner-скоупинг, защита системных папок), POP3 на Apache James protocols 3.2 (снапшот INBOX, UIDL=UUID письма, DELE на QUIT, implicit TLS 995, plain только по явному флагу), IMAP клиенты и модель (пути папок, STORE-флаги); unit-тесты написаны, серверы выключены по умолчанию;
+- [ ] Runtime этапа 3 (POP3): `mvn` собирает James-зависимости, Thunderbird по 995 забирает почту с app-password, DELE без QUIT ничего не удаляет, повторный логин не дублирует письма при «оставлять на сервере»;
+- [ ] Этап 3 в коде (часть 2): IMAP-движок поверх James (MailboxManager/MessageManager по таблице в README сервиса; IDLE/UIDPLUS/MOVE/QUOTA/SPECIAL-USE), приёмка в Outlook и Thunderbird;
 - [ ] DNS по чек-листу + mail-tester ≥ 9/10;
 - [ ] Бэкап и **учебное восстановление** выполнены на стенде (docs/10 §10.5);
 - [ ] Только после всего выше: `CORVEX_SMTP_ENABLED=true`, пилотный поддомен, прогрев IP.
@@ -92,7 +98,7 @@ runtime smoke passes._
 | Критерий | Сегодня |
 |---|---|
 | Сервисы запускаются через docker-compose | Ожидаемо после фикса блокеров; требуется подтверждение первым реальным запуском |
-| Почта SMTP/IMAP/POP3 работает | SMTP inbound/submission/outbound — Stages 2A/2B в коде, ждут runtime-smoke; IMAP/POP3 — этап 3 |
+| Почта SMTP/IMAP/POP3 работает | SMTP inbound/submission/outbound — Stages 2A/2B в коде, ждут runtime-smoke; протокольный API хранилища и POP3 (James) — этап 3 в коде, выключены до сборки/smoke; IMAP-движок — следующая итерация этапа 3 |
 | Веб-клиент показывает/отправляет письма | Да в коде: серверные folders/list/detail/flags/move/send; демо-данные только при явном demo-входе |
 | Чат realtime | Stage 4 в коде: серверная персистенция, авторизованный STOMP, настоящий UI в реальной сессии и файлы; требуется Maven/Docker runtime-smoke |
 | Админка и права | Да (код этапа 1): пользователи, группы/чекбоксы, аудит; нужна живая сборка на сервере |

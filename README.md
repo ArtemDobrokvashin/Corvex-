@@ -87,16 +87,17 @@ npm run dev
 #### Реализовано в коде для реального бэкенда
 
 - **Identity:** Argon2id, lockout после 5 неудач на 15 минут, JWT RS256 на 15 минут, вращающиеся refresh-сессии в HttpOnly `SameSite=Strict` cookie и детект повторного использования refresh-токена.
-- **2FA и клиенты:** TOTP setup/confirm/disable, MFA-шаг при входе и пароли приложений; SMTP submission в коде уже использует их, IMAP/POP3 появятся на Stage 3.
+- **2FA и клиенты:** TOTP setup/confirm/disable, MFA-шаг при входе и пароли приложений; SMTP submission и POP3 в коде уже используют их, IMAP-движок подключается следующей итерацией Stage 3.
 - **Администрирование:** пользователи, квоты, блокировка/отключение, 6 системных и пользовательские группы, 24 права, аудит, настройки, health и базовая аналитика.
 - **Защита от самоблокировки:** последнего `SUPER_ADMIN` нельзя лишить группы, заблокировать или отключить через API.
 - **RU/EN до конца:** переключаются интерфейс, demo-данные, системные группы, формат дат/чисел/байт и `ProblemDetail` ошибки auth/admin по `Accept-Language`.
 - **Эмодзи без картинок и CDN:** нативный Unicode picker, вставка в курсор, реакции и графемно-безопасная обрезка сложного текста.
 - **Почта Stage 2:** durable SMTP spool, SpamAssassin → ClamAV → Maildir/CAS, серверный webmail, исходящая MX-очередь с retry/DSN, DKIM и submission 587 с AUTH+STARTTLS. Этот код ещё не принят живым запуском.
+- **Почтовые протоколы Stage 3 (частично):** внутренний протокольный API хранилища (папки/UID/флаги/APPEND/COPY/QUOTA) и POP3-сервис на Apache James protocols 3.2 (INBOX, стабильные UIDL, implicit TLS 995) написаны и выключены по умолчанию до Maven/клиентского smoke; IMAP готов на уровне клиентов и модели (пути папок, флаги), а движок James MailboxManager подключается следующей итерацией на JDK-хосте — таблица соответствия SPI ↔ хранилище в README сервиса.
 
 #### Запроектировано и строится по этапам
 
-- **Почтовые протоколы Stage 3:** Apache James IMAP/POP3 для Outlook, Thunderbird и мобильных клиентов.
+- **IMAP-движок Stage 3:** Apache James IMAP для Outlook, Thunderbird и мобильных клиентов поверх готового протокольного API хранилища.
 - **Чат:** STOMP/RabbitMQ, persistent rooms, membership authorization, файлы, presence и push-события.
 - **Enterprise:** AD/LDAP, mTLS между сервисами, мгновенный отзыв JWT, расширенный hardening и нагрузочные ворота до 1000 сотрудников.
 
@@ -106,7 +107,7 @@ npm run dev
 |---|---|---|
 | 1 | Identity, пользователи, группы, RBAC, аудит, админка | 🟡 код написан; Maven/Docker runtime ещё не подтверждён |
 | 2 | Durable SMTP-доставка, storage, spam/AV, поиск, исходящая очередь | 🟡 Stages 2A/2B написаны; JDK/Docker runtime ещё не подтверждён |
-| 3 | IMAP/POP3 на Apache James, Outlook/Thunderbird | 📐 контракты и порты готовы |
+| 3 | IMAP/POP3 на Apache James, Outlook/Thunderbird | 🟡 протокольный API хранилища и POP3 написаны (выключены до smoke); IMAP — модель готова, движок следующей итерацией |
 | 4 | Persistent realtime-чат, файлы, presence | 🟡 код написан (REST/STOMP/presence/файлы); Maven/Docker runtime ещё не подтверждён |
 | 5 | AD/LDAP, mTLS, production hardening | 📐 спроектировано |
 
@@ -323,16 +324,17 @@ Reproduce the captures with [`docs/screenshots/README.md`](docs/screenshots/READ
 #### Implemented in code for the real backend
 
 - **Identity:** Argon2id, 15-minute lockout after 5 failures, 15-minute RS256 JWTs, rotating refresh sessions in an HttpOnly `SameSite=Strict` cookie, and refresh-token reuse detection.
-- **2FA and clients:** TOTP setup/confirm/disable, an MFA sign-in step, and app passwords; SMTP submission already uses them in code, while IMAP/POP3 arrive in Stage 3.
+- **2FA and clients:** TOTP setup/confirm/disable, an MFA sign-in step, and app passwords; SMTP submission and POP3 already use them in code, while the IMAP engine lands in the next Stage 3 iteration.
 - **Administration:** users, quotas, block/disable, 6 system plus custom groups, 24 permissions, audit, settings, service health, and basic sign-in analytics.
 - **No accidental lock-out:** the last `SUPER_ADMIN` cannot lose membership, be blocked, or be disabled through the API.
 - **RU/EN end to end:** UI, demo data, system groups, dates/numbers/bytes, and auth/admin `ProblemDetail` errors localized by `Accept-Language`.
 - **Emoji without images or a CDN:** a native Unicode picker, cursor-aware insertion, reactions, and grapheme-safe text handling.
 - **Stage 2 mail:** durable SMTP spooling, SpamAssassin → ClamAV → Maildir/CAS, server-backed webmail, an outbound MX queue with retry/DSN, DKIM, and submission on port 587 with AUTH+STARTTLS. This code has not yet passed live runtime acceptance.
+- **Stage 3 mail protocols (partial):** the storage-side internal protocol API (folders/UIDs/flags/APPEND/COPY/QUOTA) and a POP3 service on Apache James protocols 3.2 (INBOX, stable UIDLs, implicit TLS 995) are written and disabled by default until the Maven/client smoke passes; IMAP is ready at the client/model layer (folder paths, flags), and the James MailboxManager engine is wired in the next iteration on a JDK host — see the SPI mapping table in the service README.
 
 #### Designed and being built in stages
 
-- **Stage 3 mail protocols:** Apache James IMAP/POP3 for Outlook, Thunderbird, and mobile clients.
+- **Stage 3 IMAP engine:** Apache James IMAP for Outlook, Thunderbird, and mobile clients on top of the ready storage protocol API.
 - **Chat:** STOMP/RabbitMQ, persistent rooms, membership authorization, files, presence, and push events.
 - **Enterprise:** AD/LDAP, service-to-service mTLS, instant JWT revocation, hardening, and load gates for 1,000 employees.
 
@@ -342,7 +344,7 @@ Reproduce the captures with [`docs/screenshots/README.md`](docs/screenshots/READ
 |---|---|---|
 | 1 | Identity, users, groups, RBAC, audit, administration | 🟡 code written; Maven/Docker runtime not yet proven |
 | 2 | Durable SMTP delivery, storage, spam/AV, search, outbound queue | 🟡 Stages 2A/2B written; JDK/Docker runtime not yet proven |
-| 3 | Apache James IMAP/POP3, Outlook/Thunderbird | 📐 contracts and ports ready |
+| 3 | Apache James IMAP/POP3, Outlook/Thunderbird | 🟡 storage protocol API and POP3 written (disabled until smoke); IMAP model ready, engine next iteration |
 | 4 | Persistent realtime chat, files, presence | 🟡 code written (REST/STOMP/presence/files); Maven/Docker runtime not yet proven |
 | 5 | AD/LDAP, mTLS, production hardening | 📐 designed |
 
