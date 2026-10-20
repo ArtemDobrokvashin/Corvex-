@@ -81,7 +81,8 @@ Simplest to operate if a Windows host is not mandatory: Option A step 3, no Hype
 ```powershell
 git clone https://github.com/ArtemDobrokvashin/Corvex-.git C:\Corvex
 cd C:\Corvex
-git checkout arena/3732db07-corvex
+git switch main
+git pull --ff-only   # completed stages are merged into main
 ```
 
 Or download the branch ZIP from GitHub and unpack to `C:\Corvex`.

@@ -92,7 +92,8 @@ docker --version && docker compose version
 ```powershell
 git clone https://github.com/ArtemDobrokvashin/Corvex-.git C:\Corvex
 cd C:\Corvex
-git checkout arena/3732db07-corvex   # ветка с текущим состоянием проекта
+git switch main
+git pull --ff-only   # завершённые этапы уже в main
 ```
 
 Если git на сервере нежелателен: скачайте ZIP ветки с GitHub и распакуйте в `C:\Corvex`.
