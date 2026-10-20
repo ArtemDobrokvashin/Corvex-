@@ -1,7 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { Client } from '@stomp/stompjs';
-import { marked } from 'marked';
-import DOMPurify from 'dompurify';
 import {
   ArrowLeft,
   Check,
@@ -51,6 +49,7 @@ import {
   type Locale,
 } from '../../i18n';
 import { firstGraphemes, insertTextAtSelection, stripMarkdownPreview } from '../../lib/text';
+import { renderChatMarkdown } from '../../lib/markdown';
 import { useSession } from '../../store/sessionStore';
 
 type Translate = ReturnType<typeof useI18n>['t'];
@@ -1303,13 +1302,6 @@ export default function RealChatPage() {
     selectRoom(message.roomId, message.id);
   }
 
-  const renderMarkdown = (md: string) => ({
-    __html: DOMPurify.sanitize(marked.parse(md) as string, {
-      FORBID_TAGS: ['img', 'iframe', 'video', 'audio', 'source', 'style'],
-      FORBID_ATTR: ['style'],
-    }),
-  });
-
   const renderRoom = (room: RoomSummaryView) => {
     const title = roomTitle(room);
     const other = otherDirectUser(room);
@@ -1794,7 +1786,7 @@ export default function RealChatPage() {
                                 {message.bodyMarkdown?.trim() && (
                                   <div
                                     className="message-markdown mt-0.5 text-[14.5px] leading-relaxed text-ink-soft [&_p]:m-0"
-                                    dangerouslySetInnerHTML={renderMarkdown(message.bodyMarkdown)}
+                                    dangerouslySetInnerHTML={renderChatMarkdown(message.bodyMarkdown)}
                                   />
                                 )}
                                 {message.fileRef && (
