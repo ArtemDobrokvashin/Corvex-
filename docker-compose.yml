@@ -51,7 +51,7 @@ services:
     deploy: { resources: { limits: { memory: 2G } } }
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
     volumes: [redis-data:/data]
