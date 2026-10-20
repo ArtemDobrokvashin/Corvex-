@@ -1,0 +1,49 @@
+server:
+  port: 8088
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: 6379
+      password: ${REDIS_PASSWORD:}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${CORVEX_JWK_SET_URI:http://auth-service:8081/oauth2/jwks}
+  application:
+    name: chat-service
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:5432/chat_db
+    username: ${POSTGRES_USER:corvex}
+    password: ${POSTGRES_PASSWORD:change-me}
+    hikari: { maximum-pool-size: 10, minimum-idle: 2 }
+  jpa:
+    hibernate.ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  rabbitmq:
+    host: ${RABBITMQ_HOST:rabbitmq}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:corvex}
+    password: ${RABBITMQ_PASSWORD:change-me}
+management:
+  endpoints.web.exposure.include: health,info,prometheus,metrics
+  endpoint.health.probes.enabled: true
+  metrics.tags.application: chat-service
+logging:
+  # Структурные JSON-логи -> Promtail -> Loki (см. docs/01-architecture.md)
+  pattern.console: '%d{yyyy-MM-dd''T''HH:mm:ss.SSSXXX} [%thread] %-5level %logger{36} [%X{requestId}] - %msg%n'
+corvex:
+  auth:
+    # Каталог сотрудников и проверка активности участников идут только через internal API auth-service.
+    base-url: ${CORVEX_AUTH_SERVICE_URL:http://auth-service:8081}
+  chat:
+    allowed-origin-patterns: ${CORVEX_WEB_ORIGINS:https://${CORVEX_DOMAIN:mail.company.local}}
+    general-room-title: ${CORVEX_CHAT_GENERAL_ROOM_TITLE:Общий}
+  security:
+    internal-token: ${CORVEX_INTERNAL_API_TOKEN:}
+    # Публичный ключ auth-service (JWKS): каждый сервис сам валидирует JWT (RS256)
+    jwk-set-uri: ${CORVEX_JWK_SET_URI:http://auth-service:8081/oauth2/jwks}

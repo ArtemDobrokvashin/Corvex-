@@ -1,1 +1,492 @@
-# Corvex-
+<div align="center">
+
+<img src="frontend/public/corvex.svg" width="88" alt="Corvex logo" />
+
+# Corvex
+
+**Corporate mail & team chat that stays on your server.**<br />
+**Корпоративная почта и сообщения, которые остаются дома.**<br />
+<sub>Free &amp; open source (Apache-2.0): raise and run your own corporate mail service on your own servers.<br />
+Бесплатный open-source проект (Apache-2.0): поднимите и настройте собственный корпоративный почтовый сервис на своих серверах.</sub>
+
+[Русский](#русский) · [English](#english) · [Production status](#production-ready-пока-нет) · [Screenshots](#скриншоты) · [Quick start](#попробовать-за-2-минуты) · [Install](#установка-на-windows-server) · [Docs](#документация) · [Support Corvex](#поддержать-corvex)
+
+[![GitHub stars](https://img.shields.io/github/stars/ArtemDobrokvashin/Corvex-?style=social)](https://github.com/ArtemDobrokvashin/Corvex-/stargazers)
+[![Last commit](https://img.shields.io/github/last-commit/ArtemDobrokvashin/Corvex-)](https://github.com/ArtemDobrokvashin/Corvex-/commits)
+[![Not production-ready](https://img.shields.io/badge/production--ready-NO-b60205)](#production-ready-пока-нет)
+![Stages 1, 2, 4](https://img.shields.io/badge/stages_1_2_4-code_written_runtime_unverified-d29922)
+![RU EN](https://img.shields.io/badge/interface-RU%20%2F%20EN-3157d5)
+![Chrome 109](https://img.shields.io/badge/browser-Chrome_109%2B-3157d5)
+[![Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-2ea44f)](LICENSE)
+![Free and open source](https://img.shields.io/badge/free-%26_open_source-2ea44f)
+[![Telegram](https://img.shields.io/badge/Telegram-Artem__Dobrokvashin-26A5E4?logo=telegram&logoColor=white)](https://t.me/Artem_Dobrokvashin)
+
+[![Corvex Mail](docs/screenshots/mail-ru.png)](docs/screenshots/mail-ru.png)
+
+<sub>Real screenshot of the built frontend with clearly labelled mail demo data. The screenshot is UI evidence only—not proof that the Java/Docker backend has passed runtime acceptance.</sub>
+
+</div>
+
+> ⭐ **If Corvex is useful to you, star the repository and tell the author you deployed it.** Corvex has no hidden telemetry and does not phone home — voluntary stars, feedback, and [`ADOPTERS.md`](ADOPTERS.md) entries are how real usage becomes visible.
+
+---
+
+## Русский
+
+### Почта и команды — на вашем сервере, а не в чужом облаке
+
+**Corvex** — бесплатный open-source проект (лицензия Apache-2.0) для тех, кто хочет **поднять и настроить собственный корпоративный почтовый сервис на своих серверах**. Это self-hosted платформа коммуникаций для организаций до 1000 сотрудников: собственный почтовый сервер, современный веб-клиент, командный чат, гибкая админ-панель, 2FA, мониторинг и резервное копирование в одном Docker-развёртывании.
+
+Концепция Corvex проста: **переписка компании должна принадлежать компании, а инструмент для неё — быть свободным**. Исходный код открыт, подписки и платы за пользователя нет, скрытой телеметрии нет: вы скачиваете проект, разворачиваете его на своём Windows Server (или Linux с Docker), настраиваете домен, DNS и сертификаты по инструкциям — и почта с чатом живут на вашей инфраструктуре, а не в чужом облаке и не зависят от того, доступен ли внешний SaaS сегодня утром.
+
+| Типичная боль | Как отвечает Corvex |
+|---|---|
+| Почта и чаты живут у внешнего провайдера | Данные, пользователи и аудит остаются на сервере организации |
+| Старый парк Windows 7 / Chrome 109 нельзя просто выбросить | Отдельный legacy-бандл и адаптивный интерфейс для ПК, планшетов и телефонов |
+| Админка либо «всё можно», либо «ничего нельзя» | 6 групп и 24 атомарных права-чекбокса; права суммируются по группам |
+| Интерфейс переведён наполовину, ошибки API — на другом языке | Полные RU/EN: интерфейс, даты, числа, demo-данные и публичные ошибки API |
+| Проект обещает «enterprise-ready», но прячет ограничения | Открытый аудит, честные ворота готовности и SMTP, выключенный до durable-доставки |
+
+> [!CAUTION]
+> **Corvex пока НЕ production-ready.** Stage 1, Stages 2A/2B и Stage 4 (persistent-чат) написаны в коде, а фронтенд собран и покрыт своими тестами, но Java-сервисы ещё не прошли первую компиляцию Maven, запуск Spring-контекстов, Docker Compose и сквозной почтовый/чат smoke на JDK/Docker-хосте. Поэтому сейчас это **кандидат для тестового стенда и дальнейшей разработки, а не готовая замена рабочей почте**. Не направляйте production MX на Corvex, не переносите настоящие ящики и не включайте публичный SMTP, пока не пройдены ворота ниже и в [`docs/READINESS.md`](docs/READINESS.md).
+
+### Попробовать за 2 минуты
+
+Нужен только Node.js:
+
+```bash
+git clone -b arena/3732db07-corvex https://github.com/ArtemDobrokvashin/Corvex-.git
+cd Corvex-/frontend
+npm install
+npm run dev
+```
+
+Откройте `http://localhost:5173` и нажмите **«Посмотреть демо без сервера»**. Почта и чат покажут учебные данные с жёлтой плашкой. В полном стеке вход, администрирование, webmail и чат Stage 4 (persistent комнаты и сообщения, STOMP realtime, presence, файлы с антивирусной проверкой) подключены к серверным API в коде, но их совместный запуск ещё должен быть подтверждён Maven/Docker smoke.
+
+Понравилось? Поставьте ⭐ на GitHub и добавьте организацию в [`ADOPTERS.md`](ADOPTERS.md) — скрытой телеметрии в Corvex нет, поэтому автор иначе не увидит ваше внедрение.
+
+### Скриншоты
+
+Все кадры ниже — реальные скриншоты собранного фронтенда в Chromium. На самих кадрах почта и сообщения демонстрационные; скриншот интерфейса не является доказательством, что Java/Docker-контур уже работает на сервере.
+
+<table>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/login-ru.png"><img src="docs/screenshots/login-ru.png" alt="Экран входа Corvex на русском" /></a><br /><sub>Вход и RU/EN переключатель</sub></td>
+    <td width="50%"><a href="docs/screenshots/chat-ru.png"><img src="docs/screenshots/chat-ru.png" alt="Сообщения Corvex с открытым emoji-picker" /></a><br /><sub>Сообщения, реакции и цветные Unicode-эмодзи</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/admin-ru.png"><img src="docs/screenshots/admin-ru.png" alt="Администрирование пользователей Corvex на русском" /></a><br /><sub>Пользователи, группы, статусы и квоты</sub></td>
+    <td width="50%" align="center"><a href="docs/screenshots/mail-mobile-ru.png"><img src="docs/screenshots/mail-mobile-ru.png" width="280" alt="Мобильная почта Corvex на русском" /></a><br /><sub>Мобильная почта</sub></td>
+  </tr>
+</table>
+
+Как воспроизводимо переснять кадры: [`docs/screenshots/README.md`](docs/screenshots/README.md).
+
+### Возможности
+
+#### Реализовано в коде для реального бэкенда
+
+- **Identity:** Argon2id, lockout после 5 неудач на 15 минут, JWT RS256 на 15 минут, вращающиеся refresh-сессии в HttpOnly `SameSite=Strict` cookie и детект повторного использования refresh-токена.
+- **2FA и клиенты:** TOTP setup/confirm/disable, MFA-шаг при входе и пароли приложений; SMTP submission в коде уже использует их, IMAP/POP3 появятся на Stage 3.
+- **Администрирование:** пользователи, квоты, блокировка/отключение, 6 системных и пользовательские группы, 24 права, аудит, настройки, health и базовая аналитика.
+- **Защита от самоблокировки:** последнего `SUPER_ADMIN` нельзя лишить группы, заблокировать или отключить через API.
+- **RU/EN до конца:** переключаются интерфейс, demo-данные, системные группы, формат дат/чисел/байт и `ProblemDetail` ошибки auth/admin по `Accept-Language`.
+- **Эмодзи без картинок и CDN:** нативный Unicode picker, вставка в курсор, реакции и графемно-безопасная обрезка сложного текста.
+- **Почта Stage 2:** durable SMTP spool, SpamAssassin → ClamAV → Maildir/CAS, серверный webmail, исходящая MX-очередь с retry/DSN, DKIM и submission 587 с AUTH+STARTTLS. Этот код ещё не принят живым запуском.
+
+#### Запроектировано и строится по этапам
+
+- **Почтовые протоколы Stage 3:** Apache James IMAP/POP3 для Outlook, Thunderbird и мобильных клиентов.
+- **Чат:** STOMP/RabbitMQ, persistent rooms, membership authorization, файлы, presence и push-события.
+- **Enterprise:** AD/LDAP, mTLS между сервисами, мгновенный отзыв JWT, расширенный hardening и нагрузочные ворота до 1000 сотрудников.
+
+### Статус и roadmap
+
+| Этап | Содержимое | Статус |
+|---|---|---|
+| 1 | Identity, пользователи, группы, RBAC, аудит, админка | 🟡 код написан; Maven/Docker runtime ещё не подтверждён |
+| 2 | Durable SMTP-доставка, storage, spam/AV, поиск, исходящая очередь | 🟡 Stages 2A/2B написаны; JDK/Docker runtime ещё не подтверждён |
+| 3 | IMAP/POP3 на Apache James, Outlook/Thunderbird | 📐 контракты и порты готовы |
+| 4 | Persistent realtime-чат, файлы, presence | 🟡 код написан (REST/STOMP/presence/файлы); Maven/Docker runtime ещё не подтверждён |
+| 5 | AD/LDAP, mTLS, production hardening | 📐 спроектировано |
+
+SMTP выключен по умолчанию на всех уровнях до живого Maven/Docker smoke. Даже с durable spool Corvex не должен ответить `250 OK`, пока сквозной путь письма не подтверждён на целевом хосте.
+
+### Production-ready? Пока нет
+
+**Прямой ответ: нет. Corvex сегодня нельзя честно продавать или внедрять как production-ready продукт.** Это не означает, что репозиторий — пустой макет: Stage 1 и почтовый Stage 2 действительно написаны как сервисный код. Но между «код написан и статически вычитан» и «системе можно доверить рабочую переписку» находится обязательная приёмка, которую ещё никто не выполнил на настоящем JDK/Docker-хосте.
+
+Сейчас Corvex подходит для:
+
+- изучения интерфейса и архитектуры;
+- разработки и исправления первой сборки;
+- изолированного тестового стенда без настоящих ящиков и без production MX;
+- подготовки DNS/сертификатов на отдельном тестовом домене.
+
+Сейчас Corvex **не подходит** для:
+
+- замены рабочего корпоративного почтового сервера;
+- переноса настоящих почтовых ящиков и переписки;
+- публичного включения портов 25/587 как боевого сервиса;
+- обещаний сотрудникам, что Outlook/Thunderbird уже работают (Stage 3), а чат Stage 4 уже проверен в бою: его код написан, но runtime-приёмка ещё впереди.
+
+#### Что уже подтверждено, а что нет
+
+| Область | Подтверждено в текущем коммите | Не подтверждено |
+|---|---|---|
+| Frontend | `npm test`: 3 файла / 12 тестов; `npm run build`, включая legacy-бандл | настоящий Windows 7 + Chrome 109 и E2E против поднятого бэкенда |
+| Java | синтаксис, контракты и зависимости вычитаны статически; unit-тесты написаны | `mvn` компиляция, выполнение Java-тестов, Spring-контексты, JaCoCo-гейты |
+| Docker/инфраструктура | YAML разбирается; сервисы, сети, тома и healthcheck описаны | сборка образов, Flyway на чистом PostgreSQL, права на тома, все `healthy` без рестартов |
+| Почта | код inbound/outbound/submission/DKIM/DSN и webmail API написан | письмо целиком SMTP → spam → AV → Maildir → webmail, внешняя доставка, проверка DKIM получателями, потери/дубли при сбоях |
+| Эксплуатация | мониторинг, backup-скрипты и ворота спроектированы | восстановление из бэкапа, откат релиза, нагрузка на 1000 сотрудников, security-тесты и 72-часовой soak |
+
+> Успешная сборка Docker-образа сама по себе тоже не равна пройденным Java-тестам: текущие Dockerfile собирают сервисы с `-DskipTests`. Поэтому `mvn verify` нужно запускать отдельно до или независимо от Compose.
+
+#### Что может пойти не так — и как это исправлять
+
+| Симптом при первой приёмке | Что это может означать | Как диагностировать и исправлять |
+|---|---|---|
+| Maven не компилирует сервис | несовпадение API SubEtha/Jakarta Mail/Spring AMQP, отсутствующий import/bean или ошибка типов, которую не видит синтаксический парсер | собрать один сервис без тестов, исправить **первую** ошибку компилятора, затем повторить; не «лечить» массовым понижением версий |
+| Тесты проходят, но падает JaCoCo `verify` | покрытие ниже порога 70% в POM, а не обязательно сломана логика | добавить тесты на критичную логику; порог менять только отдельным осознанным решением, а не молча отключать перед релизом |
+| Spring-контекст не стартует | дублирующийся/отсутствующий bean, AMQP-декларация, неверный env, недоступны PostgreSQL/Redis/RabbitMQ/Elasticsearch | читать полный cause-chain в `docker compose logs --tail 200 <сервис>`; исправить bean/config и добавить контекстный или интеграционный тест |
+| Flyway или JPA `validate` падает | схема миграции расходится с entity/JPQL | добавить **новую** миграцию; уже применённую миграцию не редактировать. `docker compose down -v` допустим только на пустом стенде |
+| `401/503` на internal API или после входа | разные/пустые `CORVEX_INTERNAL_API_TOKEN`, JWT-ключ не сохранён между рестартами, JWKS недоступен, рассинхронизировано время | проверить один и тот же секрет во всех сервисах, persistent PEM-ключ auth-service, NTP и логи auth/admin/gateway без публикации самих секретов |
+| SMTP отвечает `451`, письмо не появляется или уходит в DLQ | storage/RabbitMQ/spam/AV недоступны, нет прав на spool/Maildir, превышена квота или событие не совпало с JSON-контрактом | проверить логи SMTP/storage/spam/AV, очереди и DLQ в RabbitMQ, место и владельца томов; не удалять spool вручную, пока не найден `rawRef` и причина |
+| После рестарта письмо продублировалось или потерялось | at-least-once доставка AMQP и отсутствие полноценного transactional outbox между spool, RabbitMQ, Maildir и БД | воспроизвести остановку сервиса в каждой точке конвейера; до продакшена добавить/усилить идемпотентность или outbox и регрессионный тест именно на этот сбой |
+| Webmail возвращает `403/422/413` при отправке | нет permission, отправитель не `ACTIVE`, домен не входит в `CORVEX_MAIL_DOMAINS`, плохой адрес или письмо больше лимита spool | проверить группы пользователя, статус ящика, локальные домены и размер MIME после Base64; права настраивать через админку, а не ослаблять проверки в коде |
+| Submission не принимает AUTH/STARTTLS | нет сертификата, приватный ключ не PKCS#8 PEM, не проброшен 587, включён TOTP и используется основной пароль вместо app-password, `MAIL FROM` не принадлежит пользователю | убедиться по логу, что submission listener стартовал; проверить `/certs/fullchain.pem`, `/certs/privkey.pem`, app-password, права и совпадение envelope sender |
+| Внешняя почта уходит в спам или bounce | нет PTR/rDNS, SPF не покрывает отправителя, публичный DKIM не совпадает с приватным ключом, DMARC alignment нарушен, провайдер закрыл исходящий 25 или IP без репутации | смотреть diagnostic в DSN и заголовки у получателя; начинать с SPF `~all` и DMARC `p=none`, опубликовать точный `corvex1._domainkey`, настроить PTR и mail-tester ≥ 9/10 до ужесточения политики |
+| На Windows 7 интерфейс не работает как на скриншотах | браузеру отдан modern-бандл вместо legacy, кэш nginx/браузера или отсутствует нужный polyfill | проверить заголовки и фактически загружаемый `*-legacy*.js`, затем повторить smoke на реальной Windows 7 + Chrome 109; скриншот из современного Chromium этот гейт не заменяет |
+
+#### Как довести Corvex до production-ready
+
+- [ ] **0. Не открывать прод раньше времени.** Держать `CORVEX_SMTP_ENABLED=false`, не менять рабочие MX и работать на отдельной VM/тестовом поддомене.
+- [ ] **1. Зелёный Maven по всем 12 сервисам.** На хосте с JDK 17 и Maven 3.9 выполнить из корня репозитория (корневой `pom.xml` — агрегатор всех сервисов):
+
+  ```powershell
+  mvn -B clean verify
+  ```
+
+  Пункты 1–3 одной командой также выполняет `scripts\verify.ps1` (Windows Server) или `scripts/verify.sh` (Linux); с флагом `-DockerBuild` / `--docker-build` дополнительно собираются все Docker-образы.
+
+- [ ] **2. Зелёный frontend именно релизного коммита:** `npm ci`, `npm test`, `npm run build`.
+- [ ] **3. Чистый Compose-подъём.** `docker compose config`, сборка всех образов, первый старт на пустых томах, все сервисы `healthy`, Flyway применился, нет restart loop и необъяснённых DLQ.
+- [ ] **4. Identity/admin smoke.** Bootstrap-админ, смена пароля, второй пользователь, группы/права, lockout, TOTP, app-password, аудит и запрет действий над чужими данными.
+- [ ] **5. Почтовый smoke на тестовом домене.** Внешнее письмо → INBOX; локальное webmail-письмо; внешнее письмо на контролируемый MX; вложение; Bcc не виден другим получателям; письмо переживает рестарт контейнеров.
+- [ ] **6. Негативные почтовые сценарии.** Несуществующий локальный получатель — `550`; open relay запрещён; storage/Rabbit недоступны — `451`, а не ложный `250 OK`; временный `4xx` уходит в retry; постоянный `5xx` создаёт DSN; повтор события не создаёт дубль письма.
+- [ ] **7. Submission и доставляемость.** STARTTLS обязателен, app-password работает, чужой `MAIL FROM` отклоняется `553`, DKIM/SPF/DMARC проходят у внешнего получателя, PTR совпадает с SMTP hostname, mail-tester ≥ 9/10.
+- [ ] **8. Smoke чата Stage 4.** Два пользователя: direct и групповой диалог, история после рестарта контейнеров, не-участник не читает комнату и не скачивает её файл, повторная отправка с тем же `clientMessageId` не плодит дубль, реакции/закрепления/прочтения видны обеим сторонам, файл EICAR отклоняется антивирусом, STOMP продолжает работать после обновления JWT.
+- [ ] **9. Эксплуатационная приёмка.** Backup (`scripts/backup.ps1`) → восстановление (`scripts/restore.ps1`) на чистой VM, откат на предыдущие образы, алерт при остановке сервиса, ротация сертификата, нагрузочные цели из [`docs/10-test-strategy.md`](docs/10-test-strategy.md), security-проход и реальная Windows 7 + Chrome 109.
+- [ ] **10. Пилот, а не сразу «прод для всех».** Минимум 72 часа на тестовом/пилотном домене с мониторингом очередей, DLQ, диска, bounce-rate и жалоб пользователей; только после этого переносить ограниченную группу ящиков.
+
+Даже после пунктов 1–10 корректный статус будет сначала **«pilot-ready для ограниченного webmail/SMTP-контура»**, а не production-ready всей платформы: для полного обещания Corvex ещё нужны Stage 3 (IMAP/POP3), runtime-подтверждение уже написанного Stage 4 (сохраняемый чат и файлы) и Stage 5 (AD/LDAP и production hardening), либо честное сужение заявленного объёма продукта.
+
+Если первая сборка упала, для issue приложите SHA коммита, первую ошибку Maven или полный стек Spring, `docker compose ps` и хвост логов соответствующего сервиса. **Не прикладывайте** `.env`, пароли, internal token, приватные ключи и настоящие письма.
+
+### Установка на Windows Server
+
+> Команда ниже выбирает текущую ветку аудита. После слияния в `main` уберите `-b arena/3732db07-corvex`.
+
+```powershell
+git clone -b arena/3732db07-corvex https://github.com/ArtemDobrokvashin/Corvex-.git C:\Corvex
+cd C:\Corvex
+
+.\scripts\first-run.ps1     # уникальные секреты, JWT-ключ, internal API token, пилотный TLS, .env
+notepad .env                # CORVEX_DOMAIN, CORVEX_MAIL_DOMAIN, получатели алертов
+
+docker compose config
+docker compose up -d --build                 # 12 микросервисов + инфраструктура
+docker compose --profile monitoring up -d    # Prometheus, Grafana, Loki, Alertmanager
+docker compose ps                            # первый настоящий smoke-gate: все healthy
+```
+
+Откройте `https://mail.<ваш-домен>`. Первый пользователь — `admin`; пароль задаётся `CORVEX_BOOTSTRAP_ADMIN_PASSWORD` или один раз печатается в лог:
+
+```powershell
+docker compose logs auth-service | Select-String BOOTSTRAP
+```
+
+Полная инструкция: [`docs/INSTALL.md`](docs/INSTALL.md) — Hyper-V/Docker, брандмауэр, TLS, DNS, сертификаты, бэкапы и траблшутинг.
+
+### Архитектура
+
+12 сервисов Java 17 / Spring Boot за единым gateway:
+
+- `auth-service` владеет учётками, паролями, TOTP и сессиями;
+- `admin-service` — группами, правами, настройками и аудитом;
+- `web-gateway` проверяет JWT и ограничивает частоту запросов;
+- `mail-smtp`, `mail-imap`, `mail-pop3` отделяют протоколы от бизнес-логики;
+- `mail-storage` — Maildir и вложения по SHA-256 с дедупликацией;
+- `mail-spam`, `mail-antivirus` — тонкие клиенты SpamAssassin и ClamAV;
+- `chat-service`, `chat-file-service` — STOMP и файлы;
+- `notification-service` превращает Alertmanager webhook в email администраторам.
+
+Данные: PostgreSQL 16 (database-per-service), Redis, RabbitMQ, Elasticsearch, Maildir + CAS. Наблюдаемость: Prometheus, Grafana, Loki. Один `docker-compose.yml`: 25 контейнеров, 4 сети, 12 томов.
+
+Диаграммы и ADR: [`docs/01-architecture.md`](docs/01-architecture.md).
+
+### Безопасность и приватность
+
+- Refresh-токен не хранится в открытом виде: в PostgreSQL лежит SHA-256 от 32 случайных байт.
+- Внутренние auth/admin API не маршрутизируются наружу и требуют `X-Corvex-Internal-Token`; без секрета — fail-closed `503`.
+- nginx — единственный доверенный edge для клиентского IP; поддельный первый `X-Forwarded-For` не попадает в rate-limit и аудит.
+- Повторный TOTP setup не заменяет уже включённую 2FA без текущего кода.
+- Настройки валидируются на сервере и пишутся одной транзакцией.
+- Markdown санитизируется; внешние изображения в чате запрещены как tracking pixels.
+- **Нет скрытой телеметрии, рекламных трекеров и license phone-home.** Если когда-нибудь появится проверка обновлений, она должна быть явной, документированной и отключаемой.
+
+Полный аудит: [`docs/12-full-audit-2026-10.md`](docs/12-full-audit-2026-10.md).
+
+### Документация
+
+| Документ | Содержание |
+|---|---|
+| [`docs/TECHNICAL_DESIGN.md`](docs/TECHNICAL_DESIGN.md) | мастер-документ технического проекта |
+| [`docs/12-full-audit-2026-10.md`](docs/12-full-audit-2026-10.md) | полный аудит фронтенда, бэкенда и инфраструктуры |
+| [`docs/READINESS.md`](docs/READINESS.md) | честный статус по компонентам и ворота пилота |
+| [`docs/INSTALL.md`](docs/INSTALL.md) | установка и эксплуатация; есть [`INSTALL.en.md`](docs/INSTALL.en.md) |
+| [`docs/11-modern-design-analysis.md`](docs/11-modern-design-analysis.md) | Gmail/Outlook/Slack/Superhuman/Linear и дизайн-система Quiet Work |
+| [`docs/api/*.yaml`](docs/api/) | OpenAPI: auth, mail, chat, admin |
+| [`ADOPTERS.md`](ADOPTERS.md) | кто использует Corvex и как добавить организацию |
+| [`SUPPORT.md`](SUPPORT.md) | куда писать о багах, безопасности, донатах и коммерческой помощи |
+
+### Поддержать Corvex
+
+Corvex развивается как авторский проект. Сейчас он **бесплатен для self-hosted развёртывания**, но разработка, тесты и поддержка стоят времени. Есть четыре способа помочь проекту выстрелить:
+
+1. **⭐ Поставьте звезду на GitHub.** Это главный публичный сигнал, что проект нужен.
+2. **Расскажите о внедрении.** Добавьте организацию в [`ADOPTERS.md`](ADOPTERS.md) или напишите автору приватно. Без телеметрии это единственный способ увидеть реальные установки.
+3. **Поддержите деньгами.** Добровольный донат можно согласовать напрямую с автором: **Artem Dobrokvashin — [https://t.me/Artem_Dobrokvashin](https://t.me/Artem_Dobrokvashin)**. Реквизиты в репозитории не публикуются.
+4. **Закажите помощь.** Можно обсудить внедрение, планирование миграции, обучение администраторов, приоритетные исправления и заказные интеграции.
+
+Устойчивая модель проекта — не брать базовую почту в заложники: **Corvex бесплатен и открыт под Apache-2.0, и ядро для собственного сервера таким и останется**. Поддерживать разработку помогают добровольные пожертвования и, по желанию организаций, платные услуги автора по внедрению и сопровождению — но сам продукт не требует ни подписки, ни платы за пользователя, ни «активации».
+
+### Лицензия
+
+Corvex распространяется под лицензией **Apache License 2.0** — полный текст в файле [`LICENSE`](LICENSE), атрибуция и перечень сторонних компонентов — в [`NOTICE`](NOTICE). Это значит: бесплатное развёртывание на собственном сервере без подписки и платы за пользователя, право модифицировать, распространять и использовать в коммерческих целях при соблюдении условий Apache-2.0. Вклад в проект принимается под той же лицензией (см. [`CONTRIBUTING.md`](CONTRIBUTING.md)).
+
+---
+
+## English
+
+### Mail and team conversations that stay home
+
+**Corvex** is a free open-source project (Apache-2.0) for people who want to **raise and run their own corporate mail service on their own servers**. It is a self-hosted communication platform for organizations of up to 1,000 employees: an own mail server, a modern webmail client, team chat, a flexible administration panel, 2FA, monitoring, and backups in one Docker deployment.
+
+The concept is deliberately simple: **a company's correspondence should belong to the company, and the tool for it should be free**. The source code is open, there is no subscription or per-seat fee and no hidden telemetry: you download the project, deploy it on your Windows Server (or Linux with Docker), configure your domain, DNS, and certificates with the supplied guides — and mail and chat live on your infrastructure instead of a third-party cloud, independent of somebody else's SaaS being up this morning.
+
+| Common pain | Corvex answer |
+|---|---|
+| Mail and chat live with an external provider | Data, users, and audit stay on your organization's server |
+| The Windows 7 / Chrome 109 fleet cannot simply be discarded | A dedicated legacy bundle plus responsive phone/tablet layouts |
+| Administration is either “everything” or “nothing” | 6 groups and 24 atomic checkbox permissions, unioned across groups |
+| Half the UI is translated and API errors are not | Complete RU/EN across UI, dates, numbers, demo data, and public API errors |
+| “Enterprise-ready” hides the fine print | A public audit, explicit readiness gates, and SMTP disabled until durable delivery |
+
+> [!CAUTION]
+> **Corvex is NOT production-ready yet.** Stage 1, Stages 2A/2B, and Stage 4 (persistent chat) are written in code and the frontend builds and passes its tests, but the Java services have not yet passed their first Maven compilation, Spring-context startup, Docker Compose launch, or end-to-end mail/chat smoke on a JDK/Docker host. Treat this repository as a **test-bench and development candidate, not a replacement for a working mail server**. Do not point production MX records at Corvex, migrate real mailboxes, or expose SMTP publicly until the gates below and in [`docs/READINESS.md`](docs/READINESS.md) pass.
+
+### Try it in 2 minutes
+
+Only Node.js is required:
+
+```bash
+git clone -b arena/3732db07-corvex https://github.com/ArtemDobrokvashin/Corvex-.git
+cd Corvex-/frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173` and click **“View the demo without a server.”** Mail and Messages show clearly labelled sample data. In the full stack, sign-in, Administration, webmail, and Stage 4 chat (persistent rooms and messages, STOMP realtime, presence, antivirus-checked files) are wired to server APIs in code, but that combined runtime still has to pass Maven/Docker acceptance.
+
+Like what you see? Star the repository and add your organization to [`ADOPTERS.md`](ADOPTERS.md). Corvex contains no hidden telemetry, so the author cannot otherwise see your deployment.
+
+### Screenshots
+
+All frames below are real captures of the built frontend in Chromium. The captures themselves show demo mail and messages; a UI screenshot is not evidence that the Java/Docker backend already runs successfully.
+
+<table>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/login-en.png"><img src="docs/screenshots/login-en.png" alt="Corvex sign-in in English" /></a><br /><sub>Sign-in with the RU/EN switch</sub></td>
+    <td width="50%"><a href="docs/screenshots/mail-en.png"><img src="docs/screenshots/mail-en.png" alt="Corvex Mail in English" /></a><br /><sub>Mail in the Quiet Work three-pane layout</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/chat-en.png"><img src="docs/screenshots/chat-en.png" alt="Corvex Messages with the emoji picker open in English" /></a><br /><sub>Messages, reactions, and native color emoji</sub></td>
+    <td width="50%"><a href="docs/screenshots/admin-en.png"><img src="docs/screenshots/admin-en.png" alt="Corvex Administration users in English" /></a><br /><sub>Users, groups, statuses, and quotas</sub></td>
+  </tr>
+</table>
+
+Reproduce the captures with [`docs/screenshots/README.md`](docs/screenshots/README.md).
+
+### Features
+
+#### Implemented in code for the real backend
+
+- **Identity:** Argon2id, 15-minute lockout after 5 failures, 15-minute RS256 JWTs, rotating refresh sessions in an HttpOnly `SameSite=Strict` cookie, and refresh-token reuse detection.
+- **2FA and clients:** TOTP setup/confirm/disable, an MFA sign-in step, and app passwords; SMTP submission already uses them in code, while IMAP/POP3 arrive in Stage 3.
+- **Administration:** users, quotas, block/disable, 6 system plus custom groups, 24 permissions, audit, settings, service health, and basic sign-in analytics.
+- **No accidental lock-out:** the last `SUPER_ADMIN` cannot lose membership, be blocked, or be disabled through the API.
+- **RU/EN end to end:** UI, demo data, system groups, dates/numbers/bytes, and auth/admin `ProblemDetail` errors localized by `Accept-Language`.
+- **Emoji without images or a CDN:** a native Unicode picker, cursor-aware insertion, reactions, and grapheme-safe text handling.
+- **Stage 2 mail:** durable SMTP spooling, SpamAssassin → ClamAV → Maildir/CAS, server-backed webmail, an outbound MX queue with retry/DSN, DKIM, and submission on port 587 with AUTH+STARTTLS. This code has not yet passed live runtime acceptance.
+
+#### Designed and being built in stages
+
+- **Stage 3 mail protocols:** Apache James IMAP/POP3 for Outlook, Thunderbird, and mobile clients.
+- **Chat:** STOMP/RabbitMQ, persistent rooms, membership authorization, files, presence, and push events.
+- **Enterprise:** AD/LDAP, service-to-service mTLS, instant JWT revocation, hardening, and load gates for 1,000 employees.
+
+### Status and roadmap
+
+| Stage | Scope | Status |
+|---|---|---|
+| 1 | Identity, users, groups, RBAC, audit, administration | 🟡 code written; Maven/Docker runtime not yet proven |
+| 2 | Durable SMTP delivery, storage, spam/AV, search, outbound queue | 🟡 Stages 2A/2B written; JDK/Docker runtime not yet proven |
+| 3 | Apache James IMAP/POP3, Outlook/Thunderbird | 📐 contracts and ports ready |
+| 4 | Persistent realtime chat, files, presence | 🟡 code written (REST/STOMP/presence/files); Maven/Docker runtime not yet proven |
+| 5 | AD/LDAP, mTLS, production hardening | 📐 designed |
+
+SMTP is disabled by default at every layer until the live Maven/Docker smoke passes. Even with a durable spool, Corvex must not say `250 OK` until the end-to-end path is proven on a target host.
+
+### Production-ready? Not yet
+
+**The direct answer is no. Corvex must not honestly be sold or deployed as a production-ready product today.** That does not make the repository an empty mock-up: Stage 1 and mail Stage 2 are real service code. The missing step is the acceptance work between “code is written and statically reviewed” and “this system may be trusted with working correspondence.” Nobody has completed that step on a real JDK/Docker host yet.
+
+Corvex is currently appropriate for:
+
+- evaluating the interface and architecture;
+- development and first-build fixes;
+- an isolated test bench with no real mailboxes and no production MX records;
+- preparing DNS and certificates on a separate test domain.
+
+Corvex is currently **not** appropriate for:
+
+- replacing a working corporate mail server;
+- migrating real mailboxes or correspondence;
+- exposing ports 25/587 as a production service;
+- promising employees working Outlook/Thunderbird (Stage 3) or a battle-proven Stage 4 chat: the chat code is written, but its runtime acceptance is still ahead.
+
+#### What is proven—and what is not
+
+| Area | Proven in this commit | Not proven |
+|---|---|---|
+| Frontend | `npm test`: 3 files / 12 tests; `npm run build`, including the legacy bundle | real Windows 7 + Chrome 109 and E2E against a running backend |
+| Java | syntax, contracts, and dependencies statically reviewed; unit tests written | Maven compilation, Java test execution, Spring contexts, JaCoCo gates |
+| Docker/infrastructure | YAML parses; services, networks, volumes, and healthchecks are described | image builds, Flyway on clean PostgreSQL, volume permissions, every service staying `healthy` |
+| Mail | inbound/outbound/submission/DKIM/DSN and webmail API code exists | complete SMTP → spam → AV → Maildir → webmail delivery, external delivery, recipient-side DKIM validation, loss/duplicates under failure |
+| Operations | monitoring, backup scripts, and gates are designed | backup restore, release rollback, 1,000-user load, security testing, and a 72-hour soak |
+
+> A successful Docker image build is not the same as passing Java tests: the current Dockerfiles package services with `-DskipTests`. Run `mvn verify` separately before or independently of Compose.
+
+#### What can go wrong—and how to fix it
+
+| First-acceptance symptom | Likely meaning | Diagnosis and fix |
+|---|---|---|
+| Maven cannot compile a service | a SubEtha/Jakarta Mail/Spring AMQP API mismatch, missing import/bean, or a type error invisible to a syntax parser | build one service without tests, fix the **first** compiler error, and repeat; do not “fix” it by downgrading a stack of versions at once |
+| Tests pass but JaCoCo `verify` fails | coverage is below the 70% POM threshold; the logic is not necessarily broken | add tests around critical behavior; change the threshold only as an explicit decision, never silently before a release |
+| A Spring context will not start | duplicate/missing bean, AMQP declaration problem, bad environment, or unavailable PostgreSQL/Redis/RabbitMQ/Elasticsearch | read the full cause chain in `docker compose logs --tail 200 <service>`, fix the bean/config, and add a context or integration test |
+| Flyway or JPA `validate` fails | a migration schema differs from entities/JPQL | add a **new** migration; never edit a migration that has already run. `docker compose down -v` is only acceptable on an empty test bench |
+| `401/503` from internal APIs or after sign-in | missing/mismatched `CORVEX_INTERNAL_API_TOKEN`, a non-persistent JWT key, unavailable JWKS, or clock skew | use one token everywhere, persist the auth-service PEM key, synchronize NTP, and inspect auth/admin/gateway logs without publishing secrets |
+| SMTP returns `451`, mail is missing, or an event reaches a DLQ | storage/RabbitMQ/spam/AV is down, spool/Maildir permissions are wrong, quota is exceeded, or a JSON event does not match its contract | inspect SMTP/storage/spam/AV logs, RabbitMQ queues/DLQs, free space, and volume ownership; do not delete spool files manually until the `rawRef` and root cause are known |
+| Mail is duplicated or lost after a restart | AMQP at-least-once delivery plus no complete transactional outbox across spool, RabbitMQ, Maildir, and PostgreSQL | stop each pipeline service at every handoff and reproduce it; strengthen idempotency or add an outbox plus a regression test before production |
+| Webmail send returns `403/422/413` | missing permission, sender is not `ACTIVE`, the domain is absent from `CORVEX_MAIL_DOMAINS`, an address is invalid, or the MIME message exceeds the spool limit | check the user's groups, mailbox status, local domains, and MIME size after Base64; change permissions in Administration rather than weakening server checks |
+| Submission rejects AUTH/STARTTLS | certificate missing, private key is not unencrypted PKCS#8 PEM, port 587 is not mapped, TOTP requires an app password instead of the main password, or `MAIL FROM` is not owned by the user | confirm from logs that the submission listener started; verify `/certs/fullchain.pem`, `/certs/privkey.pem`, app password, permissions, and envelope sender |
+| External mail lands in spam or bounces | missing PTR/rDNS, SPF does not cover the sender, the published DKIM key does not match the private key, DMARC alignment fails, outbound port 25 is blocked, or the IP has no reputation | read the DSN diagnostic and recipient-side headers; start with SPF `~all` and DMARC `p=none`, publish the exact `corvex1._domainkey`, configure PTR, and reach mail-tester ≥ 9/10 before tightening policy |
+| The UI fails on Windows 7 despite the screenshots | the browser received the modern bundle instead of legacy assets, stale nginx/browser cache, or a missing polyfill | verify that a `*-legacy*.js` asset is actually loaded, then repeat the smoke on real Windows 7 + Chrome 109; a modern Chromium screenshot does not satisfy this gate |
+
+#### Path to production-ready
+
+- [ ] **0. Keep production closed.** Keep `CORVEX_SMTP_ENABLED=false`, do not change working MX records, and use a separate VM/test subdomain.
+- [ ] **1. Make Maven green for all 12 services** on JDK 17 + Maven 3.9, from the repository root (the root `pom.xml` aggregates every service):
+
+  ```powershell
+  mvn -B clean verify
+  ```
+
+  `scripts\verify.ps1` (Windows Server) or `scripts/verify.sh` (Linux) runs gates 1–3 as one command; add `-DockerBuild` / `--docker-build` to also build every Docker image.
+
+- [ ] **2. Make the release commit's frontend green:** `npm ci`, `npm test`, `npm run build`.
+- [ ] **3. Pass a clean Compose launch.** Validate config, build every image, start on empty volumes, apply Flyway, reach all-`healthy`, and eliminate restart loops and unexplained DLQ messages.
+- [ ] **4. Pass identity/admin smoke.** Bootstrap admin, password change, a second user, groups/permissions, lockout, TOTP, app passwords, audit, and cross-user data isolation.
+- [ ] **5. Pass mail smoke on a test domain.** External mail reaches INBOX; local webmail works; external delivery reaches a controlled MX; attachments work; Bcc is not exposed; mail survives container restarts.
+- [ ] **6. Pass negative mail cases.** Unknown local recipient returns `550`; open relay is denied; unavailable storage/Rabbit returns `451`, not a false `250 OK`; temporary `4xx` retries; permanent `5xx` creates a DSN; redelivered events do not duplicate mail.
+- [ ] **7. Pass submission and deliverability.** STARTTLS is mandatory, app passwords work, a foreign `MAIL FROM` returns `553`, DKIM/SPF/DMARC pass at an external recipient, PTR matches the SMTP hostname, and mail-tester scores at least 9/10.
+- [ ] **8. Pass the Stage 4 chat smoke.** Two users in a direct and a group dialog; history survives container restarts; a non-member can neither read the room nor download its file; resending with the same `clientMessageId` creates no duplicate; reactions/pins/read receipts are visible to both sides; an EICAR file is rejected by the antivirus; STOMP keeps working across a JWT refresh.
+- [ ] **9. Pass operational acceptance.** Backup (`scripts/backup.ps1`) → restore (`scripts/restore.ps1`) on a clean VM, rollback to previous images, service-down alerting, certificate rotation, the load targets in [`docs/10-test-strategy.md`](docs/10-test-strategy.md), a security pass, and real Windows 7 + Chrome 109.
+- [ ] **10. Pilot before production.** Run at least 72 hours on a test/pilot domain while monitoring queues, DLQs, disk, bounce rate, and user reports; only then migrate a limited mailbox group.
+
+Even after steps 1–10, the honest first label is **“pilot-ready for a limited webmail/SMTP scope,”** not production-ready for the whole platform. The full Corvex promise still needs Stage 3 (IMAP/POP3), runtime proof of the already-written Stage 4 (persistent chat/files), and Stage 5 (AD/LDAP and production hardening), unless the advertised product scope is deliberately narrowed.
+
+If the first build fails, attach the commit SHA, the first Maven error or complete Spring stack trace, `docker compose ps`, and the relevant service log tail to the issue. **Never attach** `.env`, passwords, the internal token, private keys, or real mail.
+
+### Install on Windows Server
+
+> The command below selects the current audit branch. After it is merged into `main`, drop `-b arena/3732db07-corvex`.
+
+```powershell
+git clone -b arena/3732db07-corvex https://github.com/ArtemDobrokvashin/Corvex-.git C:\Corvex
+cd C:\Corvex
+
+.\scripts\first-run.ps1     # unique secrets, JWT key, internal API token, pilot TLS, .env
+notepad .env                # CORVEX_DOMAIN, CORVEX_MAIL_DOMAIN, alert recipients
+
+docker compose config
+docker compose up -d --build                 # 12 microservices + infrastructure
+docker compose --profile monitoring up -d    # Prometheus, Grafana, Loki, Alertmanager
+docker compose ps                            # first real smoke gate: everything healthy
+```
+
+Open `https://mail.<your-domain>`. The first user is `admin`; set `CORVEX_BOOTSTRAP_ADMIN_PASSWORD` or read the one-time password from the log:
+
+```powershell
+docker compose logs auth-service | Select-String BOOTSTRAP
+```
+
+Complete guide: [`docs/INSTALL.en.md`](docs/INSTALL.en.md).
+
+### Architecture
+
+Twelve Java 17 / Spring Boot services sit behind one gateway. Auth owns accounts, passwords, TOTP, and sessions; Admin owns groups, permissions, settings, and audit; Gateway verifies JWTs and rate limits. Mail protocols are separated from Maildir/SHA-256 storage, spam uses SpamAssassin, antivirus uses ClamAV, chat uses STOMP/RabbitMQ, and notifications turn Alertmanager webhooks into administrator email.
+
+Data lives in PostgreSQL 16 (database-per-service), Redis, RabbitMQ, Elasticsearch, and Maildir + CAS. Observability uses Prometheus, Grafana, and Loki. One `docker-compose.yml` defines 25 containers, 4 networks, and 12 volumes.
+
+Diagrams and ADRs: [`docs/01-architecture.md`](docs/01-architecture.md).
+
+### Security and privacy
+
+- Refresh tokens are never stored raw: PostgreSQL keeps SHA-256 of 32 random bytes.
+- Internal auth/admin APIs are not routed by the gateway and require `X-Corvex-Internal-Token`; with no secret they fail closed with `503`.
+- nginx is the only trusted edge for client IP; a spoofed first `X-Forwarded-For` cannot poison rate limits or audit.
+- Re-running TOTP setup cannot replace already enabled 2FA without a current code.
+- Admin settings are validated on the server and written in one transaction.
+- Chat Markdown is sanitized and external images are forbidden as tracking pixels.
+- **No hidden telemetry, advertising trackers, or license phone-home.** Any future update check must be explicit, documented, and disableable.
+
+Full audit: [`docs/12-full-audit-2026-10.md`](docs/12-full-audit-2026-10.md).
+
+### Documentation
+
+| Document | Contents |
+|---|---|
+| [`docs/TECHNICAL_DESIGN.md`](docs/TECHNICAL_DESIGN.md) | master technical design |
+| [`docs/12-full-audit-2026-10.md`](docs/12-full-audit-2026-10.md) | full frontend/backend/infrastructure audit |
+| [`docs/READINESS.md`](docs/READINESS.md) | honest component status and pilot gates |
+| [`docs/INSTALL.en.md`](docs/INSTALL.en.md) | installation and operations; Russian: [`INSTALL.md`](docs/INSTALL.md) |
+| [`docs/api/*.yaml`](docs/api/) | OpenAPI: auth, mail, chat, admin |
+| [`ADOPTERS.md`](ADOPTERS.md) | who uses Corvex and how to add an organization |
+| [`SUPPORT.md`](SUPPORT.md) | bugs, security reports, donations, and commercial help |
+
+### Support Corvex
+
+Corvex is an author-led project. It is currently **free for self-hosted deployment**, but development, testing, and support take real time. Four actions make a disproportionate difference:
+
+1. **⭐ Star the repository.** Stars are the main public signal that the project should exist.
+2. **Tell the author you deployed it.** Add your organization to [`ADOPTERS.md`](ADOPTERS.md) or send a private note. With no telemetry, this is the only way real installations become visible.
+3. **Donate.** Arrange voluntary support directly with the author: **Artem Dobrokvashin — [https://t.me/Artem_Dobrokvashin](https://t.me/Artem_Dobrokvashin)**. Payment details are intentionally not published here.
+4. **Buy help.** Discuss deployment assistance, migration planning, administrator training, priority fixes, or custom integrations.
+
+The sustainable model is not to hold basic mail hostage: **Corvex is free and open under Apache-2.0, and the self-hosted core stays that way**. Development is supported by voluntary donations and, for organizations that want it, paid deployment and maintenance services from the author — but the product itself needs no subscription, no per-user fee, and no "activation".
+
+### License
+
+Corvex is licensed under the **Apache License 2.0** — see [`LICENSE`](LICENSE) for the full text and [`NOTICE`](NOTICE) for attribution and third-party components. In practice that means free self-hosted deployment with no subscription or per-user fee, plus the right to modify, distribute, and use it commercially under the Apache-2.0 terms. Contributions are accepted under the same license (see [`CONTRIBUTING.md`](CONTRIBUTING.md)).

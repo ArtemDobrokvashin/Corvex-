@@ -1,0 +1,53 @@
+server:
+  port: 8081
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: 6379
+      password: ${REDIS_PASSWORD:}
+  application:
+    name: auth-service
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:5432/auth_db
+    username: ${POSTGRES_USER:corvex}
+    password: ${POSTGRES_PASSWORD:change-me}
+    hikari: { maximum-pool-size: 10, minimum-idle: 2 }
+  jpa:
+    hibernate.ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  rabbitmq:
+    host: ${RABBITMQ_HOST:rabbitmq}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:corvex}
+    password: ${RABBITMQ_PASSWORD:change-me}
+management:
+  endpoints.web.exposure.include: health,info,prometheus,metrics
+  endpoint.health.probes.enabled: true
+  metrics.tags.application: auth-service
+logging:
+  # Структурные JSON-логи -> Promtail -> Loki (см. docs/01-architecture.md)
+  pattern.console: '%d{yyyy-MM-dd''T''HH:mm:ss.SSSXXX} [%thread] %-5level %logger{36} [%X{requestId}] - %msg%n'
+corvex:
+  internal:
+    api-token: ${CORVEX_INTERNAL_API_TOKEN:}
+  # Группы/права для JWT запрашиваются у владельца RBAC при входе и refresh
+  admin-service-url: ${CORVEX_ADMIN_SERVICE_URL:http://admin-service:8090}
+  bootstrap:
+    admin-username: ${CORVEX_BOOTSTRAP_ADMIN_USERNAME:admin}
+    # Пустой пароль -> сгенерировать и один раз напечатать в лог (grep BOOTSTRAP)
+    admin-password: ${CORVEX_BOOTSTRAP_ADMIN_PASSWORD:}
+    admin-email: ${CORVEX_BOOTSTRAP_ADMIN_EMAIL:admin@company.local}
+  totp:
+    enc-key: ${CORVEX_TOTP_ENC_KEY:}
+  security:
+    # Публичный ключ auth-service (JWKS): каждый сервис сам валидирует JWT (RS256)
+    jwk-set-uri: ${CORVEX_JWK_SET_URI:http://auth-service:8081/oauth2/jwks}
+    access-token-ttl: PT15M
+    refresh-token-ttl: P30D
+    # Secure-cookie: на проде (HTTPS) true; false допустим только для локальной отладки по http
+    refresh-cookie-secure: ${CORVEX_AUTH_COOKIE_SECURE:true}
+    lockout: { max-failures: 5, window: PT15M }

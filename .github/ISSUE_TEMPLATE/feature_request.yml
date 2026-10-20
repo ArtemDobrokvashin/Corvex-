@@ -1,0 +1,30 @@
+name: Feature request / Предложение
+description: Suggest an improvement / Предложить улучшение
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Corvex is a free open-source (Apache-2.0) self-hosted corporate mail and
+        chat server. Roadmap and honest readiness gates live in the README and
+        docs/READINESS.md — Stage 3 (IMAP/POP3) and Stage 5 (AD/LDAP, hardening)
+        are already planned.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / Проблема
+      description: What can you not do today, and in what deployment scenario?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal / Предложение
+      description: What should happen instead? Which service/UI area does it touch?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives / Альтернативы
+      description: Workarounds you use today, or how other self-hosted mail servers solve this.

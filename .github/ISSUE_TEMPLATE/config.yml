@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability / Уязвимость безопасности
+    url: https://github.com/ArtemDobrokvashin/Corvex-/security
+    about: Please do not open a public issue. See SECURITY.md / Не открывайте публичный issue, см. SECURITY.md.
+  - name: Author on Telegram / Автор в Telegram
+    url: https://t.me/Artem_Dobrokvashin
+    about: Voluntary support, deployments, donations / Поддержка, внедрения, пожертвования.

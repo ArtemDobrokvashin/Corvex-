@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      Корневой агрегатор: каждый сервис остаётся автономным (свой parent Spring Boot,
+      свой Dockerfile), а этот POM нужен только для одной команды приёмки на хосте с JDK:
+          mvn -B clean verify
+      Он собирает и тестирует все 12 сервисов одним реактором, включая JaCoCo-гейты модулей.
+    -->
+    <groupId>ru.corvex</groupId>
+    <artifactId>corvex</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>corvex</name>
+    <description>Corvex — бесплатный open-source корпоративный почтовый сервер и чат для собственных серверов (Apache-2.0)</description>
+
+    <modules>
+        <module>services/auth-service</module>
+        <module>services/admin-service</module>
+        <module>services/mail-smtp-service</module>
+        <module>services/mail-imap-service</module>
+        <module>services/mail-pop3-service</module>
+        <module>services/mail-storage-service</module>
+        <module>services/mail-spam-service</module>
+        <module>services/mail-antivirus-service</module>
+        <module>services/chat-service</module>
+        <module>services/chat-file-service</module>
+        <module>services/web-gateway</module>
+        <module>services/notification-service</module>
+    </modules>
+</project>

@@ -1,0 +1,55 @@
+server:
+  port: 8085
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${CORVEX_JWK_SET_URI:http://auth-service:8081/oauth2/jwks}
+  elasticsearch:
+    uris: ${ELASTICSEARCH_URIS:http://elasticsearch:9200}
+    username: ${ELASTIC_USERNAME:elastic}
+    password: ${ELASTIC_PASSWORD:}
+  application:
+    name: mail-storage-service
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:5432/mail_db
+    username: ${POSTGRES_USER:corvex}
+    password: ${POSTGRES_PASSWORD:change-me}
+    hikari: { maximum-pool-size: 10, minimum-idle: 2 }
+  jpa:
+    hibernate.ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  rabbitmq:
+    host: ${RABBITMQ_HOST:rabbitmq}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:corvex}
+    password: ${RABBITMQ_PASSWORD:change-me}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+management:
+  endpoints.web.exposure.include: health,info,prometheus,metrics
+  endpoint.health.probes.enabled: true
+  metrics.tags.application: mail-storage-service
+logging:
+  # Структурные JSON-логи -> Promtail -> Loki (см. docs/01-architecture.md)
+  pattern.console: '%d{yyyy-MM-dd''T''HH:mm:ss.SSSXXX} [%thread] %-5level %logger{36} [%X{requestId}] - %msg%n'
+corvex:
+  auth:
+    base-url: ${CORVEX_AUTH_SERVICE_URL:http://auth-service:8081}
+  mail:
+    domains: ${CORVEX_MAIL_DOMAINS:company.local}
+    root: ${CORVEX_MAIL_ROOT:/data/mail}
+    attachments: ${CORVEX_ATTACHMENT_ROOT:/data/attachments}
+    spool: ${CORVEX_MAIL_SPOOL:/data/mail/_spool}
+    # Единый лимит входящего .eml: storage проверяет его потоково ДО попадания письма в heap/Maildir.
+    max-message-bytes: ${CORVEX_MAIL_MAX_MESSAGE_BYTES:26214400}
+  security:
+    internal-token: ${CORVEX_INTERNAL_API_TOKEN:}
+    # Публичный ключ auth-service (JWKS): каждый сервис сам валидирует JWT (RS256)
+    jwk-set-uri: ${CORVEX_JWK_SET_URI:http://auth-service:8081/oauth2/jwks}

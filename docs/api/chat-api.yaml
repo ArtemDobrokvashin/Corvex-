@@ -1,0 +1,630 @@
+openapi: 3.0.3
+info:
+  title: Corvex Chat API
+  version: 1.0.0
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+  description: |
+    Persistent chat Stage 4: REST is the source of truth for rooms, history, membership,
+    search, read receipts, presence and files. STOMP/WebSocket carries realtime copies of
+    already-authorized operations; its contract is documented in docs/03-api-contracts.md.
+
+    STOMP summary: CONNECT /ws/chat with `Authorization: Bearer <JWT>`; subscribe to
+    /topic/rooms/{roomId}, /user/queue/notifications and /user/queue/errors; send to
+    /app/rooms/{roomId}/send, /app/rooms/{roomId}/read and /app/rooms/{roomId}/typing.
+    Event types: MESSAGE_CREATED, MESSAGE_UPDATED, MESSAGE_DELETED, MESSAGE_READ,
+    TYPING and MENTION.
+servers:
+  - url: https://mail.company.local/api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: Rooms
+  - name: Messages
+  - name: Directory and presence
+  - name: Files
+paths:
+  /chat/rooms:
+    get:
+      tags: [Rooms]
+      summary: Rooms of the current user, sorted by last activity
+      description: Requires CHAT_READ. The configured general room is created/joined idempotently.
+      responses:
+        '200':
+          description: Room summaries with unread and mention counters
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/RoomSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Rooms]
+      summary: Create a group or channel
+      description: GROUP requires CHAT_CREATE_GROUP; channels require CHAT_CREATE_CHANNEL. Direct dialogs use the dedicated endpoint below.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateRoomRequest' }
+      responses:
+        '201':
+          description: Created room
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoomSummary' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /chat/rooms/direct/{userId}:
+    post:
+      tags: [Rooms]
+      summary: Open or return the existing direct dialog with a user
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: Direct room
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoomSummary' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /chat/rooms/{roomId}/members:
+    get:
+      tags: [Rooms]
+      summary: List room members
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+      responses:
+        '200':
+          description: Members with roles, mute deadlines and read positions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Member' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Rooms]
+      summary: Add members to a group/channel
+      description: Only a room OWNER/ADMIN or a holder of CHAT_MODERATE may add members. Direct dialogs are immutable.
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddMembersRequest' }
+      responses:
+        '200':
+          description: Updated room
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoomSummary' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /chat/rooms/{roomId}/members/me:
+    delete:
+      tags: [Rooms]
+      summary: Leave a room
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+      responses:
+        '204': { description: Left the room }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /chat/rooms/{roomId}/messages:
+    get:
+      tags: [Messages]
+      summary: Message history with a backward cursor
+      description: Items are returned in chronological display order. Pass nextBefore as `before` to load older messages. Omit threadRootId for the main room timeline.
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+        - name: before
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+          description: Oldest already-loaded message id returned as nextBefore by the previous page
+        - name: threadRootId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200':
+          description: One page of history
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessagePage' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Messages]
+      summary: Send a message through REST
+      description: The same service path as STOMP. A repeated clientMessageId for the same author and room returns the original message instead of creating a duplicate.
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SendMessageRequest' }
+      responses:
+        '201':
+          description: Stored message
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatMessage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /chat/messages/{messageId}:
+    patch:
+      tags: [Messages]
+      summary: Edit own message
+      description: The previous body is preserved in edit history.
+      parameters:
+        - $ref: '#/components/parameters/MessageId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EditMessageRequest' }
+      responses:
+        '200':
+          description: Updated message
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatMessage' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Messages]
+      summary: Soft-delete a message
+      description: The author or a moderator may delete. Clients receive a masked MessageView with deleted=true and no body/fileRef.
+      parameters:
+        - $ref: '#/components/parameters/MessageId'
+      responses:
+        '200':
+          description: Masked deleted message
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatMessage' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /chat/messages/{messageId}/reactions:
+    put:
+      tags: [Messages]
+      summary: Toggle an emoji reaction
+      parameters:
+        - $ref: '#/components/parameters/MessageId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReactionRequest' }
+      responses:
+        '200':
+          description: Message with updated aggregate reactions
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatMessage' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /chat/messages/{messageId}/pin:
+    put:
+      tags: [Messages]
+      summary: Pin a message
+      description: Author or moderator only.
+      parameters:
+        - $ref: '#/components/parameters/MessageId'
+      responses:
+        '200':
+          description: Pinned message
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatMessage' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Messages]
+      summary: Unpin a message
+      parameters:
+        - $ref: '#/components/parameters/MessageId'
+      responses:
+        '200':
+          description: Unpinned message
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatMessage' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /chat/rooms/{roomId}/read:
+    post:
+      tags: [Messages]
+      summary: Advance the caller's monotonic read position
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReadRequest' }
+      responses:
+        '204': { description: Read position stored }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /chat/search:
+    get:
+      tags: [Messages]
+      summary: Search messages in rooms where the caller is currently a member
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 2 }
+        - name: roomId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200':
+          description: Matching non-deleted messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ChatMessage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /chat/directory:
+    get:
+      tags: [Directory and presence]
+      summary: Active corporate directory for conversation/member pickers
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema: { type: string }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: size
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200':
+          description: Directory page with current presence
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DirectoryUser' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /chat/presence:
+    get:
+      tags: [Directory and presence]
+      summary: Presence statuses for up to 500 users
+      parameters:
+        - name: userIds
+          in: query
+          required: true
+          style: form
+          explode: true
+          schema:
+            type: array
+            maxItems: 500
+            items: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Map userId to status
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+                  enum: [ONLINE, AWAY, DND, OFFLINE]
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Directory and presence]
+      summary: Set the caller's manual presence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PresenceRequest' }
+      responses:
+        '204': { description: Presence stored }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /files:
+    post:
+      tags: [Files]
+      summary: Upload one chat attachment after synchronous ClamAV scanning
+      description: Requires CHAT_READ, CHAT_WRITE and CHAT_SEND_FILES plus current writable membership in roomId. Default limit is 25 MiB; antivirus failure is fail-closed.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [roomId, file]
+              properties:
+                roomId: { type: string, format: uuid }
+                file: { type: string, format: binary }
+      responses:
+        '201':
+          description: Published attachment metadata; use fileRef in a FILE or IMAGE chat message
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatFileUpload' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /files/{fileRef}:
+    get:
+      tags: [Files]
+      summary: Download an attachment as an authenticated blob
+      description: Current membership in the file's room is rechecked for every download. The response is attachment-disposition, private/no-store and X-Content-Type-Options=nosniff.
+      parameters:
+        - name: fileRef
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: File bytes
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '423': { $ref: '#/components/responses/Locked' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    RoomId:
+      name: roomId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    MessageId:
+      name: messageId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: Permission or room membership denied
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: Resource not found
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    PayloadTooLarge:
+      description: File exceeds the configured size limit
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Locked:
+      description: File is unavailable until a successful antivirus verdict
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    UnprocessableEntity:
+      description: File rejected by antivirus or domain validation
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    BadGateway:
+      description: Required internal service is unavailable
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    ServiceUnavailable:
+      description: Required security dependency is unavailable or unconfigured
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+  schemas:
+    Problem:
+      type: object
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+    RoomSummary:
+      type: object
+      required: [id, kind, ownerId, readOnly, memberIds, memberCount, unreadCount, mentionCount, createdAt, lastMessageAt]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [DIRECT, GROUP, CHANNEL_PUBLIC, CHANNEL_PRIVATE, SYSTEM] }
+        title: { type: string, nullable: true }
+        ownerId: { type: string, format: uuid }
+        readOnly: { type: boolean }
+        memberIds:
+          type: array
+          items: { type: string, format: uuid }
+        myRole:
+          type: string
+          nullable: true
+          enum: [OWNER, ADMIN, MEMBER, READONLY]
+        memberCount: { type: integer }
+        unreadCount: { type: integer }
+        mentionCount: { type: integer }
+        lastMessage:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/ChatMessage'
+        createdAt: { type: string, format: date-time }
+        lastMessageAt: { type: string, format: date-time }
+    Member:
+      type: object
+      required: [userId, role, joinedAt]
+      properties:
+        userId: { type: string, format: uuid }
+        role: { type: string, enum: [OWNER, ADMIN, MEMBER, READONLY] }
+        mutedUntil: { type: string, format: date-time, nullable: true }
+        lastReadMessageId: { type: string, format: uuid, nullable: true }
+        joinedAt: { type: string, format: date-time }
+    DirectoryUser:
+      type: object
+      required: [id, username, email, displayName, status, presence]
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        email: { type: string, format: email }
+        displayName: { type: string }
+        department: { type: string, nullable: true }
+        status: { type: string }
+        presence: { type: string, enum: [ONLINE, AWAY, DND, OFFLINE] }
+    Reaction:
+      type: object
+      required: [emoji, count, userIds]
+      properties:
+        emoji: { type: string }
+        count: { type: integer, format: int64 }
+        userIds:
+          type: array
+          items: { type: string, format: uuid }
+    ChatMessage:
+      type: object
+      required: [id, roomId, authorId, kind, pinned, deleted, mentionedUserIds, reactions, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        roomId: { type: string, format: uuid }
+        authorId: { type: string, format: uuid }
+        kind: { type: string, enum: [TEXT, FILE, IMAGE, VOICE, VIDEO, SYSTEM] }
+        bodyMarkdown: { type: string, nullable: true }
+        threadRootId: { type: string, format: uuid, nullable: true }
+        fileRef: { type: string, nullable: true }
+        pinned: { type: boolean }
+        editedAt: { type: string, format: date-time, nullable: true }
+        deleted: { type: boolean }
+        clientMessageId: { type: string, nullable: true }
+        mentionedUserIds:
+          type: array
+          items: { type: string, format: uuid }
+        reactions:
+          type: array
+          items: { $ref: '#/components/schemas/Reaction' }
+        createdAt: { type: string, format: date-time }
+    MessagePage:
+      type: object
+      required: [items, hasMore]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ChatMessage' }
+        hasMore: { type: boolean }
+        nextBefore: { type: string, format: uuid, nullable: true }
+    CreateRoomRequest:
+      type: object
+      required: [kind, memberIds]
+      properties:
+        kind: { type: string, enum: [GROUP, CHANNEL_PUBLIC, CHANNEL_PRIVATE, SYSTEM] }
+        title: { type: string, nullable: true, maxLength: 256 }
+        memberIds:
+          type: array
+          maxItems: 500
+          items: { type: string, format: uuid }
+        readOnly: { type: boolean, nullable: true }
+    SendMessageRequest:
+      type: object
+      properties:
+        bodyMarkdown: { type: string, nullable: true, maxLength: 32000 }
+        threadRootId: { type: string, format: uuid, nullable: true }
+        clientMessageId: { type: string, nullable: true, maxLength: 128 }
+        kind:
+          type: string
+          nullable: true
+          enum: [TEXT, FILE, IMAGE, VOICE, VIDEO, SYSTEM]
+        fileRef: { type: string, nullable: true, maxLength: 256 }
+        mentionedUserIds:
+          type: array
+          maxItems: 100
+          items: { type: string, format: uuid }
+    EditMessageRequest:
+      type: object
+      required: [bodyMarkdown]
+      properties:
+        bodyMarkdown: { type: string, minLength: 1, maxLength: 32000 }
+    ReactionRequest:
+      type: object
+      required: [emoji]
+      properties:
+        emoji: { type: string, minLength: 1, maxLength: 16, example: '👍' }
+    AddMembersRequest:
+      type: object
+      required: [memberIds]
+      properties:
+        memberIds:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items: { type: string, format: uuid }
+    ReadRequest:
+      type: object
+      required: [lastReadMessageId]
+      properties:
+        lastReadMessageId: { type: string, format: uuid }
+    PresenceRequest:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [ONLINE, AWAY, DND] }
+    ChatFileUpload:
+      type: object
+      required: [fileRef, roomId, ownerId, fileName, contentType, sizeBytes, sha256, createdAt]
+      properties:
+        fileRef: { type: string, format: uuid }
+        roomId: { type: string, format: uuid }
+        ownerId: { type: string, format: uuid }
+        fileName: { type: string }
+        contentType: { type: string }
+        sizeBytes: { type: integer, format: int64 }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        createdAt: { type: string, format: date-time }

@@ -1,0 +1,30 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs: [{ targets: ["alertmanager:9093"] }]
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: corvex-services
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - auth-service:8081
+          - mail-smtp-service:8082
+          - mail-imap-service:8083
+          - mail-pop3-service:8084
+          - mail-storage-service:8085
+          - mail-spam-service:8086
+          - mail-antivirus-service:8087
+          - chat-service:8088
+          - chat-file-service:8089
+          - web-gateway:8080
+          - admin-service:8090
+          - notification-service:8091
+  - job_name: prometheus
+    static_configs: [{ targets: ["localhost:9090"] }]
