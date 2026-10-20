@@ -8,7 +8,7 @@ COPY src ./src
 RUN mvn -q -B package -DskipTests
 
 # --- runtime stage (non-root, минимальный JRE-образ) ---
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:25-jre-alpine
 RUN addgroup -S corvex && adduser -S corvex -G corvex
 WORKDIR /app
 COPY --from=build /src/target/*.jar app.jar
