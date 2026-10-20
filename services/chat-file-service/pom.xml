@@ -16,7 +16,7 @@
     <description>Загрузка/раздача файлов чата: потоковая загрузка, SHA-256, предпросмотр изображений, AV-проверка перед публикацией</description>
     <properties>
         <java.version>17</java.version>
-        <spring-cloud.version>2023.0.6</spring-cloud.version>
+        <spring-cloud.version>2025.1.3</spring-cloud.version>
     </properties>
     <dependencyManagement>
         <dependencies>
