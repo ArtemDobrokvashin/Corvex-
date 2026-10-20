@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Corvex: локальные ворота готовности на хосте с JDK 17+, Maven, Node.js и Docker.
+# Corvex: локальные ворота готовности на хосте с JDK 17, Maven 3.9+, Node.js 22.12+ и Docker.
 # Использование: scripts/verify.sh [--docker-build]
 #   без флагов      — frontend-тесты/сборка, mvn verify всех сервисов, проверка compose-конфига
 #   --docker-build  — дополнительно собрать все Docker-образы (долго)
@@ -27,9 +27,10 @@ docker compose version
 step "Frontend: tests + production build (modern + legacy Chrome 109)"
 (
   cd frontend
-  if [ ! -d node_modules ]; then npm ci; fi
+  npm ci
   npm test
   npm run build
+  npm audit --omit=dev --audit-level=moderate
 )
 
 step "Java: mvn verify for all 12 services (tests + JaCoCo gates)"

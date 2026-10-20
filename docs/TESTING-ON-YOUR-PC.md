@@ -1,12 +1,13 @@
 # Corvex: новая инструкция по тестированию на вашем ПК
 
-> **Дата проверки в песочнице:** 20 октября 2026 года.
-> **Проверенная база кода:** `main`, merge-коммит `3bf190a`, включающий коммит Этапа 3 `28d5b33`,
-> плюс проверочная ветка `arena/e6324306-corvex` с этой инструкцией и мелкими исправлениями документации/Dockerfile.
-> **Главный вывод:** фронтенд реально собирается, его тесты проходят, dev-сервер запускается.
-> Java, Docker и сквозные почтовые сценарии в песочнице проверить было невозможно: там нет JDK,
-> Maven и Docker. Поэтому короткий ответ сегодня — **не «всё полностью ОК», а «фронтенд и
-> статика ОК; первая настоящая сборка Java/Docker — на вашем ПК по шагам ниже»**.
+> **Дата release-hardening проверки:** 20 октября 2026 года.
+> **Проверенная база кода:** `main` после PR #4 (`fa06f33`), включающая Этап 3 `28d5b33` и
+> эту инструкцию, плюс ветка `arena/367818b9-corvex`, где до первого теста закрыты
+> frontend-зависимости, POP3 POM, поддерживаемый SMTP-движок и Docker-версии.
+> **Главный вывод:** G0 закрыт — фронтенд реально собирается, 15/15 тестов проходят,
+> production `npm audit` равен 0, статика репозитория чистая. В текущей среде разработки
+> нет JDK, Maven и Docker, поэтому G1/G2 — первая настоящая сборка Java/Docker — остаётся
+> на вашем ПК по шагам ниже. Это всё ещё **не production-ready**.
 
 Эта инструкция заменяет разрозненные команды из старых ответов. Идите строго сверху вниз и
 **не переходите к следующему уровню, если предыдущий красный**: так первая ошибка не утонет
@@ -14,31 +15,34 @@
 
 ---
 
-## Что уже проверено за вас в песочнице
+## Что уже проверено до вашего ПК (ворота G0)
 
 | Проверка | Результат 20.10.2026 | Комментарий |
 |---|---|---|
-| Git-история | ✅ PASS | `28d5b33` есть в `main` вторым после merge-коммита `3bf190a` |
-| `npm ci` во `frontend` | ✅ PASS | Установлено 322 пакета по `package-lock.json` |
-| Frontend unit-тесты | ✅ PASS | 3 файла, **12/12 тестов** |
-| TypeScript + production build | ✅ PASS | `tsc -b && vite build`, modern и legacy (`*-legacy-*.js`) бандлы созданы |
+| Git-история | ✅ PASS | Этап 3 (`28d5b33`) и инструкция уже в `main` через PR #3/#4; текущая hardening-ветка начинается с `fa06f33` |
+| `npm ci` во `frontend` | ✅ PASS | Установка строго по обновлённому `package-lock.json`; Node.js 22.12+ |
+| Frontend unit-тесты | ✅ PASS | 4 файла, **15/15 тестов**, включая jsdom-тесты Markdown/DOMPurify |
+| TypeScript + production build | ✅ PASS | TypeScript 7 + Vite 8; modern и legacy (`*-legacy-*.js`) бандлы созданы |
 | Vite dev-server | ✅ PASS | `0.0.0.0:5173`; `/`, `/login`, `/mail`, `/chat`, `/admin` отдают HTTP 200 |
 | Java-синтаксис | ✅ PASS* | Распарсено **213/213** `.java`; это не компиляция и не проверка типов |
-| XML / JSON / YAML | ✅ PASS | 13 XML, 3 JSON, 27 YAML. В `docs/api/auth-api.yaml` найден и убран дублирующийся ключ `username` |
+| XML / JSON / YAML | ✅ PASS | 13 XML, 3 JSON, 28 YAML, включая новый Dependabot-конфиг |
 | Структура Maven/Compose | ✅ PASS | 12 Java-модулей; в Compose 25 сервисов, 13 build-контекстов, все обязательные сервисы Corvex на месте |
 | Dockerfile/POM по сервисам | ✅ PASS | У всех 12 сервисов есть `Dockerfile` и `pom.xml`; порты healthcheck совпадают с `server.port` |
-| Локальные ссылки Markdown | ✅ PASS | Проверено 91 локальную ссылку (включая эту инструкцию), битых нет |
+| Локальные ссылки Markdown | ✅ PASS | Проверено 96 локальных ссылок (включая эту инструкцию), битых нет |
 | `git diff --check`, конфликт-маркеры | ✅ PASS | Чисто |
-| `npm audit` production-зависимостей | ⚠️ WARNING | 2 moderate находки в цепочке React Router 6; исправление — отдельный major upgrade, **не** `npm audit fix --force` посреди приёмки |
-| `npm audit` всех зависимостей | ⚠️ WARNING | Всего 15 находок: 7 moderate, 6 high, 2 critical; основная масса — старый dev/build-инструментарий Vite/Vitest/Tailwind |
-| `mvn verify` | ⏸ NOT RUN | В песочнице нет JDK/Maven и закрыт Maven Central |
-| Docker build/`docker compose up` | ⏸ NOT RUN | В песочнице нет Docker |
+| `npm audit` production-зависимостей | ✅ PASS | **0 уязвимостей** после React Router 7 и обновления production-графа |
+| `npm audit` всех зависимостей | ⚠️ ACCEPTED EXCEPTION | 7 build-time находок только в Tailwind 3.4-цепочке для Chrome 109; причина, граница риска и путь закрытия — `docs/RELEASE-DEPENDENCIES.md` |
+| `mvn verify` | ⏸ NOT RUN | В текущей среде разработки нет JDK/Maven; это ваш G1 ниже |
+| Docker build/`docker compose up` | ⏸ NOT RUN | В текущей среде разработки нет Docker; это ваш G2 ниже |
 | Spring/Flyway/БД/очереди | ⏸ NOT RUN | Проверяется только вашим первым запуском стека |
 | Thunderbird/Outlook IMAP/POP3 | ⏸ NOT RUN | Нужны собранные контейнеры и реальный клиент |
 | Windows 7 + Chrome 109 | ⏸ NOT RUN | Legacy-бандл построен, но браузерный smoke требует реальную VM |
 
-Дополнительно при этой проверке исправлены старые ссылки документации на давно слитую
-ветку `arena/3732db07-corvex`: теперь README и INSTALL ведут на `main`.
+При release-hardening дополнительно исправлены: отсутствовавший `james.version` в POP3;
+заброшенный SubEtha SMTP 3.1.7 заменён поддерживаемым форком 7.2.2 с адаптацией кода;
+неиспользуемые Swagger/GreenMail/MIME4J удалены; Spring Cloud поднят до финального
+2023.0.6 для baseline, а Docker-образы переведены на поддерживаемые ряды. Полная матрица —
+[`RELEASE-DEPENDENCIES.md`](RELEASE-DEPENDENCIES.md).
 
 ---
 
@@ -77,13 +81,13 @@ IMAP и POP3 реальными клиентами.
 
 ## 0. Что установить на ПК
 
-Для маршрута A нужен только Node.js. Для B/C нужны все инструменты:
+Для маршрута A нужен только Node.js 22.12+ (см. `engines` во frontend). Для B/C нужны все инструменты:
 
 - Windows 10/11 или Windows Server с Linux-VM по `docs/INSTALL.md`;
 - Git;
 - **JDK 17 LTS** (проект настроен на Java 17; не начинайте первую приёмку с другой major-версии);
 - Maven 3.9+;
-- Node.js 20 LTS или 22 LTS и npm;
+- **Node.js 22.12+ LTS** (также допустимы 24/26 по `frontend/package.json`) и npm 10+;
 - Docker Desktop (WSL2) или Docker Engine + Docker Compose v2;
 - желательно Thunderbird для шага 9;
 - OpenSSL обычно приходит с Git for Windows и запускается из Git Bash.
@@ -113,17 +117,17 @@ docker info
 
 ## 1. Получить именно актуальный код
 
-Для этого проверочного прогона используйте ветку **`arena/e6324306-corvex`**: она
-начинается с уже слитого в `main` коммита `3bf190a`, поэтому весь код Этапа 3 в ней есть,
-а сверху лежат только эта инструкция, исправленный дублирующийся ключ YAML, обновлённые
-ссылки на `main` в старых документах и воспроизводимый `npm ci` во frontend-Dockerfile.
+Для этого проверочного прогона используйте ветку **`arena/367818b9-corvex`**: она
+начинается с уже слитого в `main` merge-коммита PR #4 `fa06f33`, поэтому Этап 3 и сама
+инструкция в ней есть, а сверху лежит release-hardening: обновлённые зависимости,
+исправленный POP3 POM, поддерживаемый SMTP-движок, Docker-версии и ворота зависимостей.
 Когда PR этой ветки будет слит, для следующих прогонов используйте просто `main`.
 
 ### Новый клон
 
 ```powershell
 cd C:\
-git clone -b arena/e6324306-corvex https://github.com/ArtemDobrokvashin/Corvex-.git Corvex-test
+git clone -b arena/367818b9-corvex https://github.com/ArtemDobrokvashin/Corvex-.git Corvex-test
 cd C:\Corvex-test
 git log --oneline -4
 git status --short --branch
@@ -134,15 +138,17 @@ git status --short --branch
 ```powershell
 cd C:\путь\к\Corvex-
 git fetch origin
-git switch arena/e6324306-corvex
+git switch arena/367818b9-corvex
 git pull --ff-only
 git log --oneline -4
 git status --short --branch
 ```
 
-В истории после проверочного коммита должны быть видны:
+В истории под release-hardening коммитами должен быть виден merge PR #4:
 
 ```text
+fa06f33 Merge pull request #4 from ArtemDobrokvashin/arena/e6324306-corvex
+316734e Verify frontend and add PC testing guide
 3bf190a Merge pull request #3 from ArtemDobrokvashin/arena/12999655-corvex
 28d5b33 Stage 3 complete: Apache James IMAP with persistent MODSEQ
 ```
@@ -170,7 +176,7 @@ npm run build
 
 **Ожидаемый результат:**
 
-- Vitest: `Test Files 3 passed`, `Tests 12 passed`;
+- Vitest: `Test Files 4 passed`, `Tests 15 passed`;
 - сборка заканчивается `✓ built`;
 - в `frontend\dist\assets` есть обычные и `*-legacy-*.js` файлы.
 
@@ -194,9 +200,8 @@ npm run dev
 
 Остановка dev-сервера: `Ctrl+C`.
 
-> В песочнице Arena этот же frontend уже запущен на порту 5173 (LIVE PREVIEW).
-> Там нет Java-бэкенда, поэтому используйте именно кнопку демо; настоящий логин в песочнице
-> не заработает и это ожидаемо.
+> Если вы смотрите отдельную демо-сборку frontend без поднятого Java-бэкенда,
+> используйте именно кнопку демо: настоящий логин там не заработает, и это ожидаемо.
 
 Вернитесь в корень:
 
@@ -722,7 +727,7 @@ docker compose logs --no-color --tail 300 <имя-сервиса> > "$out\<им�
 
 ```powershell
 # 1. Код этого проверочного прогона (после merge PR замените ветку на main)
-git clone -b arena/e6324306-corvex https://github.com/ArtemDobrokvashin/Corvex-.git C:\Corvex-test
+git clone -b arena/367818b9-corvex https://github.com/ArtemDobrokvashin/Corvex-.git C:\Corvex-test
 cd C:\Corvex-test
 git log --oneline -4
 
