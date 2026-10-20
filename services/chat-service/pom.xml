@@ -40,6 +40,8 @@
         <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-database-postgresql</artifactId></dependency>
 
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-websocket</artifactId></dependency>
+        <!-- STOMP broker relay (RabbitMQ) работает поверх Reactor Netty TCP-клиента; без этой зависимости контекст упадёт при старте реле. -->
+        <dependency><groupId>io.projectreactor.netty</groupId><artifactId>reactor-netty</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-security</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-oauth2-resource-server</artifactId></dependency>
 

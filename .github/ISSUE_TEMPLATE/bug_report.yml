@@ -1,0 +1,55 @@
+name: Bug report / Ошибка
+description: Build, startup, mail, chat or UI problem / Проблема сборки, старта, почты, чата или интерфейса
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! Corvex is pre-1.0 and the first Maven/Docker run on a
+        real host is a known gate — the **first** build/startup error is the most valuable.
+
+        **Never attach** `.env`, passwords, internal tokens, private keys, or real mail.
+  - type: input
+    id: version
+    attributes:
+      label: Commit / version
+      description: Git commit SHA or release tag
+      placeholder: 61d7ec8
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area / Область
+      options:
+        - Maven build (mvn verify)
+        - Docker Compose startup
+        - Auth / Administration
+        - Mail (SMTP / webmail)
+        - Chat (REST / STOMP / files)
+        - Frontend UI
+        - Docs / install scripts
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened / Что произошло
+      description: Expected vs actual behavior, and the first error (Maven error or full Spring stack trace).
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction / Воспроизведение
+      description: Commands you ran (scripts/verify, docker compose up, ...), docker compose ps output, relevant log tail.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment / Окружение
+      description: OS (Windows Server/Linux + version), JDK, Maven, Docker, browser (incl. Windows 7 / Chrome 109 if applicable).
+      render: text

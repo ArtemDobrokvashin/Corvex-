@@ -5,17 +5,20 @@
 # Corvex
 
 **Corporate mail & team chat that stays on your server.**<br />
-**Корпоративная почта и сообщения, которые остаются дома.**
+**Корпоративная почта и сообщения, которые остаются дома.**<br />
+<sub>Free &amp; open source (Apache-2.0): raise and run your own corporate mail service on your own servers.<br />
+Бесплатный open-source проект (Apache-2.0): поднимите и настройте собственный корпоративный почтовый сервис на своих серверах.</sub>
 
 [Русский](#русский) · [English](#english) · [Production status](#production-ready-пока-нет) · [Screenshots](#скриншоты) · [Quick start](#попробовать-за-2-минуты) · [Install](#установка-на-windows-server) · [Docs](#документация) · [Support Corvex](#поддержать-corvex)
 
 [![GitHub stars](https://img.shields.io/github/stars/ArtemDobrokvashin/Corvex-?style=social)](https://github.com/ArtemDobrokvashin/Corvex-/stargazers)
 [![Last commit](https://img.shields.io/github/last-commit/ArtemDobrokvashin/Corvex-)](https://github.com/ArtemDobrokvashin/Corvex-/commits)
 [![Not production-ready](https://img.shields.io/badge/production--ready-NO-b60205)](#production-ready-пока-нет)
-![Stages 1-2](https://img.shields.io/badge/stages_1--2-code_written_runtime_unverified-d29922)
+![Stages 1, 2, 4](https://img.shields.io/badge/stages_1_2_4-code_written_runtime_unverified-d29922)
 ![RU EN](https://img.shields.io/badge/interface-RU%20%2F%20EN-3157d5)
 ![Chrome 109](https://img.shields.io/badge/browser-Chrome_109%2B-3157d5)
-![Free for now](https://img.shields.io/badge/price-free_for_now-2ea44f)
+[![Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-2ea44f)](LICENSE)
+![Free and open source](https://img.shields.io/badge/free-%26_open_source-2ea44f)
 [![Telegram](https://img.shields.io/badge/Telegram-Artem__Dobrokvashin-26A5E4?logo=telegram&logoColor=white)](https://t.me/Artem_Dobrokvashin)
 
 [![Corvex Mail](docs/screenshots/mail-ru.png)](docs/screenshots/mail-ru.png)
@@ -32,9 +35,9 @@
 
 ### Почта и команды — на вашем сервере, а не в чужом облаке
 
-**Corvex** — self-hosted платформа корпоративных коммуникаций для организаций до 1000 сотрудников: собственный почтовый сервер, современный веб-клиент, командный чат, гибкая админ-панель, 2FA, мониторинг и резервное копирование в одном Docker-развёртывании.
+**Corvex** — бесплатный open-source проект (лицензия Apache-2.0) для тех, кто хочет **поднять и настроить собственный корпоративный почтовый сервис на своих серверах**. Это self-hosted платформа коммуникаций для организаций до 1000 сотрудников: собственный почтовый сервер, современный веб-клиент, командный чат, гибкая админ-панель, 2FA, мониторинг и резервное копирование в одном Docker-развёртывании.
 
-Главное обещание простое: **переписка компании должна принадлежать компании**. Без обязательной аренды внешнего облака, без платы за пользователя на текущем этапе и без зависимости от того, доступен ли чужой SaaS сегодня утром.
+Концепция Corvex проста: **переписка компании должна принадлежать компании, а инструмент для неё — быть свободным**. Исходный код открыт, подписки и платы за пользователя нет, скрытой телеметрии нет: вы скачиваете проект, разворачиваете его на своём Windows Server (или Linux с Docker), настраиваете домен, DNS и сертификаты по инструкциям — и почта с чатом живут на вашей инфраструктуре, а не в чужом облаке и не зависят от того, доступен ли внешний SaaS сегодня утром.
 
 | Типичная боль | Как отвечает Corvex |
 |---|---|
@@ -158,14 +161,13 @@ SMTP выключен по умолчанию на всех уровнях до 
 #### Как довести Corvex до production-ready
 
 - [ ] **0. Не открывать прод раньше времени.** Держать `CORVEX_SMTP_ENABLED=false`, не менять рабочие MX и работать на отдельной VM/тестовом поддомене.
-- [ ] **1. Зелёный Maven по всем 12 сервисам.** На хосте с JDK 17 и Maven 3.9 выполнить:
+- [ ] **1. Зелёный Maven по всем 12 сервисам.** На хосте с JDK 17 и Maven 3.9 выполнить из корня репозитория (корневой `pom.xml` — агрегатор всех сервисов):
 
   ```powershell
-  Get-ChildItem services -Directory | ForEach-Object {
-    mvn -f "$($_.FullName)\pom.xml" -B verify
-    if ($LASTEXITCODE -ne 0) { throw "Maven verify failed: $($_.Name)" }
-  }
+  mvn -B clean verify
   ```
+
+  Пункты 1–3 одной командой также выполняет `scripts\verify.ps1` (Windows Server) или `scripts/verify.sh` (Linux); с флагом `-DockerBuild` / `--docker-build` дополнительно собираются все Docker-образы.
 
 - [ ] **2. Зелёный frontend именно релизного коммита:** `npm ci`, `npm test`, `npm run build`.
 - [ ] **3. Чистый Compose-подъём.** `docker compose config`, сборка всех образов, первый старт на пустых томах, все сервисы `healthy`, Flyway применился, нет restart loop и необъяснённых DLQ.
@@ -173,10 +175,11 @@ SMTP выключен по умолчанию на всех уровнях до 
 - [ ] **5. Почтовый smoke на тестовом домене.** Внешнее письмо → INBOX; локальное webmail-письмо; внешнее письмо на контролируемый MX; вложение; Bcc не виден другим получателям; письмо переживает рестарт контейнеров.
 - [ ] **6. Негативные почтовые сценарии.** Несуществующий локальный получатель — `550`; open relay запрещён; storage/Rabbit недоступны — `451`, а не ложный `250 OK`; временный `4xx` уходит в retry; постоянный `5xx` создаёт DSN; повтор события не создаёт дубль письма.
 - [ ] **7. Submission и доставляемость.** STARTTLS обязателен, app-password работает, чужой `MAIL FROM` отклоняется `553`, DKIM/SPF/DMARC проходят у внешнего получателя, PTR совпадает с SMTP hostname, mail-tester ≥ 9/10.
-- [ ] **8. Эксплуатационная приёмка.** Backup → восстановление на чистой VM, откат на предыдущие образы, алерт при остановке сервиса, ротация сертификата, нагрузочные цели из [`docs/10-test-strategy.md`](docs/10-test-strategy.md), security-проход и реальная Windows 7 + Chrome 109.
-- [ ] **9. Пилот, а не сразу «прод для всех».** Минимум 72 часа на тестовом/пилотном домене с мониторингом очередей, DLQ, диска, bounce-rate и жалоб пользователей; только после этого переносить ограниченную группу ящиков.
+- [ ] **8. Smoke чата Stage 4.** Два пользователя: direct и групповой диалог, история после рестарта контейнеров, не-участник не читает комнату и не скачивает её файл, повторная отправка с тем же `clientMessageId` не плодит дубль, реакции/закрепления/прочтения видны обеим сторонам, файл EICAR отклоняется антивирусом, STOMP продолжает работать после обновления JWT.
+- [ ] **9. Эксплуатационная приёмка.** Backup (`scripts/backup.ps1`) → восстановление (`scripts/restore.ps1`) на чистой VM, откат на предыдущие образы, алерт при остановке сервиса, ротация сертификата, нагрузочные цели из [`docs/10-test-strategy.md`](docs/10-test-strategy.md), security-проход и реальная Windows 7 + Chrome 109.
+- [ ] **10. Пилот, а не сразу «прод для всех».** Минимум 72 часа на тестовом/пилотном домене с мониторингом очередей, DLQ, диска, bounce-rate и жалоб пользователей; только после этого переносить ограниченную группу ящиков.
 
-Даже после пунктов 1–9 корректный статус будет сначала **«pilot-ready для ограниченного webmail/SMTP-контура»**, а не production-ready всей платформы: для полного обещания Corvex ещё нужны Stage 3 (IMAP/POP3), runtime-подтверждение уже написанного Stage 4 (сохраняемый чат и файлы) и Stage 5 (AD/LDAP и production hardening), либо честное сужение заявленного объёма продукта.
+Даже после пунктов 1–10 корректный статус будет сначала **«pilot-ready для ограниченного webmail/SMTP-контура»**, а не production-ready всей платформы: для полного обещания Corvex ещё нужны Stage 3 (IMAP/POP3), runtime-подтверждение уже написанного Stage 4 (сохраняемый чат и файлы) и Stage 5 (AD/LDAP и production hardening), либо честное сужение заявленного объёма продукта.
 
 Если первая сборка упала, для issue приложите SHA коммита, первую ошибку Maven или полный стек Spring, `docker compose ps` и хвост логов соответствующего сервиса. **Не прикладывайте** `.env`, пароли, internal token, приватные ключи и настоящие письма.
 
@@ -256,11 +259,11 @@ Corvex развивается как авторский проект. Сейча
 3. **Поддержите деньгами.** Добровольный донат можно согласовать напрямую с автором: **Artem Dobrokvashin — [https://t.me/Artem_Dobrokvashin](https://t.me/Artem_Dobrokvashin)**. Реквизиты в репозитории не публикуются.
 4. **Закажите помощь.** Можно обсудить внедрение, планирование миграции, обучение администраторов, приоритетные исправления и заказные интеграции.
 
-Планируемая устойчивая модель — не брать базовую почту в заложники: ядро для собственного сервера остаётся бесплатным на текущем этапе, а доход должны давать добровольная поддержка, услуги внедрения/сопровождения и, в будущем, отдельные enterprise-добавки и priority support. Если появится платная редакция, её условия будут опубликованы отдельно и честно.
+Устойчивая модель проекта — не брать базовую почту в заложники: **Corvex бесплатен и открыт под Apache-2.0, и ядро для собственного сервера таким и останется**. Поддерживать разработку помогают добровольные пожертвования и, по желанию организаций, платные услуги автора по внедрению и сопровождению — но сам продукт не требует ни подписки, ни платы за пользователя, ни «активации».
 
 ### Лицензия
 
-Corvex распространяется под лицензией **Apache License 2.0** — полный текст в файле [`LICENSE`](LICENSE), атрибуция и перечень сторонних компонентов — в [`NOTICE`](NOTICE). Это значит: бесплатное развёртывание на собственном сервере без подписки и платы за пользователя, право модифицировать и использовать в коммерческих целях при соблюдении условий Apache-2.0. Если в будущем появится отдельная платная редакция или enterprise-добавки, их условия будут опубликованы отдельно и не изменят лицензию уже опубликованного ядра.
+Corvex распространяется под лицензией **Apache License 2.0** — полный текст в файле [`LICENSE`](LICENSE), атрибуция и перечень сторонних компонентов — в [`NOTICE`](NOTICE). Это значит: бесплатное развёртывание на собственном сервере без подписки и платы за пользователя, право модифицировать, распространять и использовать в коммерческих целях при соблюдении условий Apache-2.0. Вклад в проект принимается под той же лицензией (см. [`CONTRIBUTING.md`](CONTRIBUTING.md)).
 
 ---
 
@@ -268,9 +271,9 @@ Corvex распространяется под лицензией **Apache Licen
 
 ### Mail and team conversations that stay home
 
-**Corvex** is a self-hosted corporate communication platform for organizations of up to 1,000 employees: an own mail server, a modern webmail client, team chat, a flexible administration panel, 2FA, monitoring, and backups in one Docker deployment.
+**Corvex** is a free open-source project (Apache-2.0) for people who want to **raise and run their own corporate mail service on their own servers**. It is a self-hosted communication platform for organizations of up to 1,000 employees: an own mail server, a modern webmail client, team chat, a flexible administration panel, 2FA, monitoring, and backups in one Docker deployment.
 
-The promise is deliberately simple: **a company's correspondence should belong to the company**. No mandatory external cloud, no per-seat rent at the current stage, and no morning outage caused by somebody else's SaaS.
+The concept is deliberately simple: **a company's correspondence should belong to the company, and the tool for it should be free**. The source code is open, there is no subscription or per-seat fee and no hidden telemetry: you download the project, deploy it on your Windows Server (or Linux with Docker), configure your domain, DNS, and certificates with the supplied guides — and mail and chat live on your infrastructure instead of a third-party cloud, independent of somebody else's SaaS being up this morning.
 
 | Common pain | Corvex answer |
 |---|---|
@@ -394,14 +397,13 @@ Corvex is currently **not** appropriate for:
 #### Path to production-ready
 
 - [ ] **0. Keep production closed.** Keep `CORVEX_SMTP_ENABLED=false`, do not change working MX records, and use a separate VM/test subdomain.
-- [ ] **1. Make Maven green for all 12 services** on JDK 17 + Maven 3.9:
+- [ ] **1. Make Maven green for all 12 services** on JDK 17 + Maven 3.9, from the repository root (the root `pom.xml` aggregates every service):
 
   ```powershell
-  Get-ChildItem services -Directory | ForEach-Object {
-    mvn -f "$($_.FullName)\pom.xml" -B verify
-    if ($LASTEXITCODE -ne 0) { throw "Maven verify failed: $($_.Name)" }
-  }
+  mvn -B clean verify
   ```
+
+  `scripts\verify.ps1` (Windows Server) or `scripts/verify.sh` (Linux) runs gates 1–3 as one command; add `-DockerBuild` / `--docker-build` to also build every Docker image.
 
 - [ ] **2. Make the release commit's frontend green:** `npm ci`, `npm test`, `npm run build`.
 - [ ] **3. Pass a clean Compose launch.** Validate config, build every image, start on empty volumes, apply Flyway, reach all-`healthy`, and eliminate restart loops and unexplained DLQ messages.
@@ -409,10 +411,11 @@ Corvex is currently **not** appropriate for:
 - [ ] **5. Pass mail smoke on a test domain.** External mail reaches INBOX; local webmail works; external delivery reaches a controlled MX; attachments work; Bcc is not exposed; mail survives container restarts.
 - [ ] **6. Pass negative mail cases.** Unknown local recipient returns `550`; open relay is denied; unavailable storage/Rabbit returns `451`, not a false `250 OK`; temporary `4xx` retries; permanent `5xx` creates a DSN; redelivered events do not duplicate mail.
 - [ ] **7. Pass submission and deliverability.** STARTTLS is mandatory, app passwords work, a foreign `MAIL FROM` returns `553`, DKIM/SPF/DMARC pass at an external recipient, PTR matches the SMTP hostname, and mail-tester scores at least 9/10.
-- [ ] **8. Pass operational acceptance.** Backup → restore on a clean VM, rollback to previous images, service-down alerting, certificate rotation, the load targets in [`docs/10-test-strategy.md`](docs/10-test-strategy.md), a security pass, and real Windows 7 + Chrome 109.
-- [ ] **9. Pilot before production.** Run at least 72 hours on a test/pilot domain while monitoring queues, DLQs, disk, bounce rate, and user reports; only then migrate a limited mailbox group.
+- [ ] **8. Pass the Stage 4 chat smoke.** Two users in a direct and a group dialog; history survives container restarts; a non-member can neither read the room nor download its file; resending with the same `clientMessageId` creates no duplicate; reactions/pins/read receipts are visible to both sides; an EICAR file is rejected by the antivirus; STOMP keeps working across a JWT refresh.
+- [ ] **9. Pass operational acceptance.** Backup (`scripts/backup.ps1`) → restore (`scripts/restore.ps1`) on a clean VM, rollback to previous images, service-down alerting, certificate rotation, the load targets in [`docs/10-test-strategy.md`](docs/10-test-strategy.md), a security pass, and real Windows 7 + Chrome 109.
+- [ ] **10. Pilot before production.** Run at least 72 hours on a test/pilot domain while monitoring queues, DLQs, disk, bounce rate, and user reports; only then migrate a limited mailbox group.
 
-Even after steps 1–9, the honest first label is **“pilot-ready for a limited webmail/SMTP scope,”** not production-ready for the whole platform. The full Corvex promise still needs Stage 3 (IMAP/POP3), runtime proof of the already-written Stage 4 (persistent chat/files), and Stage 5 (AD/LDAP and production hardening), unless the advertised product scope is deliberately narrowed.
+Even after steps 1–10, the honest first label is **“pilot-ready for a limited webmail/SMTP scope,”** not production-ready for the whole platform. The full Corvex promise still needs Stage 3 (IMAP/POP3), runtime proof of the already-written Stage 4 (persistent chat/files), and Stage 5 (AD/LDAP and production hardening), unless the advertised product scope is deliberately narrowed.
 
 If the first build fails, attach the commit SHA, the first Maven error or complete Spring stack trace, `docker compose ps`, and the relevant service log tail to the issue. **Never attach** `.env`, passwords, the internal token, private keys, or real mail.
 
@@ -482,8 +485,8 @@ Corvex is an author-led project. It is currently **free for self-hosted deployme
 3. **Donate.** Arrange voluntary support directly with the author: **Artem Dobrokvashin — [https://t.me/Artem_Dobrokvashin](https://t.me/Artem_Dobrokvashin)**. Payment details are intentionally not published here.
 4. **Buy help.** Discuss deployment assistance, migration planning, administrator training, priority fixes, or custom integrations.
 
-The intended sustainable model is not to hold basic mail hostage: keep the self-hosted core free at the current stage, and earn from voluntary support, services, maintenance, and possible future enterprise add-ons/priority support. If a paid edition appears, its terms will be published separately and plainly.
+The sustainable model is not to hold basic mail hostage: **Corvex is free and open under Apache-2.0, and the self-hosted core stays that way**. Development is supported by voluntary donations and, for organizations that want it, paid deployment and maintenance services from the author — but the product itself needs no subscription, no per-user fee, and no "activation".
 
 ### License
 
-Corvex is licensed under the **Apache License 2.0** — see [`LICENSE`](LICENSE) for the full text and [`NOTICE`](NOTICE) for attribution and third-party components. In practice that means free self-hosted deployment with no subscription or per-user fee, plus the right to modify and use it commercially under the Apache-2.0 terms. If a separate paid edition or enterprise add-ons appear later, their terms will be published separately and will not change the license of the already-published core.
+Corvex is licensed under the **Apache License 2.0** — see [`LICENSE`](LICENSE) for the full text and [`NOTICE`](NOTICE) for attribution and third-party components. In practice that means free self-hosted deployment with no subscription or per-user fee, plus the right to modify, distribute, and use it commercially under the Apache-2.0 terms. Contributions are accepted under the same license (see [`CONTRIBUTING.md`](CONTRIBUTING.md)).
