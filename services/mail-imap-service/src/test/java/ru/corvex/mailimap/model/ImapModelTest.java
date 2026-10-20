@@ -22,10 +22,10 @@ class ImapModelTest {
 
     private List<ImapStorageClient.FolderInfo> tree() {
         return List.of(
-                new ImapStorageClient.FolderInfo(inboxId, null, "INBOX", "INBOX", 10, 1, 3, 1),
-                new ImapStorageClient.FolderInfo(projectsId, null, "Проекты", null, 5, 2, 1, 0),
-                new ImapStorageClient.FolderInfo(y2026Id, projectsId, "2026", null, 2, 3, 0, 0),
-                new ImapStorageClient.FolderInfo(UUID.randomUUID(), null, "Sent", "SENT", 7, 4, 2, 0));
+                new ImapStorageClient.FolderInfo(inboxId, null, "INBOX", "INBOX", 10, 1, 9, 3, 1),
+                new ImapStorageClient.FolderInfo(projectsId, null, "Проекты", null, 5, 2, 4, 1, 0),
+                new ImapStorageClient.FolderInfo(y2026Id, projectsId, "2026", null, 2, 3, 1, 0, 0),
+                new ImapStorageClient.FolderInfo(UUID.randomUUID(), null, "Sent", "SENT", 7, 4, 6, 2, 0));
     }
 
     @Test
@@ -56,7 +56,7 @@ class ImapModelTest {
     }
 
     private ImapStorageClient.MessageMeta meta(boolean seen, boolean flagged, boolean deleted) {
-        return new ImapStorageClient.MessageMeta(UUID.randomUUID(), 1, "<a@b>", "ivanov@corp.local",
+        return new ImapStorageClient.MessageMeta(UUID.randomUUID(), 1, 1, "<a@b>", "ivanov@corp.local",
                 "Тема", Instant.now(), 42, seen, false, flagged, false, deleted);
     }
 

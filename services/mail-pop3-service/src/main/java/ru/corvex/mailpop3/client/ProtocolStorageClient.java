@@ -42,10 +42,11 @@ public class ProtocolStorageClient {
     }
 
     public record FolderInfo(UUID id, UUID parentId, String name, String specialUse,
-                             long uidNext, long uidValidity, long messageCount, long unseenCount) {
+                             long uidNext, long uidValidity, long highestModseq,
+                             long messageCount, long unseenCount) {
     }
 
-    public record MessageMeta(UUID id, long uid, String messageIdHeader, String sender,
+    public record MessageMeta(UUID id, long uid, long modseq, String messageIdHeader, String sender,
                               String subject, Instant internalDate, long sizeBytes,
                               boolean seen, boolean answered, boolean flagged,
                               boolean draft, boolean deleted) {

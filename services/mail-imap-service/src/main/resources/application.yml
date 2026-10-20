@@ -25,9 +25,29 @@ corvex:
   storage:
     base-url: ${CORVEX_STORAGE_BASE_URL:http://mail-storage-service:8085}
   imap:
-    # Выключено: движок James подключается следующей итерацией на JDK-хосте (см. README сервиса).
+    # Apache James IMAP выключен по умолчанию до первого mvn verify + smoke реальным клиентом на хосте с JDK.
     enabled: ${CORVEX_IMAP_ENABLED:false}
+    bind-address: ${CORVEX_IMAP_BIND:0.0.0.0}
     # Контейнерные порты без root: compose публикует 143->1143 и 993->1993.
+    plain-enabled: ${CORVEX_IMAP_PLAIN_ENABLED:true}
     plain-port: ${CORVEX_IMAP_PLAIN_PORT:1143}
+    starttls-enabled: ${CORVEX_IMAP_STARTTLS:true}
+    tls-enabled: ${CORVEX_IMAP_TLS_ENABLED:true}
     tls-port: ${CORVEX_IMAP_TLS_PORT:1993}
-    hello-name: ${CORVEX_MAIL_DOMAIN:localhost}
+    require-tls-for-auth: ${CORVEX_IMAP_REQUIRE_TLS_FOR_AUTH:false}
+    plain-auth-enabled: ${CORVEX_IMAP_PLAIN_AUTH_ENABLED:true}
+    # TLS-материал: либо PKCS12/JKS keystore, либо PEM cert+key. В compose каталог сертификатов монтируется в /certs:ro.
+    keystore-path: ${CORVEX_IMAP_KEYSTORE_PATH:}
+    keystore-password: ${CORVEX_IMAP_KEYSTORE_PASSWORD:}
+    keystore-type: ${CORVEX_IMAP_KEYSTORE_TYPE:PKCS12}
+    certificate-path: ${CORVEX_IMAP_CERT_PATH:}
+    private-key-path: ${CORVEX_IMAP_PRIVATE_KEY_PATH:}
+    hello-name: ${CORVEX_IMAP_HELLO_NAME:${MAIL_HOSTNAME:${CORVEX_MAIL_DOMAIN:localhost}}}
+    disabled-caps: ${CORVEX_IMAP_DISABLED_CAPS:}
+    literal-size-limit-bytes: ${CORVEX_IMAP_LITERAL_SIZE_LIMIT_BYTES:26214400}
+    in-memory-size-limit-bytes: ${CORVEX_IMAP_IN_MEMORY_SIZE_LIMIT_BYTES:10485760}
+    max-line-length: ${CORVEX_IMAP_MAX_LINE_LENGTH:65536}
+    connection-timeout-seconds: ${CORVEX_IMAP_CONNECTION_TIMEOUT_SECONDS:1800}
+    idle-heartbeat-seconds: ${CORVEX_IMAP_IDLE_HEARTBEAT_SECONDS:120}
+    max-connections: ${CORVEX_IMAP_MAX_CONNECTIONS:0}
+    max-connections-per-ip: ${CORVEX_IMAP_MAX_CONNECTIONS_PER_IP:0}

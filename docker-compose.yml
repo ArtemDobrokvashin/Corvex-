@@ -184,8 +184,15 @@ services:
     build: ./services/mail-imap-service
     environment:
       <<: *common-env
-      # Движок James IMAP подключается следующей итерацией; флаг пока только для явной ошибки в логе.
+      # IMAP на Apache James: включать только после Maven-сборки и клиентского smoke (docs/READINESS.md).
       CORVEX_IMAP_ENABLED: ${CORVEX_IMAP_ENABLED:-false}
+      CORVEX_IMAP_PLAIN_ENABLED: ${CORVEX_IMAP_PLAIN_ENABLED:-true}
+      CORVEX_IMAP_STARTTLS: ${CORVEX_IMAP_STARTTLS:-true}
+      CORVEX_IMAP_TLS_ENABLED: ${CORVEX_IMAP_TLS_ENABLED:-true}
+      CORVEX_IMAP_REQUIRE_TLS_FOR_AUTH: ${CORVEX_IMAP_REQUIRE_TLS_FOR_AUTH:-false}
+      CORVEX_IMAP_KEYSTORE_PATH: ${CORVEX_IMAP_KEYSTORE_PATH:-/certs/imap.p12}
+      CORVEX_IMAP_KEYSTORE_PASSWORD: ${CORVEX_IMAP_KEYSTORE_PASSWORD:-}
+      CORVEX_IMAP_KEYSTORE_TYPE: ${CORVEX_IMAP_KEYSTORE_TYPE:-PKCS12}
       CORVEX_AUTH_SERVICE_URL: http://auth-service:8081
       CORVEX_STORAGE_BASE_URL: http://mail-storage-service:8085
       CORVEX_INTERNAL_API_TOKEN: ${CORVEX_INTERNAL_API_TOKEN:?Set CORVEX_INTERNAL_API_TOKEN in .env}

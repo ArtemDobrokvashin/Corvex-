@@ -23,7 +23,7 @@ class CorvexPop3MailboxTest {
     private final UUID inboxId = UUID.randomUUID();
 
     private ProtocolStorageClient.MessageMeta meta(long uid, long size) {
-        return new ProtocolStorageClient.MessageMeta(UUID.randomUUID(), uid, "<m" + uid + "@x>",
+        return new ProtocolStorageClient.MessageMeta(UUID.randomUUID(), uid, uid, "<m" + uid + "@x>",
                 "ivanov@corp.local", "Тема " + uid, Instant.now(), size,
                 false, false, false, false, false);
     }

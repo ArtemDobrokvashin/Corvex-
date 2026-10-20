@@ -39,4 +39,8 @@ public class MailFolder {
 
     @Column(name = "uid_validity", nullable = false)
     private long uidValidity = 1;
+
+    /** HIGHESTMODSEQ папки (RFC 7162 CONDSTORE): растёт при APPEND/COPY/MOVE/флагах/expunge. */
+    @Column(name = "highest_modseq", nullable = false)
+    private long highestModseq = 1;
 }

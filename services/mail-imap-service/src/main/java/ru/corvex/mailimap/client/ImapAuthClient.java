@@ -9,9 +9,11 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
@@ -69,6 +71,30 @@ public class ImapAuthClient {
         } catch (IOException e) {
             log.warn("auth-service недоступен при IMAP-логине {}: {}", username, e.getMessage());
             throw e;
+        }
+    }
+
+    /**
+     * Разрешение username (для IMAP это email) в userId без пароля. Нужно James-сессиям,
+     * которые создаются не через LOGIN (system session, quota root resolver).
+     */
+    public Optional<AuthenticatedUser> findActiveByUsername(String username) throws IOException {
+        try {
+            String url = authBaseUrl + "/internal/users/by-email?email="
+                    + URLEncoder.encode(username, StandardCharsets.UTF_8);
+            JsonNode user = getJson(url);
+            if (user == null || !"ACTIVE".equalsIgnoreCase(user.path("status").asText(""))) {
+                return Optional.empty();
+            }
+            return Optional.of(new AuthenticatedUser(
+                    UUID.fromString(user.path("id").asText()),
+                    user.path("email").asText(username),
+                    user.path("displayName").asText("")));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Поиск пользователя прерван", e);
+        } catch (IllegalStateException e) {
+            throw new IOException(e.getMessage(), e);
         }
     }
 

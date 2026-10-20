@@ -48,10 +48,11 @@ public class ImapStorageClient {
     }
 
     public record FolderInfo(UUID id, UUID parentId, String name, String specialUse,
-                             long uidNext, long uidValidity, long messageCount, long unseenCount) {
+                             long uidNext, long uidValidity, long highestModseq,
+                             long messageCount, long unseenCount) {
     }
 
-    public record MessageMeta(UUID id, long uid, String messageIdHeader, String sender,
+    public record MessageMeta(UUID id, long uid, long modseq, String messageIdHeader, String sender,
                               String subject, Instant internalDate, long sizeBytes,
                               boolean seen, boolean answered, boolean flagged,
                               boolean draft, boolean deleted) {
@@ -60,7 +61,7 @@ public class ImapStorageClient {
     public record FlagsUpdate(Boolean seen, Boolean answered, Boolean flagged, Boolean draft, Boolean deleted) {
     }
 
-    public record AppendResponse(UUID messageId, long uid) {
+    public record AppendResponse(UUID messageId, long uid, long modseq) {
     }
 
     public record CopyResponse(List<Long> sourceUids, List<Long> targetUids) {
@@ -90,7 +91,16 @@ public class ImapStorageClient {
     }
 
     public FolderInfo renameFolder(UUID userId, UUID folderId, String name) throws IOException {
-        var body = mapper.createObjectNode().put("name", name);
+        return renameFolder(userId, folderId, name, null, false);
+    }
+
+    /** IMAP RENAME: имя + новый родитель. parentId=null и moveToRoot=false = родителя не трогать. */
+    public FolderInfo renameFolder(UUID userId, UUID folderId, String name, UUID parentId, boolean moveToRoot)
+            throws IOException {
+        var body = mapper.createObjectNode().put("name", name).put("moveToRoot", moveToRoot);
+        if (parentId != null) {
+            body.put("parentId", parentId.toString());
+        }
         HttpRequest request = req(userBase(userId) + "/folders/" + folderId)
                 .header("Content-Type", "application/json")
                 .method("PATCH", HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body)))
@@ -142,6 +152,13 @@ public class ImapStorageClient {
             throw new IOException("mail-storage openRawByUid вернул HTTP " + response.statusCode());
         }
         return response.body();
+    }
+
+    /** Полное тело письма в память: James FETCH/BODYSTRUCTURE строятся из сырого .eml целиком. */
+    public byte[] readRawByUid(UUID userId, UUID folderId, long uid) throws IOException {
+        try (InputStream in = openRawByUid(userId, folderId, uid)) {
+            return in.readAllBytes();
+        }
     }
 
     public MessageMeta updateFlags(UUID userId, UUID folderId, long uid, FlagsUpdate flags) throws IOException {

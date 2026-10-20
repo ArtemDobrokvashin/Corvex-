@@ -109,6 +109,10 @@ public class MailApiService {
     @Transactional
     public MailDtos.MessageListItem updateFlags(UUID ownerId, UUID messageId, MailDtos.UpdateFlagsRequest req) {
         MessageMetadata m = loadOwned(ownerId, messageId);
+        boolean beforeSeen = m.isSeen();
+        boolean beforeFlagged = m.isFlagged();
+        boolean beforeAnswered = m.isAnswered();
+        boolean beforeDeleted = m.isDeleted();
         if (req.seen() != null) {
             m.setSeen(req.seen());
         }
@@ -120,6 +124,14 @@ public class MailApiService {
         }
         if (req.deleted() != null) {
             m.setDeleted(req.deleted());
+        }
+        if (beforeSeen != m.isSeen() || beforeFlagged != m.isFlagged()
+                || beforeAnswered != m.isAnswered() || beforeDeleted != m.isDeleted()) {
+            MailFolder folder = folders.lockById(m.getFolder().getId()).orElseThrow();
+            long modseq = Math.max(1, folder.getHighestModseq()) + 1;
+            folder.setHighestModseq(modseq);
+            folders.save(folder);
+            m.setModseq(modseq);
         }
         m = messages.save(m);
         return toListItem(m, hasAttachments(m.getId()));
@@ -136,11 +148,14 @@ public class MailApiService {
         target = folders.lockById(target.getId()).orElseThrow();
         long uid = target.getUidNext();
         target.setUidNext(uid + 1);
+        long modseq = Math.max(1, target.getHighestModseq()) + 1;
+        target.setHighestModseq(modseq);
         folders.save(target);
 
         String newPath = maildir.moveMessageToFolder(m.getMaildirPath(), target.getName(), m.isSeen()).toString();
         m.setFolder(target);
         m.setUid(uid);
+        m.setModseq(modseq);
         m.setMaildirPath(newPath);
         m = messages.save(m);
         return toListItem(m, hasAttachments(m.getId()));

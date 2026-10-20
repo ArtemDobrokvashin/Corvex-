@@ -42,6 +42,10 @@ public class MessageMetadata {
     @Column(nullable = false)
     private long uid;
 
+    /** MODSEQ письма (RFC 7162 CONDSTORE): меняется при создании и при изменении флагов/перемещении. */
+    @Column(nullable = false)
+    private long modseq = 1;
+
     @Column(name = "message_id_header", length = 998)
     private String messageIdHeader;
 

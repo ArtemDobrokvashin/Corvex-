@@ -1,63 +1,87 @@
 # mail-imap-service
 
-IMAP4rev2/rev1 сервер Corvex (порты 143 STARTTLS / 993 implicit TLS).
+IMAP4rev1/rev2 сервер Corvex на **Apache James 3.8.2** (143 + STARTTLS / 993 implicit TLS).
+TCP/RFC-парсер не пишется вручную: Corvex реализует только James SPI
+(`MailboxManager`/`MessageManager`) поверх протокольного API `mail-storage-service`.
 
 ## Статус этапа 3
 
-**Готов Corvex-слой, движок подключается следующей итерацией.** В этой итерации написаны и
-покрыты тестами: внутренний протокольный API в `mail-storage-service`, клиенты
-`ImapAuthClient`/`ImapStorageClient`, модель путей папок и флагов. Слушатели 143/993 пока
-не открываются: реализация James MailboxManager/MessageManager SPI (~70 реактивных методов
-mailbox-api 3.8.2) требует компилятора в цикле обратной связи и делается первым шагом на
-JDK-хосте. `CORVEX_IMAP_ENABLED=true` в текущей сборке даёт явную ошибку в логе, а не
-молча мёртвый порт.
+**Движок подключён.** В сервисе реализованы:
 
-## Как устроен
+- `CorvexMailboxManager` — сессии LOGIN/SASL через `auth-service`, папки, LIST/LSUB-данные,
+  CREATE/DELETE/RENAME (включая смену родителя), COPY/MOVE с COPYUID через ответы хранилища,
+  мульти-поиск, права владельца, события ящика в James EventBus для IDLE внутри процесса.
+- `CorvexMessageManager` — SELECT/STATUS (UIDNEXT/UIDVALIDITY/HIGHESTMODSEQ), FETCH через
+  сырой `.eml`, STORE `+FLAGS/-FLAGS/FLAGS`, EXPUNGE/UID EXPUNGE, APPEND (APPENDUID), SEARCH
+  по флагам/UID/дате/размеру/MODSEQ/From/Subject/Message-ID/BODY/TEXT.
+- `CorvexMessageResult` — BODYSTRUCTURE через `MimeDescriptorImpl` James, BODY[]/HEADER/TEXT
+  и MIME-части через Jakarta Mail.
+- QUOTA: usage/limit из хранилища/auth (`quotaBytes=0` — без лимита).
+- CONDSTORE: миграция `V3__imap_modseq.sql` добавила `mail_folders.highest_modseq` и
+  `message_metadata.modseq`; MODSEQ растёт на доставке, APPEND/COPY/MOVE, смене флагов и expunge.
 
-- Протокольный движок — **Apache James IMAP protocol library** за портом `ImapServerPort`
-  (см. javadoc интерфейса — там обоснование, почему собственный парсер RFC не пишется).
-- Хранилища у IMAP своего нет: движок работает через адаптер к `mail-storage-service`
-  (`/internal/protocol/users/{userId}/...`, только app-сеть + `X-Corvex-Internal-Token`).
-- Аутентификация: SASL PLAIN/LOGIN только внутри TLS; проверка пароля — `ImapAuthClient`
-  в `auth-service` (локальные учётки и app-passwords при включённой 2FA; AD bind — этап 5).
-- IDLE-push: `mail-storage-service` публикует `mail.delivered` в RabbitMQ, этот сервис
-  вызовет `ImapServerPort.notifyNewMail` (точка уже есть в адаптере).
+Честные ограничения этой итерации:
 
-## Таблица соответствия: James SPI -> хранилище (план подключения движка)
+- **Подписки LSUB** хранятся в памяти процесса (по умолчанию «все папки») и сбрасываются при
+  рестарте; персистентность подписок в хранилище — миграция этапа 5.
+- **IDLE** видит события, сделанные этим же процессом IMAP. Доставка из SMTP/storage пока не
+  публикует событие именно в IMAP-процесс, поэтому внешняя новая почта гарантированно видна по
+  NOOP/пере-SELECT и при следующем IDLE-цикле клиента; распределённый EventBus — этап 5.
+- **ACL/METADATA/keyword-флаги** не заявляются возможностями: хранилище держит только
+  системные флаги и owner-only права.
+- Сервис по умолчанию **выключен** (`CORVEX_IMAP_ENABLED=false`), пока на хосте с JDK не пройдены
+  `mvn verify` и клиентский smoke (см. `docs/READINESS.md`). Песочница разработки Java не имеет,
+  поэтому первая компиляция — обязательный гейт на вашем ПК.
+
+## Запуск и TLS
+
+```dotenv
+CORVEX_IMAP_ENABLED=true
+CORVEX_IMAP_KEYSTORE_PATH=/certs/imap.p12
+CORVEX_IMAP_KEYSTORE_PASSWORD=change-me
+CORVEX_IMAP_KEYSTORE_TYPE=PKCS12
+```
+
+- 143 публикуется как plain-слушатель + STARTTLS, если найден TLS-материал.
+- 993 стартует только при найденном TLS-материале. Если файла keystore нет, сервис не падает:
+  993 пропускается с предупреждением, а 143 работает без STARTTLS (только локальный тест!).
+- PEM-вариант: очистите `CORVEX_IMAP_KEYSTORE_PATH` и задайте `CORVEX_IMAP_CERT_PATH` +
+  `CORVEX_IMAP_PRIVATE_KEY_PATH` (эти переменные читает `application.yml`; в compose по умолчанию
+  проброшен именно PKCS12-путь).
+- Конвертация PEM -> PKCS12: `openssl pkcs12 -export -inkey key.pem -in cert.pem -out imap.p12`.
+
+Для боевого режима после smoke имеет смысл `CORVEX_IMAP_REQUIRE_TLS_FOR_AUTH=true`: James запретит
+LOGIN до STARTTLS на plain-порту.
+
+## Таблица соответствия: James SPI -> хранилище
 
 | James mailbox-api | Эндпоинт mail-storage / слой Corvex |
 | --- | --- |
-| `MailboxManager.createMailbox` | `POST /folders` (родитель резолвится `ImapFolderPaths`) |
+| `MailboxManager.createMailbox` | `POST /folders` по сегментам пути (`ImapFolderPaths`, разделитель `/`) |
 | `MailboxManager.deleteMailbox` | `DELETE /folders/{id}` (системные папки хранилище защищает 409) |
-| `MailboxManager.renameMailbox` | `PATCH /folders/{id}` (+ переименование каталога Maildir) |
-| `MailboxManager.search/list` | `GET /folders` + `ImapFolderPaths.toImapPath` (SPECIAL-USE из `specialUse`) |
+| `MailboxManager.renameMailbox` | `PATCH /folders/{id}` с `name + parentId/moveToRoot` |
+| `MailboxManager.search/list/hasChildren` | `GET /folders` + дерево `parentId` |
 | `MailboxManager.copyMessages/moveMessages` | `POST /folders/{id}/copy` (`move=true` для MOVE) |
-| `MessageManager.getMetaData/getMailboxCounters` | `GET /folders/{id}/status` (UIDNEXT/UIDVALIDITY/счётчики) |
-| `MessageManager.getMessages` | `GET /folders/{id}/messages` + `GET .../{uid}/raw` (ENVELOPE/BODYSTRUCTURE строит движок из сырого .eml) |
-| `MessageManager.setFlags` | `PATCH .../{uid}/flags` через `ImapFlags.add/remove/replaceWith` |
+| `MessageManager.getMetaData/getMailboxCounters` | `GET /folders/{id}/status` (UIDNEXT/UIDVALIDITY/HIGHESTMODSEQ/счётчики) |
+| `MessageManager.getMessages` | `GET /folders/{id}/messages` + `GET .../{uid}/raw` |
+| `MessageManager.setFlags` | `PATCH .../{uid}/flags` (полный снапшот после ADD/REMOVE/REPLACE) |
 | `MessageManager.expunge/delete` | `POST /folders/{id}/expunge` (список UID = UID EXPUNGE RFC 4315) |
-| `MessageManager.appendMessage` | `POST /folders/{id}/messages` (заголовки `X-Corvex-Internal-Date`, `X-Corvex-Flags`; ответ — APPENDUID) |
-| `QuotaManager` (QUOTA RFC 2087) | `GET /quota` (`quotaBytes=0` — без лимита) |
-| `Authenticator` James IMAP | `ImapAuthClient.authenticate` |
-| IDLE `MailboxListener` | RabbitMQ `mail.delivered` -> `ImapServerPort.notifyNewMail` |
+| `MessageManager.appendMessage` | `POST /folders/{id}/messages` (`X-Corvex-Internal-Date`, `X-Corvex-Flags`; ответ — APPENDUID + MODSEQ) |
+| `QuotaManager/QuotaRootResolver` | `GET /quota`, root = `#private&user@domain` |
+| `SessionProvider.authenticate` | `ImapAuthClient.authenticate` (пароль или app-password при 2FA) |
+| `SubscriptionManager` | in-memory набор этого процесса (см. ограничение выше) |
 
-Артефакты для pom на шаге подключения: `org.apache.james:apache-james-mailbox-api:3.8.2`,
-`org.apache.james:james-server-protocols-imap4:3.8.2`, `org.apache.james:protocols-netty:3.8.2`
-(точные имена сверены с pom-ами тега `james-project-3.8.2`; как и в POP3, Guice-bootstrap
-James заменяется ручной сборкой вокруг Netty-транспорта).
-
-## Обязательные расширения (приёмка по ТЗ)
-
-`IDLE`, `UIDPLUS`, `MOVE`, `QUOTA`, `SPECIAL-USE`, `NAMESPACE`, `CHILDREN`, `UNSELECT`,
-`CONDSTORE`. Из них на стороне хранилища уже обеспечены данные для UIDPLUS (APPENDUID/COPYUID
-из ответов API), MOVE, QUOTA и SPECIAL-USE; CONDSTORE потребует MODSEQ в `message_metadata`
-(отдельная миграция на шаге движка).
-
-## Локальный дымовой тест (после подключения движка)
+## Дымовой тест после сборки
 
 ```bash
 openssl s_client -connect localhost:993 -crlf
 a1 LOGIN user@corp.local <password>
-a2 LIST "" "*"
-a3 SELECT INBOX
+a2 CAPABILITY
+a3 LIST "" "*"
+a4 SELECT INBOX
+a5 UID FETCH 1:* (FLAGS BODYSTRUCTURE)
+a6 LOGOUT
 ```
+
+Или Thunderbird: Incoming IMAP, сервер — ваш `MAIL_HOSTNAME`, 993 SSL/TLS или 143 STARTTLS,
+логин — полный e-mail пользователя, пароль — обычный пароль Corvex (при включённой 2FA — app-password).

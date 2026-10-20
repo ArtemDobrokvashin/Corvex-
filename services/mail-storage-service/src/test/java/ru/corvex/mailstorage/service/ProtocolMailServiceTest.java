@@ -72,6 +72,7 @@ class ProtocolMailServiceTest {
         f.setSpecialUse(specialUse);
         f.setUidNext(uidNext);
         f.setUidValidity(42);
+        f.setHighestModseq(20);
         return f;
     }
 
@@ -81,6 +82,7 @@ class ProtocolMailServiceTest {
         m.setOwnerId(ownerId);
         m.setFolder(folder);
         m.setUid(uid);
+        m.setModseq(uid);
         m.setSender("ivanov@corp.local");
         m.setSubject("Тема");
         m.setInternalDate(Instant.now());
@@ -97,6 +99,7 @@ class ProtocolMailServiceTest {
         m.setSeen(false);
         m.setFlagged(true);
         when(messages.findByFolder_IdAndUidAndOwnerId(inbox.getId(), 3L, ownerId)).thenReturn(Optional.of(m));
+        when(folders.lockById(inbox.getId())).thenReturn(Optional.of(inbox));
         when(messages.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ProtocolDtos.MessageMeta meta = service.updateFlags(ownerId, inbox.getId(), 3L,
@@ -104,6 +107,8 @@ class ProtocolMailServiceTest {
 
         assertTrue(meta.seen());
         assertTrue(meta.flagged(), "null-флаг не должен сбрасываться");
+        assertEquals(21L, meta.modseq(), "CONDSTORE: изменение флагов должно двигать MODSEQ письма");
+        assertEquals(21L, inbox.getHighestModseq());
     }
 
     @Test
@@ -114,11 +119,13 @@ class ProtocolMailServiceTest {
         MessageMetadata victim = message(inbox, 7, rel);
         victim.setDeleted(true);
         when(folders.findByIdAndOwnerId(inbox.getId(), ownerId)).thenReturn(Optional.of(inbox));
+        when(folders.lockById(inbox.getId())).thenReturn(Optional.of(inbox));
         when(messages.findAllByFolder_IdAndOwnerIdAndDeletedTrue(inbox.getId(), ownerId)).thenReturn(List.of(victim));
 
         ProtocolDtos.ExpungeResponse res = service.expunge(ownerId, inbox.getId(), new ProtocolDtos.ExpungeRequest(List.of()));
 
         assertEquals(List.of(7L), res.expungedUids());
+        assertEquals(21L, inbox.getHighestModseq(), "EXPUNGE двигает HIGHESTMODSEQ, иначе QRESYNC не увидит удаление");
         assertFalse(Files.exists(tmp.resolve("mail").resolve(rel)), "файл .eml должен быть удалён с диска");
         verify(messages).delete(victim);
     }
@@ -129,6 +136,7 @@ class ProtocolMailServiceTest {
         MessageMetadata alive = message(inbox, 4, "x/y.eml");
         alive.setDeleted(false);
         when(folders.findByIdAndOwnerId(inbox.getId(), ownerId)).thenReturn(Optional.of(inbox));
+        when(folders.lockById(inbox.getId())).thenReturn(Optional.of(inbox));
         when(messages.findByFolder_IdAndUidAndOwnerId(inbox.getId(), 4L, ownerId)).thenReturn(Optional.of(alive));
 
         ProtocolDtos.ExpungeResponse res = service.expunge(ownerId, inbox.getId(),
@@ -157,7 +165,9 @@ class ProtocolMailServiceTest {
                 new ByteArrayInputStream(eml), Instant.now(), Set.of("\\seen", "\\draft"));
 
         assertEquals(11L, res.uid());
+        assertEquals(21L, res.modseq(), "APPEND получает свежий MODSEQ из папки под тем же локом, что UID");
         assertEquals(12L, drafts.getUidNext(), "uidNext должен вырасти ровно на единицу");
+        assertEquals(21L, drafts.getHighestModseq());
         Path cur = tmp.resolve("mail/ivanov@corp.local/Drafts/cur");
         try (var files = Files.list(cur)) {
             assertEquals(1, files.count(), "\\Seen APPEND должен лечь в cur/, а не new/");
@@ -195,6 +205,7 @@ class ProtocolMailServiceTest {
                 new ProtocolDtos.CopyRequest(List.of(2L), archive.getId(), false));
 
         assertEquals(List.of(100L), res.targetUids());
+        assertEquals(21L, archive.getHighestModseq(), "копия получает свежий MODSEQ целевой папки");
         assertTrue(Files.exists(tmp.resolve("mail").resolve(rel)), "COPY не трогает исходный файл");
     }
 
@@ -213,6 +224,27 @@ class ProtocolMailServiceTest {
     void renameRewritesFolderSegmentInMaildirPath() {
         assertEquals("ivanov@corp.local/New_Name/new/1.eml",
                 ProtocolMailService.replaceFolderSegment("ivanov@corp.local/Old_Name/new/1.eml", "New Name"));
+    }
+
+    @Test
+    void renameCanMoveFolderToAnotherParentWithoutRenamingMaildir() throws Exception {
+        MailFolder projects = folder("Проекты", null, 1);
+        MailFolder archive = folder("Архив", null, 1);
+        MailFolder child = folder("2026", null, 1);
+        child.setParent(projects);
+        when(folders.findByIdAndOwnerId(child.getId(), ownerId)).thenReturn(Optional.of(child));
+        when(folders.findByIdAndOwnerId(archive.getId(), ownerId)).thenReturn(Optional.of(archive));
+        when(folders.findAllByOwnerIdOrderBySpecialUseAscNameAsc(ownerId))
+                .thenReturn(List.of(projects, archive, child));
+        when(messages.countByFolder_Id(child.getId())).thenReturn(0L);
+        when(messages.countByFolder_IdAndSeenFalse(child.getId())).thenReturn(0L);
+
+        ProtocolDtos.FolderInfo moved = service.renameFolder(ownerId, child.getId(),
+                new ProtocolDtos.RenameFolderRequest("2026", archive.getId(), false));
+
+        assertEquals(archive.getId(), moved.parentId(), "IMAP RENAME A -> B/A меняет parent_id, каталог Maildir тот же");
+        assertEquals("2026", moved.name());
+        verify(auth, never()).findById(ownerId);
     }
 
     @Test
