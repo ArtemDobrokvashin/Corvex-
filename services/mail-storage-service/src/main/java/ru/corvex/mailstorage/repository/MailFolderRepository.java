@@ -26,4 +26,19 @@ public interface MailFolderRepository extends JpaRepository<MailFolder, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select f from MailFolder f where f.id = :id")
     Optional<MailFolder> lockById(@Param("id") UUID id);
+
+    // ---- Протокольный API этапа 3: CREATE/DELETE/RENAME папок из IMAP. ----
+
+    boolean existsByParent_Id(UUID parentId);
+
+    /** Уникальность имени среди соседей; parentId=null сравнивается через IS NULL явно. */
+    @Query("""
+            select count(f) > 0 from MailFolder f
+            where f.ownerId = :ownerId
+              and ((:parentId is null and f.parent is null) or f.parent.id = :parentId)
+              and lower(f.name) = lower(:name)
+            """)
+    boolean existsSibling(@Param("ownerId") UUID ownerId,
+                          @Param("parentId") UUID parentId,
+                          @Param("name") String name);
 }

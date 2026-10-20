@@ -35,7 +35,11 @@
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-validation</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-amqp</artifactId></dependency>
 
-        <!-- Аналогично IMAP: org.apache.james pop3 protocol stack за портом Pop3ServerPort (профиль 'james'). -->
+        <!-- Apache James POP3: протокольные обработчики (USER/PASS/RETR/DELE...) + Netty-транспорт.
+             Corvex добавляет толькоMailbox/Pass-адаптеры поверх mail-storage-service. -->
+        <dependency><groupId>org.apache.james</groupId><artifactId>protocols-pop3</artifactId><version>${james.version}</version></dependency>
+        <dependency><groupId>org.apache.james</groupId><artifactId>protocols-netty</artifactId><version>${james.version}</version></dependency>
+        <dependency><groupId>org.apache.james</groupId><artifactId>metrics-api</artifactId><version>${james.version}</version></dependency>
         <dependency><groupId>io.swagger.core.v3</groupId><artifactId>swagger-annotations</artifactId><version>2.2.21</version></dependency>
         <dependency><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId><optional>true</optional></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>

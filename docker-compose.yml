@@ -182,16 +182,34 @@ services:
   mail-imap-service:
     <<: *java-common
     build: ./services/mail-imap-service
+    environment:
+      <<: *common-env
+      # Движок James IMAP подключается следующей итерацией; флаг пока только для явной ошибки в логе.
+      CORVEX_IMAP_ENABLED: ${CORVEX_IMAP_ENABLED:-false}
+      CORVEX_AUTH_SERVICE_URL: http://auth-service:8081
+      CORVEX_STORAGE_BASE_URL: http://mail-storage-service:8085
+      CORVEX_INTERNAL_API_TOKEN: ${CORVEX_INTERNAL_API_TOKEN:?Set CORVEX_INTERNAL_API_TOKEN in .env}
     ports: ["143:1143", "993:1993"]
     volumes: ["${CORVEX_CERTS_DIR:-./infra/certs}:/certs:ro"]
-    depends_on: { auth-service: { condition: service_healthy } }
+    depends_on: { auth-service: { condition: service_healthy }, mail-storage-service: { condition: service_healthy } }
 
   mail-pop3-service:
     <<: *java-common
     build: ./services/mail-pop3-service
+    environment:
+      <<: *common-env
+      # POP3 на James protocols: включать только после Maven-сборки и клиентского smoke (docs/READINESS.md).
+      CORVEX_POP3_ENABLED: ${CORVEX_POP3_ENABLED:-false}
+      CORVEX_POP3_PLAIN_ENABLED: ${CORVEX_POP3_PLAIN_ENABLED:-false}
+      CORVEX_AUTH_SERVICE_URL: http://auth-service:8081
+      CORVEX_STORAGE_BASE_URL: http://mail-storage-service:8085
+      CORVEX_INTERNAL_API_TOKEN: ${CORVEX_INTERNAL_API_TOKEN:?Set CORVEX_INTERNAL_API_TOKEN in .env}
+      # implicit TLS 995: PKCS12 из тома certs (конвертацию PEM->P12 см. README сервиса)
+      CORVEX_POP3_KEYSTORE_PATH: ${CORVEX_POP3_KEYSTORE_PATH:-/certs/pop3.p12}
+      CORVEX_POP3_KEYSTORE_PASSWORD: ${CORVEX_POP3_KEYSTORE_PASSWORD:-}
     ports: ["110:1110", "995:1995"]
     volumes: ["${CORVEX_CERTS_DIR:-./infra/certs}:/certs:ro"]
-    depends_on: { auth-service: { condition: service_healthy } }
+    depends_on: { auth-service: { condition: service_healthy }, mail-storage-service: { condition: service_healthy } }
 
   mail-spam-service:
     <<: *java-common

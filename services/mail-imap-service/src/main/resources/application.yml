@@ -19,3 +19,15 @@ corvex:
   security:
     # Публичный ключ auth-service (JWKS): каждый сервис сам валидирует JWT (RS256)
     jwk-set-uri: ${CORVEX_JWK_SET_URI:http://auth-service:8081/oauth2/jwks}
+    internal-token: ${CORVEX_INTERNAL_API_TOKEN:}
+  auth:
+    base-url: ${CORVEX_AUTH_SERVICE_URL:http://auth-service:8081}
+  storage:
+    base-url: ${CORVEX_STORAGE_BASE_URL:http://mail-storage-service:8085}
+  imap:
+    # Выключено: движок James подключается следующей итерацией на JDK-хосте (см. README сервиса).
+    enabled: ${CORVEX_IMAP_ENABLED:false}
+    # Контейнерные порты без root: compose публикует 143->1143 и 993->1993.
+    plain-port: ${CORVEX_IMAP_PLAIN_PORT:1143}
+    tls-port: ${CORVEX_IMAP_TLS_PORT:1993}
+    hello-name: ${CORVEX_MAIL_DOMAIN:localhost}

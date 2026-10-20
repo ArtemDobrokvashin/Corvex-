@@ -36,4 +36,18 @@ public interface MessageMetadataRepository extends JpaRepository<MessageMetadata
                                               @Param("ownerId") UUID ownerId,
                                               @Param("cursorUid") long cursorUid,
                                               Pageable pageable);
+
+    // ---- Протокольный API этапа 3 (IMAP/POP3): доступ строго по (owner, folder, uid). ----
+
+    Optional<MessageMetadata> findByFolder_IdAndUidAndOwnerId(UUID folderId, long uid, UUID ownerId);
+
+    /** Восходящий список UID для IMAP FETCH/SEARCH и POP3 LIST: протоколы работают в порядке UID. */
+    List<MessageMetadata> findByFolder_IdAndOwnerIdAndUidGreaterThanOrderByUidAsc(
+            UUID folderId, UUID ownerId, long afterUid, Pageable pageable);
+
+    List<MessageMetadata> findAllByFolder_IdAndOwnerIdAndDeletedTrue(UUID folderId, UUID ownerId);
+
+    List<MessageMetadata> findAllByFolder_IdAndOwnerId(UUID folderId, UUID ownerId);
+
+    long countByOwnerId(UUID ownerId);
 }

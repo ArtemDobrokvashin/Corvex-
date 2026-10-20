@@ -19,3 +19,22 @@ corvex:
   security:
     # Публичный ключ auth-service (JWKS): каждый сервис сам валидирует JWT (RS256)
     jwk-set-uri: ${CORVEX_JWK_SET_URI:http://auth-service:8081/oauth2/jwks}
+    internal-token: ${CORVEX_INTERNAL_API_TOKEN:}
+  auth:
+    base-url: ${CORVEX_AUTH_SERVICE_URL:http://auth-service:8081}
+  storage:
+    base-url: ${CORVEX_STORAGE_BASE_URL:http://mail-storage-service:8085}
+  pop3:
+    # Выключено до прохождения gates на JDK-хосте (компиляция + клиентский smoke), как SMTP.
+    enabled: ${CORVEX_POP3_ENABLED:false}
+    # Контейнерные порты без root: compose публикует 110->1110 и 995->1995.
+    plain-port: ${CORVEX_POP3_PLAIN_PORT:1110}
+    tls-port: ${CORVEX_POP3_TLS_PORT:1995}
+    # Открытый POP3 допустим только осознанно (пароль в открытом виде): по умолчанию только TLS.
+    plain-enabled: ${CORVEX_POP3_PLAIN_ENABLED:false}
+    hello-name: ${CORVEX_MAIL_DOMAIN:localhost}
+    # PKCS12-хранилище для implicit TLS на 995 (том /certs, общие сертификаты с nginx-конвертацией).
+    keystore-path: ${CORVEX_POP3_KEYSTORE_PATH:}
+    keystore-password: ${CORVEX_POP3_KEYSTORE_PASSWORD:}
+    # Сколько писем INBOX максимум видит одна POP3-сессия (защита памяти на огромных ящиках).
+    max-messages-per-session: ${CORVEX_POP3_MAX_MESSAGES:1000}
