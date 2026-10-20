@@ -81,7 +81,6 @@ paths:
                   department: { type: string, nullable: true }
                   mustChangePassword: { type: boolean }
                   totpEnabled: { type: boolean }
-                  username: { type: string }
                   email: { type: string, format: email }
                   displayName: { type: string }
                   source: { type: string, enum: [LOCAL, AD_LDAP] }

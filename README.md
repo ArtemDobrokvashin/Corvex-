@@ -55,9 +55,9 @@
 Нужен только Node.js:
 
 ```bash
-git clone -b arena/3732db07-corvex https://github.com/ArtemDobrokvashin/Corvex-.git
+git clone -b main https://github.com/ArtemDobrokvashin/Corvex-.git
 cd Corvex-/frontend
-npm install
+npm ci
 npm run dev
 ```
 
@@ -187,10 +187,10 @@ SMTP выключен по умолчанию на всех уровнях до 
 
 ### Установка на Windows Server
 
-> Команда ниже выбирает текущую ветку аудита. После слияния в `main` уберите `-b arena/3732db07-corvex`.
+> Все завершённые этапы уже слиты в `main`; для тестирования используйте именно эту ветку. Пошаговая приёмка: [`docs/TESTING-ON-YOUR-PC.md`](docs/TESTING-ON-YOUR-PC.md).
 
 ```powershell
-git clone -b arena/3732db07-corvex https://github.com/ArtemDobrokvashin/Corvex-.git C:\Corvex
+git clone -b main https://github.com/ArtemDobrokvashin/Corvex-.git C:\Corvex
 cd C:\Corvex
 
 .\scripts\first-run.ps1     # уникальные секреты, JWT-ключ, internal API token, пилотный TLS, .env
@@ -293,9 +293,9 @@ The concept is deliberately simple: **a company's correspondence should belong t
 Only Node.js is required:
 
 ```bash
-git clone -b arena/3732db07-corvex https://github.com/ArtemDobrokvashin/Corvex-.git
+git clone -b main https://github.com/ArtemDobrokvashin/Corvex-.git
 cd Corvex-/frontend
-npm install
+npm ci
 npm run dev
 ```
 
@@ -425,10 +425,10 @@ If the first build fails, attach the commit SHA, the first Maven error or comple
 
 ### Install on Windows Server
 
-> The command below selects the current audit branch. After it is merged into `main`, drop `-b arena/3732db07-corvex`.
+> All completed stages are merged into `main`; use that branch for testing. Step-by-step acceptance guide: [`docs/TESTING-ON-YOUR-PC.md`](docs/TESTING-ON-YOUR-PC.md) (Russian).
 
 ```powershell
-git clone -b arena/3732db07-corvex https://github.com/ArtemDobrokvashin/Corvex-.git C:\Corvex
+git clone -b main https://github.com/ArtemDobrokvashin/Corvex-.git C:\Corvex
 cd C:\Corvex
 
 .\scripts\first-run.ps1     # unique secrets, JWT key, internal API token, pilot TLS, .env
