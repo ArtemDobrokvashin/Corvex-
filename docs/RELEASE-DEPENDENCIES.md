@@ -31,7 +31,7 @@ production», пока не пройдены все ворота ниже. Ег�
 
 Текущий baseline:
 
-- Node.js `^22.12.0 || ^24.0.0 || >=26.0.0` (в Docker — Node 22);
+- Node.js `^22.22.2 || ^24.15.0 || >=26.0.0` (нижняя граница задана jsdom 30; в Docker — актуальный Node 22);
 - React/ReactDOM 19.3.1, React Router DOM 7.18.4;
 - Vite 8.3.4, `@vitejs/plugin-react` 6.1.2, `@vitejs/plugin-legacy` 8.2.3;
 - Vitest 5.0.5 + jsdom 30.1.3 для DOM-тестов;
