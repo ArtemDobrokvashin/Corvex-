@@ -37,8 +37,13 @@ logging:
   # Структурные JSON-логи -> Promtail -> Loki (см. docs/01-architecture.md)
   pattern.console: '%d{yyyy-MM-dd''T''HH:mm:ss.SSSXXX} [%thread] %-5level %logger{36} [%X{requestId}] - %msg%n'
 corvex:
+  auth:
+    # Каталог сотрудников и проверка активности участников идут только через internal API auth-service.
+    base-url: ${CORVEX_AUTH_SERVICE_URL:http://auth-service:8081}
   chat:
     allowed-origin-patterns: ${CORVEX_WEB_ORIGINS:https://${CORVEX_DOMAIN:mail.company.local}}
+    general-room-title: ${CORVEX_CHAT_GENERAL_ROOM_TITLE:Общий}
   security:
+    internal-token: ${CORVEX_INTERNAL_API_TOKEN:}
     # Публичный ключ auth-service (JWKS): каждый сервис сам валидирует JWT (RS256)
     jwk-set-uri: ${CORVEX_JWK_SET_URI:http://auth-service:8081/oauth2/jwks}

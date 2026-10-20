@@ -97,3 +97,19 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   const contentType = res.headers.get('content-type') ?? '';
   return (contentType.includes('json') ? JSON.parse(text) : text) as T;
 }
+
+/**
+ * Бинарный GET/POST с той же single-flight refresh-логикой, что apiFetch.
+ * Нужен файловым вложениям чата: прямая ссылка без Bearer не подходит, потому что
+ * chat-file-service проверяет JWT и членство в комнате на каждую выдачу файла.
+ */
+export async function apiBlob(path: string, init: RequestInit = {}): Promise<Blob> {
+  let res = await raw(path, init);
+  if (res.status === 401 && !NO_AUTO_REFRESH.some((p) => path.includes(p))) {
+    if (await refreshAccessToken()) {
+      res = await raw(path, init);
+    }
+  }
+  if (!res.ok) throw await toApiError(res, path);
+  return res.blob();
+}

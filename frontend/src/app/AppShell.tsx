@@ -10,7 +10,6 @@ import {
   Search,
   Settings2,
   ShieldCheck,
-  X,
 } from 'lucide-react';
 import { logout as apiLogout, restoreSession } from '../api/authApi';
 import { getDemoUser } from '../api/demoData';
@@ -44,7 +43,6 @@ export default function AppShell() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
-  const [noticeDismissed, setNoticeDismissed] = useState(false);
 
   useEffect(() => {
     if (restoreStarted.current || bootstrapped) return;
@@ -131,9 +129,6 @@ export default function AppShell() {
   if (!user) return <LoadingScreen label={t('Переходим ко входу')} />;
 
   const canAdmin = has('ADMIN_USERS_MANAGE') || has('ADMIN_GROUPS_MANAGE');
-  const moduleNotice = !demoMode && location.pathname.startsWith('/chat')
-    ? t('Realtime-чат появится на этапе 4 — ниже демонстрация будущего интерфейса.')
-    : null;
   const nextLocale = locale === 'ru' ? 'en' : 'ru';
 
   const navItem = (to: string, label: string, Icon: typeof Mail, badge?: number) => (
@@ -226,12 +221,6 @@ export default function AppShell() {
             <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
             <span>{t('Демо-режим: сервер не подключён, данные учебные.')}</span>
             <button onClick={onLogout} className="font-semibold underline decoration-amber-300 underline-offset-2">{t('Выйти')}</button>
-          </div>
-        )}
-        {moduleNotice && !noticeDismissed && (
-          <div className="flex shrink-0 items-center justify-center gap-3 border-b border-accent/10 bg-accent-soft/60 px-4 py-1.5 text-center text-xs text-accent-dark">
-            <span>{moduleNotice}</span>
-            <button type="button" onClick={() => setNoticeDismissed(true)} className="icon-btn-sm -my-1 h-6 w-6 text-accent-dark" aria-label={t('Скрыть уведомление')}><X size={14} /></button>
           </div>
         )}
         <div className="min-h-0 min-w-0 flex-1"><Outlet /></div>

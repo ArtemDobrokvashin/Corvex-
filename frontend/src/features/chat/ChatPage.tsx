@@ -24,6 +24,7 @@ import { Avatar, EmptyState, IconButton } from '../../components/ui';
 import { formatTime, useI18n } from '../../i18n';
 import { firstGraphemes, insertTextAtSelection, stripMarkdownPreview } from '../../lib/text';
 import { useSession } from '../../store/sessionStore';
+import RealChatPage from './RealChatPage';
 
 const cleanTitle = (title: string) => title.replace(/^[^A-Za-zА-Яа-я0-9]+/, '').trim();
 const plainText = stripMarkdownPreview;
@@ -39,7 +40,7 @@ function RoomMark({ room, size = 40 }: { room: DemoRoom; size?: number }) {
 }
 
 /** Сообщения Quiet Work: корпоративные строки Slack вместо потребительских «пузырей». */
-export default function ChatPage() {
+function DemoChatPage() {
   const { locale, t } = useI18n();
   const { user } = useSession();
   const [rooms, setRooms] = useState<DemoRoom[]>(() => demoRooms(locale));
@@ -311,4 +312,9 @@ export default function ChatPage() {
       </div>
     </div>
   );
+}
+
+export default function ChatPage() {
+  const demoMode = useSession((state) => state.demoMode);
+  return demoMode ? <DemoChatPage /> : <RealChatPage />;
 }

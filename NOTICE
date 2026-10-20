@@ -1,0 +1,11 @@
+Corvex
+Copyright 2026 Artem Dobrokvashin and the Corvex contributors
+
+This product is licensed under the Apache License, Version 2.0.
+See the LICENSE file in the root of this repository for the full text.
+
+Corvex is an original self-hosted corporate communications platform. It builds on
+open-source libraries and engines (including Spring Boot, Apache James protocol
+libraries planned for IMAP/POP3, SubEtha SMTP, GreenMail in tests, SpamAssassin,
+ClamAV, PostgreSQL, RabbitMQ, Redis and Elasticsearch). Those components remain
+under their respective licenses; this NOTICE does not replace their license texts.

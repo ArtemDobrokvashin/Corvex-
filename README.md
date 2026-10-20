@@ -45,7 +45,7 @@
 | Проект обещает «enterprise-ready», но прячет ограничения | Открытый аудит, честные ворота готовности и SMTP, выключенный до durable-доставки |
 
 > [!CAUTION]
-> **Corvex пока НЕ production-ready.** Stage 1 и Stages 2A/2B написаны в коде, а фронтенд собран и покрыт своими тестами, но Java-сервисы ещё не прошли первую компиляцию Maven, запуск Spring-контекстов, Docker Compose и сквозной почтовый smoke на JDK/Docker-хосте. Поэтому сейчас это **кандидат для тестового стенда и дальнейшей разработки, а не готовая замена рабочей почте**. Не направляйте production MX на Corvex, не переносите настоящие ящики и не включайте публичный SMTP, пока не пройдены ворота ниже и в [`docs/READINESS.md`](docs/READINESS.md).
+> **Corvex пока НЕ production-ready.** Stage 1, Stages 2A/2B и Stage 4 (persistent-чат) написаны в коде, а фронтенд собран и покрыт своими тестами, но Java-сервисы ещё не прошли первую компиляцию Maven, запуск Spring-контекстов, Docker Compose и сквозной почтовый/чат smoke на JDK/Docker-хосте. Поэтому сейчас это **кандидат для тестового стенда и дальнейшей разработки, а не готовая замена рабочей почте**. Не направляйте production MX на Corvex, не переносите настоящие ящики и не включайте публичный SMTP, пока не пройдены ворота ниже и в [`docs/READINESS.md`](docs/READINESS.md).
 
 ### Попробовать за 2 минуты
 
@@ -58,7 +58,7 @@ npm install
 npm run dev
 ```
 
-Откройте `http://localhost:5173` и нажмите **«Посмотреть демо без сервера»**. Почта и чат покажут учебные данные с жёлтой плашкой. В полном стеке вход, администрирование и webmail подключены к серверным API в коде, но их совместный запуск ещё должен быть подтверждён Maven/Docker smoke; сохраняемый чат относится к Stage 4.
+Откройте `http://localhost:5173` и нажмите **«Посмотреть демо без сервера»**. Почта и чат покажут учебные данные с жёлтой плашкой. В полном стеке вход, администрирование, webmail и чат Stage 4 (persistent комнаты и сообщения, STOMP realtime, presence, файлы с антивирусной проверкой) подключены к серверным API в коде, но их совместный запуск ещё должен быть подтверждён Maven/Docker smoke.
 
 Понравилось? Поставьте ⭐ на GitHub и добавьте организацию в [`ADOPTERS.md`](ADOPTERS.md) — скрытой телеметрии в Corvex нет, поэтому автор иначе не увидит ваше внедрение.
 
@@ -104,7 +104,7 @@ npm run dev
 | 1 | Identity, пользователи, группы, RBAC, аудит, админка | 🟡 код написан; Maven/Docker runtime ещё не подтверждён |
 | 2 | Durable SMTP-доставка, storage, spam/AV, поиск, исходящая очередь | 🟡 Stages 2A/2B написаны; JDK/Docker runtime ещё не подтверждён |
 | 3 | IMAP/POP3 на Apache James, Outlook/Thunderbird | 📐 контракты и порты готовы |
-| 4 | Persistent realtime-чат, файлы, presence | 📐 UI и STOMP-каркас готовы |
+| 4 | Persistent realtime-чат, файлы, presence | 🟡 код написан (REST/STOMP/presence/файлы); Maven/Docker runtime ещё не подтверждён |
 | 5 | AD/LDAP, mTLS, production hardening | 📐 спроектировано |
 
 SMTP выключен по умолчанию на всех уровнях до живого Maven/Docker smoke. Даже с durable spool Corvex не должен ответить `250 OK`, пока сквозной путь письма не подтверждён на целевом хосте.
@@ -125,7 +125,7 @@ SMTP выключен по умолчанию на всех уровнях до 
 - замены рабочего корпоративного почтового сервера;
 - переноса настоящих почтовых ящиков и переписки;
 - публичного включения портов 25/587 как боевого сервиса;
-- обещаний сотрудникам, что Outlook/Thunderbird и сохраняемый чат уже работают: IMAP/POP3 — Stage 3, persistent chat — Stage 4.
+- обещаний сотрудникам, что Outlook/Thunderbird уже работают (Stage 3), а чат Stage 4 уже проверен в бою: его код написан, но runtime-приёмка ещё впереди.
 
 #### Что уже подтверждено, а что нет
 
@@ -176,7 +176,7 @@ SMTP выключен по умолчанию на всех уровнях до 
 - [ ] **8. Эксплуатационная приёмка.** Backup → восстановление на чистой VM, откат на предыдущие образы, алерт при остановке сервиса, ротация сертификата, нагрузочные цели из [`docs/10-test-strategy.md`](docs/10-test-strategy.md), security-проход и реальная Windows 7 + Chrome 109.
 - [ ] **9. Пилот, а не сразу «прод для всех».** Минимум 72 часа на тестовом/пилотном домене с мониторингом очередей, DLQ, диска, bounce-rate и жалоб пользователей; только после этого переносить ограниченную группу ящиков.
 
-Даже после пунктов 1–9 корректный статус будет сначала **«pilot-ready для ограниченного webmail/SMTP-контура»**, а не production-ready всей платформы: для полного обещания Corvex ещё нужны Stage 3 (IMAP/POP3), Stage 4 (сохраняемый чат и файлы) и Stage 5 (AD/LDAP и production hardening), либо честное сужение заявленного объёма продукта.
+Даже после пунктов 1–9 корректный статус будет сначала **«pilot-ready для ограниченного webmail/SMTP-контура»**, а не production-ready всей платформы: для полного обещания Corvex ещё нужны Stage 3 (IMAP/POP3), runtime-подтверждение уже написанного Stage 4 (сохраняемый чат и файлы) и Stage 5 (AD/LDAP и production hardening), либо честное сужение заявленного объёма продукта.
 
 Если первая сборка упала, для issue приложите SHA коммита, первую ошибку Maven или полный стек Spring, `docker compose ps` и хвост логов соответствующего сервиса. **Не прикладывайте** `.env`, пароли, internal token, приватные ключи и настоящие письма.
 
@@ -260,7 +260,7 @@ Corvex развивается как авторский проект. Сейча
 
 ### Лицензия
 
-На текущем этапе автор предоставляет Corvex **бесплатно** для развёртывания на собственном сервере: без подписки и без платы за пользователя. Отдельный юридический текст лицензии будет добавлен перед публичным релизом; если организации нужны письменные условия уже сейчас, свяжитесь с автором до внедрения.
+Corvex распространяется под лицензией **Apache License 2.0** — полный текст в файле [`LICENSE`](LICENSE), атрибуция и перечень сторонних компонентов — в [`NOTICE`](NOTICE). Это значит: бесплатное развёртывание на собственном сервере без подписки и платы за пользователя, право модифицировать и использовать в коммерческих целях при соблюдении условий Apache-2.0. Если в будущем появится отдельная платная редакция или enterprise-добавки, их условия будут опубликованы отдельно и не изменят лицензию уже опубликованного ядра.
 
 ---
 
@@ -281,7 +281,7 @@ The promise is deliberately simple: **a company's correspondence should belong t
 | “Enterprise-ready” hides the fine print | A public audit, explicit readiness gates, and SMTP disabled until durable delivery |
 
 > [!CAUTION]
-> **Corvex is NOT production-ready yet.** Stage 1 and Stages 2A/2B are written in code and the frontend builds and passes its tests, but the Java services have not yet passed their first Maven compilation, Spring-context startup, Docker Compose launch, or end-to-end mail smoke on a JDK/Docker host. Treat this repository as a **test-bench and development candidate, not a replacement for a working mail server**. Do not point production MX records at Corvex, migrate real mailboxes, or expose SMTP publicly until the gates below and in [`docs/READINESS.md`](docs/READINESS.md) pass.
+> **Corvex is NOT production-ready yet.** Stage 1, Stages 2A/2B, and Stage 4 (persistent chat) are written in code and the frontend builds and passes its tests, but the Java services have not yet passed their first Maven compilation, Spring-context startup, Docker Compose launch, or end-to-end mail/chat smoke on a JDK/Docker host. Treat this repository as a **test-bench and development candidate, not a replacement for a working mail server**. Do not point production MX records at Corvex, migrate real mailboxes, or expose SMTP publicly until the gates below and in [`docs/READINESS.md`](docs/READINESS.md) pass.
 
 ### Try it in 2 minutes
 
@@ -294,7 +294,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173` and click **“View the demo without a server.”** Mail and Messages show clearly labelled sample data. In the full stack, sign-in, Administration, and webmail are wired to server APIs in code, but that combined runtime still has to pass Maven/Docker acceptance; persistent chat is Stage 4.
+Open `http://localhost:5173` and click **“View the demo without a server.”** Mail and Messages show clearly labelled sample data. In the full stack, sign-in, Administration, webmail, and Stage 4 chat (persistent rooms and messages, STOMP realtime, presence, antivirus-checked files) are wired to server APIs in code, but that combined runtime still has to pass Maven/Docker acceptance.
 
 Like what you see? Star the repository and add your organization to [`ADOPTERS.md`](ADOPTERS.md). Corvex contains no hidden telemetry, so the author cannot otherwise see your deployment.
 
@@ -340,7 +340,7 @@ Reproduce the captures with [`docs/screenshots/README.md`](docs/screenshots/READ
 | 1 | Identity, users, groups, RBAC, audit, administration | 🟡 code written; Maven/Docker runtime not yet proven |
 | 2 | Durable SMTP delivery, storage, spam/AV, search, outbound queue | 🟡 Stages 2A/2B written; JDK/Docker runtime not yet proven |
 | 3 | Apache James IMAP/POP3, Outlook/Thunderbird | 📐 contracts and ports ready |
-| 4 | Persistent realtime chat, files, presence | 📐 UI and STOMP skeleton ready |
+| 4 | Persistent realtime chat, files, presence | 🟡 code written (REST/STOMP/presence/files); Maven/Docker runtime not yet proven |
 | 5 | AD/LDAP, mTLS, production hardening | 📐 designed |
 
 SMTP is disabled by default at every layer until the live Maven/Docker smoke passes. Even with a durable spool, Corvex must not say `250 OK` until the end-to-end path is proven on a target host.
@@ -361,7 +361,7 @@ Corvex is currently **not** appropriate for:
 - replacing a working corporate mail server;
 - migrating real mailboxes or correspondence;
 - exposing ports 25/587 as a production service;
-- promising employees working Outlook/Thunderbird or persistent chat: IMAP/POP3 is Stage 3 and persistent chat is Stage 4.
+- promising employees working Outlook/Thunderbird (Stage 3) or a battle-proven Stage 4 chat: the chat code is written, but its runtime acceptance is still ahead.
 
 #### What is proven—and what is not
 
@@ -412,7 +412,7 @@ Corvex is currently **not** appropriate for:
 - [ ] **8. Pass operational acceptance.** Backup → restore on a clean VM, rollback to previous images, service-down alerting, certificate rotation, the load targets in [`docs/10-test-strategy.md`](docs/10-test-strategy.md), a security pass, and real Windows 7 + Chrome 109.
 - [ ] **9. Pilot before production.** Run at least 72 hours on a test/pilot domain while monitoring queues, DLQs, disk, bounce rate, and user reports; only then migrate a limited mailbox group.
 
-Even after steps 1–9, the honest first label is **“pilot-ready for a limited webmail/SMTP scope,”** not production-ready for the whole platform. The full Corvex promise still needs Stage 3 (IMAP/POP3), Stage 4 (persistent chat/files), and Stage 5 (AD/LDAP and production hardening), unless the advertised product scope is deliberately narrowed.
+Even after steps 1–9, the honest first label is **“pilot-ready for a limited webmail/SMTP scope,”** not production-ready for the whole platform. The full Corvex promise still needs Stage 3 (IMAP/POP3), runtime proof of the already-written Stage 4 (persistent chat/files), and Stage 5 (AD/LDAP and production hardening), unless the advertised product scope is deliberately narrowed.
 
 If the first build fails, attach the commit SHA, the first Maven error or complete Spring stack trace, `docker compose ps`, and the relevant service log tail to the issue. **Never attach** `.env`, passwords, the internal token, private keys, or real mail.
 
@@ -486,4 +486,4 @@ The intended sustainable model is not to hold basic mail hostage: keep the self-
 
 ### License
 
-At the current stage, the author provides Corvex **free of charge** for self-hosted deployment: no subscription and no per-user fee. A standalone legal license text will be added before a public release; if your organization needs written terms now, contact the author before adoption.
+Corvex is licensed under the **Apache License 2.0** — see [`LICENSE`](LICENSE) for the full text and [`NOTICE`](NOTICE) for attribution and third-party components. In practice that means free self-hosted deployment with no subscription or per-user fee, plus the right to modify and use it commercially under the Apache-2.0 terms. If a separate paid edition or enterprise add-ons appear later, their terms will be published separately and will not change the license of the already-published core.
