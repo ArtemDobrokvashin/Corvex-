@@ -63,7 +63,7 @@ services:
     networks: [data]
 
   rabbitmq:
-    image: rabbitmq:3.13-management-alpine
+    image: rabbitmq:4.3.6-management-alpine
     restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-corvex}
@@ -80,7 +80,7 @@ services:
     networks: [data]
 
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.2
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.23
     restart: unless-stopped
     environment:
       discovery.type: single-node
@@ -99,13 +99,13 @@ services:
 
   # ------------------------- Почтовые фильтры (готовые движки) -------------
   spamd:
-    image: apache/spamassassin:4.0.1
+    image: apache/spamassassin:4.0.2
     restart: unless-stopped
     volumes: [spamd-data:/var/lib/spamassassin]
     networks: [app]
 
   clamav:
-    image: clamav/clamav:1.3
+    image: clamav/clamav:1.5.4
     restart: unless-stopped
     volumes: [clamav-data:/var/lib/clamav]
     healthcheck:
@@ -282,7 +282,7 @@ services:
     networks: [edge]
 
   nginx:
-    image: nginx:1.27-alpine
+    image: nginx:1.30-alpine
     restart: unless-stopped
     ports: ["443:443", "80:80"]
     volumes:
@@ -294,7 +294,7 @@ services:
 
   # ------------------------- Мониторинг (профиль monitoring) ---------------
   prometheus:
-    image: prom/prometheus:v2.52.0
+    image: prom/prometheus:v3.13.4
     profiles: [monitoring]
     restart: unless-stopped
     command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=30d"]
@@ -304,14 +304,14 @@ services:
     networks: [app, monitoring]
 
   alertmanager:
-    image: prom/alertmanager:v0.27.0
+    image: prom/alertmanager:v0.34.1
     profiles: [monitoring]
     restart: unless-stopped
     volumes: ["./infra/prometheus/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro"]
     networks: [monitoring, app]
 
   grafana:
-    image: grafana/grafana:11.0.0
+    image: grafana/grafana:13.2.4
     profiles: [monitoring]
     restart: unless-stopped
     environment:
@@ -323,7 +323,7 @@ services:
     networks: [monitoring, edge]
 
   loki:
-    image: grafana/loki:3.0.0
+    image: grafana/loki:3.7.8
     profiles: [monitoring]
     restart: unless-stopped
     command: ["-config.file=/etc/loki/loki.yml"]
@@ -333,7 +333,7 @@ services:
     networks: [monitoring, app]
 
   promtail:
-    image: grafana/promtail:3.0.0
+    image: grafana/promtail:3.6.11
     profiles: [monitoring]
     restart: unless-stopped
     command: ["-config.file=/etc/promtail/promtail.yml"]

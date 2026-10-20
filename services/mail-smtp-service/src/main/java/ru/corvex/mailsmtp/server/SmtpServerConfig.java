@@ -54,7 +54,7 @@ public class SmtpServerConfig {
 
     @Bean
     AuthenticationHandlerFactory submissionAuthenticationHandlerFactory(SubmissionIdentityClient identities) {
-        return new EasyAuthenticationHandlerFactory((username, password) -> {
+        return new EasyAuthenticationHandlerFactory((username, password, context) -> {
             try {
                 if (identities.authenticate(username, password).isEmpty()) {
                     throw new LoginFailedException("Authentication failed");
@@ -245,13 +245,13 @@ public class SmtpServerConfig {
             }
             Optional<javax.net.ssl.SSLContext> tls = SmtpTlsSupport.buildContext(tlsCertChainFile, tlsPrivateKeyFile);
 
-            SMTPServer inbound = tls
-                    .map(ctx -> (SMTPServer) new SmtpTlsSupport.PemTlsSmtpServer(inboundFactory, null, ctx))
-                    .orElseGet(() -> new SMTPServer(inboundFactory));
-            inbound.setHostName(hostname);
-            inbound.setPort(inboundPort);
-            inbound.setEnableTLS(tls.isPresent());
-            inbound.setRequireTLS(false);
+            SMTPServer.Builder inboundBuilder = SMTPServer.port(inboundPort)
+                    .hostName(hostname)
+                    .messageHandlerFactory(inboundFactory)
+                    .enableTLS(tls.isPresent())
+                    .requireTLS(false);
+            tls.ifPresent(ctx -> inboundBuilder.startTlsSocketFactory(SmtpTlsSupport.socketCreator(ctx)));
+            SMTPServer inbound = inboundBuilder.build();
             inbound.start();
             servers.add(inbound);
             log.info("SMTP inbound listener started on port {} (STARTTLS {})", inboundPort, tls.isPresent() ? "enabled" : "unavailable");
@@ -261,13 +261,15 @@ public class SmtpServerConfig {
                         tlsCertChainFile, tlsPrivateKeyFile);
                 return;
             }
-            SMTPServer submission = new SmtpTlsSupport.PemTlsSmtpServer(submissionFactory, submissionAuthFactory, tls.get());
-            submission.setHostName(hostname);
-            submission.setPort(submissionPort);
-            submission.setEnableTLS(true);
-            submission.setRequireTLS(true);
-            submission.setRequireAuth(true);
-            submission.setAuthenticationHandlerFactory(submissionAuthFactory);
+            SMTPServer submission = SMTPServer.port(submissionPort)
+                    .hostName(hostname)
+                    .messageHandlerFactory(submissionFactory)
+                    .authenticationHandlerFactory(submissionAuthFactory)
+                    .enableTLS(true)
+                    .requireTLS(true)
+                    .requireAuth(true)
+                    .startTlsSocketFactory(SmtpTlsSupport.socketCreator(tls.get()))
+                    .build();
             submission.start();
             servers.add(submission);
             log.info("SMTP submission listener started on port {} (AUTH + required STARTTLS)", submissionPort);
