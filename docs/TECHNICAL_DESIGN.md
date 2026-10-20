@@ -32,13 +32,15 @@
 - **Backend:** Java 17, Spring Boot 3.2 (12 микросервисов), Spring Cloud Gateway,
   Spring Security + LDAP, SubEtha SMTP и Apache James (почтовые протоколы),
   Spring WebSocket/STOMP (чат), Flyway, JaCoCo-gate 70%;
-- **Данные:** PostgreSQL 16 (4 БД по сервисам), Redis 7, RabbitMQ 3.13,
-  Elasticsearch 8 (поиск), Maildir + контентно-адресуемые вложения на ФС;
-- **Почтовая гигиена:** SpamAssassin, ClamAV, DKIM/SPF/DMARC, TLS везде;
-- **Frontend:** React 18 + TypeScript + Vite (`plugin-legacy` → Babel под Chrome 109),
-  Tailwind CSS 3, Inter Variable, Lucide, Zustand, react-router, адаптив от 320 px;
-- **Инфраструктура:** Docker Compose, nginx (TLS/HSTS), Prometheus + Alertmanager +
-  Grafana, Loki + Promtail, email-алерты через отдельный канал.
+- **Данные:** PostgreSQL 16 (4 БД по сервисам), Redis 7, RabbitMQ 4.3,
+  Elasticsearch 8.19 (поиск), Maildir + контентно-адресуемые вложения на ФС;
+- **Почтовая гигиена:** SpamAssassin 4.0.2, ClamAV 1.5.4, DKIM/SPF/DMARC, TLS везде;
+- **Frontend:** React 19 + TypeScript 7 + Vite 8 (`plugin-legacy` → Babel 7 под Chrome 109),
+  Tailwind CSS 3.4, Inter Variable, Lucide, Zustand 5, React Router 7, адаптив от 320 px;
+- **Инфраструктура:** Docker Compose, nginx 1.30 (TLS/HSTS), Prometheus 3.13 LTS + Alertmanager +
+  Grafana 13, Loki 3.7 + Promtail 3.6 как временный агент до миграции на Alloy,
+  email-алерты через отдельный канал. Точные baseline-версии и исключения —
+  `docs/RELEASE-DEPENDENCIES.md`.
 
 ## Главные архитектурные решения одной строкой
 

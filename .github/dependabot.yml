@@ -1,0 +1,93 @@
+version: 2
+
+# Зависимости обновляются малыми проверяемыми группами. Major-версии не
+# смешиваются с patch/minor: каждая крупная миграция должна идти отдельным PR
+# и проходить ворота из docs/RELEASE-DEPENDENCIES.md.
+updates:
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+      timezone: Europe/Moscow
+    open-pull-requests-limit: 5
+    groups:
+      frontend-production:
+        dependency-type: production
+        update-types: [minor, patch]
+      frontend-development:
+        dependency-type: development
+        update-types: [minor, patch]
+    ignore:
+      # Tailwind 4 требует Chrome 111+, а Corvex обязан поддерживать Chrome 109.
+      - dependency-name: tailwindcss
+        update-types: [version-update:semver-major]
+      # Babel остаётся в major 7 для legacy-цепочки Chrome 109.
+      - dependency-name: "@babel/core"
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: maven
+    directories:
+      - /
+      - /services/admin-service
+      - /services/auth-service
+      - /services/chat-file-service
+      - /services/chat-service
+      - /services/mail-antivirus-service
+      - /services/mail-imap-service
+      - /services/mail-pop3-service
+      - /services/mail-smtp-service
+      - /services/mail-spam-service
+      - /services/mail-storage-service
+      - /services/notification-service
+      - /services/web-gateway
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:30"
+      timezone: Europe/Moscow
+    open-pull-requests-limit: 5
+    groups:
+      maven-patch-minor:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directories:
+      - /frontend
+      - /services/admin-service
+      - /services/auth-service
+      - /services/chat-file-service
+      - /services/chat-service
+      - /services/mail-antivirus-service
+      - /services/mail-imap-service
+      - /services/mail-pop3-service
+      - /services/mail-smtp-service
+      - /services/mail-spam-service
+      - /services/mail-storage-service
+      - /services/notification-service
+      - /services/web-gateway
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Europe/Moscow
+    open-pull-requests-limit: 5
+    groups:
+      docker-base-images:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:30"
+      timezone: Europe/Moscow
+    open-pull-requests-limit: 5
+    groups:
+      compose-images:
+        patterns: ["*"]
+        update-types: [minor, patch]

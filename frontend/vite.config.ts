@@ -15,12 +15,18 @@ export default defineConfig({
     }),
   ],
   build: {
-    target: 'es2020',
     sourcemap: false,
     rollupOptions: {
       output: {
-        // ленивая загрузка модулей почты/чата/админки (ТЗ §10.4) обеспечивается react-router lazy()
-        manualChunks: { vendor: ['react', 'react-dom', 'react-router-dom'] },
+        // Ленивая загрузка модулей почты/чата/админки (ТЗ §10.4) обеспечивается react-router lazy().
+        // Vite 8/Rolldown принимает manualChunks только как функцию.
+        manualChunks(id) {
+          const normalizedId = id.replaceAll('\\', '/');
+          if (/\/node_modules\/(react|react-dom|react-router|react-router-dom|scheduler)\//.test(normalizedId)) {
+            return 'vendor';
+          }
+          return undefined;
+        },
       },
     },
   },

@@ -36,7 +36,7 @@ flowchart TB
     subgraph Data["Данные и внешние движки (сеть data, без портов наружу)"]
         PG[("PostgreSQL 16<br/>auth_db · admin_db<br/>mail_db · chat_db")]
         REDIS[("Redis 7<br/>сессии · presence<br/>rate limit · blacklist")]
-        MQ{{"RabbitMQ 3.13<br/>AMQP + STOMP-реле"}}
+        MQ{{"RabbitMQ 4.3<br/>AMQP + STOMP-реле"}}
         ES[("Elasticsearch 8<br/>поиск по почте и чату")]
         FS[("Тома Docker<br/>Maildir · вложения CAS<br/>файлы чата")]
         SPAMD["SpamAssassin (spamd)"]

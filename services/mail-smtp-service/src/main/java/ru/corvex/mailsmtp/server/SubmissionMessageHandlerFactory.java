@@ -115,7 +115,7 @@ public class SubmissionMessageHandlerFactory implements MessageHandlerFactory {
             }
 
             @Override
-            public void data(InputStream data) throws IOException {
+            public String data(InputStream data) throws RejectException, IOException {
                 SubmissionIdentityClient.AuthenticatedMailbox mailbox = mailbox().orElseThrow(
                         () -> new RejectException(530, "Authentication required"));
                 if (mailFrom == null || recipients.isEmpty()) {
@@ -173,6 +173,7 @@ public class SubmissionMessageHandlerFactory implements MessageHandlerFactory {
                     }
                     throw new RejectException(451, "Temporary local problem - please try later");
                 }
+                return null;
             }
 
             @Override
@@ -182,10 +183,10 @@ public class SubmissionMessageHandlerFactory implements MessageHandlerFactory {
             }
 
             private Optional<SubmissionIdentityClient.AuthenticatedMailbox> mailbox() {
-                if (ctx.getAuthenticationHandler() == null || ctx.getAuthenticationHandler().getIdentity() == null) {
-                    return Optional.empty();
-                }
-                return identities.lookupCached(String.valueOf(ctx.getAuthenticationHandler().getIdentity()));
+                return ctx.getAuthenticationHandler()
+                        .map(handler -> handler.getIdentity())
+                        .filter(identity -> identity != null)
+                        .flatMap(identity -> identities.lookupCached(String.valueOf(identity)));
             }
         };
     }

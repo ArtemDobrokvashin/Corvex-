@@ -52,7 +52,7 @@
 
 ### Попробовать за 2 минуты
 
-Нужен только Node.js:
+Нужен только Node.js 22.12+ (или 24/26 по `engines` в `frontend/package.json`):
 
 ```bash
 git clone -b main https://github.com/ArtemDobrokvashin/Corvex-.git
@@ -135,7 +135,8 @@ SMTP выключен по умолчанию на всех уровнях до 
 
 | Область | Подтверждено в текущем коммите | Не подтверждено |
 |---|---|---|
-| Frontend | `npm test`: 3 файла / 12 тестов; `npm run build`, включая legacy-бандл | настоящий Windows 7 + Chrome 109 и E2E против поднятого бэкенда |
+| Frontend | `npm test`: 4 файла / 15 тестов; `npm run build`, включая legacy-бандл; production `npm audit` — 0 | настоящий Windows 7 + Chrome 109 и E2E против поднятого бэкенда |
+| Зависимости | baseline, исключения и ворота зафиксированы в [`docs/RELEASE-DEPENDENCIES.md`](docs/RELEASE-DEPENDENCIES.md); POP3 POM и поддерживаемый SMTP-движок исправлены до первого Maven-прогона | поддерживаемая Spring/James-платформа отдельным gate после первого зелёного Maven/Docker baseline |
 | Java | синтаксис, контракты и зависимости вычитаны статически; unit-тесты написаны | `mvn` компиляция, выполнение Java-тестов, Spring-контексты, JaCoCo-гейты |
 | Docker/инфраструктура | YAML разбирается; сервисы, сети, тома и healthcheck описаны | сборка образов, Flyway на чистом PostgreSQL, права на тома, все `healthy` без рестартов |
 | Почта | код inbound/outbound/submission/DKIM/DSN и webmail API написан | письмо целиком SMTP → spam → AV → Maildir → webmail, внешняя доставка, проверка DKIM получателями, потери/дубли при сбоях |
@@ -290,7 +291,7 @@ The concept is deliberately simple: **a company's correspondence should belong t
 
 ### Try it in 2 minutes
 
-Only Node.js is required:
+Only Node.js 22.12+ is required (or 24/26, per `engines` in `frontend/package.json`):
 
 ```bash
 git clone -b main https://github.com/ArtemDobrokvashin/Corvex-.git
@@ -373,7 +374,8 @@ Corvex is currently **not** appropriate for:
 
 | Area | Proven in this commit | Not proven |
 |---|---|---|
-| Frontend | `npm test`: 3 files / 12 tests; `npm run build`, including the legacy bundle | real Windows 7 + Chrome 109 and E2E against a running backend |
+| Frontend | `npm test`: 4 files / 15 tests; `npm run build`, including the legacy bundle; production `npm audit` is 0 | real Windows 7 + Chrome 109 and E2E against a running backend |
+| Dependencies | the baseline, exceptions, and gates are recorded in [`docs/RELEASE-DEPENDENCIES.md`](docs/RELEASE-DEPENDENCIES.md); the POP3 POM and maintained SMTP engine were fixed before the first Maven run | the supported Spring/James platform as a separate gate after the first green Maven/Docker baseline |
 | Java | syntax, contracts, and dependencies statically reviewed; unit tests written | Maven compilation, Java test execution, Spring contexts, JaCoCo gates |
 | Docker/infrastructure | YAML parses; services, networks, volumes, and healthchecks are described | image builds, Flyway on clean PostgreSQL, volume permissions, every service staying `healthy` |
 | Mail | inbound/outbound/submission/DKIM/DSN and webmail API code exists | complete SMTP → spam → AV → Maildir → webmail delivery, external delivery, recipient-side DKIM validation, loss/duplicates under failure |

@@ -1,5 +1,5 @@
 <#
- Corvex: локальные ворота готовности на Windows Server с JDK 17+, Maven, Node.js и Docker.
+ Corvex: локальные ворота готовности на Windows Server с JDK 17, Maven 3.9+, Node.js 22.12+ и Docker.
  Использование:
    powershell -ExecutionPolicy Bypass -File scripts\verify.ps1 [-DockerBuild]
    без флагов    — frontend-тесты/сборка, mvn verify всех сервисов, проверка compose-конфига
@@ -26,9 +26,10 @@ Run "docker" @("compose", "version")
 Step "Frontend: tests + production build (modern + legacy Chrome 109)"
 Push-Location frontend
 try {
-  if (-not (Test-Path node_modules)) { Run "npm" @("ci") }
+  Run "npm" @("ci")
   Run "npm" @("test")
   Run "npm" @("run", "build")
+  Run "npm" @("audit", "--omit=dev", "--audit-level=moderate")
 } finally { Pop-Location }
 
 Step "Java: mvn verify for all 12 services (tests + JaCoCo gates)"

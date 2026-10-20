@@ -1,17 +1,13 @@
 package ru.corvex.mailsmtp.server;
 
-import org.subethamail.smtp.AuthenticationHandlerFactory;
-import org.subethamail.smtp.MessageHandlerFactory;
-import org.subethamail.smtp.server.SMTPServer;
+import org.subethamail.smtp.server.SSLSocketCreator;
 
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
-import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyFactory;
@@ -30,7 +26,7 @@ import java.util.Optional;
 /**
  * PEM TLS для SubEtha: библиотека по умолчанию ждёт JVM keystore, а Corvex хранит сертификаты
  * как fullchain.pem/privkey.pem (как nginx). Здесь PEM превращается в SSLContext в памяти,
- * а createSSLSocket переопределяется под этот контекст.
+ * а SSLSocketCreator на его основе передаётся в SMTPServer.Builder.
  */
 final class SmtpTlsSupport {
 
@@ -85,16 +81,8 @@ final class SmtpTlsSupport {
         }
     }
 
-    static class PemTlsSmtpServer extends SMTPServer {
-        private final SSLContext sslContext;
-
-        PemTlsSmtpServer(MessageHandlerFactory handlerFactory, AuthenticationHandlerFactory authFactory, SSLContext sslContext) {
-            super(handlerFactory, authFactory);
-            this.sslContext = sslContext;
-        }
-
-        @Override
-        public SSLSocket createSSLSocket(Socket socket) throws IOException {
+    static SSLSocketCreator socketCreator(SSLContext sslContext) {
+        return socket -> {
             SSLSocketFactory sf = sslContext.getSocketFactory();
             InetSocketAddress remoteAddress = (InetSocketAddress) socket.getRemoteSocketAddress();
             SSLSocket ssl = (SSLSocket) sf.createSocket(socket, remoteAddress.getHostString(), socket.getPort(), true);
@@ -111,6 +99,6 @@ final class SmtpTlsSupport {
                 ssl.setEnabledProtocols(enabled.toArray(new String[0]));
             }
             return ssl;
-        }
+        };
     }
 }

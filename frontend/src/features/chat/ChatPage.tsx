@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { marked } from 'marked';
-import DOMPurify from 'dompurify';
 import {
   ArrowLeft,
   CheckCheck,
@@ -23,6 +21,7 @@ import { EmojiPickerButton } from '../../components/EmojiPicker';
 import { Avatar, EmptyState, IconButton } from '../../components/ui';
 import { formatTime, useI18n } from '../../i18n';
 import { firstGraphemes, insertTextAtSelection, stripMarkdownPreview } from '../../lib/text';
+import { renderChatMarkdown } from '../../lib/markdown';
 import { useSession } from '../../store/sessionStore';
 import RealChatPage from './RealChatPage';
 
@@ -141,16 +140,6 @@ function DemoChatPage() {
     inputRef.current?.focus();
   };
 
-  const renderMarkdown = (md: string) => ({
-    // Внешние <img> в чате запрещены политикой приватности: tracking pixel не должен
-    // сообщать третьим лицам факт/время прочтения и IP сотрудника. Файловые вложения
-    // этапа 4 будут рендериться отдельным доверенным компонентом, не Markdown-HTML.
-    __html: DOMPurify.sanitize(marked.parse(md) as string, {
-      FORBID_TAGS: ['img', 'iframe', 'video', 'audio', 'source', 'style'],
-      FORBID_ATTR: ['style'],
-    }),
-  });
-
   const renderRoom = (r: DemoRoom) => {
     const last = lastByRoom.get(r.id);
     const selected = roomId === r.id;
@@ -247,7 +236,7 @@ function DemoChatPage() {
                           {m.mine && <CheckCheck size={13} className="translate-y-0.5 text-accent" aria-label={t('Прочитано')} />}
                         </div>
                       )}
-                      <div className="message-markdown mt-0.5 text-[14.5px] leading-relaxed text-ink-soft [&_p]:m-0" dangerouslySetInnerHTML={renderMarkdown(m.text)} />
+                      <div className="message-markdown mt-0.5 text-[14.5px] leading-relaxed text-ink-soft [&_p]:m-0" dangerouslySetInnerHTML={renderChatMarkdown(m.text)} />
                       {count > 0 && (
                         <button type="button" onClick={() => toggleReaction(m.id)} className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium transition ${reacted.has(m.id) ? 'border-accent/25 bg-accent-soft text-accent-dark' : 'border-line bg-surface text-muted hover:border-accent/25'}`}>
                           <span className="emoji-text text-[13px] leading-none" role="img" aria-label={t('Реакция: большой палец вверх')}>👍</span> {count}

@@ -14,7 +14,7 @@ These PNG files are **real captures of the production frontend build** in Chromi
 
 ## Reproduce / Как переснять
 
-Requirements: Node.js 20, Playwright Chromium (or any Chromium via `CHROMIUM_PATH` with `playwright-core`), and a color emoji font (Noto Color Emoji on Linux; Segoe UI Emoji on Windows; Apple Color Emoji on macOS).
+Requirements: Node.js 22.12+ (see `frontend/package.json` engines), Playwright Chromium (or any Chromium via `CHROMIUM_PATH` with `playwright-core`), and a color emoji font (Noto Color Emoji on Linux; Segoe UI Emoji on Windows; Apple Color Emoji on macOS).
 
 ```bash
 cd frontend

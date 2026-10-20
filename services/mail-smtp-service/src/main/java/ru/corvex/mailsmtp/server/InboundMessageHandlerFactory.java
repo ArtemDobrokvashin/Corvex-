@@ -72,7 +72,7 @@ public class InboundMessageHandlerFactory implements MessageHandlerFactory {
             }
 
             @Override
-            public void data(InputStream data) throws IOException {
+            public String data(InputStream data) throws RejectException, IOException {
                 if (recipients.isEmpty()) {
                     throw new RejectException(554, "No valid recipients");
                 }
@@ -97,6 +97,7 @@ public class InboundMessageHandlerFactory implements MessageHandlerFactory {
                 }
                 log.info("Inbound mail accepted: from={} rcpt={} size={} rawRef={}",
                         mailFrom, recipients, stored.sizeBytes(), stored.rawRef());
+                return null;
             }
 
             @Override

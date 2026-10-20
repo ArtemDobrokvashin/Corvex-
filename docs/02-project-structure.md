@@ -35,7 +35,7 @@ Corvex-/
 │   ├── loki/                       # Loki + Promtail (сбор логов Docker)
 │   ├── certs/                      # TLS-сертификаты (не в git)
 │   └── secrets/                    # приватный ключ JWT (не в git)
-├── frontend/                       # React 18 + TypeScript + Vite (подробно — docs/07)
+├── frontend/                       # React 19 + TypeScript 7 + Vite 8 (подробно — docs/07)
 └── services/                       # 12 микросервисов Spring Boot 3.2 / Java 17
 ```
 

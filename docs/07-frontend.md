@@ -7,13 +7,13 @@
 
 | Вопрос | Решение |
 |---|---|
-| Фреймворк | React 18 + TypeScript, сборка Vite 5 |
-| Chrome 109 | `@vitejs/plugin-legacy` → Babel (`browserslist: chrome >= 109` в `package.json`) + core-js полифилы; современным браузерам отдаётся лёгкий modern-бандл, старым — legacy |
-| Стили | Tailwind CSS **3** + Autoprefixer; системные шрифты (Segoe UI) — веб-шрифты из CDN не нужны, что важно для изолированных сетей |
-| Роутинг | react-router-dom 6, модули через `lazy()` (админка не грузится у обычных пользователей) |
-| Состояние | Zustand (сессия/права/UI); серверные данные в стор не копируются — каждый экран ходит в API |
+| Фреймворк | React 19 + TypeScript 7, сборка Vite 8; локальная разработка — Node.js `^22.12.0 || ^24.0.0 || >=26.0.0` |
+| Chrome 109 | `@vitejs/plugin-legacy` 8 → Babel 7 (`browserslist: chrome >= 109` в `package.json`) + core-js полифилы; современным браузерам отдаётся лёгкий modern-бандл, старым — legacy |
+| Стили | Tailwind CSS **3.4** + Autoprefixer; версия осознанно не поднята до 4 из-за Chrome 109, исключение и audit-риск зафиксированы в `docs/RELEASE-DEPENDENCIES.md` |
+| Роутинг | react-router-dom 7, модули через `lazy()` (админка не грузится у обычных пользователей) |
+| Состояние | Zustand 5 (сессия/права/UI); серверные данные в стор не копируются — каждый экран ходит в API |
+| Markdown/XSS | единственный путь `src/lib/markdown.ts`: Marked 18 → DOMPurify с запретом внешних media и inline style; покрыт jsdom-тестами |
 | Реальное время | `@stomp/stompjs` + SockJS-fallback (`api/chatSocket.ts`) |
-| XSS | HTML писем — только после санитизации на сервере + DOMPurify на рендере Markdown в чате |
 | Яндекс браузер / Edge / Firefox | Chromium-based/современные — получают modern-бандл, отдельно проверяются E2E-матрицей (docs/10) |
 
 ## 7.2. Структура `src/`

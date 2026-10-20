@@ -7,11 +7,11 @@
 
 | Группа | Сервисы | Образы |
 |---|---|---|
-| Данные | postgres, redis, rabbitmq, elasticsearch | официальные: `postgres:16-alpine`, `redis:7-alpine`, `rabbitmq:3.13-management-alpine`, ES `8.13.2` |
-| Фильтры | spamd, clamav | `apache/spamassassin:4.0.1`, `clamav/clamav:1.3` (freshclam внутри) |
+| Данные | postgres, redis, rabbitmq, elasticsearch | официальные: `postgres:16-alpine`, `redis:7-alpine`, `rabbitmq:4.3.6-management-alpine`, ES `8.19.23` |
+| Фильтры | spamd, clamav | `apache/spamassassin:4.0.2`, `clamav/clamav:1.5.4` (freshclam внутри) |
 | Corvex | 12 микросервисов + frontend | собираются локально из `services/*` и `frontend/` |
-| Периметр | nginx | `nginx:1.27-alpine`, конфиг в `infra/nginx` |
-| Мониторинг (профиль `monitoring`) | prometheus, alertmanager, grafana, loki, promtail | включаются `--profile monitoring`, чтобы на слабой пилотной машине можно было отложить |
+| Периметр | nginx | `nginx:1.30-alpine`, конфиг в `infra/nginx` |
+| Мониторинг (профиль `monitoring`) | prometheus, alertmanager, grafana, loki, promtail | Prometheus `v3.13.4`, Alertmanager `v0.34.1`, Grafana `13.2.4`, Loki `3.7.8`; Promtail `3.6.11` — только временный optional smoke перед миграцией на Alloy (см. `docs/RELEASE-DEPENDENCIES.md`) |
 
 ## 5.2. Dockerfile микросервиса (одинаковый паттерн у всех 12)
 
