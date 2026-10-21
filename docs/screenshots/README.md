@@ -20,11 +20,9 @@ IMAP/POP3 или persistent-чат уже прошли runtime-приёмку.
 | `admin-ru.png`, `admin-en.png` | Administration / Администрирование |
 | `mail-mobile-ru.png` | Mobile mail / Мобильная почта |
 
-## Why these captures matter / Зачем нужны эти кадры
+## Keeping the set current / Поддержание набора в актуальном состоянии
 
-Screenshots are often the first reason a system administrator gives a
-self-hosted project ten minutes of attention. Help us keep them honest and
-current:
+To keep the captures accurate and current:
 
 - recapture the set after visible UI changes;
 - after the G1–G3 runtime gates pass, add captures from a real test
@@ -33,9 +31,7 @@ current:
 - never publish real correspondence, names, addresses, hostnames, tokens,
   passwords, or unredacted infrastructure details.
 
-Скриншоты часто становятся первой причиной, по которой системный администратор
-даёт self-hosted проекту десять минут внимания. Помогите держать их честными
-и актуальными:
+Чтобы кадры оставались точными и актуальными:
 
 - переснимайте набор после видимых изменений интерфейса;
 - после прохождения runtime-ворот G1–G3 добавляйте кадры настоящего тестового
@@ -83,7 +79,6 @@ npm run build
 npm audit --omit=dev --audit-level=moderate
 ```
 
-Found a layout problem at a phone/tablet width, a missing translation, or a
-broken emoji on your system? Please open an issue with the browser, OS,
-viewport, locale, and a redacted screenshot. Visual reports from real fleets
-are especially valuable to Corvex.
+For a layout problem at a phone/tablet width, a missing translation, or a
+broken emoji, a useful issue includes the browser, OS, viewport, locale, and
+a redacted screenshot.

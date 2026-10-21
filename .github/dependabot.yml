@@ -1,8 +1,10 @@
 version: 2
 
-# Зависимости обновляются малыми проверяемыми группами. Major-версии не
-# смешиваются с patch/minor: каждая крупная миграция должна идти отдельным PR
-# и проходить ворота из docs/RELEASE-DEPENDENCIES.md.
+# Dependabot предлагает только сгруппированные minor/patch-обновления.
+# Major-версии автоматически не предлагаются: каждая крупная миграция готовится
+# вручную одним отдельным изменением и проходит ворота из
+# docs/RELEASE-DEPENDENCIES.md. Это предотвращает десятки однотипных PR по
+# каждому каталогу сервисов.
 updates:
   - package-ecosystem: npm
     directory: /frontend
@@ -11,7 +13,7 @@ updates:
       day: monday
       time: "04:00"
       timezone: Europe/Moscow
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 1
     groups:
       frontend-production:
         dependency-type: production
@@ -20,6 +22,8 @@ updates:
         dependency-type: development
         update-types: [minor, patch]
     ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
       # Tailwind 4 требует Chrome 111+, а Corvex обязан поддерживать Chrome 109.
       - dependency-name: tailwindcss
         update-types: [version-update:semver-major]
@@ -47,11 +51,14 @@ updates:
       day: monday
       time: "04:30"
       timezone: Europe/Moscow
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 1
     groups:
       maven-patch-minor:
         patterns: ["*"]
         update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: docker
     directories:
@@ -73,11 +80,14 @@ updates:
       day: monday
       time: "05:00"
       timezone: Europe/Moscow
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 1
     groups:
       docker-base-images:
         patterns: ["*"]
         update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: docker-compose
     directory: /
@@ -86,8 +96,11 @@ updates:
       day: monday
       time: "05:30"
       timezone: Europe/Moscow
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 1
     groups:
       compose-images:
         patterns: ["*"]
         update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
