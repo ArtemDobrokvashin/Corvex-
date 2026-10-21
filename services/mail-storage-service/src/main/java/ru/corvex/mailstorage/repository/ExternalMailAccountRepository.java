@@ -19,6 +19,8 @@ public interface ExternalMailAccountRepository extends JpaRepository<ExternalMai
 
     boolean existsByOwnerIdAndEmailAddressIgnoreCase(UUID ownerId, String emailAddress);
 
+    long countByOwnerId(UUID ownerId);
+
     @Query("""
             select a from ExternalMailAccount a
             where a.enabled = true and a.syncEnabled = true

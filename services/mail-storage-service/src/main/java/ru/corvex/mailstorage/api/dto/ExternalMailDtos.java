@@ -111,6 +111,26 @@ public final class ExternalMailDtos {
     public record EnabledRequest(Boolean enabled, Boolean syncEnabled, Boolean sendEnabled) {
     }
 
+    /** Сотрудник Corvex, которому администратор может подключить внешний ящик. */
+    public record OwnerView(
+            UUID id,
+            String username,
+            String email,
+            String displayName,
+            String department,
+            String status,
+            long externalAccountCount) {
+    }
+
+    /** Папка выбранного владельца для целевого размещения собранной почты. */
+    public record TargetFolderView(
+            UUID id,
+            String name,
+            String specialUse,
+            UUID parentId,
+            String path) {
+    }
+
     public record TestConnectionResponse(
             boolean incomingOk,
             String incomingMessage,

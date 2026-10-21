@@ -586,7 +586,15 @@ export default function MailPage() {
         <ExternalMailAccountsModal
           demoMode={demoMode}
           canAdmin={canAdminExternalAccounts}
-          folders={realFolders}
+          currentOwner={sessionUser ? {
+            id: sessionUser.id,
+            username: sessionUser.username ?? '',
+            email: sessionUser.email,
+            displayName: sessionUser.displayName,
+            department: sessionUser.department ?? null,
+            status: sessionUser.status ?? 'ACTIVE',
+            externalAccountCount: externalAccounts.length,
+          } : null}
           onClose={() => setExternalOpen(false)}
           onAccountsChanged={setExternalAccounts}
         />
