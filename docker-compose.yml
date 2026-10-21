@@ -32,7 +32,7 @@ x-java-common: &java-common
 services:
   # ------------------------- Инфраструктура данных -------------------------
   postgres:
-    image: postgres:18-alpine
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-corvex}
@@ -51,7 +51,7 @@ services:
     deploy: { resources: { limits: { memory: 2G } } }
 
   redis:
-    image: redis:8-alpine
+    image: redis:7-alpine
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
     volumes: [redis-data:/data]
@@ -80,7 +80,7 @@ services:
     networks: [data]
 
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.5
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.23
     restart: unless-stopped
     environment:
       discovery.type: single-node
@@ -282,7 +282,7 @@ services:
     networks: [edge]
 
   nginx:
-    image: nginx:1.31-alpine
+    image: nginx:1.30-alpine
     restart: unless-stopped
     ports: ["443:443", "80:80"]
     volumes:
@@ -294,7 +294,7 @@ services:
 
   # ------------------------- Мониторинг (профиль monitoring) ---------------
   prometheus:
-    image: prom/prometheus:v3.15.0
+    image: prom/prometheus:v3.13.4
     profiles: [monitoring]
     restart: unless-stopped
     command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=30d"]

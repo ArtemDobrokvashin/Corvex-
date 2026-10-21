@@ -29,7 +29,7 @@
 | XML / JSON / YAML | ✅ PASS | 13 XML, 3 JSON, 28 YAML, включая новый Dependabot-конфиг |
 | Структура Maven/Compose | ✅ PASS | 12 Java-модулей; в Compose 25 сервисов, 13 build-контекстов, все обязательные сервисы Corvex на месте |
 | Dockerfile/POM по сервисам | ✅ PASS | У всех 12 сервисов есть `Dockerfile` и `pom.xml`; порты healthcheck совпадают с `server.port` |
-| Локальные ссылки Markdown | ✅ PASS | Проверено 125 локальных ссылок/изображений (включая эту инструкцию), битых нет |
+| Локальные ссылки Markdown | ✅ PASS | Проверено 117 локальных ссылок/изображений (включая эту инструкцию), битых нет |
 | `git diff --check`, конфликт-маркеры | ✅ PASS | Чисто |
 | `npm audit` production-зависимостей | ✅ PASS | **0 уязвимостей** после React Router 7 и обновления production-графа |
 | `npm audit` всех зависимостей | ⚠️ ACCEPTED EXCEPTION | 7 build-time находок только в Tailwind 3.4-цепочке для Chrome 109; причина, граница риска и путь закрытия — `docs/RELEASE-DEPENDENCIES.md` |

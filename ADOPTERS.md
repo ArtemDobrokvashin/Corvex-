@@ -2,11 +2,11 @@
 
 Corvex deliberately has **no hidden telemetry and does not phone home**. That is the right default for corporate mail — but it also means the author cannot magically see successful deployments.
 
-If your organization pilots or uses Corvex, please say hello. A public entry here is social proof that helps the project survive; an anonymous note is valuable too.
+Organizations that pilot or use Corvex may, if they wish, add a public entry below or send the same information privately.
 
 Corvex сознательно **не содержит скрытой телеметрии и не «звонит домой»**. Для корпоративной почты это правильное поведение, но автор иначе никак не узнает об успешных внедрениях.
 
-Если ваша организация пилотирует или использует Corvex, пожалуйста, дайте знать. Публичная строка ниже — социальное доказательство, которое помогает проекту жить; анонимное сообщение автору тоже ценно.
+Организация, которая пилотирует или использует Corvex, может при желании добавить публичную строку ниже либо отправить те же сведения приватно.
 
 ## Adopters / Внедрения
 

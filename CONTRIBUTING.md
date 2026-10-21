@@ -2,12 +2,11 @@
 
 ## Русский
 
-Corvex — бесплатный open-source проект под **Apache-2.0**. Спасибо, что
-рассматриваете вклад: сейчас проекту одинаково важны код, первый честный
-прогон на настоящей машине, почтовый клиент из реального парка, понятная
-документация и перевод.
+Corvex — бесплатный open-source проект под **Apache-2.0**, который сейчас
+ведёт один разработчик-энтузиаст. Этот документ описывает порядок участия для
+тех, кто хочет присоединиться к разработке, тестированию или документации.
 
-### Самая нужная помощь сейчас
+### Открытые направления работы
 
 1. **Первый внешний прогон G1/G2.** Запустить `mvn -B clean verify`, затем
    Docker Compose на отдельной VM и прислать либо подтверждение успеха,
@@ -100,12 +99,11 @@ runtime-приёмкой полного стека.
 
 ## English
 
-Corvex is a free open-source project under **Apache-2.0**. Thank you for
-considering a contribution: code, a first honest run on a real machine, a mail
-client from a real fleet, clear documentation, and translations are all
-valuable at this stage.
+Corvex is a free open-source project under **Apache-2.0**, currently
+developed by one enthusiast. This document describes how to participate for
+those who would like to join the development, testing, or documentation work.
 
-### Help most needed now
+### Open areas of work
 
 1. **The first outside G1/G2 run.** Run `mvn -B clean verify`, then Docker
    Compose on a separate VM, and report either success or the first sanitized

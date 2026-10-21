@@ -9,14 +9,13 @@
 <sub>Free &amp; open source (Apache-2.0): raise and run your own corporate mail service on your own servers.<br />
 Бесплатный open-source проект (Apache-2.0): поднимите и настройте собственный корпоративный почтовый сервис на своих серверах.</sub>
 
-[Русский](#русский) · [English](#english) · [Production status](#production-ready-пока-нет) · [Screenshots](#скриншоты) · [Quick start](#попробовать-за-2-минуты) · [First full test](docs/TESTING-ON-YOUR-PC.md) · [Contribute](CONTRIBUTING.md) · [Install](#установка-на-windows-server) · [Docs](#документация) · [Support Corvex](#поддержать-corvex)
+[Русский](#русский) · [English](#english) · [Production status](#production-ready-пока-нет) · [Screenshots](#скриншоты) · [Quick start](#попробовать-за-2-минуты) · [First full test](docs/TESTING-ON-YOUR-PC.md) · [Contribute](CONTRIBUTING.md) · [Install](#установка-на-windows-server) · [Docs](#документация) · [Author](#автор-и-связь)
 
 [![GitHub stars](https://img.shields.io/github/stars/ArtemDobrokvashin/Corvex-?style=social)](https://github.com/ArtemDobrokvashin/Corvex-/stargazers)
 [![Last commit](https://img.shields.io/github/last-commit/ArtemDobrokvashin/Corvex-)](https://github.com/ArtemDobrokvashin/Corvex-/commits)
 [![Not production-ready](https://img.shields.io/badge/production--ready-NO-b60205)](#production-ready-пока-нет)
 ![Stages 1-4](https://img.shields.io/badge/stages_1--4-code_written_runtime_unverified-d29922)
 [![G0 passed](https://img.shields.io/badge/G0-frontend%20%2B%20static%20gates%20passed-2ea44f)](docs/RELEASE-DEPENDENCIES.md)
-[![Help wanted](https://img.shields.io/badge/help_wanted-first%20Maven%20%2F%20Docker%20run-8250df)](CONTRIBUTING.md)
 ![RU EN](https://img.shields.io/badge/interface-RU%20%2F%20EN-3157d5)
 ![Chrome 109](https://img.shields.io/badge/browser-Chrome_109%2B-3157d5)
 [![Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-2ea44f)](LICENSE)
@@ -29,7 +28,7 @@
 
 </div>
 
-> ⭐ **Help Corvex become real: try the demo, star and share the repository, or run the first full test on a spare VM.** Corvex has no hidden telemetry and does not phone home — voluntary stars, test reports, and [`ADOPTERS.md`](ADOPTERS.md) entries are how real usage becomes visible. Если у вас есть JDK 17, Docker, Thunderbird/Outlook или старая машина с Chrome 109, сейчас ваш прогон ценнее, чем ещё один просмотр исходников.
+> Corvex is an author-led open-source project currently developed by one enthusiast. Contributions are welcome for those who would like to join the work. / Corvex — авторский open-source проект, который сейчас ведёт один разработчик-энтузиаст. Если захотите присоединиться к разработке, милости просим: порядок участия описан в [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ---
 
@@ -65,25 +64,13 @@ npm run dev
 
 Откройте `http://localhost:5173` и нажмите **«Посмотреть демо без сервера»**. Почта и чат покажут учебные данные с жёлтой плашкой. В полном стеке вход, администрирование, webmail, почтовые протоколы Stage 3 и чат Stage 4 подключены к серверным API в коде, но их совместный запуск ещё должен быть подтверждён Maven/Docker и клиентским smoke.
 
-Понравилось? Поставьте ⭐ на GitHub и добавьте организацию в [`ADOPTERS.md`](ADOPTERS.md) — скрытой телеметрии в Corvex нет, поэтому автор иначе не увидит ваше внедрение.
+### Об авторе и участии в проекте
 
-### Помогите довести Corvex до первого релиза
+Corvex придумал и сейчас ведёт один разработчик-энтузиаст — **Artem Dobrokvashin**. Это личный open-source проект, а не продукт большой команды: код, архитектура и документация развиваются открыто и в обычном для такого проекта темпе.
 
-Corvex сейчас находится в самой интересной точке open-source проекта: большой код уже написан, дизайн и архитектура видны, зависимости приведены в порядок — но проекту нужны **живые машины, настоящие почтовые клиенты и люди, которые не боятся первой ошибки сборки**. Один понятный отчёт «вот SHA, вот версии JDK/Maven/Docker, вот первая ошибка» двигает Corvex сильнее, чем десять общих пожеланий.
+Если идея собственной корпоративной почты вам близка и есть желание присоединиться, милости просим. Форматы участия обычные: код, тесты, проверка на своём стенде или почтовом клиенте, документация и переводы. С чего начать, описано в [`CONTRIBUTING.md`](CONTRIBUTING.md); маршрут полной первой проверки — в [`docs/TESTING-ON-YOUR-PC.md`](docs/TESTING-ON-YOUR-PC.md). Для сообщения об ошибке достаточно SHA коммита, версий инструментов, выполненных команд и первой ошибки. Не прикладывайте `.env`, пароли, ключи и настоящие письма, а тесты проводите на отдельной VM и тестовом домене.
 
-Выберите маршрут по времени и оборудованию:
-
-| Сколько времени | Что сделать | Что это даст проекту |
-|---:|---|---|
-| **2 минуты** | Открыть демо, поставить ⭐ и поделиться репозиторием с системным администратором, Java/React-разработчиком или self-hosting сообществом | Проект увидят люди, у которых есть нужный стенд и опыт |
-| **10–15 минут** | Выполнить `npm ci`, `npm test`, `npm run build`, `npm audit --omit=dev`; посмотреть RU/EN, мобильную ширину и emoji-picker | Подтверждение frontend на ещё одной машине и обратная связь по интерфейсу |
-| **1–3 часа** | Пройти G1/G2 по [`docs/TESTING-ON-YOUR-PC.md`](docs/TESTING-ON-YOUR-PC.md): `mvn -B clean verify`, затем Docker Compose на отдельной VM | Самая ценная помощь сейчас: первая настоящая Java/Docker сигнатура проекта |
-| **Есть Thunderbird/Outlook или Windows 7** | Проверить IMAP/POP3/submission по чек-листу G3 или legacy-бандл на Chrome 109 | Доказательство, что Corvex работает с реальными клиентами и старым парком, а не только в современном Chromium |
-| **Хотите писать код** | Начать с [`CONTRIBUTING.md`](CONTRIBUTING.md): исправления первой сборки, интеграционные/E2E-тесты, документация и переводы; после зелёного baseline — Spring Boot 4.1/James 3.9, AD/LDAP, persistent LSUB/IDLE и Promtail → Alloy | Прямой путь от pre-1.0 кандидата к пилоту |
-
-Сообщайте и об успехах, и о первой ошибке. В issue нужны SHA коммита, ОС и версии JDK/Maven/Node/Docker, выполненные команды, первая ошибка и очищенный хвост логов. **Не прикладывайте** `.env`, пароли, internal token, приватные ключи и настоящие письма. Тестируйте только на отдельной VM/тестовом домене: не переносите рабочие ящики и не публикуйте почтовые порты до прохождения ворот.
-
-Если вы развернули стенд или пилот, расскажите об этом в [`ADOPTERS.md`](ADOPTERS.md) или приватно автору. Публичная история внедрения — социальное доказательство, которое помогает следующим администраторам решиться попробовать Corvex.
+Скрытой телеметрии в Corvex нет. При желании информацию о своём стенде или внедрении можно добавить в [`ADOPTERS.md`](ADOPTERS.md).
 
 ### Скриншоты
 
@@ -137,7 +124,7 @@ Corvex сейчас находится в самой интересной точ
 
 SMTP выключен по умолчанию на всех уровнях до живого Maven/Docker smoke. Даже с durable spool Corvex не должен ответить `250 OK`, пока сквозной путь письма не подтверждён на целевом хосте.
 
-Последний слитый в `main` release-hardening baseline (PR #5) не притворяется runtime-доказательством, но убирает известные препятствия перед первым тестом: современный и реально проверенный frontend, финальный Spring Cloud 2023.0.6 для Boot 3.2 baseline, поддерживаемый SubEtha SMTP 7.2.2 и dnsjava 3.6.5, исправленный `james.version` в POP3, удалённые неиспользуемые зависимости, поддерживаемые Docker-пины и еженедельный grouped minor/patch Dependabot. EOL-линия Boot 3.2 при этом не маскируется: она нужна только для первой компиляции, а поддерживаемая платформа остаётся обязательным G4.
+Последний слитый в `main` release-hardening baseline (PR #5) не притворяется runtime-доказательством, но убирает известные препятствия перед первым тестом: современный и реально проверенный frontend, финальный Spring Cloud 2023.0.6 для Boot 3.2 baseline, поддерживаемый SubEtha SMTP 7.2.2 и dnsjava 3.6.5, исправленный `james.version` в POP3, удалённые неиспользуемые зависимости, поддерживаемые Docker-пины и Dependabot, ограниченный сгруппированными minor/patch-обновлениями; major-версии автоматически не предлагаются. EOL-линия Boot 3.2 при этом не маскируется: она нужна только для первой компиляции, а поддерживаемая платформа остаётся обязательным G4.
 
 ### Production-ready? Пока нет
 
@@ -276,24 +263,18 @@ docker compose logs auth-service | Select-String BOOTSTRAP
 | [`docs/READINESS.md`](docs/READINESS.md) | честный статус по компонентам и ворота пилота |
 | [`docs/RELEASE-DEPENDENCIES.md`](docs/RELEASE-DEPENDENCIES.md) | зафиксированные версии, осознанные исключения и порядок G0–G5 |
 | [`docs/TESTING-ON-YOUR-PC.md`](docs/TESTING-ON-YOUR-PC.md) | пошаговая первая приёмка на вашем ПК: от frontend до Maven, Docker и почтовых клиентов |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | как помочь тестом, кодом, документацией или переводом и что указать в PR |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | участие в разработке: код, тесты, документация, переводы и требования к PR |
 | [`docs/INSTALL.md`](docs/INSTALL.md) | установка и эксплуатация; есть [`INSTALL.en.md`](docs/INSTALL.en.md) |
 | [`docs/11-modern-design-analysis.md`](docs/11-modern-design-analysis.md) | Gmail/Outlook/Slack/Superhuman/Linear и дизайн-система Quiet Work |
 | [`docs/api/*.yaml`](docs/api/) | OpenAPI: auth, mail, chat, admin |
 | [`ADOPTERS.md`](ADOPTERS.md) | кто использует Corvex и как добавить организацию |
 | [`SUPPORT.md`](SUPPORT.md) | куда писать о багах, безопасности, донатах и коммерческой помощи |
 
-### Поддержать Corvex
+### Автор и связь
 
-Corvex развивается как авторский проект. Сейчас он **бесплатен для self-hosted развёртывания**, но разработка, тесты и поддержка стоят времени. Помочь можно не только деньгами — на текущем этапе живой тест и публичный рассказ о проекте не менее важны:
+Автор Corvex — **Artem Dobrokvashin**: [Telegram](https://t.me/Artem_Dobrokvashin). По вопросам проекта, внедрений, планирования миграций, обучения администраторов и заказных интеграций можно связаться напрямую. Вопросы добровольных пожертвований также обсуждаются только напрямую с автором; платёжные реквизиты в репозитории не публикуются.
 
-1. **⭐ Поставьте звезду и поделитесь ссылкой.** Отправьте Corvex администратору, который устал от чужого облака, Java/React-разработчику или в self-hosting сообщество. Это главный публичный сигнал, что проект нужен.
-2. **Протестируйте и расскажите о результате.** Успешный прогон, первая ошибка Maven/Docker, скриншот Thunderbird или проверка на Windows 7 — всё это реальные доказательства прогресса. Добавьте организацию в [`ADOPTERS.md`](ADOPTERS.md) или напишите автору приватно; без телеметрии это единственный способ увидеть реальные установки.
-3. **Внесите код, тест или документацию.** Начните с [`CONTRIBUTING.md`](CONTRIBUTING.md): проекту нужны первые compile-фиксы, интеграционные тесты, клиентские матрицы, переводы и понятные инструкции по развёртыванию.
-4. **Поддержите деньгами.** Добровольный донат можно согласовать напрямую с автором: **Artem Dobrokvashin — [https://t.me/Artem_Dobrokvashin](https://t.me/Artem_Dobrokvashin)**. Реквизиты в репозитории не публикуются.
-5. **Закажите помощь.** Можно обсудить внедрение, планирование миграции, обучение администраторов, приоритетные исправления и заказные интеграции.
-
-Устойчивая модель проекта — не брать базовую почту в заложники: **Corvex бесплатен и открыт под Apache-2.0, и ядро для собственного сервера таким и останется**. Поддерживать разработку помогают добровольные пожертвования и, по желанию организаций, платные услуги автора по внедрению и сопровождению — но сам продукт не требует ни подписки, ни платы за пользователя, ни «активации».
+Corvex бесплатен и открыт под Apache-2.0, и ядро для собственного сервера таким и останется. Продукт не требует подписки, платы за пользователя или «активации».
 
 ### Лицензия
 
@@ -333,25 +314,13 @@ npm run dev
 
 Open `http://localhost:5173` and click **“View the demo without a server.”** Mail and Messages show clearly labelled sample data. In the full stack, sign-in, Administration, webmail, Stage 3 mail protocols, and Stage 4 chat are wired to server APIs in code, but that combined runtime still has to pass Maven/Docker and mail-client acceptance.
 
-Like what you see? Star the repository and add your organization to [`ADOPTERS.md`](ADOPTERS.md). Corvex contains no hidden telemetry, so the author cannot otherwise see your deployment.
+### About the author and joining the project
 
-### Help bring Corvex to its first release
+Corvex was created and is currently developed by one enthusiast, **Artem Dobrokvashin**. It is a personal open-source project rather than the product of a large team: the code, architecture, and documentation evolve in the open at a sustainable individual pace.
 
-Corvex is at the most interesting point in an open-source project's life: the large body of code exists, the design and architecture are visible, and dependencies have been put in order—but the project needs **real machines, real mail clients, and people willing to meet the first build error**. One precise report—“this SHA, these JDK/Maven/Docker versions, this first error”—moves Corvex further than ten general wishes.
+If the idea of running your own corporate mail service appeals to you and you would like to take part, you are welcome to do so. The usual forms of participation apply: code, tests, checks on your own bench or mail client, documentation, and translations. Start with [`CONTRIBUTING.md`](CONTRIBUTING.md); the full first-test route is described in [`docs/TESTING-ON-YOUR-PC.md`](docs/TESTING-ON-YOUR-PC.md) (Russian). A useful bug report contains the commit SHA, tool versions, commands, and the first error. Never attach `.env`, passwords, keys, or real mail, and use a separate VM and test domain.
 
-Choose a route that fits your time and hardware:
-
-| Time | What to do | Why it matters |
-|---:|---|---|
-| **2 minutes** | Open the demo, star ⭐ the repository, and share it with a system administrator, Java/React developer, or self-hosting community | The right tester or contributor cannot help a project they have never seen |
-| **10–15 minutes** | Run `npm ci`, `npm test`, `npm run build`, and `npm audit --omit=dev`; inspect RU/EN, mobile widths, and the emoji picker | Confirms the frontend on another machine and produces concrete UI feedback |
-| **1–3 hours** | Follow the G1/G2 route in [`docs/TESTING-ON-YOUR-PC.md`](docs/TESTING-ON-YOUR-PC.md) (Russian): `mvn -B clean verify`, then Docker Compose on a spare VM | The most valuable help today: the project's first real Java/Docker signature |
-| **Thunderbird/Outlook or Windows 7 available** | Test IMAP/POP3/submission with the G3 checklist or the legacy bundle on Chrome 109 | Proves compatibility with real clients and the legacy fleet, not only modern Chromium |
-| **Want to write code** | Start with [`CONTRIBUTING.md`](CONTRIBUTING.md): first-build fixes, integration/E2E tests, docs, and translations; after a green baseline, Spring Boot 4.1/James 3.9, AD/LDAP, persistent LSUB/IDLE, and Promtail → Alloy | The direct path from a pre-1.0 candidate to a pilot |
-
-Report successes as well as the first error. Include the commit SHA, OS, JDK/Maven/Node/Docker versions, commands, first error, and a redacted log tail. **Never attach** `.env`, passwords, internal tokens, private keys, or real mail. Test only on a separate VM/test domain; do not move working mailboxes or publish mail ports before the gates pass.
-
-If you deploy a bench or pilot, tell the story in [`ADOPTERS.md`](ADOPTERS.md) or privately to the author. A public adoption story is the social proof that helps the next administrator decide to try Corvex.
+Corvex contains no hidden telemetry. If you wish, you can record a bench or deployment in [`ADOPTERS.md`](ADOPTERS.md).
 
 ### Screenshots
 
@@ -405,7 +374,7 @@ Reproduce the captures with [`docs/screenshots/README.md`](docs/screenshots/READ
 
 SMTP is disabled by default at every layer until the live Maven/Docker smoke passes. Even with a durable spool, Corvex must not say `250 OK` until the end-to-end path is proven on a target host.
 
-The latest release-hardening baseline merged into `main` (PR #5) does not pretend to be runtime proof, but it removes known obstacles before the first test: a modern, actually verified frontend; final Spring Cloud 2023.0.6 for the Boot 3.2 baseline; maintained SubEtha SMTP 7.2.2 and dnsjava 3.6.5; the missing POP3 `james.version`; unused dependencies removed; supported Docker pins; and weekly grouped minor/patch Dependabot updates. The EOL Boot 3.2 line is not disguised: it exists only for the first compilation, while the supported platform remains mandatory G4 work.
+The latest release-hardening baseline merged into `main` (PR #5) does not pretend to be runtime proof, but it removes known obstacles before the first test: a modern, actually verified frontend; final Spring Cloud 2023.0.6 for the Boot 3.2 baseline; maintained SubEtha SMTP 7.2.2 and dnsjava 3.6.5; the missing POP3 `james.version`; unused dependencies removed; supported Docker pins; and Dependabot limited to grouped minor/patch updates, with major versions not proposed automatically. The EOL Boot 3.2 line is not disguised: it exists only for the first compilation, while the supported platform remains mandatory G4 work.
 
 ### Production-ready? Not yet
 
@@ -535,23 +504,17 @@ Full audit: [`docs/12-full-audit-2026-10.md`](docs/12-full-audit-2026-10.md).
 | [`docs/READINESS.md`](docs/READINESS.md) | honest component status and pilot gates |
 | [`docs/RELEASE-DEPENDENCIES.md`](docs/RELEASE-DEPENDENCIES.md) | recorded versions, explicit exceptions, and the G0–G5 order (Russian) |
 | [`docs/TESTING-ON-YOUR-PC.md`](docs/TESTING-ON-YOUR-PC.md) | step-by-step first acceptance on your PC: frontend, Maven, Docker, and mail clients (Russian) |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | how to help with a test, code, documentation, or translation and what a useful PR contains |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | participating in development: code, tests, documentation, translations, and PR expectations |
 | [`docs/INSTALL.en.md`](docs/INSTALL.en.md) | installation and operations; Russian: [`INSTALL.md`](docs/INSTALL.md) |
 | [`docs/api/*.yaml`](docs/api/) | OpenAPI: auth, mail, chat, admin |
 | [`ADOPTERS.md`](ADOPTERS.md) | who uses Corvex and how to add an organization |
 | [`SUPPORT.md`](SUPPORT.md) | bugs, security reports, donations, and commercial help |
 
-### Support Corvex
+### Author and contact
 
-Corvex is an author-led project. It is currently **free for self-hosted deployment**, but development, testing, and support take real time. Money is not the only useful contribution—at this stage, a live test and a public story matter just as much:
+Corvex is authored by **Artem Dobrokvashin**: [Telegram](https://t.me/Artem_Dobrokvashin). Project questions, deployments, migration planning, administrator training, and custom integrations can be discussed directly with the author. Voluntary donations are also arranged only through direct contact; payment details are not published in the repository.
 
-1. **⭐ Star and share the repository.** Send Corvex to an administrator tired of somebody else's cloud, a Java/React developer, or a self-hosting community. Stars and shares are the main public signal that the project should exist.
-2. **Test it and report the result.** A successful run, the first Maven/Docker error, a Thunderbird screenshot, or a Windows 7 check is real evidence of progress. Add your organization to [`ADOPTERS.md`](ADOPTERS.md) or notify the author privately; with no telemetry, this is the only way real installations become visible.
-3. **Contribute code, a test, or documentation.** Start with [`CONTRIBUTING.md`](CONTRIBUTING.md): the project needs first-build fixes, integration tests, mail-client matrices, translations, and clearer deployment guides.
-4. **Donate.** Arrange voluntary support directly with the author: **Artem Dobrokvashin — [https://t.me/Artem_Dobrokvashin](https://t.me/Artem_Dobrokvashin)**. Payment details are intentionally not published here.
-5. **Buy help.** Discuss deployment assistance, migration planning, administrator training, priority fixes, or custom integrations.
-
-The sustainable model is not to hold basic mail hostage: **Corvex is free and open under Apache-2.0, and the self-hosted core stays that way**. Development is supported by voluntary donations and, for organizations that want it, paid deployment and maintenance services from the author — but the product itself needs no subscription, no per-user fee, and no "activation".
+Corvex is free and open under Apache-2.0, and the self-hosted core will remain so. The product requires no subscription, per-user fee, or “activation.”
 
 ### License
 
