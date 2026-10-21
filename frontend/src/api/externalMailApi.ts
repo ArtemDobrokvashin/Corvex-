@@ -113,6 +113,24 @@ export interface ExternalMailTestResult {
   smtpMessage: string | null;
 }
 
+export interface ExternalMailOwner {
+  id: string;
+  username: string;
+  email: string;
+  displayName: string;
+  department: string | null;
+  status: string;
+  externalAccountCount: number;
+}
+
+export interface ExternalMailTargetFolder {
+  id: string;
+  name: string;
+  specialUse: string | null;
+  parentId: string | null;
+  path: string;
+}
+
 export interface ExternalMailSyncRun {
   id: string;
   accountId: string;
@@ -132,7 +150,16 @@ const BASE = '/api/v1/mail/external-accounts';
 
 export const externalMailApi = {
   presets: () => apiFetch<ExternalMailPreset[]>(`${BASE}/presets`),
-  list: () => apiFetch<ExternalMailAccount[]>(BASE),
+  list: (ownerId?: string | null) => apiFetch<ExternalMailAccount[]>(
+    ownerId ? `${BASE}?ownerId=${encodeURIComponent(ownerId)}` : BASE,
+  ),
+  searchOwners: (q = '', limit = 25) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (q.trim()) params.set('q', q.trim());
+    return apiFetch<ExternalMailOwner[]>(`${BASE}/owners?${params.toString()}`);
+  },
+  owner: (ownerId: string) => apiFetch<ExternalMailOwner>(`${BASE}/owners/${encodeURIComponent(ownerId)}`),
+  ownerFolders: (ownerId: string) => apiFetch<ExternalMailTargetFolder[]>(`${BASE}/owners/${encodeURIComponent(ownerId)}/folders`),
   create: (request: ExternalMailAccountRequest) => apiFetch<ExternalMailAccount>(BASE, {
     method: 'POST',
     body: JSON.stringify(request),

@@ -174,6 +174,43 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/ExternalMailPreset' }
+  /mail/external-accounts/owners:
+    get:
+      summary: Поиск активных сотрудников для подключения им внешних ящиков (ADMIN_MAIL_POLICY)
+      parameters:
+        - { name: q, in: query, required: false, schema: { type: string }, description: 'Имя, email, логин или отдел' }
+        - { name: limit, in: query, required: false, schema: { type: integer, default: 25, minimum: 1, maximum: 50 } }
+      responses:
+        '200':
+          description: Сотрудники и количество уже подключённых внешних ящиков
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ExternalMailOwner' }
+        '403': { description: Нет ADMIN_MAIL_POLICY }
+  /mail/external-accounts/owners/{ownerId}:
+    get:
+      summary: Владелец внешнего ящика (сам сотрудник или ADMIN_MAIL_POLICY)
+      parameters: [{ name: ownerId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Профиль владельца и счётчик внешних ящиков }
+        '400': { description: Пользователь не найден }
+        '403': { description: Чужой владелец без ADMIN_MAIL_POLICY }
+  /mail/external-accounts/owners/{ownerId}/folders:
+    get:
+      summary: Папки выбранного владельца для целевого размещения собранной почты
+      parameters: [{ name: ownerId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200':
+          description: Папки владельца, включая полный путь вложенных папок
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ExternalMailTargetFolder' }
+        '400': { description: Пользователь не найден }
+        '403': { description: Чужой владелец без ADMIN_MAIL_POLICY }
   /mail/external-accounts:
     get:
       summary: Внешние ящики владельца (MAIL_EXTERNAL_ACCOUNTS; ADMIN_MAIL_POLICY может указать ownerId)
@@ -278,6 +315,24 @@ components:
     ExternalMailSecurity:
       type: string
       enum: [SSL_TLS, STARTTLS, PLAIN]
+    ExternalMailOwner:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        email: { type: string, format: email }
+        displayName: { type: string }
+        department: { type: string, nullable: true }
+        status: { type: string }
+        externalAccountCount: { type: integer, format: int64 }
+    ExternalMailTargetFolder:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        specialUse: { type: string, nullable: true }
+        parentId: { type: string, format: uuid, nullable: true }
+        path: { type: string }
     ExternalMailAccountRequest:
       type: object
       properties:

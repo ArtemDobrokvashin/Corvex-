@@ -73,7 +73,7 @@ mail.outbound.external.queued ──► mail-smtp-service
 
    `ALLOW_PRIVATE_NETWORKS=true` нужен только для сознательно доверенного внутреннего legacy-сервера. `ALLOW_INSECURE_PLAIN=true` не включайте для интернет-провайдеров: пароль и письма пойдут без TLS.
 
-3. Группе сотрудника должно быть выдано право `MAIL_EXTERNAL_ACCOUNTS`. Администратор с `ADMIN_MAIL_POLICY` также может подключить общий legacy-ящик к отдельному сервисному пользователю Corvex. Уже выданный JWT обновится при refresh сессии.
+3. Группе сотрудника должно быть выдано право `MAIL_EXTERNAL_ACCOUNTS`. Администратор с `ADMIN_MAIL_POLICY` может сам найти сотрудника по имени, email, логину или отделу и подключить ему личный внешний ящик; общий legacy-ящик подключается так же, но на отдельном сервисном пользователе Corvex. Уже выданный JWT обновится при refresh сессии.
 
 ### Подготовка Mail.ru
 
@@ -98,17 +98,18 @@ mail.outbound.external.queued ──► mail-smtp-service
 ### Подключение в интерфейсе
 
 1. Откройте **Почта → Внешние ящики → Подключить ящик**.
-2. Выберите провайдера, укажите адрес, логин и пароль приложения.
-3. Для обычной работы оставьте:
+2. Если вы администратор почты, сначала в левой панели найдите и выберите сотрудника Corvex. Список подключений, целевая папка и новая форма будут относиться именно к нему; UUID вручную вводить не нужно.
+3. Выберите провайдера, укажите адрес, логин и пароль приложения.
+4. Для обычной работы оставьте:
    - протокол IMAP;
    - «Только новые письма», если архив не нужен;
    - «Только Входящие», если не нужна миграция всех папок;
    - «Оставлять письма на сервере провайдера» включено;
    - проверка каждые 5 минут;
    - отправка от имени внешнего адреса включена, если нужно отвечать со старого адреса.
-4. Нажмите **Проверить подключение**. Corvex отдельно покажет результат IMAP/POP3 и SMTP.
-5. Сохраните подключение и нажмите **Синхронизировать сейчас**.
-6. Проверьте счётчики и историю: `QUEUED` означает, что письмо ушло в spam/AV-конвейер; `DELIVERED` появится после финальной доставки в папку Corvex.
+5. Нажмите **Проверить подключение**. Corvex отдельно покажет результат IMAP/POP3 и SMTP.
+6. Сохраните подключение и нажмите **Синхронизировать сейчас**.
+7. Проверьте счётчики и историю: `QUEUED` означает, что письмо ушло в spam/AV-конвейер; `DELIVERED` появится после финальной доставки в папку Corvex.
 
 Пароль приложения после сохранения не показывается. Пустое поле при редактировании означает «оставить текущий пароль».
 
@@ -130,8 +131,8 @@ mail.outbound.external.queued ──► mail-smtp-service
 Для адреса вида `sales@company-mail.ru`, которым пользуются несколько сотрудников:
 
 1. Создайте в Corvex отдельного сервисного пользователя, например `shared-sales@company.local`.
-2. Администратор с `ADMIN_MAIL_POLICY` открывает форму внешнего ящика.
-3. В разделе «Дополнительно» выбирает «Общий legacy-ящик компании» и указывает UUID сервисного пользователя.
+2. Администратор с `ADMIN_MAIL_POLICY` открывает форму внешнего ящика и находит сервисного пользователя поиском в левой панели.
+3. В разделе «Дополнительно» выбирает «Общий legacy-ящик компании»; владельцем останется выбранный сервисный пользователь, UUID вводить не нужно.
 4. Собранная почта будет принадлежать этому ящику Corvex. Доступ к нему организуется существующими правилами учётной записи; полноценные shared-folder ACL — отдельная будущая функция и не обещается коннектором.
 
 ### Отправка от имени старого адреса
@@ -176,7 +177,9 @@ mail.outbound.external.queued ──► mail-smtp-service
 - [ ] при включённом сохранении копия появляется в Sent провайдера;
 - [ ] пауза останавливает сбор, возобновление продолжает с курсора;
 - [ ] удаление подключения не удаляет уже импортированные письма;
-- [ ] пользователь без `MAIL_EXTERNAL_ACCOUNTS` получает 403, чужой аккаунт для него выглядит как 404.
+- [ ] пользователь без `MAIL_EXTERNAL_ACCOUNTS` получает 403, чужой аккаунт для него выглядит как 404;
+- [ ] администратор находит сотрудника по имени/email, подключает ему ящик и видит его в списке именно этого владельца;
+- [ ] целевая папка выбирается из папок сотрудника; собранная почта и send-as доступны владельцу, но администратор не может отправить письмо от его имени.
 
 ---
 
@@ -187,9 +190,9 @@ External Mail Connector attaches an existing provider mailbox to a Corvex mailbo
 ### Setup
 
 1. Generate `CORVEX_EXTERNAL_MAIL_ENC_KEY` (32 random bytes, Base64). `scripts/first-run.ps1` does this. Back this key up with `.env`; losing it means external accounts must be connected again.
-2. Grant `MAIL_EXTERNAL_ACCOUNTS` to the employee's group. An `ADMIN_MAIL_POLICY` administrator can attach a shared legacy mailbox to a dedicated Corvex service user.
+2. Grant `MAIL_EXTERNAL_ACCOUNTS` to the employee's group. An `ADMIN_MAIL_POLICY` administrator can find an employee by name, email, login, or department and connect a personal external mailbox for them; a shared legacy mailbox is connected the same way under a dedicated Corvex service user.
 3. At the provider, create an app password (required by Mail.ru and Yandex) and enable IMAP mail-client access. Prefer IMAP over POP3.
-4. In **Mail → External mailboxes**, pick Mail.ru, Yandex, Gmail, Outlook/Microsoft 365, or a custom server; test the connection; save; run **Synchronize now**. Use **Import archive** for a one-time all-folder migration.
+4. In **Mail → External mailboxes**, an administrator first selects the employee in the left panel; then pick Mail.ru, Yandex, Gmail, Outlook/Microsoft 365, or a custom server; test the connection; save; run **Synchronize now**. The account list and target folders follow the selected owner. Use **Import archive** for a one-time all-folder migration.
 5. In the composer, **From** lets the mailbox owner send as the external address through provider SMTP. Corvex does not add its own DKIM signature to such mail.
 
 Secrets are AES-256-GCM encrypted, never returned by the API, and are fetched by the SMTP worker just-in-time over the internal API instead of travelling in RabbitMQ events. Custom endpoints are SSRF-checked (loopback/link-local/private networks and plaintext are blocked by default). Provider-specific OAuth2 is not impersonated as supported: Outlook/Microsoft tenants that require Modern Auth need a separate OAuth integration, while app-password tenants can use the preset.

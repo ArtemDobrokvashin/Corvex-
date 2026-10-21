@@ -19,16 +19,19 @@ import ru.corvex.mailstorage.repository.ExternalMailImportedMessageRepository;
 import ru.corvex.mailstorage.repository.MailFolderRepository;
 
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
 /**
  * CRUD и проверка внешних ящиков. Владелец аккаунта — пользователь Corvex, в чей ящик
- * доставляется собранная почта. Администратор с ADMIN_MAIL_POLICY может подключить shared
- * legacy-ящик к отдельному сервисному пользователю Corvex.
+ * доставляется собранная почта. Администратор с ADMIN_MAIL_POLICY может подключить личный
+ * внешний ящик сотруднику или shared legacy-ящик отдельному сервисному пользователю Corvex.
  */
 @Service
 public class ExternalMailAccountService {
@@ -75,6 +78,52 @@ public class ExternalMailAccountService {
                 preset(ExternalMailAccount.Provider.YANDEX),
                 preset(ExternalMailAccount.Provider.GMAIL),
                 preset(ExternalMailAccount.Provider.OUTLOOK));
+    }
+
+    /**
+     * Поиск сотрудников для админского сценария «подключить ящик пользователю». Доступен только
+     * ADMIN_MAIL_POLICY: обычный сотрудник не должен получать каталог компании через почтовый API.
+     */
+    @Transactional(readOnly = true)
+    public List<ExternalMailDtos.OwnerView> searchOwners(UUID actorId, Set<String> authorities,
+                                                         String query, Integer limit) {
+        requireAdmin(authorities);
+        String cleanQuery = query == null ? "" : query.replace("\r", "").replace("\n", "").trim();
+        if (cleanQuery.length() > 100) {
+            throw bad("Запрос поиска сотрудника слишком длинный");
+        }
+        int safeLimit = limit == null ? 25 : Math.max(1, Math.min(limit, 50));
+        return auth.searchActiveUsers(cleanQuery, safeLimit).stream()
+                .map(this::toOwnerView)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public ExternalMailDtos.OwnerView owner(UUID actorId, Set<String> authorities, UUID ownerId) {
+        requireManage(actorId, ownerId, authorities);
+        AuthUserClient.UserSummary owner = auth.findUserById(ownerId)
+                .orElseThrow(() -> bad("Пользователь-владелец Corvex не найден"));
+        return toOwnerView(owner);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ExternalMailDtos.TargetFolderView> ownerFolders(UUID actorId, Set<String> authorities, UUID ownerId) {
+        requireManage(actorId, ownerId, authorities);
+        auth.findUserById(ownerId)
+                .orElseThrow(() -> bad("Пользователь-владелец Corvex не найден"));
+        List<MailFolder> ownerFolders = folders.findAllByOwnerIdOrderBySpecialUseAscNameAsc(ownerId);
+        Map<UUID, MailFolder> byId = new HashMap<>();
+        for (MailFolder folder : ownerFolders) {
+            byId.put(folder.getId(), folder);
+        }
+        return ownerFolders.stream()
+                .map(folder -> new ExternalMailDtos.TargetFolderView(
+                        folder.getId(),
+                        folder.getName(),
+                        folder.getSpecialUse(),
+                        folder.getParent() == null ? null : folder.getParent().getId(),
+                        folderPath(folder, byId)))
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -506,6 +555,30 @@ public class ExternalMailAccountService {
         if (actorId.equals(ownerId) && has(authorities, PERMISSION)) return;
         throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                 "Нет права подключать внешние ящики (" + PERMISSION + ")");
+    }
+
+    private void requireAdmin(Set<String> authorities) {
+        if (has(authorities, ADMIN_PERMISSION)) return;
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "Нет права администрировать внешние ящики сотрудников (" + ADMIN_PERMISSION + ")");
+    }
+
+    private ExternalMailDtos.OwnerView toOwnerView(AuthUserClient.UserSummary owner) {
+        return new ExternalMailDtos.OwnerView(
+                owner.id(), owner.username(), owner.email(), owner.displayName(), owner.department(),
+                owner.status(), accounts.countByOwnerId(owner.id()));
+    }
+
+    private static String folderPath(MailFolder folder, Map<UUID, MailFolder> byId) {
+        List<String> parts = new java.util.ArrayList<>();
+        Set<UUID> visited = new HashSet<>();
+        MailFolder current = folder;
+        while (current != null && current.getId() != null && visited.add(current.getId())) {
+            parts.add(0, current.getName());
+            UUID parentId = current.getParent() == null ? null : current.getParent().getId();
+            current = parentId == null ? null : byId.get(parentId);
+        }
+        return String.join(" / ", parts);
     }
 
     private static boolean has(Set<String> authorities, String permission) {

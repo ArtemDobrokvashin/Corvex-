@@ -47,6 +47,27 @@ public class ExternalMailController {
         return accounts.presets();
     }
 
+    @GetMapping("/owners")
+    @PreAuthorize("hasAuthority('ADMIN_MAIL_POLICY')")
+    List<ExternalMailDtos.OwnerView> owners(@AuthenticationPrincipal Jwt jwt,
+                                            @RequestParam(required = false) String q,
+                                            @RequestParam(required = false) Integer limit) {
+        return accounts.searchOwners(userId(jwt), permissions(jwt), q, limit);
+    }
+
+    @GetMapping("/owners/{ownerId}")
+    @PreAuthorize(CAN_MANAGE)
+    ExternalMailDtos.OwnerView owner(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID ownerId) {
+        return accounts.owner(userId(jwt), permissions(jwt), ownerId);
+    }
+
+    @GetMapping("/owners/{ownerId}/folders")
+    @PreAuthorize(CAN_MANAGE)
+    List<ExternalMailDtos.TargetFolderView> ownerFolders(@AuthenticationPrincipal Jwt jwt,
+                                                         @PathVariable UUID ownerId) {
+        return accounts.ownerFolders(userId(jwt), permissions(jwt), ownerId);
+    }
+
     @GetMapping
     @PreAuthorize(CAN_MANAGE)
     List<ExternalMailDtos.AccountView> list(@AuthenticationPrincipal Jwt jwt,

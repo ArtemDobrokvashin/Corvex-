@@ -14,10 +14,12 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Разрешение e-mail получателя в владельца ящика через internal API auth-service. */
+/** Разрешение e-mail/UUID в владельца ящика и поиск сотрудников через internal API auth-service. */
 @Component
 public class AuthUserClient {
 
@@ -41,6 +43,14 @@ public class AuthUserClient {
         }
     }
 
+    /** Минимальный профиль сотрудника для выбора владельца внешнего ящика администратором. */
+    public record UserSummary(UUID id, String username, String email, String displayName,
+                              String department, String status, long quotaBytes) {
+        public boolean active() {
+            return "ACTIVE".equalsIgnoreCase(status);
+        }
+    }
+
     public Optional<MailboxOwner> findByEmail(String email) {
         String path = "/internal/users/by-email?email=" + URLEncoder.encode(email, StandardCharsets.UTF_8);
         return fetch(path, email);
@@ -50,7 +60,60 @@ public class AuthUserClient {
         return fetch("/internal/users/" + id, null);
     }
 
+    public Optional<UserSummary> findUserById(UUID id) {
+        return getJson("/internal/users/" + id).map(body -> parseUserSummary(body, null));
+    }
+
+    /**
+     * Поиск только активных сотрудников для админского выбора владельца. auth-service ищет по
+     * username, email, displayName и department; размер страницы ограничен, чтобы UI не тянул
+     * весь каталог компании ради одного select.
+     */
+    public List<UserSummary> searchActiveUsers(String query, int limit) {
+        int safeLimit = Math.max(1, Math.min(limit, 50));
+        StringBuilder path = new StringBuilder("/internal/users?status=ACTIVE&page=0&size=")
+                .append(safeLimit);
+        if (query != null && !query.isBlank()) {
+            path.append("&q=").append(URLEncoder.encode(query.trim(), StandardCharsets.UTF_8));
+        }
+        JsonNode body = getJson(path.toString())
+                .orElseThrow(() -> new IllegalStateException("auth-service не вернул список пользователей"));
+        JsonNode content = body.path("content");
+        if (!content.isArray()) {
+            throw new IllegalStateException("auth-service вернул некорректный список пользователей");
+        }
+        List<UserSummary> result = new ArrayList<>();
+        for (JsonNode item : content) {
+            UserSummary user = parseUserSummary(item, null);
+            if (user.active()) {
+                result.add(user);
+            }
+        }
+        return result;
+    }
+
     private Optional<MailboxOwner> fetch(String path, String fallbackEmail) {
+        return getJson(path).map(body -> new MailboxOwner(
+                UUID.fromString(body.path("id").asText()),
+                body.path("email").asText(fallbackEmail),
+                body.path("displayName").asText(""),
+                body.path("status").asText(""),
+                body.path("quotaBytes").asLong(0)));
+    }
+
+    private UserSummary parseUserSummary(JsonNode body, String fallbackEmail) {
+        JsonNode department = body.get("department");
+        return new UserSummary(
+                UUID.fromString(body.path("id").asText()),
+                body.path("username").asText(""),
+                body.path("email").asText(fallbackEmail),
+                body.path("displayName").asText(""),
+                department == null || department.isNull() ? null : department.asText(null),
+                body.path("status").asText(""),
+                body.path("quotaBytes").asLong(0));
+    }
+
+    private Optional<JsonNode> getJson(String path) {
         HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + path))
                 .timeout(Duration.ofSeconds(5))
                 .header(InternalTokenGuard.HEADER, tokens.tokenOrFail())
@@ -64,15 +127,9 @@ public class AuthUserClient {
             if (response.statusCode() != 200) {
                 throw new IllegalStateException("auth-service вернул HTTP " + response.statusCode());
             }
-            JsonNode body = mapper.readTree(response.body());
-            return Optional.of(new MailboxOwner(
-                    UUID.fromString(body.path("id").asText()),
-                    body.path("email").asText(fallbackEmail),
-                    body.path("displayName").asText(""),
-                    body.path("status").asText(""),
-                    body.path("quotaBytes").asLong(0)));
+            return Optional.of(mapper.readTree(response.body()));
         } catch (IOException e) {
-            throw new IllegalStateException("auth-service недоступен для разрешения получателя", e);
+            throw new IllegalStateException("auth-service недоступен для разрешения пользователя", e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Запрос в auth-service прерван", e);

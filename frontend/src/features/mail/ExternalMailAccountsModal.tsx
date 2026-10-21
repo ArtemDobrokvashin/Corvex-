@@ -9,20 +9,23 @@ import {
   Play,
   Plus,
   RefreshCw,
+  Search,
   Send,
   Trash2,
+  UserRound,
   X,
 } from 'lucide-react';
 import {
   externalMailApi,
   ExternalMailAccount,
   ExternalMailAccountRequest,
+  ExternalMailOwner,
   ExternalMailPreset,
   ExternalMailProvider,
   ExternalMailSyncRun,
+  ExternalMailTargetFolder,
   ExternalMailTestResult,
 } from '../../api/externalMailApi';
-import { MailFolderView } from '../../api/mailApi';
 import { formatDateTime, useI18n } from '../../i18n';
 
 const FALLBACK_PRESETS: ExternalMailPreset[] = [
@@ -109,9 +112,9 @@ function withPreset(form: FormState, presets: ExternalMailPreset[]): FormState {
   };
 }
 
-function emptyForm(presets: ExternalMailPreset[]): FormState {
+function emptyForm(presets: ExternalMailPreset[], targetUserId = ''): FormState {
   return withPreset({
-    targetUserId: '',
+    targetUserId,
     ownerKind: 'PERSONAL',
     label: '',
     emailAddress: '',
@@ -222,6 +225,12 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function ownerLabel(owner: ExternalMailOwner | null | undefined): string {
+  if (!owner) return '';
+  const name = owner.displayName?.trim() || owner.username?.trim() || owner.email;
+  return owner.email && owner.email !== name ? `${name} · ${owner.email}` : name;
+}
+
 const inputCls = 'h-10 w-full rounded-xl border border-line bg-surface px-3 text-sm outline-none transition placeholder:text-faint focus:border-accent/60 focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:bg-chrome disabled:text-muted';
 const selectCls = inputCls;
 
@@ -258,13 +267,13 @@ function Check({ checked, onChange, children, disabled }: {
 export default function ExternalMailAccountsModal({
   demoMode,
   canAdmin,
-  folders,
+  currentOwner,
   onClose,
   onAccountsChanged,
 }: {
   demoMode: boolean;
   canAdmin: boolean;
-  folders: MailFolderView[];
+  currentOwner: ExternalMailOwner | null;
   onClose: () => void;
   onAccountsChanged?: (accounts: ExternalMailAccount[]) => void;
 }) {
@@ -272,7 +281,15 @@ export default function ExternalMailAccountsModal({
   const [presets, setPresets] = useState<ExternalMailPreset[]>(FALLBACK_PRESETS);
   const [accounts, setAccounts] = useState<ExternalMailAccount[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [form, setForm] = useState<FormState>(() => emptyForm(FALLBACK_PRESETS));
+  const [ownerFilter, setOwnerFilter] = useState<ExternalMailOwner | null>(currentOwner);
+  const [owners, setOwners] = useState<ExternalMailOwner[]>(currentOwner ? [currentOwner] : []);
+  const [ownerQuery, setOwnerQuery] = useState('');
+  const [ownersLoading, setOwnersLoading] = useState(false);
+  const [ownerError, setOwnerError] = useState<string | null>(null);
+  const [ownerFolders, setOwnerFolders] = useState<ExternalMailTargetFolder[]>([]);
+  const [foldersLoading, setFoldersLoading] = useState(false);
+  const [foldersError, setFoldersError] = useState<string | null>(null);
+  const [form, setForm] = useState<FormState>(() => emptyForm(FALLBACK_PRESETS, currentOwner?.id ?? ''));
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -280,6 +297,8 @@ export default function ExternalMailAccountsModal({
   const [testResult, setTestResult] = useState<ExternalMailTestResult | null>(null);
   const [runs, setRuns] = useState<ExternalMailSyncRun[]>([]);
   const mountedRef = useRef(true);
+  const loadRequestRef = useRef(0);
+  const foldersRequestRef = useRef(0);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -299,6 +318,28 @@ export default function ExternalMailAccountsModal({
     [accounts, selectedId],
   );
 
+  useEffect(() => {
+    if (!ownerFilter && currentOwner) {
+      setOwnerFilter(currentOwner);
+      setForm((current) => (current.targetUserId ? current : { ...current, targetUserId: currentOwner.id }));
+    }
+  }, [currentOwner, ownerFilter]);
+
+  const uniqueOwners = useMemo(() => {
+    const byId = new Map<string, ExternalMailOwner>();
+    for (const owner of [currentOwner, ownerFilter, ...owners]) {
+      if (owner) byId.set(owner.id, owner);
+    }
+    return [...byId.values()];
+  }, [currentOwner, ownerFilter, owners]);
+
+  const formOwner = useMemo(
+    () => uniqueOwners.find((owner) => owner.id === (selected?.ownerId ?? form.targetUserId))
+      ?? ownerFilter
+      ?? currentOwner,
+    [currentOwner, form.targetUserId, ownerFilter, selected, uniqueOwners],
+  );
+
   const loadRuns = useCallback(async (accountId: string | null) => {
     if (!accountId || demoMode) {
       setRuns([]);
@@ -312,19 +353,75 @@ export default function ExternalMailAccountsModal({
     }
   }, [demoMode]);
 
-  const load = useCallback(async (preferredId?: string | null) => {
+  useEffect(() => {
+    if (demoMode || !canAdmin) return undefined;
+    let cancelled = false;
+    setOwnersLoading(true);
+    setOwnerError(null);
+    const timer = window.setTimeout(() => {
+      void externalMailApi.searchOwners(ownerQuery, 25)
+        .then((items) => {
+          if (!cancelled && mountedRef.current) setOwners(items);
+        })
+        .catch((searchError) => {
+          if (!cancelled && mountedRef.current) setOwnerError(errorMessage(searchError));
+        })
+        .finally(() => {
+          if (!cancelled && mountedRef.current) setOwnersLoading(false);
+        });
+    }, ownerQuery.trim() ? 300 : 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [canAdmin, demoMode, ownerQuery]);
+
+  const loadOwnerFolders = useCallback(async (ownerId: string | null | undefined) => {
+    const requestId = ++foldersRequestRef.current;
+    if (demoMode || !ownerId) {
+      setOwnerFolders([]);
+      setFoldersError(null);
+      setFoldersLoading(false);
+      return;
+    }
+    setFoldersLoading(true);
+    setFoldersError(null);
+    try {
+      const items = await externalMailApi.ownerFolders(ownerId);
+      if (mountedRef.current && foldersRequestRef.current === requestId) setOwnerFolders(items);
+    } catch (folderError) {
+      if (mountedRef.current && foldersRequestRef.current === requestId) {
+        setOwnerFolders([]);
+        setFoldersError(errorMessage(folderError));
+      }
+    } finally {
+      if (mountedRef.current && foldersRequestRef.current === requestId) setFoldersLoading(false);
+    }
+  }, [demoMode]);
+
+  useEffect(() => {
+    void loadOwnerFolders(selected?.ownerId ?? ownerFilter?.id ?? currentOwner?.id);
+  }, [currentOwner?.id, loadOwnerFolders, ownerFilter?.id, selected?.ownerId]);
+
+  const load = useCallback(async (preferredId?: string | null, ownerIdOverride?: string | null) => {
     if (demoMode) return;
+    const requestId = ++loadRequestRef.current;
+    const effectiveOwnerId = ownerIdOverride !== undefined
+      ? ownerIdOverride
+      : (canAdmin ? ownerFilter?.id : currentOwner?.id) ?? null;
     setLoading(true);
     setError(null);
     try {
       const [accountItems, presetItems] = await Promise.all([
-        externalMailApi.list(),
+        externalMailApi.list(effectiveOwnerId),
         externalMailApi.presets().catch(() => FALLBACK_PRESETS),
       ]);
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || loadRequestRef.current !== requestId) return;
       setAccounts(accountItems);
       setPresets(presetItems.length ? presetItems : FALLBACK_PRESETS);
-      onAccountsChanged?.(accountItems);
+      if (!currentOwner || !effectiveOwnerId || effectiveOwnerId === currentOwner.id) {
+        onAccountsChanged?.(accountItems);
+      }
       const nextSelected = preferredId !== undefined ? preferredId : selectedId;
       const account = accountItems.find((item) => item.id === nextSelected) ?? null;
       if (account) {
@@ -333,15 +430,18 @@ export default function ExternalMailAccountsModal({
         void loadRuns(account.id);
       } else if (preferredId === null) {
         setSelectedId(null);
-        setForm(emptyForm(presetItems.length ? presetItems : FALLBACK_PRESETS));
+        setForm(emptyForm(
+          presetItems.length ? presetItems : FALLBACK_PRESETS,
+          effectiveOwnerId ?? currentOwner?.id ?? '',
+        ));
         setRuns([]);
       }
     } catch (loadError) {
-      if (mountedRef.current) setError(errorMessage(loadError));
+      if (mountedRef.current && loadRequestRef.current === requestId) setError(errorMessage(loadError));
     } finally {
-      if (mountedRef.current) setLoading(false);
+      if (mountedRef.current && loadRequestRef.current === requestId) setLoading(false);
     }
-  }, [demoMode, loadRuns, onAccountsChanged, selectedId]);
+  }, [canAdmin, currentOwner, demoMode, loadRuns, onAccountsChanged, ownerFilter, selectedId]);
 
   useEffect(() => {
     void load(null);
@@ -352,17 +452,21 @@ export default function ExternalMailAccountsModal({
   useEffect(() => {
     if (demoMode || !accounts.some((account) => account.syncRunning)) return undefined;
     const timer = window.setInterval(() => {
-      void externalMailApi.list()
+      const effectiveOwnerId = (canAdmin ? ownerFilter?.id : currentOwner?.id) ?? null;
+      const requestAtStart = loadRequestRef.current;
+      void externalMailApi.list(effectiveOwnerId)
         .then((items) => {
-          if (!mountedRef.current) return;
+          if (!mountedRef.current || loadRequestRef.current !== requestAtStart) return;
           setAccounts(items);
-          onAccountsChanged?.(items);
+          if (!currentOwner || !effectiveOwnerId || effectiveOwnerId === currentOwner.id) {
+            onAccountsChanged?.(items);
+          }
           if (selectedId) void loadRuns(selectedId);
         })
         .catch(() => undefined);
     }, 4000);
     return () => window.clearInterval(timer);
-  }, [accounts, demoMode, loadRuns, onAccountsChanged, selectedId]);
+  }, [accounts, canAdmin, currentOwner, demoMode, loadRuns, onAccountsChanged, ownerFilter, selectedId]);
 
   const patch = (next: Partial<FormState>) => {
     setForm((current) => {
@@ -384,11 +488,22 @@ export default function ExternalMailAccountsModal({
 
   const startNew = () => {
     setSelectedId(null);
-    setForm(emptyForm(presets));
+    setForm(emptyForm(presets, ownerFilter?.id ?? currentOwner?.id ?? ''));
     setRuns([]);
     setError(null);
     setNotice(null);
     setTestResult(null);
+  };
+
+  const changeOwnerFilter = (owner: ExternalMailOwner | null) => {
+    setOwnerFilter(owner);
+    setSelectedId(null);
+    setForm(emptyForm(presets, owner?.id ?? currentOwner?.id ?? ''));
+    setRuns([]);
+    setError(null);
+    setNotice(null);
+    setTestResult(null);
+    void load(null, owner?.id ?? null);
   };
 
   const runAction = async (key: string, action: () => Promise<void>) => {
@@ -403,19 +518,29 @@ export default function ExternalMailAccountsModal({
     }
   };
 
-  const handleTest = () => runAction('test', async () => {
-    const result = await externalMailApi.testDraft(toRequest(form, selectedId));
-    setTestResult(result);
-  });
+  const ensureOwnerSelected = (): boolean => {
+    if (!canAdmin || selectedId || form.targetUserId.trim()) return true;
+    setError(t('Выберите сотрудника Corvex, которому подключается внешний ящик.'));
+    return false;
+  };
+
+  const handleTest = () => {
+    if (!ensureOwnerSelected()) return;
+    void runAction('test', async () => {
+      const result = await externalMailApi.testDraft(toRequest(form, selectedId));
+      setTestResult(result);
+    });
+  };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!ensureOwnerSelected()) return;
     void runAction('save', async () => {
       const saved = selectedId
         ? await externalMailApi.update(selectedId, toRequest(form, selectedId))
         : await externalMailApi.create(toRequest(form, null));
       setNotice(t('Внешний ящик сохранён. Первая синхронизация поставлена в очередь.'));
-      await load(saved.id);
+      await load(saved.id, saved.ownerId);
     });
   };
 
@@ -425,7 +550,7 @@ export default function ExternalMailAccountsModal({
     void runAction(migration ? 'migrate' : 'sync', async () => {
       const run = migration ? await externalMailApi.migrate(selected.id) : await externalMailApi.sync(selected.id);
       setNotice(t('Синхронизация запущена: {status}', { status: run.status }));
-      await load(selected.id);
+      await load(selected.id, selected.ownerId);
     });
   };
 
@@ -433,7 +558,7 @@ export default function ExternalMailAccountsModal({
     if (!selected) return;
     void runAction('toggle', async () => {
       await externalMailApi.setEnabled(selected.id, { syncEnabled: !selected.syncEnabled });
-      await load(selected.id);
+      await load(selected.id, selected.ownerId);
     });
   };
 
@@ -443,7 +568,7 @@ export default function ExternalMailAccountsModal({
     void runAction('reset', async () => {
       await externalMailApi.resetSync(selected.id);
       setNotice(t('Состояние синхронизации сброшено.'));
-      await load(selected.id);
+      await load(selected.id, selected.ownerId);
     });
   };
 
@@ -453,7 +578,7 @@ export default function ExternalMailAccountsModal({
     void runAction('delete', async () => {
       await externalMailApi.remove(selected.id);
       setNotice(t('Внешний ящик отключён.'));
-      await load(null);
+      await load(null, selected.ownerId);
     });
   };
 
@@ -491,11 +616,54 @@ export default function ExternalMailAccountsModal({
               <li>• {t('POP3 поддерживается как запасной вариант для старых провайдеров.')}</li>
               <li>• {t('Ответы можно отправлять от старого адреса через SMTP провайдера.')}</li>
               <li>• {t('Пароль приложения хранится только в зашифрованном виде и не показывается обратно.')}</li>
+              <li>• {t('Администратор почты находит сотрудника по имени или email и подключает ему личный внешний ящик либо общий legacy-ящик на сервисном пользователе.')}</li>
             </ul>
           </div>
         ) : (
           <div className="grid min-h-0 flex-1 grid-rows-[minmax(128px,32%)_minmax(0,1fr)] md:grid-cols-[300px_minmax(0,1fr)] md:grid-rows-1">
             <aside className="scroll-area min-h-0 border-b border-line bg-chrome p-3 md:border-b-0 md:border-r">
+              {canAdmin && (
+                <div className="mb-3 rounded-2xl border border-line bg-surface p-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold">
+                    <UserRound size={16} className="text-accent-dark" />
+                    {t('Сотрудник Corvex')}
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-muted">
+                    {t('Выберите владельца: список, новая форма и папка будут относиться к этому сотруднику.')}
+                  </p>
+                  <span className="relative mt-3 block">
+                    <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+                    <input
+                      value={ownerQuery}
+                      onChange={(event) => setOwnerQuery(event.target.value)}
+                      placeholder={t('Поиск по имени, email, логину или отделу')}
+                      className={`${inputCls} pl-9`}
+                      aria-label={t('Поиск сотрудника Corvex')}
+                    />
+                  </span>
+                  <select
+                    value={ownerFilter?.id ?? currentOwner?.id ?? ''}
+                    onChange={(event) => {
+                      const owner = uniqueOwners.find((candidate) => candidate.id === event.target.value) ?? null;
+                      changeOwnerFilter(owner);
+                    }}
+                    className={`${selectCls} mt-2`}
+                    disabled={ownersLoading && uniqueOwners.length === 0}
+                    aria-label={t('Владелец внешних ящиков')}
+                  >
+                    {uniqueOwners.length === 0 && <option value="">{t('Сотрудники не найдены')}</option>}
+                    {uniqueOwners.map((owner) => (
+                      <option key={owner.id} value={owner.id}>
+                        {ownerLabel(owner)}
+                        {owner.externalAccountCount ? ` · ${t('ящиков: {count}', { count: owner.externalAccountCount })}` : ''}
+                        {currentOwner?.id === owner.id ? ` · ${t('Вы')}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {ownersLoading && <div className="mt-1.5 text-xs text-faint">{t('Ищем сотрудников…')}</div>}
+                  {ownerError && <div className="mt-1.5 text-xs leading-relaxed text-red-700">{ownerError}</div>}
+                </div>
+              )}
               <button type="button" onClick={startNew} className="btn-primary w-full"><Plus size={16} />{t('Подключить ящик')}</button>
               <div className="mt-3 space-y-2">
                 {loading && <div className="px-2 py-3 text-sm text-muted">{t('Загружаем…')}</div>}
@@ -516,6 +684,11 @@ export default function ExternalMailAccountsModal({
                       <span className="min-w-0 flex-1 truncate text-sm font-semibold">{account.label}</span>
                     </span>
                     <span className="mt-1 block truncate pl-4 text-xs text-muted">{account.emailAddress}</span>
+                    {canAdmin && ownerFilter && (
+                      <span className="mt-1 block truncate pl-4 text-xs text-faint">
+                        {t('Владелец')}: {ownerLabel(ownerFilter)}
+                      </span>
+                    )}
                     <span className="mt-1 block pl-4 text-xs text-faint">
                       {account.syncRunning ? t('Синхронизация выполняется…') : account.lastSuccessAt ? `${t('Успешно')}: ${formatDateTime(locale, account.lastSuccessAt)}` : t('Ещё не синхронизировался')}
                     </span>
@@ -546,6 +719,13 @@ export default function ExternalMailAccountsModal({
                   </div>
                   <div className="mt-1">{t('Папок найдено')}: {testResult.folderCount} · INBOX: {testResult.inboxMessageCount}</div>
                   {testResult.smtpTested && <div className="mt-1">SMTP: {testResult.smtpMessage}</div>}
+                </div>
+              )}
+
+              {canAdmin && formOwner && currentOwner?.id !== formOwner.id && (
+                <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm leading-relaxed text-indigo-950">
+                  <b>{t('Вы настраиваете ящик для сотрудника')}:</b> {ownerLabel(formOwner)}.{' '}
+                  {t('Собранная почта попадёт этому сотруднику, а отправлять от внешнего адреса сможет только он сам. Администратор управляет подключением, но пароль после сохранения не показывается.')}
                 </div>
               )}
 
@@ -624,10 +804,21 @@ export default function ExternalMailAccountsModal({
                     <option value="ALL_FOLDERS">{t('Все папки')}</option>
                   </select>
                 </Field>
-                <Field label={t('Папка Corvex')} hint={t('Куда складывать собранные входящие письма.')}>
-                  <select value={form.targetFolderId} onChange={(event) => patch({ targetFolderId: event.target.value })} className={selectCls}>
+                <Field
+                  label={t('Папка Corvex')}
+                  hint={foldersError ?? (foldersLoading ? t('Загружаем папки владельца…') : t('Куда складывать собранные входящие письма.'))}
+                >
+                  <select
+                    value={form.targetFolderId}
+                    onChange={(event) => patch({ targetFolderId: event.target.value })}
+                    className={selectCls}
+                    disabled={foldersLoading}
+                  >
                     <option value="">{t('Входящие Corvex')}</option>
-                    {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
+                    {form.targetFolderId && !ownerFolders.some((folder) => folder.id === form.targetFolderId) && (
+                      <option value={form.targetFolderId}>{t('Сохранённая папка владельца')}</option>
+                    )}
+                    {ownerFolders.map((folder) => <option key={folder.id} value={folder.id}>{folder.path}</option>)}
                   </select>
                 </Field>
                 <Field label={t('Проверять каждые, мин')}>
@@ -690,8 +881,13 @@ export default function ExternalMailAccountsModal({
                           <option value="SHARED_MAILBOX">{t('Общий legacy-ящик компании')}</option>
                         </select>
                       </Field>
-                      <Field label={t('UUID владельца Corvex')} hint={t('Для общего ящика укажите отдельного сервисного пользователя Corvex. Пусто = текущий пользователь.')}>
-                        <input value={form.targetUserId} disabled={Boolean(selected)} onChange={(event) => patch({ targetUserId: event.target.value })} className={inputCls} placeholder="00000000-0000-0000-0000-000000000000" />
+                      <Field
+                        label={t('Владелец Corvex')}
+                        hint={selected
+                          ? t('Владельца существующего подключения изменить нельзя; для другого сотрудника создайте новое подключение.')
+                          : t('Выбирается поиском сотрудника в левой панели. Для общего ящика выберите отдельного сервисного пользователя.')}
+                      >
+                        <input value={ownerLabel(formOwner)} disabled className={inputCls} />
                       </Field>
                     </>
                   )}
