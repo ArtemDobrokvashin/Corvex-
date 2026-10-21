@@ -22,13 +22,16 @@ import {
   Reply,
   Search,
   Send,
+  Settings2,
   SlidersHorizontal,
   Star,
   Trash2,
   X,
 } from 'lucide-react';
 import { demoFolders, demoMails, DemoMail } from '../../api/demoData';
+import { externalMailApi, ExternalMailAccount } from '../../api/externalMailApi';
 import { mailApi, MailFolderView, MailMessageListItem, SendAttachment } from '../../api/mailApi';
+import ExternalMailAccountsModal from './ExternalMailAccountsModal';
 import { EmojiPickerButton } from '../../components/EmojiPicker';
 import { Avatar, EmptyState, IconButton, cleanPersonName, emailFromHeader } from '../../components/ui';
 import { countLabel, formatBytes, formatDateTime, useI18n } from '../../i18n';
@@ -40,6 +43,7 @@ interface ComposeDraft {
   cc?: string;
   subject: string;
   body: string;
+  externalAccountId?: string | null;
 }
 
 type FolderTab = ReturnType<typeof demoFolders>[number];
@@ -79,6 +83,7 @@ const FOLDER_ICONS: Record<string, typeof Inbox> = {
 export default function MailPage() {
   const { locale, t } = useI18n();
   const demoMode = useSession((s) => s.demoMode);
+  const sessionUser = useSession((s) => s.user);
   const demoReadMailIds = useSession((s) => s.demoReadMailIds);
   const markDemoMailRead = useSession((s) => s.markDemoMailRead);
   const [realFolders, setRealFolders] = useState<MailFolderView[]>([]);
@@ -104,6 +109,16 @@ export default function MailPage() {
   const [activeId, setActiveId] = useState<string>(demoMode ? 'm1' : '');
   const [mobileReading, setMobileReading] = useState(false);
   const [composeDraft, setComposeDraft] = useState<ComposeDraft | null>(null);
+  const [externalAccounts, setExternalAccounts] = useState<ExternalMailAccount[]>([]);
+  const [externalOpen, setExternalOpen] = useState(false);
+  const canExternalAccounts = Boolean(
+    sessionUser?.permissions.includes('MAIL_EXTERNAL_ACCOUNTS')
+    || sessionUser?.permissions.includes('ADMIN_MAIL_POLICY')
+    || sessionUser?.permissions.includes('*'),
+  );
+  const canAdminExternalAccounts = Boolean(
+    sessionUser?.permissions.includes('ADMIN_MAIL_POLICY') || sessionUser?.permissions.includes('*'),
+  );
   const [serverFolderCounts, setServerFolderCounts] = useState<Record<string, number>>({});
   const demoFolderCounts = useMemo<Record<string, number>>(() => {
     const counts: Record<string, number> = {};
@@ -168,6 +183,18 @@ export default function MailPage() {
       .catch((error) => { if (!cancelled) setLoadError(errorMessage(error)); });
     return () => { cancelled = true; };
   }, [demoMode]);
+
+  useEffect(() => {
+    if (demoMode || !canExternalAccounts) return;
+    let cancelled = false;
+    externalMailApi.list()
+      .then((items) => { if (!cancelled) setExternalAccounts(items); })
+      .catch(() => {
+        // Ошибку конфигурации коннектора показывает его собственный экран; обычная почта не должна падать.
+        if (!cancelled) setExternalAccounts([]);
+      });
+    return () => { cancelled = true; };
+  }, [demoMode, canExternalAccounts]);
 
   const selectedRealFolder = realFolders.find((f) => (f.specialUse ?? f.id) === folder);
   const selectedRealFolderId = selectedRealFolder?.id;
@@ -297,6 +324,7 @@ export default function MailPage() {
         setComposeDraft(null);
         return;
       }
+      if (externalOpen) return;
       if (typing || composeDraft || e.ctrlKey || e.metaKey || e.altKey) return;
       const key = e.key.toLowerCase();
       if (key === '/' ) {
@@ -342,6 +370,7 @@ export default function MailPage() {
       bodyText: draft.body,
       attachments,
       saveToSent: true,
+      externalAccountId: draft.externalAccountId ?? null,
     });
 
     const refreshed = await mailApi.folders();
@@ -366,6 +395,12 @@ export default function MailPage() {
           <button type="button" onClick={() => setComposeDraft({ to: '', subject: '', body: '' })} className="btn-primary w-full">
             <PenSquare size={16} /> {t('Написать')} <span className="ml-auto hidden xl:inline-flex"><span className="kbd border-white/20 bg-white/10 text-white/70 shadow-none">C</span></span>
           </button>
+          {canExternalAccounts && (
+            <button type="button" onClick={() => setExternalOpen(true)} className="btn-secondary mt-2 w-full">
+              <Settings2 size={16} /> {t('Внешние ящики')}
+              {externalAccounts.length > 0 && <span className="ml-auto text-xs text-faint">{externalAccounts.length}</span>}
+            </button>
+          )}
 
           <p className="section-label mb-1.5 mt-6">{t('Папки')}</p>
           <nav className="space-y-0.5" aria-label={t('Папки почты')}>
@@ -396,6 +431,7 @@ export default function MailPage() {
               <h2 className="min-w-0 flex-1 truncate text-[17px] font-semibold tracking-[-0.02em]">{currentFolder?.name ?? t('Почта')}</h2>
               <span className="text-xs text-faint">{visible.length}</span>
               <IconButton icon={ArrowUpDown} label={t('Сортировка')} className="h-8 w-8" size={16} />
+              {canExternalAccounts && <IconButton icon={Settings2} label={t('Внешние ящики')} className="h-8 w-8 xl:hidden" size={16} onClick={() => setExternalOpen(true)} />}
               <IconButton icon={SlidersHorizontal} label={t('Фильтры')} className="h-8 w-8" size={16} />
             </div>
             <div className="relative mt-3">
@@ -546,10 +582,22 @@ export default function MailPage() {
         </main>
       </div>
 
+      {externalOpen && canExternalAccounts && (
+        <ExternalMailAccountsModal
+          demoMode={demoMode}
+          canAdmin={canAdminExternalAccounts}
+          folders={realFolders}
+          onClose={() => setExternalOpen(false)}
+          onAccountsChanged={setExternalAccounts}
+        />
+      )}
+
       {composeDraft && (
         <ComposePanel
           key={`${composeDraft.to}-${composeDraft.subject}`}
           initial={composeDraft}
+          currentEmail={sessionUser?.email ?? ''}
+          externalAccounts={externalAccounts}
           onClose={() => setComposeDraft(null)}
           onSend={addSentMail}
         />
@@ -558,7 +606,13 @@ export default function MailPage() {
   );
 }
 
-function ComposePanel({ initial, onClose, onSend }: { initial: ComposeDraft; onClose: () => void; onSend: (draft: ComposeDraft, files: File[]) => Promise<void> }) {
+function ComposePanel({ initial, currentEmail, externalAccounts, onClose, onSend }: {
+  initial: ComposeDraft;
+  currentEmail: string;
+  externalAccounts: ExternalMailAccount[];
+  onClose: () => void;
+  onSend: (draft: ComposeDraft, files: File[]) => Promise<void>;
+}) {
   const { t } = useI18n();
   const [draft, setDraft] = useState(initial);
   const [showCc, setShowCc] = useState(Boolean(initial.cc));
@@ -568,6 +622,7 @@ function ComposePanel({ initial, onClose, onSend }: { initial: ComposeDraft; onC
   const [sendError, setSendError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const sendAsAccounts = externalAccounts.filter((account) => account.enabled && account.sendEnabled && account.smtpEnabled);
 
   const insertEmoji = (emoji: string) => {
     const element = bodyRef.current;
@@ -612,6 +667,22 @@ function ComposePanel({ initial, onClose, onSend }: { initial: ComposeDraft; onC
         </div>
       ) : (
         <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
+          {sendAsAccounts.length > 0 && (
+            <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
+              <label htmlFor="compose-from" className="w-12 shrink-0 text-[13px] text-faint">{t('От кого')}</label>
+              <select
+                id="compose-from"
+                value={draft.externalAccountId ?? ''}
+                onChange={(e) => setDraft({ ...draft, externalAccountId: e.target.value || null })}
+                className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none focus:ring-0"
+              >
+                <option value="">{currentEmail} · Corvex</option>
+                {sendAsAccounts.map((account) => (
+                  <option key={account.id} value={account.id}>{account.emailAddress} · {account.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
             <label htmlFor="compose-to" className="w-12 shrink-0 text-[13px] text-faint">{t('Кому')}</label>
             <input id="compose-to" required type="text" inputMode="email" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} placeholder="user@company.local" className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-faint focus:ring-0" />

@@ -13,6 +13,7 @@ public enum Permission {
     MAIL_SEND_INTERNAL,     // отправлять внутри доменов компании
     MAIL_SEND_EXTERNAL,     // отправлять во внешние домены
     MAIL_MANAGE_FOLDERS,    // создавать папки/правила сортировки
+    MAIL_EXTERNAL_ACCOUNTS, // подключать внешние ящики и отправлять от их имени
     MAIL_BULK_SEND,         // массовые рассылки (бухгалтерия, HR)
     MAIL_DELEGATE_ACCESS,   // делегированный доступ к чужому ящику (секретарь директора)
     MAIL_EXPORT,            // экспорт ящика (eml/mbox)

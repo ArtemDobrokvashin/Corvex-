@@ -9,6 +9,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import ru.corvex.mailstorage.api.dto.MailDtos;
 import ru.corvex.mailstorage.client.AuthUserClient;
+import ru.corvex.mailstorage.domain.ExternalMailAccount;
+import ru.corvex.mailstorage.external.ExternalMailAccountService;
 import ru.corvex.mailstorage.mime.OutgoingMessageFactory;
 import ru.corvex.mailstorage.pipeline.MailEventPublisher;
 import ru.corvex.mailstorage.pipeline.MailPipelineEvents;
@@ -30,7 +32,9 @@ import java.util.stream.Stream;
 /**
  * Отправка из webmail: одно MIME-письмо раскладывается на независимые spool-копии —
  * локальную (тот же inbound-конвейер spam→AV→delivery), внешнюю (outbound queue SMTP-воркера)
- * и Sent-копию отправителя. Разные rawRef убирают гонки удаления spool между потребителями.
+ * и Sent-копию отправителя. Для внешнего ящика нелокальные получатели уходят отдельной
+ * очередью mail.outbound.external.queued: mail-smtp-service отправляет их через authenticated
+ * SMTP провайдера, а не direct-to-MX от имени Corvex.
  */
 @Service
 public class MailSendService {
@@ -44,6 +48,7 @@ public class MailSendService {
     private final MailDeliveryService delivery;
     private final MailEventPublisher events;
     private final MessageSearchIndexer indexer;
+    private final ExternalMailAccountService externalAccounts;
     private final Set<String> localDomains;
 
     public MailSendService(AuthUserClient auth,
@@ -52,6 +57,7 @@ public class MailSendService {
                            MailDeliveryService delivery,
                            MailEventPublisher events,
                            MessageSearchIndexer indexer,
+                           ExternalMailAccountService externalAccounts,
                            @Value("${corvex.mail.domains:${CORVEX_MAIL_DOMAINS:company.local}}") String domainsCsv) {
         this.auth = auth;
         this.factory = factory;
@@ -59,6 +65,7 @@ public class MailSendService {
         this.delivery = delivery;
         this.events = events;
         this.indexer = indexer;
+        this.externalAccounts = externalAccounts;
         this.localDomains = Stream.of(domainsCsv.split(","))
                 .map(String::trim).map(s -> s.toLowerCase(Locale.ROOT)).collect(Collectors.toSet());
     }
@@ -94,11 +101,29 @@ public class MailSendService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Для массовой рассылки нужно право MAIL_BULK_SEND");
         }
 
-        String senderDomain = domainOf(sender.email());
+        ExternalMailAccount externalAccount = null;
+        String fromAddress = sender.email();
+        String fromName = sender.displayName();
+        if (req.externalAccountId() != null) {
+            externalAccount = externalAccounts.accessibleAccount(senderId, permissions, req.externalAccountId());
+            if (!senderId.equals(externalAccount.getOwnerId())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Отправлять от имени внешнего ящика может только его владелец Corvex");
+            }
+            if (!externalAccount.isEnabled() || !externalAccount.isSendEnabled() || !externalAccount.isSmtpEnabled()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Отправка через выбранный внешний ящик отключена");
+            }
+            fromAddress = externalAccount.getEmailAddress();
+            fromName = externalAccount.getDisplayName() == null || externalAccount.getDisplayName().isBlank()
+                    ? sender.displayName() : externalAccount.getDisplayName();
+        }
+
+        String senderDomain = domainOf(fromAddress);
         String messageId = "<" + UUID.randomUUID() + "@" + senderDomain + ">";
         OutgoingMessageFactory.ComposedMessage composed;
         try {
-            composed = factory.compose(sender.email(), sender.displayName(), messageId, to, cc, req);
+            composed = factory.compose(fromAddress, fromName, messageId, to, cc, req);
         } catch (AddressException e) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Некорректный адрес получателя");
         } catch (IllegalArgumentException e) {
@@ -112,7 +137,7 @@ public class MailSendService {
             RawMessageSpool.StoredRawMessage raw = store(composed.eml());
             try {
                 events.publishConfirmed("mail.inbound.received", new MailPipelineEvents.InboundReceivedEvent(
-                        raw.rawRef(), sender.email(), local, "webmail", raw.sizeBytes(), raw.sha256(), now), raw.rawRef());
+                        raw.rawRef(), fromAddress, local, "webmail", raw.sizeBytes(), raw.sha256(), now), raw.rawRef());
             } catch (RuntimeException e) {
                 deleteQuietly(raw.rawRef());
                 throw e;
@@ -121,8 +146,15 @@ public class MailSendService {
         if (!external.isEmpty()) {
             RawMessageSpool.StoredRawMessage raw = store(composed.eml());
             try {
-                events.publishConfirmed("mail.outbound.queued", new MailPipelineEvents.OutboundQueuedEvent(
-                        raw.rawRef(), sender.email(), external, messageId, sender.id(), now, 1), raw.rawRef());
+                if (externalAccount != null) {
+                    events.publishConfirmed("mail.outbound.external.queued",
+                            new MailPipelineEvents.ExternalOutboundQueuedEvent(
+                                    raw.rawRef(), externalAccount.getId(), fromAddress, external, messageId,
+                                    sender.id(), now, 1), raw.rawRef());
+                } else {
+                    events.publishConfirmed("mail.outbound.queued", new MailPipelineEvents.OutboundQueuedEvent(
+                            raw.rawRef(), fromAddress, external, messageId, sender.id(), now, 1), raw.rawRef());
+                }
             } catch (RuntimeException e) {
                 deleteQuietly(raw.rawRef());
                 throw e;
@@ -142,7 +174,12 @@ public class MailSendService {
                 deleteQuietly(raw.rawRef());
             }
         }
-        return new MailDtos.SendMessageResult(messageId, sentMessageId, local, external);
+        if (externalAccount != null) {
+            externalAccounts.audit(senderId, externalAccount, "EXTERNAL_SEND_AS_QUEUED",
+                    "messageId=" + messageId + ", recipients=" + all.size());
+        }
+        return new MailDtos.SendMessageResult(messageId, sentMessageId, local, external, fromAddress,
+                externalAccount == null ? null : externalAccount.getId());
     }
 
     private RawMessageSpool.StoredRawMessage store(byte[] eml) throws IOException {

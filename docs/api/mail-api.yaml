@@ -120,6 +120,7 @@ paths:
                 htmlBody: { type: string }
                 textBody: { type: string }
                 signatureId: { type: string, format: uuid, nullable: true }
+                externalAccountId: { type: string, format: uuid, nullable: true, description: "Подключённый внешний ящик для send-as через SMTP провайдера; null — адрес Corvex" }
                 attachmentIds: { type: array, items: { type: string } }
                 inReplyTo: { type: string, nullable: true }
       responses:
@@ -162,6 +163,89 @@ paths:
         - { name: limit, in: query, schema: { type: integer, default: 50 } }
       responses:
         '200': { description: Результаты с подсветкой, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/MessageSummary' } }, tookMs: { type: integer } } } } } }
+  /mail/external-accounts/presets:
+    get:
+      summary: Пресеты Mail.ru, Яндекс, Gmail и Outlook для формы подключения внешнего ящика
+      responses:
+        '200':
+          description: Пресеты
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ExternalMailPreset' }
+  /mail/external-accounts:
+    get:
+      summary: Внешние ящики владельца (MAIL_EXTERNAL_ACCOUNTS; ADMIN_MAIL_POLICY может указать ownerId)
+      parameters:
+        - { name: ownerId, in: query, required: false, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Подключённые ящики без секретов
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ExternalMailAccount' }
+    post:
+      summary: Подключить внешний ящик; пароль приложения сохраняется только AES-256-GCM шифртекстом
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExternalMailAccountRequest' }
+      responses:
+        '201': { description: Подключён, первая синхронизация запланирована }
+        '400': { description: Некорректный адрес/хост/TLS или проверка подключения не пройдена }
+        '403': { description: Нет MAIL_EXTERNAL_ACCOUNTS }
+        '409': { description: Ящик уже подключён либо достигнут лимит }
+        '503': { description: Не настроен CORVEX_EXTERNAL_MAIL_ENC_KEY }
+  /mail/external-accounts/test:
+    post:
+      summary: Проверить IMAP/POP3 и SMTP по черновику формы без сохранения
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExternalMailAccountRequest' }
+      responses:
+        '200': { description: Отдельные результаты входящего подключения и SMTP-аутентификации }
+  /mail/external-accounts/{accountId}:
+    parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }]
+    get: { summary: Один внешний ящик и его статус, responses: { '200': { description: Аккаунт без секрета }, '404': { description: Не найден или чужой } } }
+    put:
+      summary: Изменить внешний ящик; пустой secret сохраняет текущий пароль
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExternalMailAccountRequest' }
+      responses: { '200': { description: Обновлён } }
+    delete: { summary: Отключить внешний ящик; импортированные письма остаются, responses: { '204': { description: Отключён } } }
+  /mail/external-accounts/{accountId}/test:
+    post: { summary: Проверить сохранённое подключение, parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Результат проверки } } }
+  /mail/external-accounts/{accountId}/sync:
+    post: { summary: Запустить ручной сбор новых писем, parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '202': { description: Запуск принят }, '409': { description: Синхронизация уже выполняется или отключена } } }
+  /mail/external-accounts/{accountId}/migrate:
+    post: { summary: Импортировать архив всех папок с дедупликацией, parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '202': { description: Миграция принята } } }
+  /mail/external-accounts/{accountId}/reset-sync:
+    post: { summary: Сбросить курсоры папок, сохранив дедупликацию, parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Сброшено } } }
+  /mail/external-accounts/{accountId}/enabled:
+    patch:
+      summary: Пауза/возобновление сбора или send-as
+      parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: { enabled: { type: boolean }, syncEnabled: { type: boolean }, sendEnabled: { type: boolean } }
+      responses: { '200': { description: Обновлённый аккаунт } }
+  /mail/external-accounts/{accountId}/runs:
+    get: { summary: Последние запуски синхронизации/миграции, parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: История запусков } } }
+  /mail/external-accounts/{accountId}/audit:
+    get: { summary: Аудит действий с внешним ящиком без секретов, parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Аудит } } }
   /mail/rules:
     get: { summary: Правила автосортировки пользователя, responses: { '200': { description: Список по позиции } } }
     post: { summary: Создать правило (условия/действия JSON — см. схему mail_rules), responses: { '201': { description: Создано } } }
@@ -178,6 +262,74 @@ components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
   schemas:
+    ExternalMailPreset:
+      type: object
+      properties:
+        provider: { type: string, enum: [MAIL_RU, YANDEX, GMAIL, OUTLOOK] }
+        imapHost: { type: string }
+        imapPort: { type: integer }
+        pop3Host: { type: string }
+        pop3Port: { type: integer }
+        smtpHost: { type: string }
+        smtpPort: { type: integer }
+        incomingSecurity: { $ref: '#/components/schemas/ExternalMailSecurity' }
+        smtpSecurity: { $ref: '#/components/schemas/ExternalMailSecurity' }
+        hint: { type: string }
+    ExternalMailSecurity:
+      type: string
+      enum: [SSL_TLS, STARTTLS, PLAIN]
+    ExternalMailAccountRequest:
+      type: object
+      properties:
+        existingAccountId: { type: string, format: uuid, nullable: true }
+        targetUserId: { type: string, format: uuid, nullable: true }
+        ownerKind: { type: string, enum: [PERSONAL, SHARED_MAILBOX] }
+        label: { type: string }
+        emailAddress: { type: string, format: email }
+        displayName: { type: string, nullable: true }
+        provider: { type: string, enum: [MAIL_RU, YANDEX, GMAIL, OUTLOOK, CUSTOM] }
+        authType: { type: string, enum: [APP_PASSWORD, PASSWORD] }
+        incomingProtocol: { type: string, enum: [IMAP, POP3] }
+        incomingHost: { type: string }
+        incomingPort: { type: integer, minimum: 1, maximum: 65535 }
+        incomingSecurity: { $ref: '#/components/schemas/ExternalMailSecurity' }
+        incomingUsername: { type: string }
+        secret: { type: string, writeOnly: true, description: "Пароль приложения; никогда не возвращается API" }
+        smtpEnabled: { type: boolean }
+        smtpHost: { type: string, nullable: true }
+        smtpPort: { type: integer, nullable: true, minimum: 1, maximum: 65535 }
+        smtpSecurity: { $ref: '#/components/schemas/ExternalMailSecurity' }
+        smtpUsername: { type: string, nullable: true }
+        targetFolderId: { type: string, format: uuid, nullable: true }
+        enabled: { type: boolean }
+        syncEnabled: { type: boolean }
+        sendEnabled: { type: boolean }
+        initialSyncMode: { type: string, enum: [NEW_ONLY, IMPORT_ALL] }
+        syncScope: { type: string, enum: [INBOX_ONLY, ALL_FOLDERS] }
+        pollIntervalSeconds: { type: integer, minimum: 60, maximum: 86400 }
+        leaveOnServer: { type: boolean }
+        markSeenOnServer: { type: boolean }
+        deleteAfterFetch: { type: boolean }
+        saveSentOnServer: { type: boolean }
+        sentFolderName: { type: string, nullable: true }
+        testBeforeSave: { type: boolean }
+    ExternalMailAccount:
+      allOf:
+        - $ref: '#/components/schemas/ExternalMailAccountRequest'
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            ownerId: { type: string, format: uuid }
+            secretConfigured: { type: boolean }
+            lastSyncAt: { type: string, format: date-time, nullable: true }
+            lastSuccessAt: { type: string, format: date-time, nullable: true }
+            nextSyncAt: { type: string, format: date-time, nullable: true }
+            lastError: { type: string, nullable: true }
+            consecutiveFailures: { type: integer }
+            syncRunning: { type: boolean }
+            queuedCount: { type: integer, format: int64 }
+            deliveredCount: { type: integer, format: int64 }
+            failedCount: { type: integer, format: int64 }
     MessageSummary:
       type: object
       properties:

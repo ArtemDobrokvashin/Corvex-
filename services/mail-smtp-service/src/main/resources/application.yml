@@ -32,6 +32,9 @@ corvex:
     private-key-file: ${CORVEX_DKIM_PRIVATE_KEY_FILE:/run/secrets/dkim_private.pem}
   outbound:
     require-starttls: ${CORVEX_SMTP_REQUIRE_STARTTLS:false}
+  external-mail:
+    allow-private-networks: ${CORVEX_EXTERNAL_MAIL_ALLOW_PRIVATE_NETWORKS:false}
+    allow-insecure-plain: ${CORVEX_EXTERNAL_MAIL_ALLOW_INSECURE_PLAIN:false}
   smtp:
     enabled: ${CORVEX_SMTP_ENABLED:false}
     inbound-port: 2525

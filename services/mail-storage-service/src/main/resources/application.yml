@@ -49,6 +49,14 @@ corvex:
     spool: ${CORVEX_MAIL_SPOOL:/data/mail/_spool}
     # Единый лимит входящего .eml: storage проверяет его потоково ДО попадания письма в heap/Maildir.
     max-message-bytes: ${CORVEX_MAIL_MAX_MESSAGE_BYTES:26214400}
+  external-mail:
+    enabled: ${CORVEX_EXTERNAL_MAIL_ENABLED:true}
+    enc-key: ${CORVEX_EXTERNAL_MAIL_ENC_KEY:}
+    allow-custom-hosts: ${CORVEX_EXTERNAL_MAIL_ALLOW_CUSTOM_HOSTS:true}
+    allow-private-networks: ${CORVEX_EXTERNAL_MAIL_ALLOW_PRIVATE_NETWORKS:false}
+    allow-insecure-plain: ${CORVEX_EXTERNAL_MAIL_ALLOW_INSECURE_PLAIN:false}
+    max-accounts-per-user: ${CORVEX_EXTERNAL_MAIL_MAX_ACCOUNTS_PER_USER:10}
+    batch-size: ${CORVEX_EXTERNAL_MAIL_BATCH_SIZE:200}
   security:
     internal-token: ${CORVEX_INTERNAL_API_TOKEN:}
     # Публичный ключ auth-service (JWKS): каждый сервис сам валидирует JWT (RS256)

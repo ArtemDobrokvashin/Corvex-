@@ -43,6 +43,11 @@ public class MaildirStorage {
 
     /** Сохраняет сырой .eml в Maildir пользователя/папки; возвращает относительный путь для БД. */
     public Path storeMessage(String mailbox, String folder, InputStream eml) throws IOException {
+        return storeMessage(mailbox, folder, eml, false);
+    }
+
+    /** Вариант для APPEND/миграции: seen-письмо попадает в cur/, новое — в new/. */
+    public Path storeMessage(String mailbox, String folder, InputStream eml, boolean seen) throws IOException {
         Path dir = mailRoot.resolve(sanitize(mailbox)).resolve(sanitize(folder));
         Files.createDirectories(dir.resolve("tmp"));
         Files.createDirectories(dir.resolve("new"));
@@ -52,7 +57,7 @@ public class MaildirStorage {
         Path tmp = dir.resolve("tmp").resolve(name);
         try {
             writeAndSync(eml, tmp);
-            Path target = dir.resolve("new").resolve(name);
+            Path target = dir.resolve(seen ? "cur" : "new").resolve(name);
             try {
                 Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
             } catch (AtomicMoveNotSupportedException e) {

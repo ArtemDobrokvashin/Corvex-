@@ -59,13 +59,16 @@ public final class MailDtos {
             String bodyText,
             String bodyHtml,
             List<SendAttachment> attachments,
-            Boolean saveToSent) {
+            Boolean saveToSent,
+            UUID externalAccountId) {
     }
 
     public record SendMessageResult(
             String messageIdHeader,
             UUID sentMessageId,
             List<String> localRecipients,
-            List<String> externalRecipients) {
+            List<String> externalRecipients,
+            String fromAddress,
+            UUID externalAccountId) {
     }
 }

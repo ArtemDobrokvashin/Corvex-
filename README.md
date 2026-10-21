@@ -44,7 +44,7 @@
 |---|---|
 | Почта и чаты живут у внешнего провайдера | Данные, пользователи и аудит остаются на сервере организации |
 | Старый парк Windows 7 / Chrome 109 нельзя просто выбросить | Отдельный legacy-бандл и адаптивный интерфейс для ПК, планшетов и телефонов |
-| Админка либо «всё можно», либо «ничего нельзя» | 6 групп и 24 атомарных права-чекбокса; права суммируются по группам |
+| Админка либо «всё можно», либо «ничего нельзя» | 6 групп и 25 атомарных прав-чекбоксов; права суммируются по группам |
 | Интерфейс переведён наполовину, ошибки API — на другом языке | Полные RU/EN: интерфейс, даты, числа, demo-данные и публичные ошибки API |
 | Проект обещает «enterprise-ready», но прячет ограничения | Открытый аудит, честные ворота готовности и SMTP, выключенный до durable-доставки |
 
@@ -95,11 +95,12 @@ Corvex придумал и сейчас ведёт один разработчи
 
 - **Identity:** Argon2id, lockout после 5 неудач на 15 минут, JWT RS256 на 15 минут, вращающиеся refresh-сессии в HttpOnly `SameSite=Strict` cookie и детект повторного использования refresh-токена.
 - **2FA и клиенты:** TOTP setup/confirm/disable, MFA-шаг при входе и пароли приложений; SMTP submission, POP3 и IMAP в коде используют их для протокольных логинов.
-- **Администрирование:** пользователи, квоты, блокировка/отключение, 6 системных и пользовательские группы, 24 права, аудит, настройки, health и базовая аналитика.
+- **Администрирование:** пользователи, квоты, блокировка/отключение, 6 системных и пользовательские группы, 25 прав, аудит, настройки, health и базовая аналитика.
 - **Защита от самоблокировки:** последнего `SUPER_ADMIN` нельзя лишить группы, заблокировать или отключить через API.
 - **RU/EN до конца:** переключаются интерфейс, demo-данные, системные группы, формат дат/чисел/байт и `ProblemDetail` ошибки auth/admin по `Accept-Language`.
 - **Эмодзи без картинок и CDN:** нативный Unicode picker, вставка в курсор, реакции и графемно-безопасная обрезка сложного текста.
 - **Почта Stage 2:** durable SMTP spool, SpamAssassin → ClamAV → Maildir/CAS, серверный webmail, исходящая MX-очередь с retry/DSN, DKIM и submission 587 с AUTH+STARTTLS. Этот код ещё не принят живым запуском.
+- **External Mail Connector:** старые ящики Mail.ru, Яндекса, Gmail, Outlook или custom-сервера подключаются к Corvex по IMAP/POP3: пресеты и проверка подключения, AES-256-GCM для пароля приложения, сбор новой почты, импорт архива папок с датами/флагами и дедупликацией, а также отправка от имени старого адреса через authenticated SMTP провайдера. Инструкция: [`docs/EXTERNAL-MAIL.md`](docs/EXTERNAL-MAIL.md). Как и остальная почта, функция ждёт живой Maven/Docker/клиентской приёмки.
 - **Почтовые протоколы Stage 3:** внутренний протокольный API хранилища (папки/UID/MODSEQ/флаги/APPEND/COPY/QUOTA), POP3 (INBOX, стабильные UIDL, implicit TLS 995) и IMAP-движок Apache James 3.8.2 (MailboxManager/MessageManager поверх storage API, 143 STARTTLS/993, MOVE/QUOTA/CONDSTORE) написаны и выключены по умолчанию до Maven/клиентского smoke на JDK-хосте. Подписки LSUB пока живут в памяти процесса IMAP.
 - **Чат Stage 4:** PostgreSQL-backed комнаты и сообщения, STOMP/RabbitMQ realtime, проверка членства на REST/SUBSCRIBE/SEND, реакции, закрепления, прочтения, typing/presence, поиск и файлы с синхронной ClamAV-проверкой. Код написан; нужен двухпользовательский runtime-smoke после G1/G2.
 - **Современный frontend без отказа от старого парка:** React 19, Vite 8 и TypeScript 7 собираются в modern-бандл для актуальных браузеров и legacy-бандл для Chrome 109; Markdown проходит через единый DOMPurify-контур с тестами.
@@ -263,6 +264,7 @@ docker compose logs auth-service | Select-String BOOTSTRAP
 | [`docs/READINESS.md`](docs/READINESS.md) | честный статус по компонентам и ворота пилота |
 | [`docs/RELEASE-DEPENDENCIES.md`](docs/RELEASE-DEPENDENCIES.md) | зафиксированные версии, осознанные исключения и порядок G0–G5 |
 | [`docs/TESTING-ON-YOUR-PC.md`](docs/TESTING-ON-YOUR-PC.md) | пошаговая первая приёмка на вашем ПК: от frontend до Maven, Docker и почтовых клиентов |
+| [`docs/EXTERNAL-MAIL.md`](docs/EXTERNAL-MAIL.md) | подключение Mail.ru, Яндекса и других старых ящиков: сбор, миграция архива и send-as |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | участие в разработке: код, тесты, документация, переводы и требования к PR |
 | [`docs/INSTALL.md`](docs/INSTALL.md) | установка и эксплуатация; есть [`INSTALL.en.md`](docs/INSTALL.en.md) |
 | [`docs/11-modern-design-analysis.md`](docs/11-modern-design-analysis.md) | Gmail/Outlook/Slack/Superhuman/Linear и дизайн-система Quiet Work |
@@ -294,7 +296,7 @@ The concept is deliberately simple: **a company's correspondence should belong t
 |---|---|
 | Mail and chat live with an external provider | Data, users, and audit stay on your organization's server |
 | The Windows 7 / Chrome 109 fleet cannot simply be discarded | A dedicated legacy bundle plus responsive phone/tablet layouts |
-| Administration is either “everything” or “nothing” | 6 groups and 24 atomic checkbox permissions, unioned across groups |
+| Administration is either “everything” or “nothing” | 6 groups and 25 atomic checkbox permissions, unioned across groups |
 | Half the UI is translated and API errors are not | Complete RU/EN across UI, dates, numbers, demo data, and public API errors |
 | “Enterprise-ready” hides the fine print | A public audit, explicit readiness gates, and SMTP disabled until durable delivery |
 
@@ -345,11 +347,12 @@ Reproduce the captures with [`docs/screenshots/README.md`](docs/screenshots/READ
 
 - **Identity:** Argon2id, 15-minute lockout after 5 failures, 15-minute RS256 JWTs, rotating refresh sessions in an HttpOnly `SameSite=Strict` cookie, and refresh-token reuse detection.
 - **2FA and clients:** TOTP setup/confirm/disable, an MFA sign-in step, and app passwords; SMTP submission, POP3, and IMAP use them for protocol logins in code.
-- **Administration:** users, quotas, block/disable, 6 system plus custom groups, 24 permissions, audit, settings, service health, and basic sign-in analytics.
+- **Administration:** users, quotas, block/disable, 6 system plus custom groups, 25 permissions, audit, settings, service health, and basic sign-in analytics.
 - **No accidental lock-out:** the last `SUPER_ADMIN` cannot lose membership, be blocked, or be disabled through the API.
 - **RU/EN end to end:** UI, demo data, system groups, dates/numbers/bytes, and auth/admin `ProblemDetail` errors localized by `Accept-Language`.
 - **Emoji without images or a CDN:** a native Unicode picker, cursor-aware insertion, reactions, and grapheme-safe text handling.
 - **Stage 2 mail:** durable SMTP spooling, SpamAssassin → ClamAV → Maildir/CAS, server-backed webmail, an outbound MX queue with retry/DSN, DKIM, and submission on port 587 with AUTH+STARTTLS. This code has not yet passed live runtime acceptance.
+- **External Mail Connector:** legacy Mail.ru, Yandex, Gmail, Outlook, or custom-server mailboxes can be attached to Corvex over IMAP/POP3: presets and connection tests, AES-256-GCM app-password storage, scheduled collection, all-folder archive import with dates/flags and deduplication, plus send-as through the provider's authenticated SMTP. Guide: [`docs/EXTERNAL-MAIL.md`](docs/EXTERNAL-MAIL.md). Like the rest of mail, it still needs live Maven/Docker/client acceptance.
 - **Stage 3 mail protocols:** the storage-side internal protocol API (folders/UIDs/MODSEQ/flags/APPEND/COPY/QUOTA), POP3 (INBOX, stable UIDLs, implicit TLS 995), and an Apache James 3.8.2 IMAP engine (MailboxManager/MessageManager over the storage API, 143 STARTTLS/993, MOVE/QUOTA/CONDSTORE) are written and disabled by default until the Maven/client smoke passes on a JDK host. LSUB subscriptions currently live in the IMAP process memory.
 - **Stage 4 chat:** PostgreSQL-backed rooms and messages, STOMP/RabbitMQ realtime, membership checks on REST/SUBSCRIBE/SEND, reactions, pins, read receipts, typing/presence, search, and files with synchronous ClamAV scanning. The code exists; it needs a two-user runtime smoke after G1/G2.
 - **A modern frontend that does not abandon the old fleet:** React 19, Vite 8, and TypeScript 7 produce a modern bundle for current browsers and a legacy bundle for Chrome 109; chat Markdown passes through one tested DOMPurify path.
@@ -504,6 +507,7 @@ Full audit: [`docs/12-full-audit-2026-10.md`](docs/12-full-audit-2026-10.md).
 | [`docs/READINESS.md`](docs/READINESS.md) | honest component status and pilot gates |
 | [`docs/RELEASE-DEPENDENCIES.md`](docs/RELEASE-DEPENDENCIES.md) | recorded versions, explicit exceptions, and the G0–G5 order (Russian) |
 | [`docs/TESTING-ON-YOUR-PC.md`](docs/TESTING-ON-YOUR-PC.md) | step-by-step first acceptance on your PC: frontend, Maven, Docker, and mail clients (Russian) |
+| [`docs/EXTERNAL-MAIL.md`](docs/EXTERNAL-MAIL.md) | connecting Mail.ru, Yandex, and other legacy mailboxes: collection, archive migration, and send-as |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | participating in development: code, tests, documentation, translations, and PR expectations |
 | [`docs/INSTALL.en.md`](docs/INSTALL.en.md) | installation and operations; Russian: [`INSTALL.md`](docs/INSTALL.md) |
 | [`docs/api/*.yaml`](docs/api/) | OpenAPI: auth, mail, chat, admin |

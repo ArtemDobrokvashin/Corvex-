@@ -34,6 +34,9 @@ public class OutboundAmqpConfig {
     public static final String QUEUE = "mail.outbound.send";
     public static final String DLQ = QUEUE + ".dlq";
     public static final String ROUTING_QUEUED = "mail.outbound.queued";
+    public static final String EXTERNAL_QUEUE = "mail.outbound.external.send";
+    public static final String EXTERNAL_DLQ = EXTERNAL_QUEUE + ".dlq";
+    public static final String ROUTING_EXTERNAL_QUEUED = "mail.outbound.external.queued";
 
     public record RetryTier(String queue, Duration ttl) {
     }
@@ -44,9 +47,20 @@ public class OutboundAmqpConfig {
             new RetryTier("mail.outbound.retry.1h", Duration.ofHours(1)),
             new RetryTier("mail.outbound.retry.4h", Duration.ofHours(4)));
 
+    public static final List<RetryTier> EXTERNAL_RETRY_TIERS = List.of(
+            new RetryTier("mail.outbound.external.retry.5m", Duration.ofMinutes(5)),
+            new RetryTier("mail.outbound.external.retry.15m", Duration.ofMinutes(15)),
+            new RetryTier("mail.outbound.external.retry.1h", Duration.ofHours(1)),
+            new RetryTier("mail.outbound.external.retry.4h", Duration.ofHours(4)));
+
     public static String retryQueueForAttempt(int attempt) {
         int idx = Math.min(Math.max(attempt, 1) - 1, RETRY_TIERS.size() - 1);
         return RETRY_TIERS.get(idx).queue();
+    }
+
+    public static String externalRetryQueueForAttempt(int attempt) {
+        int idx = Math.min(Math.max(attempt, 1) - 1, EXTERNAL_RETRY_TIERS.size() - 1);
+        return EXTERNAL_RETRY_TIERS.get(idx).queue();
     }
 
     @Bean
@@ -60,6 +74,13 @@ public class OutboundAmqpConfig {
         Queue dlq = QueueBuilder.durable(DLQ).build();
         Binding binding = BindingBuilder.bind(queue).to(exchange).with(ROUTING_QUEUED);
         Binding dlqBinding = BindingBuilder.bind(dlq).to(dlx).with(DLQ);
+        Queue externalQueue = QueueBuilder.durable(EXTERNAL_QUEUE)
+                .withArgument("x-dead-letter-exchange", DLX)
+                .withArgument("x-dead-letter-routing-key", EXTERNAL_DLQ)
+                .build();
+        Queue externalDlq = QueueBuilder.durable(EXTERNAL_DLQ).build();
+        Binding externalBinding = BindingBuilder.bind(externalQueue).to(exchange).with(ROUTING_EXTERNAL_QUEUED);
+        Binding externalDlqBinding = BindingBuilder.bind(externalDlq).to(dlx).with(EXTERNAL_DLQ);
 
         List<Declarable> declarables = new ArrayList<>();
         declarables.add(exchange);
@@ -68,11 +89,22 @@ public class OutboundAmqpConfig {
         declarables.add(dlq);
         declarables.add(binding);
         declarables.add(dlqBinding);
+        declarables.add(externalQueue);
+        declarables.add(externalDlq);
+        declarables.add(externalBinding);
+        declarables.add(externalDlqBinding);
         for (RetryTier tier : RETRY_TIERS) {
             declarables.add(QueueBuilder.durable(tier.queue())
                     .withArgument("x-message-ttl", tier.ttl().toMillis())
                     .withArgument("x-dead-letter-exchange", EXCHANGE)
                     .withArgument("x-dead-letter-routing-key", ROUTING_QUEUED)
+                    .build());
+        }
+        for (RetryTier tier : EXTERNAL_RETRY_TIERS) {
+            declarables.add(QueueBuilder.durable(tier.queue())
+                    .withArgument("x-message-ttl", tier.ttl().toMillis())
+                    .withArgument("x-dead-letter-exchange", EXCHANGE)
+                    .withArgument("x-dead-letter-routing-key", ROUTING_EXTERNAL_QUEUED)
                     .build());
         }
         return new Declarables(declarables);
