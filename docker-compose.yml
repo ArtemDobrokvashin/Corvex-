@@ -282,7 +282,7 @@ services:
     networks: [edge]
 
   nginx:
-    image: nginx:1.30-alpine
+    image: nginx:1.31-alpine
     restart: unless-stopped
     ports: ["443:443", "80:80"]
     volumes:
@@ -294,7 +294,7 @@ services:
 
   # ------------------------- Мониторинг (профиль monitoring) ---------------
   prometheus:
-    image: prom/prometheus:v3.13.4
+    image: prom/prometheus:v3.15.0
     profiles: [monitoring]
     restart: unless-stopped
     command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=30d"]
