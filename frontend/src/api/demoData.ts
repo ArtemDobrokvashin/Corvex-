@@ -25,11 +25,11 @@ export interface DemoMail {
 }
 
 export const DEMO_FOLDERS = [
-  { id: 'INBOX', name: 'Входящие', unread: 3 },
+  { id: 'INBOX', name: 'Входящие', unread: 2 },
   { id: 'SENT', name: 'Отправленные', unread: 0 },
-  { id: 'DRAFTS', name: 'Черновики', unread: 1 },
+  { id: 'DRAFTS', name: 'Черновики', unread: 0 },
   { id: 'ARCHIVE', name: 'Архив', unread: 0 },
-  { id: 'SPAM', name: 'Спам', unread: 5 },
+  { id: 'SPAM', name: 'Спам', unread: 0 },
   { id: 'TRASH', name: 'Корзина', unread: 0 },
   { id: 'proj', name: 'Проекты / Миграция на Corvex', unread: 1 },
 ];
@@ -130,11 +130,11 @@ export const DEMO_AUDIT: DemoAuditEntry[] = [
 // ---------------- English demo mirrors ----------------
 
 export const DEMO_FOLDERS_EN = [
-  { id: 'INBOX', name: 'Inbox', unread: 3 },
+  { id: 'INBOX', name: 'Inbox', unread: 2 },
   { id: 'SENT', name: 'Sent', unread: 0 },
-  { id: 'DRAFTS', name: 'Drafts', unread: 1 },
+  { id: 'DRAFTS', name: 'Drafts', unread: 0 },
   { id: 'ARCHIVE', name: 'Archive', unread: 0 },
-  { id: 'SPAM', name: 'Spam', unread: 5 },
+  { id: 'SPAM', name: 'Spam', unread: 0 },
   { id: 'TRASH', name: 'Trash', unread: 0 },
   { id: 'proj', name: 'Projects / Corvex migration', unread: 1 },
 ];
