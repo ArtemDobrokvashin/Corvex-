@@ -41,8 +41,10 @@ function RoomMark({ room, size = 40 }: { room: DemoRoom; size?: number }) {
 /** Сообщения Quiet Work: корпоративные строки Slack вместо потребительских «пузырей». */
 function DemoChatPage() {
   const { locale, t } = useI18n();
-  const { user } = useSession();
-  const [rooms, setRooms] = useState<DemoRoom[]>(() => demoRooms(locale));
+  const { user, demoReadRoomIds, markDemoRoomRead } = useSession();
+  const [rooms, setRooms] = useState<DemoRoom[]>(() => demoRooms(locale).map((room) => (
+    demoReadRoomIds.includes(room.id) ? { ...room, unread: 0 } : room
+  )));
   const [roomId, setRoomId] = useState('r2');
   const [messages, setMessages] = useState<DemoMsg[]>(() => demoMessages(locale));
   const [draft, setDraft] = useState('');
@@ -72,6 +74,11 @@ function DemoChatPage() {
   const channels = visibleRooms.filter((r) => r.online === undefined);
   const direct = visibleRooms.filter((r) => r.online !== undefined);
 
+  const markRoomRead = (id: string) => {
+    setRooms((prev) => prev.map((r) => (r.id === id ? { ...r, unread: 0 } : r)));
+    markDemoRoomRead(id);
+  };
+
   useEffect(() => {
     const localizedRooms = demoRooms(locale);
     const localizedMessages = demoMessages(locale);
@@ -92,8 +99,21 @@ function DemoChatPage() {
   const selectRoom = (id: string) => {
     setRoomId(id);
     setMobileConversation(true);
-    setRooms((prev) => prev.map((r) => (r.id === id ? { ...r, unread: 0 } : r)));
+    markRoomRead(id);
   };
+
+  useEffect(() => {
+    if (!room || room.unread === 0) return;
+    const narrowLayout = typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(max-width: 767px)').matches;
+    // На мобильном начальная комната выбрана для десктопной панели, но разговор ещё не открыт.
+    if (narrowLayout && !mobileConversation) return;
+    markRoomRead(room.id);
+    // markRoomRead намеренно не является зависимостью: эффект должен срабатывать
+    // только когда непрочитанная комната фактически показана пользователю.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room, mobileConversation]);
 
   const send = () => {
     const text = draft.trim();

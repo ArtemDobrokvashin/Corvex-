@@ -79,6 +79,8 @@ const FOLDER_ICONS: Record<string, typeof Inbox> = {
 export default function MailPage() {
   const { locale, t } = useI18n();
   const demoMode = useSession((s) => s.demoMode);
+  const demoReadMailIds = useSession((s) => s.demoReadMailIds);
+  const markDemoMailRead = useSession((s) => s.markDemoMailRead);
   const [realFolders, setRealFolders] = useState<MailFolderView[]>([]);
   const folders = useMemo<FolderTab[]>(() => {
     const localized = demoFolders(locale);
@@ -92,16 +94,29 @@ export default function MailPage() {
   const [folder, setFolder] = useState('INBOX');
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
-  const [mails, setMails] = useState<DemoMail[]>(() => (demoMode ? demoMails(locale) : []));
+  const [mails, setMails] = useState<DemoMail[]>(() => (
+    demoMode
+      ? demoMails(locale).map((mail) => (
+        demoReadMailIds.includes(mail.id) ? { ...mail, seen: true } : mail
+      ))
+      : []
+  ));
   const [activeId, setActiveId] = useState<string>(demoMode ? 'm1' : '');
   const [mobileReading, setMobileReading] = useState(false);
   const [composeDraft, setComposeDraft] = useState<ComposeDraft | null>(null);
-  const [folderCounts, setFolderCounts] = useState<Record<string, number>>(
-    () => (demoMode ? Object.fromEntries(demoFolders(locale).map((f) => [f.id, f.unread])) : {}),
-  );
+  const [serverFolderCounts, setServerFolderCounts] = useState<Record<string, number>>({});
+  const demoFolderCounts = useMemo<Record<string, number>>(() => {
+    const counts: Record<string, number> = {};
+    for (const mail of mails) {
+      if (!mail.seen) counts[mail.folder] = (counts[mail.folder] ?? 0) + 1;
+    }
+    return counts;
+  }, [mails]);
+  const folderCounts = demoMode ? demoFolderCounts : serverFolderCounts;
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadedBodies, setLoadedBodies] = useState<Record<string, string>>({});
   const searchRef = useRef<HTMLInputElement>(null);
+  const seenPendingRef = useRef<Set<string>>(new Set());
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -146,7 +161,7 @@ export default function MailPage() {
       .then((items) => {
         if (cancelled) return;
         setRealFolders(items);
-        setFolderCounts(Object.fromEntries(items.map((f) => [f.specialUse ?? f.id, f.unread])));
+        setServerFolderCounts(Object.fromEntries(items.map((f) => [f.specialUse ?? f.id, f.unread])));
         const inbox = items.find((f) => f.specialUse === 'INBOX') ?? items[0];
         if (inbox) setFolder(inbox.specialUse ?? inbox.id);
       })
@@ -193,17 +208,42 @@ export default function MailPage() {
     }
   }, [searchParams, setSearchParams]);
 
+  const markSeen = (mail: DemoMail) => {
+    if (mail.seen || seenPendingRef.current.has(mail.id)) return;
+    seenPendingRef.current.add(mail.id);
+    setMails((prev) => prev.map((x) => (x.id === mail.id ? { ...x, seen: true } : x)));
+    if (demoMode) {
+      markDemoMailRead(mail.id);
+      return;
+    }
+    setServerFolderCounts((prev) => ({
+      ...prev,
+      [mail.folder]: Math.max(0, (prev[mail.folder] ?? 0) - 1),
+    }));
+    void mailApi.flags(mail.id, { seen: true }).catch((error) => setLoadError(errorMessage(error)));
+  };
+
   const open = (m: DemoMail, fromKeyboard = false) => {
     setActiveId(m.id);
     if (!fromKeyboard) setMobileReading(true);
-    if (!m.seen) {
-      setMails((prev) => prev.map((x) => (x.id === m.id ? { ...x, seen: true } : x)));
-      setFolderCounts((prev) => ({ ...prev, [m.folder]: Math.max(0, (prev[m.folder] ?? 0) - 1) }));
-      if (!demoMode) {
-        void mailApi.flags(m.id, { seen: true }).catch((error) => setLoadError(errorMessage(error)));
-      }
-    }
+    markSeen(m);
   };
+
+  useEffect(() => {
+    if (!active || active.seen) return;
+    const narrowLayout = typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(max-width: 767px)').matches;
+    // На мобильном первое письмо выбрано для десктопной панели, но ещё не открыто.
+    if (narrowLayout && !mobileReading) return;
+    // Если active получен как fallback visible[0], закрепляем его id: иначе после
+    // отметки seen при фильтре «Непрочитанные» эффект каскадно прочитал бы следующее.
+    setActiveId(active.id);
+    markSeen(active);
+    // markSeen намеренно не является зависимостью: эффект должен срабатывать
+    // только при смене фактически показанного в панели чтения письма.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, mobileReading, demoMode]);
 
   const selectFolder = (id: string) => {
     setFolder(id);
@@ -306,7 +346,7 @@ export default function MailPage() {
 
     const refreshed = await mailApi.folders();
     setRealFolders(refreshed);
-    setFolderCounts(Object.fromEntries(refreshed.map((f) => [f.specialUse ?? f.id, f.unread])));
+    setServerFolderCounts(Object.fromEntries(refreshed.map((f) => [f.specialUse ?? f.id, f.unread])));
     const sentFolder = refreshed.find((f) => f.specialUse === 'SENT');
     if (sentFolder && folder === 'SENT') {
       const items = await mailApi.messages(sentFolder.id);

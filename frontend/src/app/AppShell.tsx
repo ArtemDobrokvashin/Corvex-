@@ -12,7 +12,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { logout as apiLogout, restoreSession } from '../api/authApi';
-import { getDemoUser } from '../api/demoData';
+import { DEMO_MAILS, DEMO_ROOMS, getDemoUser } from '../api/demoData';
 import { setAccessToken } from '../api/httpClient';
 import { LanguageSwitcher, systemGroupName, useI18n } from '../i18n';
 import { Avatar, LoadingScreen, LogoMark } from '../components/ui';
@@ -35,7 +35,7 @@ interface QuickAction {
  */
 export default function AppShell() {
   const { locale, setLocale, t } = useI18n();
-  const { user, demoMode, bootstrapped, has, setSession, clearSession, setBootstrapped, updateUser } = useSession();
+  const { user, demoMode, bootstrapped, demoReadMailIds, demoReadRoomIds, has, setSession, clearSession, setBootstrapped, updateUser } = useSession();
   const navigate = useNavigate();
   const location = useLocation();
   const restoreStarted = useRef(false);
@@ -130,6 +130,13 @@ export default function AppShell() {
 
   const canAdmin = has('ADMIN_USERS_MANAGE') || has('ADMIN_GROUPS_MANAGE');
   const nextLocale = locale === 'ru' ? 'en' : 'ru';
+  const demoMailUnreadCount = DEMO_MAILS.filter(
+    (mail) => !mail.seen && !demoReadMailIds.includes(mail.id),
+  ).length;
+  const demoChatUnreadCount = DEMO_ROOMS.reduce(
+    (total, room) => total + (demoReadRoomIds.includes(room.id) ? 0 : room.unread),
+    0,
+  );
 
   const navItem = (to: string, label: string, Icon: typeof Mail, badge?: number) => (
     <NavLink
@@ -180,8 +187,8 @@ export default function AppShell() {
         </button>
 
         <nav className="mt-8 flex w-full flex-col gap-1.5" aria-label={t('Основная навигация')}>
-          {navItem('/mail', t('Почта'), Mail, demoMode ? 4 : undefined)}
-          {navItem('/chat', t('Чат'), MessageSquare, demoMode ? 3 : undefined)}
+          {navItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
+          {navItem('/chat', t('Чат'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
           {canAdmin && navItem('/admin', t('Админ'), Settings2)}
         </nav>
 
@@ -228,8 +235,8 @@ export default function AppShell() {
 
       {/* Мобильная нижняя навигация */}
       <nav className="flex shrink-0 border-t border-line bg-surface px-2 pb-[env(safe-area-inset-bottom)] md:hidden" aria-label={t('Основная навигация')}>
-        {mobileNavItem('/mail', t('Почта'), Mail, demoMode ? 4 : undefined)}
-        {mobileNavItem('/chat', t('Сообщения'), MessageSquare, demoMode ? 3 : undefined)}
+        {mobileNavItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
+        {mobileNavItem('/chat', t('Сообщения'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
         {canAdmin && mobileNavItem('/admin', t('Админ'), Settings2)}
       </nav>
 

@@ -184,8 +184,25 @@
     background-clip: padding-box;
   }
 
+  .message-markdown {
+    min-width: 0;
+    /* Длинные URL и строки без пробелов должны переноситься внутри колонки,
+       а не создавать горизонтальную прокрутку всего чата. */
+    overflow-wrap: anywhere;
+  }
+
   .message-markdown p {
     margin: 0;
+  }
+
+  .message-markdown pre,
+  .message-markdown table {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .message-markdown table {
+    display: block;
   }
 
   .message-markdown a {
