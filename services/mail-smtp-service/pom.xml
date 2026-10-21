@@ -16,7 +16,7 @@
     <description>SMTP submit (587) и relay (25) на базе SubEtha SMTP; очередь исходящих в RabbitMQ</description>
     <properties>
         <java.version>17</java.version>
-        <spring-cloud.version>2023.0.6</spring-cloud.version>
+        <spring-cloud.version>2025.1.3</spring-cloud.version>
     </properties>
     <dependencyManagement>
         <dependencies>
