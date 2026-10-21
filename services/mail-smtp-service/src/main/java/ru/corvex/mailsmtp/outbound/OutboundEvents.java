@@ -20,6 +20,17 @@ public final class OutboundEvents {
             int attempt) {
     }
 
+    public record ExternalOutboundQueuedEvent(
+            String rawRef,
+            UUID externalAccountId,
+            String mailFrom,
+            List<String> recipients,
+            String messageIdHeader,
+            UUID senderId,
+            Instant queuedAt,
+            int attempt) {
+    }
+
     public record OutboundSentEvent(
             String rawRef,
             String mailFrom,

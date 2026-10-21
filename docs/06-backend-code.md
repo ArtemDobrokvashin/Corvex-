@@ -11,7 +11,7 @@
 | `services/auth-service/.../security/TotpService.java` | полноценный TOTP RFC 6238 без внешних зависимостей: генерация Base32-секрета, окно ±1 шаг; покрывается unit-тестами на тестовых векторах RFC |
 | `services/web-gateway/.../security/GatewaySecurityConfig.java` | реактивная проверка JWT по JWKS, публичные маршруты только для login/refresh/autoconfig |
 | `services/web-gateway/src/main/resources/application.yml` | маршруты `/api/v1/**`, rate limiting (Redis) отдельно на login и API, circuit breaker на почте, CORS |
-| `services/admin-service/.../rbac/Permission.java` | каталог из 24 атомарных прав (почта/чат/админ/аналитика) |
+| `services/admin-service/.../rbac/Permission.java` | каталог из 25 атомарных прав (почта/чат/админ/аналитика) |
 | `services/admin-service/.../rbac/EffectivePermissionService.java` | union прав всех групп + точные наборы 6 ролей по умолчанию из ТЗ §6.1 (синхронизированы с SQL-сидом `V2__seed_default_groups.sql`) |
 
 ## 6.2. Почтовый контур

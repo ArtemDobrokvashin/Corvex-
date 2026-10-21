@@ -58,6 +58,7 @@ export interface SendMessageRequest {
   bodyHtml?: string | null;
   attachments?: SendAttachment[];
   saveToSent?: boolean;
+  externalAccountId?: string | null;
 }
 
 export interface SendMessageResult {
@@ -65,6 +66,8 @@ export interface SendMessageResult {
   sentMessageId: string | null;
   localRecipients: string[];
   externalRecipients: string[];
+  fromAddress?: string;
+  externalAccountId?: string | null;
 }
 
 export const mailApi = {

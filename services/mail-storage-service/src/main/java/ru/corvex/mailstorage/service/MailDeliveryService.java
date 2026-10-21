@@ -7,10 +7,12 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.corvex.mailstorage.client.AuthUserClient;
+import ru.corvex.mailstorage.domain.ExternalMailImportedMessage;
 import ru.corvex.mailstorage.domain.MailFolder;
 import ru.corvex.mailstorage.domain.MessageMetadata;
 import ru.corvex.mailstorage.mime.MimeMailParser;
 import ru.corvex.mailstorage.pipeline.MailPipelineEvents;
+import ru.corvex.mailstorage.repository.ExternalMailImportedMessageRepository;
 import ru.corvex.mailstorage.repository.MailFolderRepository;
 import ru.corvex.mailstorage.repository.MessageMetadataRepository;
 import ru.corvex.mailstorage.storage.MaildirStorage;
@@ -40,6 +42,7 @@ public class MailDeliveryService {
     private final MaildirStorage maildir;
     private final MailFolderRepository folders;
     private final MessageMetadataRepository messages;
+    private final ExternalMailImportedMessageRepository externalImported;
     private final AuthUserClient auth;
     private final JdbcTemplate jdbc;
 
@@ -48,6 +51,7 @@ public class MailDeliveryService {
                                MaildirStorage maildir,
                                MailFolderRepository folders,
                                MessageMetadataRepository messages,
+                               ExternalMailImportedMessageRepository externalImported,
                                AuthUserClient auth,
                                JdbcTemplate jdbc) {
         this.spool = spool;
@@ -55,6 +59,7 @@ public class MailDeliveryService {
         this.maildir = maildir;
         this.folders = folders;
         this.messages = messages;
+        this.externalImported = externalImported;
         this.auth = auth;
         this.jdbc = jdbc;
     }
@@ -72,7 +77,14 @@ public class MailDeliveryService {
             return Optional.empty();
         }
         AuthUserClient.MailboxOwner owner = ownerOpt.get();
+        ExternalMailImportedMessage external = externalImported.findFirstByRawRef(event.rawRef())
+                .filter(record -> record.getAccount() != null && owner.id().equals(record.getAccount().getOwnerId()))
+                .orElse(null);
         if (messages.existsByRawRefAndOwnerId(event.rawRef(), owner.id())) {
+            if (external != null && external.getStatus() == ExternalMailImportedMessage.Status.QUEUED) {
+                external.setStatus(ExternalMailImportedMessage.Status.DELIVERED);
+                externalImported.save(external);
+            }
             return Optional.empty();
         }
 
@@ -82,6 +94,11 @@ public class MailDeliveryService {
             // но не кладём письмо сверх квоты и не блокируем остальных получателей этого же письма.
             log.warn("Квота превышена для {}: used={} incoming={} quota={} rawRef={}",
                     recipient, used, event.sizeBytes(), owner.quotaBytes(), event.rawRef());
+            if (external != null) {
+                external.setStatus(ExternalMailImportedMessage.Status.FAILED);
+                external.setError("Квота ящика Corvex превышена");
+                externalImported.save(external);
+            }
             return Optional.empty();
         }
 
@@ -92,8 +109,22 @@ public class MailDeliveryService {
             throw new IllegalStateException("Не удалось разобрать MIME письма " + event.rawRef(), e);
         }
 
-        boolean junk = event.spam() || "INFECTED".equalsIgnoreCase(event.avStatus());
-        MailFolder folder = ensureFolder(owner.id(), junk ? "SPAM" : "INBOX", junk ? "Junk" : "INBOX");
+        boolean infected = "INFECTED".equalsIgnoreCase(event.avStatus());
+        MailFolder folder;
+        if (infected) {
+            folder = ensureFolder(owner.id(), "SPAM", "Junk");
+        } else if (external != null && external.getTargetFolder() != null) {
+            MailFolder target = folders.findByIdAndOwnerId(external.getTargetFolder().getId(), owner.id()).orElse(null);
+            if (target == null) {
+                folder = ensureFolder(owner.id(), event.spam() ? "SPAM" : "INBOX", event.spam() ? "Junk" : "INBOX");
+            } else if (event.spam() && !external.isPreserveTargetFolder()) {
+                folder = ensureFolder(owner.id(), "SPAM", "Junk");
+            } else {
+                folder = target;
+            }
+        } else {
+            folder = ensureFolder(owner.id(), event.spam() ? "SPAM" : "INBOX", event.spam() ? "Junk" : "INBOX");
+        }
         folder = folders.lockById(folder.getId()).orElseThrow();
         long uid = folder.getUidNext();
         folder.setUidNext(uid + 1);
@@ -101,9 +132,10 @@ public class MailDeliveryService {
         folder.setHighestModseq(modseq);
         folders.save(folder);
 
+        boolean seen = external != null && external.isSeen();
         String maildirPath;
         try (InputStream in = spool.open(event.rawRef())) {
-            maildirPath = maildir.storeMessage(owner.email(), folder.getName(), in).toString();
+            maildirPath = maildir.storeMessage(owner.email(), folder.getName(), in, seen).toString();
         }
 
         MessageMetadata m = new MessageMetadata();
@@ -116,20 +148,28 @@ public class MailDeliveryService {
         m.setSender(truncate(firstNonBlank(parsed.sender(), normalizeAddress(event.mailFrom())), 320));
         m.setSubject(truncate(parsed.subject(), 998));
         m.setSnippet(truncate(parsed.snippet(), 512));
-        m.setInternalDate(parsed.internalDate() == null ? event.receivedAt() : parsed.internalDate());
+        m.setInternalDate(external != null && external.getSourceInternalDate() != null
+                ? external.getSourceInternalDate()
+                : (parsed.internalDate() == null ? event.receivedAt() : parsed.internalDate()));
         m.setSizeBytes(event.sizeBytes());
         m.setMaildirPath(maildirPath);
-        m.setSeen(false);
-        m.setAnswered(false);
-        m.setFlagged(false);
-        m.setDraft(false);
-        m.setDeleted(false);
+        m.setSeen(seen);
+        m.setAnswered(external != null && external.isAnswered());
+        m.setFlagged(external != null && external.isFlagged());
+        m.setDraft(external != null && external.isDraft());
+        m.setDeleted(external != null && external.isDeleted());
         m.setSpamScore(event.spamChecked() ? event.spamScore() : null);
         m.setAvStatus(parseAvStatus(event.avStatus()));
         m = messages.saveAndFlush(m);
 
         insertRecipients(m.getId(), parsed, recipient, true);
         insertAttachments(m.getId(), parsed, m.getAvStatus().name());
+        if (external != null) {
+            external.setStatus(ExternalMailImportedMessage.Status.DELIVERED);
+            external.setCorvexMessageId(m.getId());
+            external.setError(null);
+            externalImported.save(external);
+        }
         return Optional.of(new DeliveryResult(m.getId(), owner.id(), folder.getId(), uid, owner.email(), parsed));
     }
 

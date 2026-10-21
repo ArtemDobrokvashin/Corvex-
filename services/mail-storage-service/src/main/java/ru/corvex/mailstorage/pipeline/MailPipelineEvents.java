@@ -60,6 +60,18 @@ public final class MailPipelineEvents {
             int attempt) {
     }
 
+    /** Send-as: SMTP-конфигурация и секрет не едут в событии, воркер забирает их по internal API. */
+    public record ExternalOutboundQueuedEvent(
+            String rawRef,
+            UUID externalAccountId,
+            String mailFrom,
+            List<String> recipients,
+            String messageIdHeader,
+            UUID senderId,
+            Instant queuedAt,
+            int attempt) {
+    }
+
     public record OutboundBouncedEvent(
             String rawRef,
             String mailFrom,

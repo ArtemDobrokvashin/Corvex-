@@ -12,7 +12,7 @@ export const DEMO_USER = {
   email: 'Ivanov@company.local',
   groups: ['DIRECTOR'],
   permissions: [
-    'MAIL_READ_OWN', 'MAIL_SEND_INTERNAL', 'MAIL_SEND_EXTERNAL', 'MAIL_MANAGE_FOLDERS',
+    'MAIL_READ_OWN', 'MAIL_SEND_INTERNAL', 'MAIL_SEND_EXTERNAL', 'MAIL_MANAGE_FOLDERS', 'MAIL_EXTERNAL_ACCOUNTS',
     'MAIL_DELEGATE_ACCESS', 'MAIL_EXPORT', 'CHAT_READ', 'CHAT_WRITE', 'CHAT_CREATE_GROUP',
     'CHAT_SEND_FILES', 'CHAT_VOICE_VIDEO', 'ANALYTICS_VIEW_COMPANY',
     'ADMIN_USERS_MANAGE', 'ADMIN_GROUPS_MANAGE', 'ADMIN_QUOTAS_MANAGE', 'AUDIT_VIEW',
@@ -63,6 +63,7 @@ export const DEMO_MESSAGES: DemoMsg[] = [
 export const PERMISSION_LABELS: Record<string, string> = {
   MAIL_READ_OWN: 'Читать свою почту', MAIL_SEND_INTERNAL: 'Писать внутри компании',
   MAIL_SEND_EXTERNAL: 'Писать во внешние домены', MAIL_MANAGE_FOLDERS: 'Папки и правила сортировки',
+  MAIL_EXTERNAL_ACCOUNTS: 'Внешние ящики и отправка от их имени',
   MAIL_BULK_SEND: 'Массовые рассылки', MAIL_DELEGATE_ACCESS: 'Делегированный доступ к ящикам',
   MAIL_EXPORT: 'Экспорт ящика', CHAT_READ: 'Читать чаты', CHAT_WRITE: 'Писать в чаты',
   CHAT_CREATE_GROUP: 'Создавать групповые чаты', CHAT_CREATE_CHANNEL: 'Создавать каналы',
@@ -77,11 +78,11 @@ export const PERMISSION_LABELS: Record<string, string> = {
 
 export const DEMO_GROUPS: { code: string; name: string; isSystem: boolean; enabled: boolean; memberCount: number; permissions: string[] }[] = [
   { code: 'SUPER_ADMIN', name: 'Супер администратор', isSystem: true, enabled: true, memberCount: 1, permissions: Object.keys(PERMISSION_LABELS) },
-  { code: 'ADMIN', name: 'Администратор', isSystem: true, enabled: true, memberCount: 3, permissions: ['MAIL_READ_OWN','MAIL_SEND_INTERNAL','MAIL_SEND_EXTERNAL','MAIL_MANAGE_FOLDERS','CHAT_READ','CHAT_WRITE','CHAT_CREATE_GROUP','CHAT_CREATE_CHANNEL','CHAT_MODERATE','CHAT_SEND_FILES','ADMIN_USERS_MANAGE','ADMIN_GROUPS_MANAGE','ADMIN_QUOTAS_MANAGE','ADMIN_SECURITY_POLICY','ADMIN_MAIL_POLICY','ADMIN_BACKUP','ANALYTICS_VIEW_COMPANY','AUDIT_VIEW'] },
-  { code: 'DIRECTOR', name: 'Директор', isSystem: true, enabled: true, memberCount: 2, permissions: ['MAIL_READ_OWN','MAIL_SEND_INTERNAL','MAIL_SEND_EXTERNAL','MAIL_MANAGE_FOLDERS','MAIL_DELEGATE_ACCESS','MAIL_EXPORT','CHAT_READ','CHAT_WRITE','CHAT_CREATE_GROUP','CHAT_SEND_FILES','CHAT_VOICE_VIDEO','ANALYTICS_VIEW_COMPANY'] },
-  { code: 'ACCOUNTANT', name: 'Бухгалтер', isSystem: true, enabled: true, memberCount: 8, permissions: ['MAIL_READ_OWN','MAIL_SEND_INTERNAL','MAIL_SEND_EXTERNAL','MAIL_MANAGE_FOLDERS','MAIL_BULK_SEND','CHAT_READ','CHAT_WRITE','CHAT_CREATE_GROUP','CHAT_SEND_FILES'] },
-  { code: 'MANAGER', name: 'Руководитель', isSystem: true, enabled: true, memberCount: 24, permissions: ['MAIL_READ_OWN','MAIL_SEND_INTERNAL','MAIL_SEND_EXTERNAL','MAIL_MANAGE_FOLDERS','CHAT_READ','CHAT_WRITE','CHAT_CREATE_GROUP','CHAT_SEND_FILES','CHAT_VOICE_VIDEO','ANALYTICS_VIEW_OWN_UNIT'] },
-  { code: 'USER', name: 'Обычный пользователь', isSystem: true, enabled: true, memberCount: 812, permissions: ['MAIL_READ_OWN','MAIL_SEND_INTERNAL','MAIL_SEND_EXTERNAL','MAIL_MANAGE_FOLDERS','CHAT_READ','CHAT_WRITE','CHAT_CREATE_GROUP','CHAT_SEND_FILES'] },
+  { code: 'ADMIN', name: 'Администратор', isSystem: true, enabled: true, memberCount: 3, permissions: ['MAIL_READ_OWN','MAIL_SEND_INTERNAL','MAIL_SEND_EXTERNAL','MAIL_MANAGE_FOLDERS','MAIL_EXTERNAL_ACCOUNTS','CHAT_READ','CHAT_WRITE','CHAT_CREATE_GROUP','CHAT_CREATE_CHANNEL','CHAT_MODERATE','CHAT_SEND_FILES','ADMIN_USERS_MANAGE','ADMIN_GROUPS_MANAGE','ADMIN_QUOTAS_MANAGE','ADMIN_SECURITY_POLICY','ADMIN_MAIL_POLICY','ADMIN_BACKUP','ANALYTICS_VIEW_COMPANY','AUDIT_VIEW'] },
+  { code: 'DIRECTOR', name: 'Директор', isSystem: true, enabled: true, memberCount: 2, permissions: ['MAIL_READ_OWN','MAIL_SEND_INTERNAL','MAIL_SEND_EXTERNAL','MAIL_MANAGE_FOLDERS','MAIL_EXTERNAL_ACCOUNTS','MAIL_DELEGATE_ACCESS','MAIL_EXPORT','CHAT_READ','CHAT_WRITE','CHAT_CREATE_GROUP','CHAT_SEND_FILES','CHAT_VOICE_VIDEO','ANALYTICS_VIEW_COMPANY'] },
+  { code: 'ACCOUNTANT', name: 'Бухгалтер', isSystem: true, enabled: true, memberCount: 8, permissions: ['MAIL_READ_OWN','MAIL_SEND_INTERNAL','MAIL_SEND_EXTERNAL','MAIL_MANAGE_FOLDERS','MAIL_EXTERNAL_ACCOUNTS','MAIL_BULK_SEND','CHAT_READ','CHAT_WRITE','CHAT_CREATE_GROUP','CHAT_SEND_FILES'] },
+  { code: 'MANAGER', name: 'Руководитель', isSystem: true, enabled: true, memberCount: 24, permissions: ['MAIL_READ_OWN','MAIL_SEND_INTERNAL','MAIL_SEND_EXTERNAL','MAIL_MANAGE_FOLDERS','MAIL_EXTERNAL_ACCOUNTS','CHAT_READ','CHAT_WRITE','CHAT_CREATE_GROUP','CHAT_SEND_FILES','CHAT_VOICE_VIDEO','ANALYTICS_VIEW_OWN_UNIT'] },
+  { code: 'USER', name: 'Обычный пользователь', isSystem: true, enabled: true, memberCount: 812, permissions: ['MAIL_READ_OWN','MAIL_SEND_INTERNAL','MAIL_SEND_EXTERNAL','MAIL_MANAGE_FOLDERS','MAIL_EXTERNAL_ACCOUNTS','CHAT_READ','CHAT_WRITE','CHAT_CREATE_GROUP','CHAT_SEND_FILES'] },
 ];
 
 export interface DemoAdminUser {
@@ -166,6 +167,7 @@ export const DEMO_MESSAGES_EN: DemoMsg[] = [
 export const PERMISSION_LABELS_EN: Record<string, string> = {
   MAIL_READ_OWN: 'Read own mail', MAIL_SEND_INTERNAL: 'Send inside the company',
   MAIL_SEND_EXTERNAL: 'Send to external domains', MAIL_MANAGE_FOLDERS: 'Folders and sorting rules',
+  MAIL_EXTERNAL_ACCOUNTS: 'External mailboxes and send-as',
   MAIL_BULK_SEND: 'Bulk mailing', MAIL_DELEGATE_ACCESS: 'Delegated mailbox access',
   MAIL_EXPORT: 'Export mailbox', CHAT_READ: 'Read chats', CHAT_WRITE: 'Write in chats',
   CHAT_CREATE_GROUP: 'Create group chats', CHAT_CREATE_CHANNEL: 'Create channels',

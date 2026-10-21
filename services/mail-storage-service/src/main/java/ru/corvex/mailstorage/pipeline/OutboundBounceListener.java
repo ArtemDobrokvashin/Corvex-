@@ -46,14 +46,21 @@ public class OutboundBounceListener {
         MailPipelineEvents.OutboundBouncedEvent event =
                 mapper.readValue(payload, MailPipelineEvents.OutboundBouncedEvent.class);
         String sender = event.mailFrom() == null ? "" : event.mailFrom().trim().toLowerCase(Locale.ROOT);
-        if (auth.findByEmail(sender).filter(AuthUserClient.MailboxOwner::active).isEmpty()) {
-            log.warn("DSN пропущен: исходный отправитель {} не найден/неактивен", sender);
+        // Для send-as mailFrom — внешний адрес провайдера, а DSN нужен владельцу ящика Corvex (senderId).
+        var owner = event.senderId() == null ? java.util.Optional.<AuthUserClient.MailboxOwner>empty()
+                : auth.findById(event.senderId()).filter(AuthUserClient.MailboxOwner::active);
+        if (owner.isEmpty()) {
+            owner = auth.findByEmail(sender).filter(AuthUserClient.MailboxOwner::active);
+        }
+        if (owner.isEmpty()) {
+            log.warn("DSN пропущен: исходный отправитель {} / senderId {} не найден/неактивен", sender, event.senderId());
             return;
         }
-        String domain = domainOf(sender);
+        String notifyMailbox = owner.get().email();
+        String domain = domainOf(notifyMailbox);
         String daemon = "MAILER-DAEMON@" + domain;
         String eml = "From: Mail Delivery System <" + daemon + ">\r\n"
-                + "To: " + header(sender) + "\r\n"
+                + "To: " + header(notifyMailbox) + "\r\n"
                 + "Subject: Delivery failed: " + header(event.recipient()) + "\r\n"
                 + "Date: " + RFC_DATE.format(Instant.now()) + "\r\n"
                 + "Message-ID: <" + UUID.randomUUID() + "@" + domain + ">\r\n"
@@ -63,13 +70,14 @@ public class OutboundBounceListener {
                 + "Auto-Submitted: auto-generated\r\n"
                 + "\r\n"
                 + "Your message could not be delivered to " + event.recipient() + ".\r\n\r\n"
+                + "Original From: " + sender + "\r\n"
                 + "Original Message-ID: " + event.messageIdHeader() + "\r\n"
                 + "Diagnostic: " + event.diagnostic() + "\r\n";
         RawMessageSpool.StoredRawMessage raw = spool.store(
                 new ByteArrayInputStream(eml.getBytes(StandardCharsets.UTF_8)));
         try {
             events.publishConfirmed("mail.inbound.received", new MailPipelineEvents.InboundReceivedEvent(
-                    raw.rawRef(), daemon, List.of(sender), "dsn", raw.sizeBytes(), raw.sha256(), Instant.now()), raw.rawRef());
+                    raw.rawRef(), daemon, List.of(notifyMailbox), "dsn", raw.sizeBytes(), raw.sha256(), Instant.now()), raw.rawRef());
         } catch (RuntimeException e) {
             spool.delete(raw.rawRef());
             throw e;

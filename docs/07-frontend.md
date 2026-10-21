@@ -32,7 +32,7 @@ src/
     ├── auth/LoginPage.tsx    # вход + второй шаг TOTP
     ├── mail/MailPage.tsx     # папки → список → письмо, редактор, квота, AV-статус вложений
     ├── chat/ChatPage.tsx     # комнаты, сообщения (Markdown), реакции, треды, read-only каналы
-    └── admin/AdminPage.tsx   # группы и чекбоксы 24 прав, здоровье сервисов
+    └── admin/AdminPage.tsx   # группы и чекбоксы 25 прав, здоровье сервисов
 ```
 
 При росте внутри feature-папок добавляются `components/`, `hooks/`, `api.ts` этой
