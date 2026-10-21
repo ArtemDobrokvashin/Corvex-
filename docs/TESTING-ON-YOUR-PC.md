@@ -1,9 +1,10 @@
 # Corvex: новая инструкция по тестированию на вашем ПК
 
 > **Дата release-hardening проверки:** 20 октября 2026 года.
-> **Проверенная база кода:** `main` после PR #4 (`fa06f33`), включающая Этап 3 `28d5b33` и
-> эту инструкцию, плюс ветка `arena/367818b9-corvex`, где до первого теста закрыты
-> frontend-зависимости, POP3 POM, поддерживаемый SMTP-движок и Docker-версии.
+> **Проверенная база кода:** `main` после PR #5 (`625aafe`), включающая Этап 3
+> `28d5b33`, инструкцию из PR #4 и release-hardening: обновлённые
+> frontend-зависимости, исправленный POP3 POM, поддерживаемый SMTP-движок,
+> Docker-версии, Dependabot и ворота G0–G5.
 > **Главный вывод:** G0 закрыт — фронтенд реально собирается, 15/15 тестов проходят,
 > production `npm audit` равен 0, статика репозитория чистая. В текущей среде разработки
 > нет JDK, Maven и Docker, поэтому G1/G2 — первая настоящая сборка Java/Docker — остаётся
@@ -19,8 +20,8 @@
 
 | Проверка | Результат 20.10.2026 | Комментарий |
 |---|---|---|
-| Git-история | ✅ PASS | Этап 3 (`28d5b33`) и инструкция уже в `main` через PR #3/#4; текущая hardening-ветка начинается с `fa06f33` |
-| `npm ci` во `frontend` | ✅ PASS | Установка строго по обновлённому `package-lock.json`; Node.js 22.12+ |
+| Git-история | ✅ PASS | Этап 3, инструкция и release-hardening уже в `main` через PR #3/#4/#5; проверенная база начинается с merge `625aafe` |
+| `npm ci` во `frontend` | ✅ PASS | Установка строго по обновлённому `package-lock.json`; Node.js 22.22.3 при G0, поддерживаются 22.22.2+/24.15+/26+ |
 | Frontend unit-тесты | ✅ PASS | 4 файла, **15/15 тестов**, включая jsdom-тесты Markdown/DOMPurify |
 | TypeScript + production build | ✅ PASS | TypeScript 7 + Vite 8; modern и legacy (`*-legacy-*.js`) бандлы созданы |
 | Vite dev-server | ✅ PASS | `0.0.0.0:5173`; `/`, `/login`, `/mail`, `/chat`, `/admin` отдают HTTP 200 |
@@ -28,7 +29,7 @@
 | XML / JSON / YAML | ✅ PASS | 13 XML, 3 JSON, 28 YAML, включая новый Dependabot-конфиг |
 | Структура Maven/Compose | ✅ PASS | 12 Java-модулей; в Compose 25 сервисов, 13 build-контекстов, все обязательные сервисы Corvex на месте |
 | Dockerfile/POM по сервисам | ✅ PASS | У всех 12 сервисов есть `Dockerfile` и `pom.xml`; порты healthcheck совпадают с `server.port` |
-| Локальные ссылки Markdown | ✅ PASS | Проверено 96 локальных ссылок (включая эту инструкцию), битых нет |
+| Локальные ссылки Markdown | ✅ PASS | Проверено 125 локальных ссылок/изображений (включая эту инструкцию), битых нет |
 | `git diff --check`, конфликт-маркеры | ✅ PASS | Чисто |
 | `npm audit` production-зависимостей | ✅ PASS | **0 уязвимостей** после React Router 7 и обновления production-графа |
 | `npm audit` всех зависимостей | ⚠️ ACCEPTED EXCEPTION | 7 build-time находок только в Tailwind 3.4-цепочке для Chrome 109; причина, граница риска и путь закрытия — `docs/RELEASE-DEPENDENCIES.md` |
@@ -81,13 +82,13 @@ IMAP и POP3 реальными клиентами.
 
 ## 0. Что установить на ПК
 
-Для маршрута A нужен только Node.js 22.12+ (см. `engines` во frontend). Для B/C нужны все инструменты:
+Для маршрута A нужен только Node.js актуального поддерживаемого patch-ряда: 22.22.2+, 24.15+ или 26+ (см. `engines` во frontend). Для B/C нужны все инструменты:
 
 - Windows 10/11 или Windows Server с Linux-VM по `docs/INSTALL.md`;
 - Git;
 - **JDK 17 LTS** (проект настроен на Java 17; не начинайте первую приёмку с другой major-версии);
 - Maven 3.9+;
-- **Node.js 22.12+ LTS** (также допустимы 24/26 по `frontend/package.json`) и npm 10+;
+- **Node.js 22.22.2+ LTS** (также допустимы 24.15+ и 26+ по `frontend/package.json`) и npm 10+;
 - Docker Desktop (WSL2) или Docker Engine + Docker Compose v2;
 - желательно Thunderbird для шага 9;
 - OpenSSL обычно приходит с Git for Windows и запускается из Git Bash.
@@ -117,17 +118,17 @@ docker info
 
 ## 1. Получить именно актуальный код
 
-Для этого проверочного прогона используйте ветку **`arena/367818b9-corvex`**: она
-начинается с уже слитого в `main` merge-коммита PR #4 `fa06f33`, поэтому Этап 3 и сама
-инструкция в ней есть, а сверху лежит release-hardening: обновлённые зависимости,
-исправленный POP3 POM, поддерживаемый SMTP-движок, Docker-версии и ворота зависимостей.
-Когда PR этой ветки будет слит, для следующих прогонов используйте просто `main`.
+Используйте актуальный **`main`**. В него уже слиты Этап 3, Stage 4, эта
+инструкция и release-hardening из PR #5: обновлённые зависимости, исправленный
+POP3 POM, поддерживаемый SMTP-движок, Docker-версии, Dependabot и ворота
+зависимостей. Не используйте старые feature-ветки из прошлых PR для первого
+прогона: отчёт должен относиться к SHA, который увидят другие тестировщики.
 
 ### Новый клон
 
 ```powershell
 cd C:\
-git clone -b arena/367818b9-corvex https://github.com/ArtemDobrokvashin/Corvex-.git Corvex-test
+git clone -b main https://github.com/ArtemDobrokvashin/Corvex-.git Corvex-test
 cd C:\Corvex-test
 git log --oneline -4
 git status --short --branch
@@ -138,19 +139,21 @@ git status --short --branch
 ```powershell
 cd C:\путь\к\Corvex-
 git fetch origin
-git switch arena/367818b9-corvex
+git switch main
 git pull --ff-only
 git log --oneline -4
 git status --short --branch
 ```
 
-В истории под release-hardening коммитами должен быть виден merge PR #4:
+В свежей истории должны быть видны merge PR #5 и три release-hardening коммита
+(если после них в `main` уже появились новые merge, это нормально — важен
+точный SHA вашего `HEAD` ниже):
 
 ```text
-fa06f33 Merge pull request #4 from ArtemDobrokvashin/arena/e6324306-corvex
-316734e Verify frontend and add PC testing guide
-3bf190a Merge pull request #3 from ArtemDobrokvashin/arena/12999655-corvex
-28d5b33 Stage 3 complete: Apache James IMAP with persistent MODSEQ
+625aafe Merge pull request #5 from ArtemDobrokvashin
+7e95b32 Add release dependency gates and update PC testing guide
+808d5dd Harden backend and Docker dependency baseline
+60b7b69 Upgrade frontend toolchain and harden chat markdown
 ```
 
 Запишите точный SHA до начала:
@@ -726,8 +729,8 @@ docker compose logs --no-color --tail 300 <имя-сервиса> > "$out\<им�
 ## Короткий маршрут одной страницей
 
 ```powershell
-# 1. Код этого проверочного прогона (после merge PR замените ветку на main)
-git clone -b arena/367818b9-corvex https://github.com/ArtemDobrokvashin/Corvex-.git C:\Corvex-test
+# 1. Актуальный код проверочного прогона
+git clone -b main https://github.com/ArtemDobrokvashin/Corvex-.git C:\Corvex-test
 cd C:\Corvex-test
 git log --oneline -4
 

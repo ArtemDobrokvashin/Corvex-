@@ -4,6 +4,11 @@ IMAP4rev1/rev2 сервер Corvex на **Apache James 3.8.2** (143 + STARTTLS /
 TCP/RFC-парсер не пишется вручную: Corvex реализует только James SPI
 (`MailboxManager`/`MessageManager`) поверх протокольного API `mail-storage-service`.
 
+> **Help wanted:** код Stage 3 завершён как baseline, но ещё не доказан
+> компиляцией и реальным клиентом. Если у вас есть JDK 17/Maven и Thunderbird
+> или Outlook, ваш первый G1/G3-прогон — самая ценная помощь именно этому
+> сервису. Не включайте его на боевых ящиках до зелёных ворот.
+
 ## Статус этапа 3
 
 **Движок подключён.** В сервисе реализованы:
@@ -29,9 +34,12 @@ TCP/RFC-парсер не пишется вручную: Corvex реализуе
   NOOP/пере-SELECT и при следующем IDLE-цикле клиента; распределённый EventBus — этап 5.
 - **ACL/METADATA/keyword-флаги** не заявляются возможностями: хранилище держит только
   системные флаги и owner-only права.
-- Сервис по умолчанию **выключен** (`CORVEX_IMAP_ENABLED=false`), пока на хосте с JDK не пройдены
-  `mvn verify` и клиентский smoke (см. `docs/READINESS.md`). Песочница разработки Java не имеет,
-  поэтому первая компиляция — обязательный гейт на вашем ПК.
+- Сервис по умолчанию **выключен** (`CORVEX_IMAP_ENABLED=false`), пока не пройдены
+  G1 (`mvn verify`), G2 (Docker/Spring) и G3 (клиентский smoke). Текущий
+  James 3.8.2 — baseline первой компиляции; переход на James 3.9.x делается
+  отдельным G4-апгрейдом после зелёного baseline, а не одновременно с поиском
+  первичных ошибок. Подробности: [`../../docs/READINESS.md`](../../docs/READINESS.md)
+  и [`../../docs/RELEASE-DEPENDENCIES.md`](../../docs/RELEASE-DEPENDENCIES.md).
 
 ## Запуск и TLS
 
@@ -85,3 +93,23 @@ a6 LOGOUT
 
 Или Thunderbird: Incoming IMAP, сервер — ваш `MAIL_HOSTNAME`, 993 SSL/TLS или 143 STARTTLS,
 логин — полный e-mail пользователя, пароль — обычный пароль Corvex (при включённой 2FA — app-password).
+
+## Как помочь этому сервису прямо сейчас
+
+Начните с изолированной сборки модуля, не с публичного включения порта:
+
+```bash
+mvn -B -pl :mail-imap-service -am -DskipTests compile
+mvn -B -pl :mail-imap-service -am test
+```
+
+Если сборка красная, приложите к issue SHA коммита, версии JDK/Maven и
+**первую** ошибку компилятора или теста. Если сборка зелёная, особенно ценна
+клиентская матрица: CAPABILITY, LOGIN с app-password, LIST вложенных папок,
+SELECT/FETCH письма с вложением, отправка с копией в Sent, MOVE/EXPUNGE,
+SEARCH, QUOTA, CONDSTORE/MODSEQ и поведение IDLE после внешней доставки.
+
+Хорошие следующие задачи после зелёного baseline: персистентные LSUB,
+распределённые события IDLE из SMTP/storage, keyword-флаги/ACL, нагрузочный
+профиль больших папок и отдельный апгрейд James 3.8.2 → 3.9.x с повторной
+сверкой SPI. Правила вклада: [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md).

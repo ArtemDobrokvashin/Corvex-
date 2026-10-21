@@ -7,7 +7,7 @@
 
 | Вопрос | Решение |
 |---|---|
-| Фреймворк | React 19 + TypeScript 7, сборка Vite 8; локальная разработка — Node.js `^22.12.0 || ^24.0.0 || >=26.0.0` |
+| Фреймворк | React 19 + TypeScript 7, сборка Vite 8; локальная разработка — Node.js `^22.22.2 || ^24.15.0 || >=26.0.0` |
 | Chrome 109 | `@vitejs/plugin-legacy` 8 → Babel 7 (`browserslist: chrome >= 109` в `package.json`) + core-js полифилы; современным браузерам отдаётся лёгкий modern-бандл, старым — legacy |
 | Стили | Tailwind CSS **3.4** + Autoprefixer; версия осознанно не поднята до 4 из-за Chrome 109, исключение и audit-риск зафиксированы в `docs/RELEASE-DEPENDENCIES.md` |
 | Роутинг | react-router-dom 7, модули через `lazy()` (админка не грузится у обычных пользователей) |
