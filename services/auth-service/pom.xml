@@ -17,6 +17,8 @@
     <properties>
         <java.version>17</java.version>
         <spring-cloud.version>2023.0.6</spring-cloud.version>
+        <!-- Spring Boot не управляет версией BouncyCastle — фиксируем явно (нужен Argon2PasswordEncoder) -->
+        <bouncycastle.version>1.86</bouncycastle.version>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -41,7 +43,7 @@
 
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-security</artifactId></dependency>
         <!-- BouncyCastle: обязательное runtime-дополнение Argon2PasswordEncoder (Spring Security crypto) -->
-        <dependency><groupId>org.bouncycastle</groupId><artifactId>bcprov-jdk18on</artifactId></dependency>
+        <dependency><groupId>org.bouncycastle</groupId><artifactId>bcprov-jdk18on</artifactId><version>${bouncycastle.version}</version></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-oauth2-resource-server</artifactId></dependency>
         <dependency><groupId>org.springframework.ldap</groupId><artifactId>spring-ldap-core</artifactId></dependency>
         <dependency><groupId>org.springframework.security</groupId><artifactId>spring-security-ldap</artifactId></dependency>
