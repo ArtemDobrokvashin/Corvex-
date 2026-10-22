@@ -118,6 +118,8 @@ class StompAuthChannelInterceptorTest {
     }
 
     private Message<?> message(StompHeaderAccessor accessor) {
+        // StompDecoder оставляет заголовки mutable для inbound-интерцепторов (setUser при CONNECT).
+        accessor.setLeaveMutable(true);
         return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
     }
 
