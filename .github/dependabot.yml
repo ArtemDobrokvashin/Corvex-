@@ -59,6 +59,12 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: [version-update:semver-major]
+      # James 3.9+ требует Java 21. Для compile-baseline фиксируем линию 3.8.x;
+      # переход на 3.9.x выполняется вручную вместе с миграцией на JDK 21 (G4).
+      - dependency-name: "org.apache.james:*"
+        update-types: [version-update:semver-minor, version-update:semver-major]
+      - dependency-name: "org.apache.james.protocols:*"
+        update-types: [version-update:semver-minor, version-update:semver-major]
 
   - package-ecosystem: docker
     directories:
