@@ -42,12 +42,25 @@ function RoomMark({ room, size = 40 }: { room: DemoRoom; size?: number }) {
 /** Сообщения Quiet Work: корпоративные строки Slack вместо потребительских «пузырей». */
 function DemoChatPage() {
   const { locale, t } = useI18n();
-  const { user, demoReadRoomIds, markDemoRoomRead } = useSession();
+  const {
+    user,
+    demoReadRoomIds,
+    demoSentChatMessages,
+    markDemoRoomRead,
+    addDemoSentChatMessage,
+  } = useSession();
   const [rooms, setRooms] = useState<DemoRoom[]>(() => demoRooms(locale).map((room) => (
     demoReadRoomIds.includes(room.id) ? { ...room, unread: 0 } : room
   )));
   const [roomId, setRoomId] = useState('r2');
-  const [messages, setMessages] = useState<DemoMsg[]>(() => demoMessages(locale));
+  const [messages, setMessages] = useState<DemoMsg[]>(() => {
+    const seedMessages = demoMessages(locale);
+    const seedIds = new Set(seedMessages.map((message) => message.id));
+    return [
+      ...seedMessages,
+      ...demoSentChatMessages.filter((message) => !seedIds.has(message.id)),
+    ];
+  });
   const [draft, setDraft] = useState('');
   const [search, setSearch] = useState('');
   const [mobileConversation, setMobileConversation] = useState(false);
@@ -118,14 +131,18 @@ function DemoChatPage() {
   const send = () => {
     const text = draft.trim();
     if (!text) return;
-    setMessages((prev) => [...prev, {
-      id: `c${Date.now()}`,
+    const message = {
+      id: `c${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       roomId,
       author: user?.displayName ?? t('Вы'),
       text,
       time: formatTime(locale, new Date()),
-      mine: true,
-    }]);
+      mine: true as const,
+    };
+    setMessages((prev) => (
+      prev.some((candidate) => candidate.id === message.id) ? prev : [...prev, message]
+    ));
+    addDemoSentChatMessage(message);
     setDraft('');
     requestAnimationFrame(() => inputRef.current?.focus());
   };

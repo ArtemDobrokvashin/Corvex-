@@ -11,6 +11,15 @@ const user: SessionUser = {
   permissions: [],
 };
 
+const sentMessage = {
+  id: 'c-test-1',
+  roomId: 'r2',
+  author: 'Demo User',
+  text: 'Проверка мобильного чата',
+  time: '10:15',
+  mine: true as const,
+};
+
 describe('demo read state', () => {
   beforeEach(() => {
     sessionStorage.clear();
@@ -20,6 +29,7 @@ describe('demo read state', () => {
       bootstrapped: false,
       demoReadMailIds: [],
       demoReadRoomIds: [],
+      demoSentChatMessages: [],
     });
   });
 
@@ -71,18 +81,43 @@ describe('demo read state', () => {
     expect(useSession.getState().demoReadRoomIds).toEqual([]);
   });
 
+  it('keeps each sent demo chat message once for the same demo session', () => {
+    const { addDemoSentChatMessage, setSession, clearSession } = useSession.getState();
+
+    setSession(user, true);
+    addDemoSentChatMessage(sentMessage);
+    addDemoSentChatMessage(sentMessage);
+    setSession(user, true);
+    expect(useSession.getState().demoSentChatMessages).toEqual([sentMessage]);
+
+    setSession({ ...user, id: 'another-user' }, true);
+    expect(useSession.getState().demoSentChatMessages).toEqual([]);
+
+    addDemoSentChatMessage(sentMessage);
+    clearSession();
+    expect(useSession.getState().demoSentChatMessages).toEqual([]);
+  });
+
   it('persists demo read ids for the browser-tab demo session and clears them on logout', () => {
-    const { markDemoMailRead, markDemoRoomRead, setSession, clearSession } = useSession.getState();
+    const {
+      markDemoMailRead,
+      markDemoRoomRead,
+      addDemoSentChatMessage,
+      setSession,
+      clearSession,
+    } = useSession.getState();
 
     sessionStorage.setItem('corvex.demo', '1');
     setSession(user, true);
     markDemoMailRead('m1');
     markDemoRoomRead('r2');
+    addDemoSentChatMessage(sentMessage);
 
     expect(JSON.parse(sessionStorage.getItem(DEMO_READ_STATE_STORAGE_KEY) ?? 'null')).toEqual({
       userId: user.id,
       demoReadMailIds: ['m1'],
       demoReadRoomIds: ['r2'],
+      demoSentChatMessages: [sentMessage],
     });
 
     clearSession();
@@ -95,6 +130,7 @@ describe('demo read state', () => {
       userId: user.id,
       demoReadMailIds: ['m1'],
       demoReadRoomIds: ['r2'],
+      demoSentChatMessages: [sentMessage],
     }));
 
     vi.resetModules();
@@ -102,9 +138,11 @@ describe('demo read state', () => {
 
     expect(reloadedUseSession.getState().demoReadMailIds).toEqual(['m1']);
     expect(reloadedUseSession.getState().demoReadRoomIds).toEqual(['r2']);
+    expect(reloadedUseSession.getState().demoSentChatMessages).toEqual([sentMessage]);
 
     reloadedUseSession.getState().setSession(user, true);
     expect(reloadedUseSession.getState().demoReadMailIds).toEqual(['m1']);
     expect(reloadedUseSession.getState().demoReadRoomIds).toEqual(['r2']);
+    expect(reloadedUseSession.getState().demoSentChatMessages).toEqual([sentMessage]);
   });
 });
