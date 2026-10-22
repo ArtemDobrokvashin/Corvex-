@@ -169,10 +169,12 @@ public class ChatService {
                 : kind == ChatRoom.Kind.SYSTEM);
         room = rooms.save(room);
 
+        UUID roomId = room.getId();
         List<ChatMember> roomMembers = new ArrayList<>();
-        roomMembers.add(new ChatMember(room.getId(), principal.userId(), ChatMember.Role.OWNER));
-        memberIds.forEach(id -> roomMembers.add(
-                new ChatMember(room.getId(), id, ChatMember.Role.MEMBER)));
+        roomMembers.add(new ChatMember(roomId, principal.userId(), ChatMember.Role.OWNER));
+        for (UUID memberId : memberIds) {
+            roomMembers.add(new ChatMember(roomId, memberId, ChatMember.Role.MEMBER));
+        }
         roomMembers = members.saveAll(roomMembers);
 
         ChatMember mine = roomMembers.stream()
