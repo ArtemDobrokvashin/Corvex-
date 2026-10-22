@@ -1,6 +1,6 @@
 package ru.corvex.mailsmtp.outbound;
 
-import com.sun.mail.imap.IMAPFolder;
+import org.eclipse.angus.mail.imap.IMAPFolder;
 import jakarta.mail.Address;
 import jakarta.mail.AuthenticationFailedException;
 import jakarta.mail.Flags;

@@ -1,7 +1,7 @@
 package ru.corvex.mailstorage.external;
 
-import com.sun.mail.imap.IMAPFolder;
-import com.sun.mail.pop3.POP3Folder;
+import org.eclipse.angus.mail.imap.IMAPFolder;
+import org.eclipse.angus.mail.pop3.POP3Folder;
 import jakarta.mail.Address;
 import jakarta.mail.AuthenticationFailedException;
 import jakarta.mail.FetchProfile;
