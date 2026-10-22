@@ -4,6 +4,7 @@ import {
   Archive,
   ArrowLeft,
   ArrowUpDown,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -32,6 +33,12 @@ import { demoFolders, demoMails, DemoMail } from '../../api/demoData';
 import { externalMailApi, ExternalMailAccount } from '../../api/externalMailApi';
 import { mailApi, MailFolderView, MailMessageListItem, SendAttachment } from '../../api/mailApi';
 import ExternalMailAccountsModal from './ExternalMailAccountsModal';
+import {
+  applyMailListControls,
+  hasActiveMailFilters,
+  type MailReadFilter,
+  type MailSortOrder,
+} from './mailListControls';
 import { EmojiPickerButton } from '../../components/EmojiPicker';
 import { Avatar, EmptyState, IconButton, cleanPersonName, emailFromHeader } from '../../components/ui';
 import { countLabel, formatBytes, formatDateTime, useI18n } from '../../i18n';
@@ -98,7 +105,11 @@ export default function MailPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [folder, setFolder] = useState('INBOX');
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<'all' | 'unread'>('all');
+  const [filter, setFilter] = useState<MailReadFilter>('all');
+  const [onlyFlagged, setOnlyFlagged] = useState(false);
+  const [onlyAttachments, setOnlyAttachments] = useState(false);
+  const [sortOrder, setSortOrder] = useState<MailSortOrder>('date-desc');
+  const [openListPanel, setOpenListPanel] = useState<'sort' | 'filters' | null>(null);
   const [mails, setMails] = useState<DemoMail[]>(() => (
     demoMode
       ? demoMails(locale).map((mail) => (
@@ -131,34 +142,72 @@ export default function MailPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadedBodies, setLoadedBodies] = useState<Record<string, string>>({});
   const searchRef = useRef<HTMLInputElement>(null);
+  const sortPanelRef = useRef<HTMLDivElement>(null);
+  const filtersPanelRef = useRef<HTMLDivElement>(null);
   const seenPendingRef = useRef<Set<string>>(new Set());
 
-  const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return mails.filter((m) => (
-      m.folder === folder
-      && (filter === 'all' || !m.seen)
-      && (!q || `${m.subject} ${m.from} ${m.snippet} ${m.body}`.toLowerCase().includes(q))
-    ));
-  }, [mails, folder, search, filter]);
+  const visible = useMemo(() => applyMailListControls(mails, {
+    folder,
+    search,
+    readFilter: filter,
+    onlyFlagged,
+    onlyAttachments,
+    sortOrder,
+  }, locale), [mails, folder, search, filter, onlyFlagged, onlyAttachments, sortOrder, locale]);
+
+  const filtersActive = hasActiveMailFilters({
+    readFilter: filter,
+    onlyFlagged,
+    onlyAttachments,
+  });
+  const sortActive = sortOrder !== 'date-desc';
+
+  useEffect(() => {
+    if (!openListPanel) return undefined;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!sortPanelRef.current?.contains(target) && !filtersPanelRef.current?.contains(target)) {
+        setOpenListPanel(null);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpenListPanel(null);
+    };
+    window.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [openListPanel]);
+
+  const resetMailFilters = () => {
+    setFilter('all');
+    setOnlyFlagged(false);
+    setOnlyAttachments(false);
+  };
 
   const active = mails.find((m) => m.id === activeId && m.folder === folder) ?? visible[0] ?? null;
   const activeBody = active ? (loadedBodies[active.id] ?? active.body) : '';
   const activeIndex = active ? visible.findIndex((m) => m.id === active.id) : -1;
   const currentFolder = folders.find((f) => f.id === folder);
 
-  const toMailView = (item: MailMessageListItem, folderKey: string): DemoMail => ({
-    id: item.id,
-    folder: folderKey,
-    from: item.sender,
-    subject: item.subject,
-    snippet: item.snippet ?? '',
-    body: item.snippet ?? '',
-    date: formatDateTime(locale, item.date),
-    seen: item.seen,
-    flagged: item.flagged,
-    hasAttachments: item.hasAttachments,
-  });
+  const toMailView = (item: MailMessageListItem, folderKey: string): DemoMail => {
+    const timestamp = Date.parse(item.date);
+    return {
+      id: item.id,
+      folder: folderKey,
+      from: item.sender,
+      subject: item.subject,
+      snippet: item.snippet ?? '',
+      body: item.snippet ?? '',
+      date: formatDateTime(locale, item.date),
+      timestamp: Number.isFinite(timestamp) ? timestamp : 0,
+      seen: item.seen,
+      flagged: item.flagged,
+      hasAttachments: item.hasAttachments,
+    };
+  };
 
   useEffect(() => {
     if (!demoMode) return;
@@ -274,6 +323,7 @@ export default function MailPage() {
 
   const selectFolder = (id: string) => {
     setFolder(id);
+    setOpenListPanel(null);
     setMobileReading(false);
     const first = mails.find((m) => m.folder === id);
     if (first) setActiveId(first.id);
@@ -355,6 +405,7 @@ export default function MailPage() {
         snippet: truncateGraphemes(draft.body, 110),
         body: draft.body,
         date: t('Сейчас'),
+        timestamp: Date.now(),
         seen: true,
         flagged: false,
         hasAttachments: files.length > 0,
@@ -430,9 +481,95 @@ export default function MailPage() {
             <div className="flex items-center gap-2">
               <h2 className="min-w-0 flex-1 truncate text-[17px] font-semibold tracking-[-0.02em]">{currentFolder?.name ?? t('Почта')}</h2>
               <span className="text-xs text-faint">{visible.length}</span>
-              <IconButton icon={ArrowUpDown} label={t('Сортировка')} className="h-8 w-8" size={16} />
+              <div ref={sortPanelRef} className="relative">
+                <IconButton
+                  icon={ArrowUpDown}
+                  label={t('Сортировка')}
+                  className={`h-8 w-8 ${sortActive || openListPanel === 'sort' ? 'bg-accent-soft text-accent-dark hover:bg-accent-soft' : ''}`}
+                  size={16}
+                  onClick={() => setOpenListPanel((panel) => (panel === 'sort' ? null : 'sort'))}
+                  aria-expanded={openListPanel === 'sort'}
+                  aria-haspopup="dialog"
+                />
+                {sortActive && <span className="pointer-events-none absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-accent ring-2 ring-surface" aria-hidden="true" />}
+                {openListPanel === 'sort' && (
+                  <div role="dialog" aria-label={t('Сортировка')} className="absolute right-0 top-10 z-40 w-56 max-w-[calc(100vw-32px)] rounded-2xl border border-line bg-surface p-1.5 shadow-pop">
+                    {([
+                      { value: 'date-desc', label: t('Сначала новые') },
+                      { value: 'date-asc', label: t('Сначала старые') },
+                      { value: 'sender-asc', label: t('По отправителю А–Я') },
+                      { value: 'subject-asc', label: t('По теме А–Я') },
+                    ] as const).map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => {
+                          setSortOrder(option.value);
+                          setOpenListPanel(null);
+                        }}
+                        className={`nav-row ${sortOrder === option.value ? 'nav-row-active' : ''}`}
+                        aria-pressed={sortOrder === option.value}
+                      >
+                        <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                        {sortOrder === option.value && <Check size={15} />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               {canExternalAccounts && <IconButton icon={Settings2} label={t('Внешние ящики')} className="h-8 w-8 xl:hidden" size={16} onClick={() => setExternalOpen(true)} />}
-              <IconButton icon={SlidersHorizontal} label={t('Фильтры')} className="h-8 w-8" size={16} />
+              <div ref={filtersPanelRef} className="relative">
+                <IconButton
+                  icon={SlidersHorizontal}
+                  label={t('Фильтры')}
+                  className={`h-8 w-8 ${filtersActive || openListPanel === 'filters' ? 'bg-accent-soft text-accent-dark hover:bg-accent-soft' : ''}`}
+                  size={16}
+                  onClick={() => setOpenListPanel((panel) => (panel === 'filters' ? null : 'filters'))}
+                  aria-expanded={openListPanel === 'filters'}
+                  aria-haspopup="dialog"
+                />
+                {filtersActive && <span className="pointer-events-none absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-accent ring-2 ring-surface" aria-hidden="true" />}
+                {openListPanel === 'filters' && (
+                  <div role="dialog" aria-label={t('Фильтры')} className="absolute right-0 top-10 z-40 w-64 max-w-[calc(100vw-32px)] rounded-2xl border border-line bg-surface p-3 shadow-pop">
+                    <p className="section-label">{t('Состояние')}</p>
+                    <div className="mt-2 grid grid-cols-3 gap-1 rounded-full bg-black/[0.04] p-1" role="group" aria-label={t('Фильтр писем')}>
+                      {([
+                        { value: 'all', label: t('Все') },
+                        { value: 'unread', label: t('Непрочитанные') },
+                        { value: 'read', label: t('Прочитанные') },
+                      ] as const).map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setFilter(option.value)}
+                          className={`h-8 rounded-full px-1 text-[11px] font-medium transition ${filter === option.value ? 'bg-surface text-ink shadow-soft' : 'text-muted hover:text-ink'}`}
+                          aria-pressed={filter === option.value}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mt-4 space-y-2.5">
+                      <label className="flex cursor-pointer items-center gap-2.5 text-sm text-ink-soft">
+                        <input type="checkbox" checked={onlyFlagged} onChange={(event) => setOnlyFlagged(event.target.checked)} className="h-4 w-4 accent-[#3157D5]" />
+                        <span>{t('Только важные')}</span>
+                      </label>
+                      <label className="flex cursor-pointer items-center gap-2.5 text-sm text-ink-soft">
+                        <input type="checkbox" checked={onlyAttachments} onChange={(event) => setOnlyAttachments(event.target.checked)} className="h-4 w-4 accent-[#3157D5]" />
+                        <span>{t('Только с вложениями')}</span>
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={resetMailFilters}
+                      disabled={!filtersActive}
+                      className="btn-ghost mt-4 w-full"
+                    >
+                      {t('Сбросить фильтры')}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="relative mt-3">
               <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-faint" />
@@ -440,12 +577,31 @@ export default function MailPage() {
               <span className="kbd absolute right-3 top-1/2 hidden -translate-y-1/2 sm:inline-flex">/</span>
             </div>
             <div className="mt-3 flex rounded-full bg-black/[0.04] p-1" role="tablist" aria-label={t('Фильтр писем')}>
-              {(['all', 'unread'] as const).map((value) => (
+              {(['all', 'unread', 'read'] as const).map((value) => (
                 <button key={value} type="button" role="tab" aria-selected={filter === value} onClick={() => setFilter(value)} className={`h-8 flex-1 rounded-full text-[13px] font-medium transition ${filter === value ? 'bg-surface text-ink shadow-soft' : 'text-muted hover:text-ink'}`}>
-                  {value === 'all' ? t('Все') : t('Непрочитанные')}
+                  {value === 'all' ? t('Все') : value === 'unread' ? t('Непрочитанные') : t('Прочитанные')}
                 </button>
               ))}
             </div>
+            {(onlyFlagged || onlyAttachments || sortActive) && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {onlyFlagged && (
+                  <button type="button" onClick={() => setOnlyFlagged(false)} className="chip chip-accent" title={t('Сбросить фильтры')}>
+                    {t('Только важные')} <X size={12} />
+                  </button>
+                )}
+                {onlyAttachments && (
+                  <button type="button" onClick={() => setOnlyAttachments(false)} className="chip chip-accent" title={t('Сбросить фильтры')}>
+                    {t('Только с вложениями')} <X size={12} />
+                  </button>
+                )}
+                {sortActive && (
+                  <button type="button" onClick={() => setSortOrder('date-desc')} className="chip chip-accent" title={t('Сначала новые')}>
+                    {sortOrder === 'date-asc' ? t('Сначала старые') : sortOrder === 'sender-asc' ? t('По отправителю А–Я') : t('По теме А–Я')} <X size={12} />
+                  </button>
+                )}
+              </div>
+            )}
             <div className="-mb-1 mt-3 flex gap-1.5 overflow-x-auto pb-1 xl:hidden">
               {folders.map((f) => (
                 <button key={f.id} type="button" onClick={() => selectFolder(f.id)} className={`chip shrink-0 ${folder === f.id ? 'chip-accent' : ''}`}>{f.name}{(folderCounts[f.id] ?? 0) > 0 && ` · ${folderCounts[f.id]}`}</button>
