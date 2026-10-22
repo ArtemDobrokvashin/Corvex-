@@ -212,8 +212,10 @@ public class ExternalMailSyncService {
                     .filter(AuthUserClient.MailboxOwner::active)
                     .orElseThrow(() -> new IllegalStateException("Владелец ящика Corvex не найден или неактивен"));
             ExternalMailClient.AccountConfig config = accountService.toConfig(account);
+            boolean syncAllFolders = migration
+                    || account.getSyncScope() == ExternalMailAccount.SyncScope.ALL_FOLDERS;
             List<ExternalMailClient.RemoteFolderInfo> remoteFolders = client.listFolders(config).stream()
-                    .filter(f -> migration || account.getSyncScope() == ExternalMailAccount.SyncScope.ALL_FOLDERS
+                    .filter(f -> syncAllFolders
                             || "INBOX".equalsIgnoreCase(f.specialUse()) || "INBOX".equalsIgnoreCase(f.name()))
                     .limit(props.safeMaxFolders())
                     .toList();
