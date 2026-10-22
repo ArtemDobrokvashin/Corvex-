@@ -530,9 +530,9 @@ export default function MailPage() {
                 />
                 {filtersActive && <span className="pointer-events-none absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-accent ring-2 ring-surface" aria-hidden="true" />}
                 {openListPanel === 'filters' && (
-                  <div role="dialog" aria-label={t('Фильтры')} className="absolute right-0 top-10 z-40 w-64 max-w-[calc(100vw-32px)] rounded-2xl border border-line bg-surface p-3 shadow-pop">
+                  <div role="dialog" aria-label={t('Фильтры')} className="absolute right-0 top-10 z-40 w-72 max-w-[calc(100vw-32px)] rounded-2xl border border-line bg-surface p-3 shadow-pop">
                     <p className="section-label">{t('Состояние')}</p>
-                    <div className="mt-2 grid grid-cols-3 gap-1 rounded-full bg-black/[0.04] p-1" role="group" aria-label={t('Фильтр писем')}>
+                    <div className="mt-2 space-y-1" role="group" aria-label={t('Фильтр писем')}>
                       {([
                         { value: 'all', label: t('Все') },
                         { value: 'unread', label: t('Непрочитанные') },
@@ -542,10 +542,11 @@ export default function MailPage() {
                           key={option.value}
                           type="button"
                           onClick={() => setFilter(option.value)}
-                          className={`h-8 rounded-full px-1 text-[11px] font-medium transition ${filter === option.value ? 'bg-surface text-ink shadow-soft' : 'text-muted hover:text-ink'}`}
+                          className={`nav-row ${filter === option.value ? 'nav-row-active' : ''}`}
                           aria-pressed={filter === option.value}
                         >
-                          {option.label}
+                          <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                          {filter === option.value && <Check size={15} className="shrink-0" />}
                         </button>
                       ))}
                     </div>
@@ -578,7 +579,7 @@ export default function MailPage() {
             </div>
             <div className="mt-3 flex rounded-full bg-black/[0.04] p-1" role="tablist" aria-label={t('Фильтр писем')}>
               {(['all', 'unread', 'read'] as const).map((value) => (
-                <button key={value} type="button" role="tab" aria-selected={filter === value} onClick={() => setFilter(value)} className={`h-8 flex-1 rounded-full text-[13px] font-medium transition ${filter === value ? 'bg-surface text-ink shadow-soft' : 'text-muted hover:text-ink'}`}>
+                <button key={value} type="button" role="tab" aria-selected={filter === value} onClick={() => setFilter(value)} className={`h-8 min-w-0 flex-1 truncate rounded-full px-1 text-xs font-medium transition sm:text-[13px] ${filter === value ? 'bg-surface text-ink shadow-soft' : 'text-muted hover:text-ink'}`}>
                   {value === 'all' ? t('Все') : value === 'unread' ? t('Непрочитанные') : t('Прочитанные')}
                 </button>
               ))}
