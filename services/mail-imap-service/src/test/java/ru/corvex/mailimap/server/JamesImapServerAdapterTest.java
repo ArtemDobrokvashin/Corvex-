@@ -50,7 +50,7 @@ class JamesImapServerAdapterTest {
         assertDoesNotThrow(adapter::start);
         assertFalse(adapter.isRunning(), "CORVEX_IMAP_ENABLED=false не должен открывать слушатели");
         assertDoesNotThrow(() -> adapter.notifyNewMail("ivanov@corp.local", "INBOX"));
-        assertDoesNotThrow(adapter::stop);
+        assertDoesNotThrow(() -> adapter.stop());
         assertFalse(adapter.isRunning());
     }
 
