@@ -5,6 +5,7 @@ import jakarta.mail.Part;
 import jakarta.mail.Session;
 import jakarta.mail.internet.MimeBodyPart;
 import jakarta.mail.internet.MimeMessage;
+import jakarta.mail.internet.MimePart;
 import jakarta.mail.util.SharedByteArrayInputStream;
 import org.apache.james.mailbox.MessageUid;
 import org.apache.james.mailbox.ModSeq;
@@ -285,8 +286,12 @@ final class CorvexMessageResult implements MessageResult {
             if (part instanceof MimeMessage) {
                 return loadRaw();
             }
+            if (!(part instanceof MimePart mimePart)) {
+                throw new MailboxException("MIME-часть не поддерживает чтение исходных строк заголовков письма uid="
+                        + meta.uid());
+            }
             ByteArrayOutputStream out = new ByteArrayOutputStream();
-            java.util.Enumeration<String> lines = part.getAllHeaderLines();
+            java.util.Enumeration<String> lines = mimePart.getAllHeaderLines();
             while (lines.hasMoreElements()) {
                 out.write(lines.nextElement().getBytes(StandardCharsets.ISO_8859_1));
                 out.write('\r');
