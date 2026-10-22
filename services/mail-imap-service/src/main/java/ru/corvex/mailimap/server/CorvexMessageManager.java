@@ -308,7 +308,8 @@ final class CorvexMessageManager implements MessageManager {
     }
 
     @Override
-    public MessageManager.MailboxMetaData getMetaData(RecentMode recentMode, MailboxSession mailboxSession,
+    public MessageManager.MailboxMetaData getMetaData(MessageManager.MailboxMetaData.RecentMode recentMode,
+                                                      MailboxSession mailboxSession,
                                                       EnumSet<MessageManager.MailboxMetaData.Item> items)
             throws MailboxException {
         ImapStorageClient.FolderInfo status = manager.folderStatus(mailboxSession, folderId);
