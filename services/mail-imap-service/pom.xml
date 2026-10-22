@@ -40,7 +40,7 @@
              MailboxManager/MessageManager поверх протокольного API mail-storage-service. -->
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-mail</artifactId></dependency>
         <dependency><groupId>org.apache.james</groupId><artifactId>james-server-protocols-imap4</artifactId><version>${james.version}</version></dependency>
-        <dependency><groupId>org.apache.james</groupId><artifactId>protocols-imap</artifactId><version>${james.version}</version></dependency>
+        <dependency><groupId>org.apache.james.protocols</groupId><artifactId>protocols-imap</artifactId><version>${james.version}</version></dependency>
         <dependency><groupId>org.apache.james</groupId><artifactId>apache-james-mailbox-api</artifactId><version>${james.version}</version></dependency>
         <dependency><groupId>org.apache.james</groupId><artifactId>apache-james-mailbox-store</artifactId><version>${james.version}</version></dependency>
         <dependency><groupId>org.apache.james</groupId><artifactId>james-server-filesystem-api</artifactId><version>${james.version}</version></dependency>
