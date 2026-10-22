@@ -1,5 +1,6 @@
 package ru.corvex.auth.security;
 
+import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
@@ -82,7 +83,7 @@ public class JwtKeyConfig {
     }
 
     @Bean
-    JwtDecoder jwtDecoder(RSAKey rsaKey) {
+    JwtDecoder jwtDecoder(RSAKey rsaKey) throws JOSEException {
         return NimbusJwtDecoder.withPublicKey(rsaKey.toRSAPublicKey()).build();
     }
 
