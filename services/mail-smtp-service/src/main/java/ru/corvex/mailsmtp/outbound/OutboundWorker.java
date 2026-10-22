@@ -129,7 +129,7 @@ public class OutboundWorker {
 
     private void publishToQueue(String queue, Object event, String correlationId) throws IOException {
         CorrelationData correlation = new CorrelationData(correlationId + ":" + queue);
-        rabbit.convertAndSend(queue, mapper.writeValueAsString(event), correlation);
+        rabbit.convertAndSend(queue, (Object) mapper.writeValueAsString(event), correlation);
         awaitConfirm(correlation, correlationId);
     }
 
