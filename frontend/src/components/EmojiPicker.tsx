@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Smile } from 'lucide-react';
 import { useI18n } from '../i18n';
 
@@ -35,6 +35,36 @@ export const EMOJI_OPTIONS: EmojiOption[] = [
   { emoji: '✉️', ru: 'конверт', en: 'envelope' },
 ];
 
+/** Короткий набор быстрых реакций для сообщений чата. */
+export const REACTION_EMOJI_OPTIONS: EmojiOption[] = [
+  '👍', '❤️', '😂', '🎉', '👏', '🙏', '✅', '🔥',
+].flatMap((emoji) => {
+  const option = EMOJI_OPTIONS.find((candidate) => candidate.emoji === emoji);
+  return option ? [option] : [];
+});
+
+function useDismissOnOutsideOrEscape(
+  open: boolean,
+  rootRef: RefObject<HTMLDivElement | null>,
+  close: () => void,
+) {
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) close();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close();
+    };
+    window.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [close, open, rootRef]);
+}
+
 /**
  * Small built-in picker. Emoji are native Unicode text, not images: they copy,
  * search and travel through JSON exactly like any other characters, while the
@@ -59,21 +89,7 @@ export function EmojiPickerButton({
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return undefined;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
-    };
-    window.addEventListener('pointerdown', onPointerDown);
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      window.removeEventListener('pointerdown', onPointerDown);
-      window.removeEventListener('keydown', onKeyDown);
-    };
-  }, [open]);
+  useDismissOnOutsideOrEscape(open, rootRef, () => setOpen(false));
 
   return (
     <div ref={rootRef} className="relative">
@@ -101,6 +117,61 @@ export function EmojiPickerButton({
               className="emoji-text flex h-10 items-center justify-center rounded-xl text-[22px] leading-none transition hover:bg-accent-soft"
               title={locale === 'en' ? option.en : option.ru}
               aria-label={locale === 'en' ? option.en : option.ru}
+              onClick={() => {
+                onPick(option.emoji);
+                setOpen(false);
+              }}
+            >
+              {option.emoji}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Компактный выбор реакции для панели действий над сообщением. */
+export function ReactionPickerButton({
+  onPick,
+  disabled = false,
+}: {
+  onPick: (emoji: string) => void;
+  disabled?: boolean;
+}) {
+  const { locale, t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useDismissOnOutsideOrEscape(open, rootRef, () => setOpen(false));
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        disabled={disabled}
+        className="icon-btn-sm disabled:opacity-40"
+        title={t('Добавить реакцию')}
+        aria-label={t('Добавить реакцию')}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+      >
+        <Smile size={15} strokeWidth={1.8} />
+      </button>
+      {open && (
+        <div
+          role="dialog"
+          aria-label={t('Выбрать реакцию')}
+          className="absolute right-0 top-9 z-50 grid w-[184px] max-w-[calc(100vw-24px)] grid-cols-4 gap-1 rounded-2xl border border-line bg-surface p-2 shadow-pop"
+        >
+          {REACTION_EMOJI_OPTIONS.map((option) => (
+            <button
+              key={option.emoji}
+              type="button"
+              className="emoji-text flex h-10 items-center justify-center rounded-xl text-[21px] leading-none transition hover:bg-accent-soft"
+              title={locale === 'en' ? option.en : option.ru}
+              aria-label={`${t('Реакция')}: ${locale === 'en' ? option.en : option.ru}`}
               onClick={() => {
                 onPick(option.emoji);
                 setOpen(false);

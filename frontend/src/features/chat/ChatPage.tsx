@@ -17,7 +17,8 @@ import {
   Video,
 } from 'lucide-react';
 import { demoMessages, demoRooms, DemoMsg, DemoRoom } from '../../api/demoData';
-import { EmojiPickerButton } from '../../components/EmojiPicker';
+import { EmojiPickerButton, REACTION_EMOJI_OPTIONS, ReactionPickerButton } from '../../components/EmojiPicker';
+import { createInitialDemoReactionState, demoReactionKey, toggleDemoReaction } from './demoReactions';
 import { Avatar, EmptyState, IconButton } from '../../components/ui';
 import { formatTime, useI18n } from '../../i18n';
 import { firstGraphemes, insertTextAtSelection, stripMarkdownPreview } from '../../lib/text';
@@ -50,8 +51,7 @@ function DemoChatPage() {
   const [draft, setDraft] = useState('');
   const [search, setSearch] = useState('');
   const [mobileConversation, setMobileConversation] = useState(false);
-  const [reactions, setReactions] = useState<Record<string, number>>({ c1: 2 });
-  const [reacted, setReacted] = useState<Set<string>>(new Set());
+  const [reactionState, setReactionState] = useState(createInitialDemoReactionState);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -130,18 +130,10 @@ function DemoChatPage() {
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
-  const toggleReaction = (id: string) => {
-    setReacted((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-        setReactions((counts) => ({ ...counts, [id]: Math.max(0, (counts[id] ?? 0) - 1) }));
-      } else {
-        next.add(id);
-        setReactions((counts) => ({ ...counts, [id]: (counts[id] ?? 0) + 1 }));
-      }
-      return next;
-    });
+  const toggleReaction = (id: string, emoji: string) => {
+    // Один чистый updater одного состояния: повторный вызов updater-а React-ом
+    // в StrictMode не может второй раз изменить счётчик побочным эффектом.
+    setReactionState((prev) => toggleDemoReaction(prev, id, emoji));
   };
 
   const insertEmoji = (emoji: string) => {
@@ -241,7 +233,9 @@ function DemoChatPage() {
                 const previous = roomMsgs[index - 1];
                 const sameAuthor = previous && previous.author === m.author && previous.mine === m.mine;
                 const author = m.mine ? (user?.displayName ?? t('Вы')) : m.author;
-                const count = reactions[m.id] ?? 0;
+                const visibleReactions = REACTION_EMOJI_OPTIONS
+                  .map((option) => ({ ...option, count: reactionState.counts[m.id]?.[option.emoji] ?? 0 }))
+                  .filter((reaction) => reaction.count > 0);
                 return (
                   <div key={m.id} className={`group relative flex gap-3 rounded-xl px-2 py-1.5 transition hover:bg-chrome ${sameAuthor ? '' : 'mt-4 first:mt-0'}`}>
                     <div className="w-10 shrink-0">
@@ -257,14 +251,29 @@ function DemoChatPage() {
                         </div>
                       )}
                       <div className="message-markdown mt-0.5 text-[14.5px] leading-relaxed text-ink-soft [&_p]:m-0" dangerouslySetInnerHTML={renderChatMarkdown(m.text)} />
-                      {count > 0 && (
-                        <button type="button" onClick={() => toggleReaction(m.id)} className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium transition ${reacted.has(m.id) ? 'border-accent/25 bg-accent-soft text-accent-dark' : 'border-line bg-surface text-muted hover:border-accent/25'}`}>
-                          <span className="emoji-text text-[13px] leading-none" role="img" aria-label={t('Реакция: большой палец вверх')}>👍</span> {count}
-                        </button>
+                      {visibleReactions.length > 0 && (
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {visibleReactions.map((reaction) => {
+                            const reacted = reactionState.reactedKeys.has(demoReactionKey(m.id, reaction.emoji));
+                            const reactionName = locale === 'en' ? reaction.en : reaction.ru;
+                            return (
+                              <button
+                                key={reaction.emoji}
+                                type="button"
+                                onClick={() => toggleReaction(m.id, reaction.emoji)}
+                                className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium transition ${reacted ? 'border-accent/25 bg-accent-soft text-accent-dark' : 'border-line bg-surface text-muted hover:border-accent/25'}`}
+                                title={reactionName}
+                                aria-label={`${t('Реакция')}: ${reactionName}: ${reaction.count}`}
+                              >
+                                <span className="emoji-text text-[13px] leading-none">{reaction.emoji}</span> {reaction.count}
+                              </button>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
                     <div className="absolute -top-3 right-3 hidden items-center rounded-lg border border-line bg-surface p-0.5 shadow-soft group-hover:flex">
-                      <button type="button" onClick={() => toggleReaction(m.id)} className="icon-btn-sm emoji-text text-[15px]" title={t('Нравится')} aria-label={t('Нравится')}>👍</button>
+                      <ReactionPickerButton onPick={(emoji) => toggleReaction(m.id, emoji)} />
                       <button type="button" onClick={() => replyTo(m)} className="icon-btn-sm" title={t('Ответить')} aria-label={t('Ответить')}><Reply size={15} /></button>
                       <button type="button" className="icon-btn-sm" title={t('Ещё')} aria-label={t('Ещё действия с сообщением')}><MoreHorizontal size={15} /></button>
                     </div>

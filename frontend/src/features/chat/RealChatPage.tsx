@@ -37,7 +37,7 @@ import {
 } from '../../api/chatApi';
 import { connectChat, newClientMessageId, sendChatMessage, sendRead, sendTyping } from '../../api/chatSocket';
 import { ApiError, getAccessToken } from '../../api/httpClient';
-import { EmojiPickerButton } from '../../components/EmojiPicker';
+import { EmojiPickerButton, ReactionPickerButton } from '../../components/EmojiPicker';
 import { Avatar, EmptyState, IconButton, LoadingScreen, Notice } from '../../components/ui';
 import {
   countLabel,
@@ -1845,16 +1845,10 @@ export default function RealChatPage() {
 
                           {!message.deleted && !isEditing && (
                             <div className={`absolute -top-3 right-3 z-20 flex items-center rounded-lg border border-line bg-surface p-0.5 shadow-soft transition ${menuOpen ? 'opacity-100' : 'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100'}`}>
-                              <button
-                                type="button"
-                                onClick={() => void toggleReaction(message)}
+                              <ReactionPickerButton
+                                onPick={(emoji) => void toggleReaction(message, emoji)}
                                 disabled={Boolean(message.localStatus)}
-                                className="icon-btn-sm emoji-text text-[15px] disabled:opacity-40"
-                                title={t('Нравится')}
-                                aria-label={t('Нравится')}
-                              >
-                                👍
-                              </button>
+                              />
                               <button
                                 type="button"
                                 onClick={() => replyTo(message)}
