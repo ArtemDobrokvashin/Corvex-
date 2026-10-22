@@ -1,6 +1,6 @@
 package ru.corvex.auth.security;
 
-import com.Nimbusds.jose.jwk.JWKSet;
+import com.nimbusds.jose.jwk.JWKSet;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
