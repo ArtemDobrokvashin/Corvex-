@@ -20,7 +20,7 @@
         <!-- Spring Boot не управляет версией BouncyCastle — фиксируем явно (нужен Argon2PasswordEncoder) -->
         <bouncycastle.version>1.86</bouncycastle.version>
         <!-- Spring Boot с 2.6 не управляет Nimbus JOSE; 9.37.4 — линия Spring Security 6.5 с фиксом CVE-2025-53864 -->
-        <Nimbus-jose-jwt.version>9.37.4</Nimbus-jose-jwt.version>
+        <nimbus-jose-jwt.version>9.37.4</nimbus-jose-jwt.version>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -48,7 +48,7 @@
         <dependency><groupId>org.bouncycastle</groupId><artifactId>bcprov-jdk18on</artifactId><version>${bouncycastle.version}</version></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-oauth2-resource-server</artifactId></dependency>
         <!-- Nimbus JOSE используется напрямую (JWKSet/RSAKey для публикации JWKS): oauth2-jose приносит его только в runtime -->
-        <dependency><groupId>com.Nimbusds</groupId><artifactId>Nimbus-jose-jwt</artifactId><version>${Nimbus-jose-jwt.version}</version></dependency>
+        <dependency><groupId>com.nimbusds</groupId><artifactId>nimbus-jose-jwt</artifactId><version>${nimbus-jose-jwt.version}</version></dependency>
         <dependency><groupId>org.springframework.ldap</groupId><artifactId>spring-ldap-core</artifactId></dependency>
         <dependency><groupId>org.springframework.security</groupId><artifactId>spring-security-ldap</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-redis</artifactId></dependency>
