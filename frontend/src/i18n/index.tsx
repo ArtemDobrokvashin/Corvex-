@@ -452,6 +452,8 @@ const EN: Record<string, string> = {
   'Отправляется…': 'Sending…',
   'Не отправлено': 'Not sent',
   'Реакция': 'Reaction',
+  'Добавить реакцию': 'Add reaction',
+  'Выбрать реакцию': 'Choose a reaction',
   'Открепить': 'Unpin',
   'Закрепить': 'Pin',
   'Изменить': 'Edit',
