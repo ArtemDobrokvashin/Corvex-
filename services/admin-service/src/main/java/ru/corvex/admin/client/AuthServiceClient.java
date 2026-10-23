@@ -7,7 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -17,6 +17,7 @@ import org.springframework.context.i18n.LocaleContextHolder;
 import ru.corvex.admin.api.ApiException;
 import ru.corvex.admin.security.InternalApiTokenFilter;
 
+import java.net.http.HttpClient;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -58,9 +59,14 @@ public class AuthServiceClient {
 
     public AuthServiceClient(@Value("${corvex.auth-service-url:http://auth-service:8081}") String baseUrl,
                              @Value("${corvex.internal.api-token:}") String internalApiToken) {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout((int) Duration.ofSeconds(3).toMillis());
-        factory.setReadTimeout((int) Duration.ofSeconds(10).toMillis());
+        // Не SimpleClientHttpRequestFactory: её HttpURLConnection не поддерживает PATCH,
+        // а patchUser ниже нужен для изменения статуса/квоты пользователя из админки.
+        HttpClient httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(3))
+                .build();
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
+        factory.setReadTimeout(Duration.ofSeconds(10));
         this.client = RestClient.builder().baseUrl(baseUrl).requestFactory(factory)
                 .defaultHeader(InternalApiTokenFilter.HEADER, internalApiToken == null ? "" : internalApiToken)
                 .requestInterceptor((request, body, execution) -> {
