@@ -78,7 +78,7 @@ class CorvexPop3MailboxPaginationTest {
     }
 
     @Test
-    void malformedRemoveUidDoesNotCallStorage() {
+    void malformedRemoveUidDoesNotCallStorage() throws Exception {
         ProtocolStorageClient storage = mock(ProtocolStorageClient.class);
         CorvexPop3Mailbox mailbox = new CorvexPop3Mailbox(storage, userId, inboxId, 10);
 
