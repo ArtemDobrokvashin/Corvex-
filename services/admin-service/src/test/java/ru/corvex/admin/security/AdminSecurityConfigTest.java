@@ -54,10 +54,11 @@ class AdminSecurityConfigTest {
         english.addHeader("Accept-Language", "en-US,en;q=0.9");
         MockHttpServletRequest unsupported = new MockHttpServletRequest();
         unsupported.addHeader("Accept-Language", "de-DE");
+        MockHttpServletRequest missingHeader = new MockHttpServletRequest();
 
-        assertEquals(Locale.forLanguageTag("ru"), resolver.getDefaultLocale());
         assertEquals(List.of(Locale.forLanguageTag("ru"), Locale.ENGLISH),
                 resolver.getSupportedLocales());
+        assertEquals(Locale.forLanguageTag("ru"), resolver.resolveLocale(missingHeader));
         assertEquals(Locale.ENGLISH, resolver.resolveLocale(english));
         assertEquals(Locale.forLanguageTag("ru"), resolver.resolveLocale(unsupported));
     }
