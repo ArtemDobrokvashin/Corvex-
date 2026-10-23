@@ -7,6 +7,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.server.MockServerWebExchange;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
@@ -69,7 +70,7 @@ class GatewaySecurityConfigTest {
         verify(decoder).decode("valid-token");
     }
 
-    private HttpStatus execute(HttpMethod method, String path, String bearerToken) {
+    private HttpStatusCode execute(HttpMethod method, String path, String bearerToken) {
         MockServerHttpRequest.BaseBuilder<?> requestBuilder = method == HttpMethod.POST
                 ? MockServerHttpRequest.post(path)
                 : MockServerHttpRequest.get(path);
