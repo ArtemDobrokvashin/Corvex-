@@ -142,7 +142,7 @@ class AuthControllersTest {
         Jwt token = Jwt.withTokenValue("token")
                 .header("alg", "none")
                 .subject(USER_ID.toString())
-                .id("jti-1")
+                .jti("jti-1")
                 .expiresAt(expires)
                 .build();
 
