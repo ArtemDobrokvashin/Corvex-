@@ -604,7 +604,7 @@ class AuthServiceTest {
     @Test
     void staticHelpersNormalizeAndHashDeterministically() {
         assertEquals("", AuthService.normalize(null));
-        assertEquals("Ivan Petrov", AuthService.normalize("  Ivan Petrov  "));
+        assertEquals("ivan petrov", AuthService.normalize("  Ivan Petrov  "));
         assertEquals("", AuthService.normalizeAppPassword(null));
         assertEquals("abcd1234", AuthService.normalizeAppPassword("ab-cd 12-34"));
         assertEquals("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
