@@ -1,9 +1,24 @@
 package ru.corvex.chat;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Smoke-тест контекста вынесен в IT (Testcontainers); здесь — быстрый unit-слой. */
+/** Быстрая проверка точки входа без старта контекста и внешних зависимостей. */
 class ChatApplicationTest {
-    @Test void artifactIsNamed() { assertTrue("chat-service".length() > 0); }
+
+    @Test
+    void applicationClassDeclaresSpringBootEntryPoint() throws Exception {
+        assertNotNull(new ChatApplication());
+        assertNotNull(ChatApplication.class.getAnnotation(SpringBootApplication.class));
+
+        Method main = ChatApplication.class.getMethod("main", String[].class);
+        assertTrue(Modifier.isPublic(main.getModifiers()));
+        assertTrue(Modifier.isStatic(main.getModifiers()));
+    }
 }
