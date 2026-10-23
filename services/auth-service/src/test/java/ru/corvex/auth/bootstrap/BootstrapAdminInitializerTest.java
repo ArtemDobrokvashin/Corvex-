@@ -36,7 +36,7 @@ class BootstrapAdminInitializerTest {
 
         initializer("admin", "Password123", "admin@example.test").run(null);
 
-        verify/users, never()).save(org.mockito.ArgumentMatchers.any());
+        verify(users, never()).save(org.mockito.ArgumentMatchers.any());
         verify(passwordEncoder, never()).encode(anyString());
     }
 
