@@ -2,6 +2,7 @@ package ru.corvex.auth.security;
 
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
@@ -41,8 +42,42 @@ class InternalApiTokenFilterTest {
         assertTrue(acceptedCalled.get());
     }
 
+    @Test
+    void filtersOnlyExactInternalPrefixAndPassesPublicPaths() throws Exception {
+        var filter = new InternalApiTokenFilter(null);
+
+        assertFalse(filter.shouldNotFilter(request("/internal", null)));
+        assertFalse(filter.shouldNotFilter(request("/internal/users", null)));
+        assertTrue(filter.shouldNotFilter(request("/internal-other", null)));
+        assertTrue(filter.shouldNotFilter(request("/api/v1/auth/me", null)));
+
+        var response = new MockHttpServletResponse();
+        AtomicBoolean called = new AtomicBoolean();
+        filter.doFilter(request("/api/v1/auth/me", null), response, chain(called));
+        assertTrue(called.get());
+        assertEquals(200, response.getStatus());
+    }
+
+    @Test
+    void missingTokenReturnsProblemDetails() throws Exception {
+        var filter = new InternalApiTokenFilter(" expected-secret ");
+        var response = new MockHttpServletResponse();
+        AtomicBoolean called = new AtomicBoolean();
+
+        filter.doFilter(request(null), response, chain(called));
+
+        assertFalse(called.get());
+        assertEquals(401, response.getStatus());
+        assertTrue(response.getContentType().startsWith(MediaType.APPLICATION_PROBLEM_JSON_VALUE));
+        assertTrue(response.getContentAsString().contains("Invalid internal API token"));
+    }
+
     private static MockHttpServletRequest request(String token) {
-        var request = new MockHttpServletRequest("GET", "/internal/users");
+        return request("/internal/users", token);
+    }
+
+    private static MockHttpServletRequest request(String uri, String token) {
+        var request = new MockHttpServletRequest("GET", uri);
         if (token != null) {
             request.addHeader(InternalApiTokenFilter.HEADER, token);
         }
