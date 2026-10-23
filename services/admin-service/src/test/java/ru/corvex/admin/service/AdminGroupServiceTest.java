@@ -323,17 +323,10 @@ class AdminGroupServiceTest {
     private void simulateMemberCounts(Map<UUID, Long> counts) {
         doAnswer(invocation -> {
             RowCallbackHandler handler = invocation.getArgument(1);
-            ResultSet rs = mock(ResultSet.class);
-            List<UUID> ids = List.copyOf(counts.keySet());
-            if (!ids.isEmpty()) {
-                var idStub = when(rs.getString("group_id")).thenReturn(ids.get(0).toString());
-                var countStub = when(rs.getLong("c")).thenReturn(counts.get(ids.get(0)));
-                for (int i = 1; i < ids.size(); i++) {
-                    idStub = idStub.thenReturn(ids.get(i).toString());
-                    countStub = countStub.thenReturn(counts.get(ids.get(i)));
-                }
-            }
-            for (int i = 0; i < ids.size(); i++) {
+            for (Map.Entry<UUID, Long> count : counts.entrySet()) {
+                ResultSet rs = mock(ResultSet.class);
+                when(rs.getString("group_id")).thenReturn(count.getKey().toString());
+                when(rs.getLong("c")).thenReturn(count.getValue());
                 handler.processRow(rs);
             }
             return null;
@@ -343,16 +336,10 @@ class AdminGroupServiceTest {
     private void simulateMembershipRows(List<MembershipRow> rows) {
         doAnswer(invocation -> {
             RowCallbackHandler handler = invocation.getArgument(1);
-            ResultSet rs = mock(ResultSet.class);
-            if (!rows.isEmpty()) {
-                var userStub = when(rs.getString("user_id")).thenReturn(rows.get(0).userId().toString());
-                var codeStub = when(rs.getString("code")).thenReturn(rows.get(0).code());
-                for (int i = 1; i < rows.size(); i++) {
-                    userStub = userStub.thenReturn(rows.get(i).userId().toString());
-                    codeStub = codeStub.thenReturn(rows.get(i).code());
-                }
-            }
-            for (int i = 0; i < rows.size(); i++) {
+            for (MembershipRow row : rows) {
+                ResultSet rs = mock(ResultSet.class);
+                when(rs.getString("user_id")).thenReturn(row.userId().toString());
+                when(rs.getString("code")).thenReturn(row.code());
                 handler.processRow(rs);
             }
             return null;
