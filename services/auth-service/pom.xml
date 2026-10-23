@@ -20,7 +20,7 @@
         <!-- Spring Boot не управляет версией BouncyCastle — фиксируем явно (нужен Argon2PasswordEncoder) -->
         <bouncycastle.version>1.86</bouncycastle.version>
         <!-- Spring Boot с 2.6 не управляет Nimbus JOSE; 9.37.4 — линия Spring Security 6.5 с фиксом CVE-2025-53864 -->
-        <nimbus-jose-jwt.version>9.37.4</nimbus-jose-jwt.version>
+        <nimbus-jose-jwt.version>9.48</nimbus-jose-jwt.version>
     </properties>
     <dependencyManagement>
         <dependencies>
