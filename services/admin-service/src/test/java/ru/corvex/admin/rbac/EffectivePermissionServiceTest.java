@@ -32,4 +32,26 @@ class EffectivePermissionServiceTest {
         assertTrue(EffectivePermissionService.defaultPermissionsOf("USER").stream()
                 .noneMatch(p -> p.name().startsWith("ADMIN_")));
     }
+
+    @Test
+    void adminAndDirectorDefaultsHonorTheirDifferentScopes() {
+        Set<Permission> admin = EffectivePermissionService.defaultPermissionsOf("ADMIN");
+        Set<Permission> director = EffectivePermissionService.defaultPermissionsOf("DIRECTOR");
+
+        assertTrue(admin.contains(Permission.ADMIN_USERS_MANAGE));
+        assertTrue(admin.contains(Permission.AUDIT_VIEW));
+        assertTrue(director.contains(Permission.ANALYTICS_VIEW_COMPANY));
+        assertTrue(director.contains(Permission.MAIL_DELEGATE_ACCESS));
+        assertTrue(director.stream().noneMatch(p -> p.name().startsWith("ADMIN_")));
+        assertEquals(Set.of(), EffectivePermissionService.defaultPermissionsOf("CUSTOM"));
+    }
+
+    @Test
+    void effectivePermissionsReturnsIndependentEmptySetForNoGroups() {
+        Set<Permission> result = service.effectivePermissions(List.of());
+
+        assertEquals(Set.of(), result);
+        result.add(Permission.MAIL_READ_OWN);
+        assertEquals(Set.of(), service.effectivePermissions(List.of()));
+    }
 }
