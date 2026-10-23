@@ -50,7 +50,7 @@ class MxResolverTest {
         answerWith(owner -> List.of(
                 mx(owner, 30, "mx30.example.net."),
                 mx(owner, 10, "mx10.example.net."),
-                mx(owner, 20, "mx20.example.net")));
+                mx(owner, 20, "mx20.example.net.")));
 
         assertEquals(
                 List.of("mx10.example.net", "mx20.example.net", "mx30.example.net"),

@@ -342,7 +342,8 @@ class ExternalSmtpClientTest {
         when(root.list("*")).thenReturn(new Folder[]{inbox, russianSent});
         assertSame(russianSent, findSent(client, store, " "));
 
-        when(root.list("*")).thenReturn(new Folder[]{inbox, folder("Trash")});
+        Folder trash = folder("Trash");
+        when(root.list("*")).thenReturn(new Folder[]{inbox, trash});
         assertNull(findSent(client, store, null));
     }
 
