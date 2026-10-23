@@ -266,7 +266,9 @@ class AuthControllersTest {
     }
 
     private Jwt jwt(String subject) {
-        Jwt.Builder builder = Jwt.withTokenValue("token").header("alg", "none");
+        Jwt.Builder builder = Jwt.withTokenValue("token")
+                .header("alg", "none")
+                .claim("purpose", "test");
         if (subject != null) {
             builder.subject(subject);
         }
