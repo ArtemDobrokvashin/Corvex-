@@ -134,7 +134,7 @@ class JamesSupportTest {
         Files.writeString(file, "CERTIFICATE", StandardCharsets.UTF_8);
 
         LocalFileSystem fileSystem = LocalFileSystem.INSTANCE;
-        assertTrue(fileSystem.getBasedir().isAbsolute());
+        assertEquals(Path.of("/").toFile().getCanonicalFile(), fileSystem.getBasedir().getCanonicalFile());
         assertEquals(file.toFile().getCanonicalFile(), fileSystem.getFile(file.toString()).getCanonicalFile());
         assertEquals(file.toFile().getCanonicalFile(),
                 fileSystem.getFile(LocalFileSystem.FILE_PROTOCOL + file).getCanonicalFile());

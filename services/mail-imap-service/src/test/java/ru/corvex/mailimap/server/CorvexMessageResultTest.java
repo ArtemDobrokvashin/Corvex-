@@ -149,10 +149,13 @@ class CorvexMessageResultTest {
         MimeDescriptor descriptor = result.getMimeDescriptor();
         assertEquals("multipart", descriptor.getMimeType());
         assertEquals("mixed", descriptor.getMimeSubType());
-        assertNotEquals(0, descriptor.getBodyOctets());
+        assertEquals(0, descriptor.getBodyOctets(),
+                "James composite descriptor не агрегирует body octets вложенных частей");
         List<MimeDescriptor> parts = toList(descriptor.parts());
         assertEquals(2, parts.size());
         assertEquals("text", parts.get(0).getMimeType());
+        assertTrue(parts.get(0).getBodyOctets() > 0);
+        assertTrue(parts.get(1).getBodyOctets() > 0);
 
         List<Header> rootHeaders = toList(result.iterateHeaders(null));
         assertTrue(rootHeaders.stream().anyMatch(h -> h.getName().equals("X-Corvex")
