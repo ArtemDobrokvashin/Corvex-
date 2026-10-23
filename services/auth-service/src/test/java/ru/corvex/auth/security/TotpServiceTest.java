@@ -4,7 +4,10 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Векторы RFC 6238 (секрет ASCII "12345678901234567890", SHA-1), урезанные до 6 цифр. */
@@ -33,5 +36,23 @@ class TotpServiceTest {
         String secret = TotpService.generateSecret();
         String code = TotpService.hotp(TotpService.decodeBase32(secret), 1000L);
         assertTrue(TotpService.verify(secret, code, Instant.ofEpochSecond(1000L * 30)));
+        assertEquals(32, secret.length());
+        assertTrue(secret.matches("[A-Z2-7]{32}"));
+    }
+
+    @Test
+    void rejectsMalformedCodesAndInvalidBase32Secrets() {
+        assertFalse(TotpService.verify(RFC_SECRET_BASE32, null, Instant.ofEpochSecond(59)));
+        assertFalse(TotpService.verify(RFC_SECRET_BASE32, "28708", Instant.ofEpochSecond(59)));
+        assertFalse(TotpService.verify(RFC_SECRET_BASE32, "2870820", Instant.ofEpochSecond(59)));
+        assertThrows(IllegalArgumentException.class,
+                () -> TotpService.verify("INVALID*SECRET", "287082", Instant.ofEpochSecond(59)));
+        assertThrows(IllegalArgumentException.class, () -> TotpService.decodeBase32("AB*"));
+    }
+
+    @Test
+    void decodeBase32IgnoresPaddingAndCase() {
+        assertArrayEquals(TotpService.decodeBase32(RFC_SECRET_BASE32),
+                TotpService.decodeBase32(RFC_SECRET_BASE32.toLowerCase() + "===="));
     }
 }
