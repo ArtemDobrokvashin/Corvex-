@@ -109,7 +109,7 @@ class JamesImapServerAdapterTest {
         IllegalStateException error = assertThrows(IllegalStateException.class, adapter::start);
         assertTrue(error.getMessage().contains("не стартует ни один слушатель"));
         assertFalse(adapter.isRunning());
-        assertDoesNotThrow(adapter::stop);
+        assertDoesNotThrow(() -> adapter.stop());
     }
 
     @Test
@@ -127,7 +127,7 @@ class JamesImapServerAdapterTest {
             adapter.stop();
         }
         assertFalse(adapter.isRunning());
-        assertDoesNotThrow(adapter::stop);
+        assertDoesNotThrow(() -> adapter.stop());
     }
 
     @Test
@@ -140,7 +140,7 @@ class JamesImapServerAdapterTest {
         IllegalStateException error = assertThrows(IllegalStateException.class, adapter::start);
         assertTrue(error.getMessage().contains("Не удалось стартовать Apache James IMAP"));
         assertFalse(adapter.isRunning());
-        assertDoesNotThrow(adapter::stop);
+        assertDoesNotThrow(() -> adapter.stop());
     }
 
     @Test
