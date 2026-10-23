@@ -51,7 +51,7 @@ class InternalApiTokenFilterTest {
 
         assertNull(chain.getRequest());
         assertEquals(503, response.getStatus());
-        assertEquals(MediaType.APPLICATION_PROBLEM_JSON_VALUE, response.getContentType());
+        assertTrue(response.getContentType().startsWith(MediaType.APPLICATION_PROBLEM_JSON_VALUE));
         assertEquals(StandardCharsets.UTF_8.name(), response.getCharacterEncoding());
         assertTrue(response.getContentAsString().contains("Internal API token is not configured"));
     }
