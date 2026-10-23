@@ -100,7 +100,7 @@ class PresenceServiceTest {
                 () -> service.setStatus(USER_ID, "offline")).getStatusCode());
 
         when(setOperations.size(sessionsKey(USER_ID))).thenReturn(1L);
-        when(valueOperations.get(manualKey(USER_ID))).thenReturn("AWAY", null);
+        when(valueOperations.get(manualKey(USER_ID))).thenReturn("AWAY", (String) null);
 
         assertEquals(PresenceService.Status.AWAY, service.setStatus(USER_ID, " away "));
         verify(valueOperations).set(manualKey(USER_ID), "AWAY", Duration.ofHours(12));

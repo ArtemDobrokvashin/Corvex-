@@ -117,18 +117,18 @@ class ChatEventPublisherTest {
 
         publisher.publishMessageCreated(message(), AUTHOR_ID);
 
-        verify(broker, never()).convertAndSend(anyString(), any());
+        verify(broker, never()).convertAndSend(anyString(), any(Object.class));
         List<TransactionSynchronization> synchronizations =
                 TransactionSynchronizationManager.getSynchronizations();
         assertEquals(1, synchronizations.size());
         synchronizations.get(0).afterCommit();
-        verify(broker).convertAndSend(eq("/topic/rooms/" + ROOM_ID), any());
+        verify(broker).convertAndSend(eq("/topic/rooms/" + ROOM_ID), any(Object.class));
     }
 
     @Test
     void brokerFailuresDoNotEscape() {
         doThrow(new IllegalStateException("broker down"))
-                .when(broker).convertAndSend(anyString(), any());
+                .when(broker).convertAndSend(anyString(), any(Object.class));
         ChatEventPublisher publisher = new ChatEventPublisher(broker);
 
         assertDoesNotThrow(() -> publisher.publishMessageCreated(message(), AUTHOR_ID));
