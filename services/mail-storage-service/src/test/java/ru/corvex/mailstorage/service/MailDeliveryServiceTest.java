@@ -112,7 +112,7 @@ class MailDeliveryServiceTest {
                 From: Sender <sender@partner.test>\r
                 To: user@company.local\r
                 Cc: copy@company.local\r
-                Subject: Договор\r
+                Subject: =?UTF-8?B?0JTQvtCz0L7QstC+0YA=?=\r
                 Message-ID: <delivery@x>\r
                 MIME-Version: 1.0\r
                 Content-Type: multipart/mixed; boundary="b"\r
