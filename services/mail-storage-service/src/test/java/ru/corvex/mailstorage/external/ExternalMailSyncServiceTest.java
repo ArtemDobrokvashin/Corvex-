@@ -57,6 +57,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -333,7 +334,7 @@ class ExternalMailSyncServiceTest {
         when(accounts.findDue(any(), any())).thenThrow(new IllegalStateException("db down"));
         service.pollDue();
 
-        when(accounts.findDue(any(), any())).thenReturn(List.of(account));
+        doReturn(List.of(account)).when(accounts).findDue(any(), any());
         claimResult.set(0);
         service.pollDue();
         // Один вызов JDBC на безуспешный claim: pollDue действительно дошёл до startSync.

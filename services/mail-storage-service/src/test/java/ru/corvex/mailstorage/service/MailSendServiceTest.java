@@ -190,13 +190,13 @@ class MailSendServiceTest {
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, assertThrows(ResponseStatusException.class,
                 () -> service.send(senderId, ALL, req)).getStatusCode());
 
-        when(factory.compose(anyString(), anyString(), anyString(), any(), any(), any()))
-                .thenThrow(new IllegalArgumentException("bad base64"));
+        doThrow(new IllegalArgumentException("bad base64"))
+                .when(factory).compose(anyString(), anyString(), anyString(), any(), any(), any());
         assertEquals(HttpStatus.BAD_REQUEST, assertThrows(ResponseStatusException.class,
                 () -> service.send(senderId, ALL, req)).getStatusCode());
 
-        when(factory.compose(anyString(), anyString(), anyString(), any(), any(), any()))
-                .thenThrow(new MessagingException("mime"));
+        doThrow(new MessagingException("mime"))
+                .when(factory).compose(anyString(), anyString(), anyString(), any(), any(), any());
         assertThrows(IllegalStateException.class, () -> service.send(senderId, ALL, req));
     }
 
