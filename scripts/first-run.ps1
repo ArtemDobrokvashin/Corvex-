@@ -41,7 +41,7 @@ if (-not (Test-Path infra\certs\fullchain.pem)) {
 
 # --- 3. .env with distinct random secrets (previous version replaced every placeholder with one value - fixed) ---
 if (-not (Test-Path .env)) {
-  $lines = Get-Content .env.example | ForEach-Object {
+  $lines = Get-Content .env.example -Encoding UTF8 | ForEach-Object {
     if ($_ -match '^(.*)=change-me-strong-password$') { "$($Matches[1])=$(New-RandomSecret)" }
     elseif ($_ -match '^CORVEX_TOTP_ENC_KEY=') {
       $keyBytes = New-Object byte[] 32
@@ -61,7 +61,7 @@ if (-not (Test-Path .env)) {
   Write-Warning ".env already exists - secrets NOT regenerated. If it still contains 'change-me-strong-password', delete .env and re-run this script (BEFORE first docker compose up; changing DB passwords later requires changing them inside PostgreSQL too)."
   # Upgrade path: installs created before the internal-API token was introduced
   # receive only this new secret; every existing value remains untouched.
-  $existingEnv = Get-Content .env -Raw
+  $existingEnv = Get-Content .env -Raw -Encoding UTF8
   if ($existingEnv -notmatch '(?m)^CORVEX_INTERNAL_API_TOKEN=') {
     Add-Content .env "`nCORVEX_INTERNAL_API_TOKEN=$(New-RandomSecret 48)" -Encoding UTF8
     Write-Host "[OK] Added missing CORVEX_INTERNAL_API_TOKEN to existing .env."
