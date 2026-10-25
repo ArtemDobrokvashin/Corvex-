@@ -103,7 +103,9 @@ services:
 
   # ------------------------- Почтовые фильтры (готовые движки) -------------
   spamd:
-    image: apache/spamassassin:4.0.2
+    # Официального Apache Docker-образа нет: pinned community-образ на Debian 13
+    # (spamd на 783, Pyzor/Razor/DKIM/SPF, sa-update при старте и ежедневно).
+    image: grepular/spamassassin:4.0.1-5
     restart: unless-stopped
     volumes: [spamd-data:/var/lib/spamassassin]
     networks: [app]
