@@ -2,10 +2,11 @@
 # --- build stage ---
 FROM maven:3.9-eclipse-temurin-17 AS build
 WORKDIR /src
+COPY maven-settings.xml /root/.m2/settings.xml
 COPY pom.xml .
-RUN mvn -q -B dependency:go-offline
+RUN --mount=type=cache,id=corvex-maven-repository,target=/root/.m2/repository,sharing=locked mvn -q -B dependency:go-offline
 COPY src ./src
-RUN mvn -q -B package -DskipTests
+RUN --mount=type=cache,id=corvex-maven-repository,target=/root/.m2/repository,sharing=locked mvn -q -B package -DskipTests
 
 # --- runtime stage (non-root, минимальный JRE-образ) ---
 FROM eclipse-temurin:17-jre-alpine

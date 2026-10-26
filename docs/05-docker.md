@@ -15,8 +15,11 @@
 
 ## 5.2. Dockerfile микросервиса (одинаковый паттерн у всех 12)
 
-- стадия build: `maven:3.9-eclipse-temurin-17`, `dependency:go-offline` отдельным слоем
-  (кэш зависимостей переживает изменения кода);
+- стадия build: `maven:3.9-eclipse-temurin-17`, `dependency:go-offline` отдельным слоем;
+  `maven-settings.xml` в каждом сервисе сначала опрашивает Google-зеркала Maven Central,
+  а Central из Super POM остаётся fallback на случай CDN `403/429`. Общий BuildKit
+  cache-mount `/root/.m2/repository` сохраняет скачанные POM/JAR между сервисами и
+  пересборками, поэтому изменения только в `src/` не требуют повторной загрузки мира;
 - стадия runtime: `eclipse-temurin:17-jre-alpine`, пользователь `corvex` (non-root,
   фиксированный `UID:GID = 100:101`; `first-run.ps1` под этот аккаунт нормализует права
   на сгенерированные ключи), поэтому почтовые порты внутри контейнера непривилегированные

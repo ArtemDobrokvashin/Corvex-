@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Docker build only: try Google's Maven Central mirrors before Central itself.
+  Repositories from effective Maven settings are queried before the Super POM
+  Central repository, so a transient Central CDN 403/429 does not block image
+  builds. Central remains available as a fallback through the Super POM.
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.2.0 https://maven.apache.org/xsd/settings-1.2.0.xsd">
+  <profiles>
+    <profile>
+      <id>google-maven-central-mirrors</id>
+      <activation>
+        <activeByDefault>true</activeByDefault>
+      </activation>
+      <repositories>
+        <repository>
+          <id>google-maven-central-eu</id>
+          <name>Google Maven Central mirror (EU)</name>
+          <url>https://maven-central-eu.storage-download.googleapis.com/maven2/</url>
+          <releases><enabled>true</enabled></releases>
+          <snapshots><enabled>false</enabled></snapshots>
+        </repository>
+        <repository>
+          <id>google-maven-central</id>
+          <name>Google Maven Central mirror</name>
+          <url>https://maven-central.storage-download.googleapis.com/maven2/</url>
+          <releases><enabled>true</enabled></releases>
+          <snapshots><enabled>false</enabled></snapshots>
+        </repository>
+      </repositories>
+      <pluginRepositories>
+        <pluginRepository>
+          <id>google-maven-central-eu</id>
+          <name>Google Maven Central mirror (EU)</name>
+          <url>https://maven-central-eu.storage-download.googleapis.com/maven2/</url>
+          <releases><enabled>true</enabled></releases>
+          <snapshots><enabled>false</enabled></snapshots>
+        </pluginRepository>
+        <pluginRepository>
+          <id>google-maven-central</id>
+          <name>Google Maven Central mirror</name>
+          <url>https://maven-central.storage-download.googleapis.com/maven2/</url>
+          <releases><enabled>true</enabled></releases>
+          <snapshots><enabled>false</enabled></snapshots>
+        </pluginRepository>
+      </pluginRepositories>
+    </profile>
+  </profiles>
+</settings>
