@@ -9,7 +9,7 @@ RUN mvn -q -B package -DskipTests
 
 # --- runtime stage (non-root, минимальный JRE-образ) ---
 FROM eclipse-temurin:17-jre-alpine
-RUN addgroup -S corvex && adduser -S corvex -G corvex
+RUN addgroup -S -g 101 corvex && adduser -S -u 100 -G corvex corvex
 WORKDIR /app
 COPY --from=build /src/target/*.jar app.jar
 # Каталог данных должен существовать в образе и принадлежать corvex:
