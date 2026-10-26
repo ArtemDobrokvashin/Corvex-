@@ -37,7 +37,7 @@ import java.util.regex.Pattern;
 public class StompAuthChannelInterceptor implements ChannelInterceptor {
 
     private static final Pattern ROOM_TOPIC = Pattern.compile(
-            "^/topic/rooms/([0-9a-fA-F-]{36})(?:/typing)?$");
+            "^/topic/rooms\\.([0-9a-fA-F-]{36})(?:\\.typing)?$");
     private static final Pattern ROOM_SEND = Pattern.compile(
             "^/app/rooms/([0-9a-fA-F-]{36})/(send|typing|read)$");
 

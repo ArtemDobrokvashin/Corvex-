@@ -11,7 +11,7 @@ info:
     already-authorized operations; its contract is documented in docs/03-api-contracts.md.
 
     STOMP summary: CONNECT /ws/chat with `Authorization: Bearer <JWT>`; subscribe to
-    /topic/rooms/{roomId}, /user/queue/notifications and /user/queue/errors; send to
+    /topic/rooms.{roomId}, /user/queue/notifications and /user/queue/errors; send to
     /app/rooms/{roomId}/send, /app/rooms/{roomId}/read and /app/rooms/{roomId}/typing.
     Event types: MESSAGE_CREATED, MESSAGE_UPDATED, MESSAGE_DELETED, MESSAGE_READ,
     TYPING and MENTION.

@@ -555,7 +555,7 @@ class ChatServiceTest {
                 ROOM_ID, USER_ID, "two", Instant.parse("2026-10-20T09:01:00Z"));
         ChatMessage third = message(UUID.fromString("11111111-1111-4111-8111-000000000003"),
                 ROOM_ID, USER_ID, "three", Instant.parse("2026-10-20T09:02:00Z"));
-        when(messages.findHistory(eq(ROOM_ID), eq(null), eq(null), eq(null), any(Pageable.class)))
+        when(messages.findHistory(eq(ROOM_ID), eq(false), eq(null), eq(false), eq(null), eq(null), any(Pageable.class)))
                 .thenReturn(List.of(third, second, first));
 
         ChatDtos.MessagePage page = service.history(principal(), ROOM_ID, null, null, 2);
@@ -565,16 +565,17 @@ class ChatServiceTest {
         assertTrue(page.hasMore());
         assertEquals(second.getId(), page.nextBefore());
         ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
-        verify(messages).findHistory(eq(ROOM_ID), eq(null), eq(null), eq(null), pageable.capture());
+        verify(messages).findHistory(eq(ROOM_ID), eq(false), eq(null), eq(false),
+                eq(null), eq(null), pageable.capture());
         assertEquals(PageRequest.of(0, 3), pageable.getValue());
 
-        when(messages.findHistory(eq(ROOM_ID), eq(null), eq(null), eq(null), any(Pageable.class)))
+        when(messages.findHistory(eq(ROOM_ID), eq(false), eq(null), eq(false), eq(null), eq(null), any(Pageable.class)))
                 .thenReturn(List.of());
         service.history(principal(), ROOM_ID, null, null, 999);
         service.history(principal(), ROOM_ID, null, null, 0);
         ArgumentCaptor<Pageable> allPageables = ArgumentCaptor.forClass(Pageable.class);
         verify(messages, org.mockito.Mockito.times(3))
-                .findHistory(eq(ROOM_ID), eq(null), eq(null), eq(null), allPageables.capture());
+                .findHistory(eq(ROOM_ID), eq(false), eq(null), eq(false), eq(null), eq(null), allPageables.capture());
         assertEquals(List.of(3, 201, 2),
                 allPageables.getAllValues().stream().map(Pageable::getPageSize).toList());
     }
@@ -591,7 +592,7 @@ class ChatServiceTest {
                 Instant.parse("2026-10-20T09:10:00Z"));
         when(messages.findById(MESSAGE_ID)).thenReturn(Optional.of(reply));
         when(messages.findById(THIRD_ID)).thenReturn(Optional.of(cursor));
-        when(messages.findHistory(eq(ROOM_ID), eq(ROOT_MESSAGE_ID),
+        when(messages.findHistory(eq(ROOM_ID), eq(true), eq(ROOT_MESSAGE_ID), eq(true),
                 eq(cursor.getCreatedAt()), eq(THIRD_ID), any(Pageable.class))).thenReturn(List.of(root));
 
         ChatDtos.MessagePage page = service.history(principal(), ROOM_ID, THIRD_ID, MESSAGE_ID, 10);
@@ -951,7 +952,7 @@ class ChatServiceTest {
         ChatMessage deleted = existingMessage();
         deleted.setDeletedAt(Instant.now());
         deleted.setFileRef("file:hidden");
-        when(messages.findHistory(eq(ROOM_ID), eq(null), eq(null), eq(null), any(Pageable.class)))
+        when(messages.findHistory(eq(ROOM_ID), eq(false), eq(null), eq(false), eq(null), eq(null), any(Pageable.class)))
                 .thenReturn(List.of(deleted));
         when(reactions.findAllById_MessageIdIn(List.of(MESSAGE_ID))).thenReturn(List.of(
                 new MessageReaction(MESSAGE_ID, THIRD_ID, "fire"),

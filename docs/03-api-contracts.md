@@ -49,7 +49,7 @@ vacation пока остаются целевым контрактом след�
 
 ```
 CONNECT  /ws/chat                   заголовок Authorization: Bearer <JWT> (WebSocket или SockJS)
-SUBSCRIBE /topic/rooms/{roomId}     ChatEventView комнаты: сообщения, правки, удаления,
+SUBSCRIBE /topic/rooms.{roomId}     ChatEventView комнаты: сообщения, правки, удаления,
                                     реакции/pin как обновления, MESSAGE_READ и TYPING
 SUBSCRIBE /user/queue/notifications личные MENTION-события
 SUBSCRIBE /user/queue/errors        {status, detail} для ошибок STOMP-обработчиков

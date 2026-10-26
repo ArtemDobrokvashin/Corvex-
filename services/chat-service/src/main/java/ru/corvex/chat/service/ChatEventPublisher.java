@@ -103,7 +103,9 @@ public class ChatEventPublisher {
     }
 
     private String roomTopic(UUID roomId) {
-        return "/topic/rooms/" + roomId;
+        // RabbitMQ STOMP трактует часть после /topic/ как AMQP routing key: иерархия слов
+        // разделяется точкой. Формат /topic/rooms/{id} брокер отклоняет как Invalid destination.
+        return "/topic/rooms." + roomId;
     }
 
     private void safeSend(Runnable action) {
