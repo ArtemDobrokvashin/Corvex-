@@ -80,6 +80,18 @@ if (-not (Test-Path .env)) {
   # Upgrade path: installs created before the internal-API token was introduced
   # receive only this new secret; every existing value remains untouched.
   $existingEnv = Get-Content .env -Raw -Encoding UTF8
+  # Upgrade path: .env files created from the old example contain the
+  # documentation-only alert SMTP placeholder. Replace only that exact value
+  # with the built-in first-run fallback; a real external relay is untouched.
+  $envLines = Get-Content .env -Encoding UTF8
+  if ($envLines -contains "ALERT_SMTP_HOST=smtp.provider.example") {
+    $envLines = $envLines | ForEach-Object {
+      if ($_ -eq "ALERT_SMTP_HOST=smtp.provider.example") { "ALERT_SMTP_HOST=mail-smtp-service" } else { $_ }
+    }
+    $envLines | Set-Content .env -Encoding UTF8
+    $existingEnv = Get-Content .env -Raw -Encoding UTF8
+    Write-Host "[OK] Replaced placeholder ALERT_SMTP_HOST with mail-smtp-service. Set an external alert relay before production."
+  }
   if ($existingEnv -notmatch '(?m)^CORVEX_INTERNAL_API_TOKEN=') {
     Add-Content .env "`nCORVEX_INTERNAL_API_TOKEN=$(New-RandomSecret 48)" -Encoding UTF8
     Write-Host "[OK] Added missing CORVEX_INTERNAL_API_TOKEN to existing .env."

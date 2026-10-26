@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -49,6 +50,7 @@ public class ChatMembershipClient {
     private final InternalTokenGuard tokens;
     private final ObjectMapper objectMapper;
 
+    @Autowired
     public ChatMembershipClient(
             @Value("${corvex.chat.base-url:${CORVEX_CHAT_SERVICE_URL:http://chat-service:8088}}")
             String baseUrl,
@@ -65,6 +67,7 @@ public class ChatMembershipClient {
         this.objectMapper = objectMapper;
     }
 
+    /** Тестовый конструктор: позволяет подвязать RestClient к MockRestServiceServer. */
     ChatMembershipClient(RestClient client, InternalTokenGuard tokens, ObjectMapper objectMapper) {
         this.client = client;
         this.tokens = tokens;

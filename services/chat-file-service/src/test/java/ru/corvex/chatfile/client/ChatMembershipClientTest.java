@@ -3,6 +3,7 @@ package ru.corvex.chatfile.client;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -11,6 +12,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.server.ResponseStatusException;
 import ru.corvex.chatfile.security.InternalTokenGuard;
 
+import java.lang.reflect.Constructor;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -84,6 +86,14 @@ class ChatMembershipClientTest {
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, error.getStatusCode());
         assertEquals("CORVEX_INTERNAL_API_TOKEN не настроен", error.getReason());
         server.verify();
+    }
+
+    @Test
+    void springIsDirectedToTheConfigurationConstructor() throws Exception {
+        Constructor<ChatMembershipClient> constructor = ChatMembershipClient.class.getConstructor(
+                String.class, InternalTokenGuard.class, ObjectMapper.class);
+
+        assertTrue(constructor.isAnnotationPresent(Autowired.class));
     }
 
     private String membershipJson(boolean member) {

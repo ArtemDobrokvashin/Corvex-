@@ -2,12 +2,15 @@ package ru.corvex.gateway.security;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.cloud.gateway.filter.ratelimit.KeyResolver;
+import org.springframework.context.annotation.Primary;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.server.MockServerWebExchange;
 import java.net.InetSocketAddress;
 import java.security.Principal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RateLimitConfigTest {
 
@@ -67,6 +70,16 @@ class RateLimitConfigTest {
                 .header("X-Real-IP", "203.0.113.11"));
 
         assertEquals("203.0.113.11", resolve(config.userKeyResolver(), exchange));
+    }
+
+    @Test
+    void userResolverIsThePrimaryDefaultForGatewayAutoConfiguration() throws Exception {
+        assertTrue(RateLimitConfig.class
+                .getDeclaredMethod("userKeyResolver")
+                .isAnnotationPresent(Primary.class));
+        assertFalse(RateLimitConfig.class
+                .getDeclaredMethod("ipKeyResolver")
+                .isAnnotationPresent(Primary.class));
     }
 
     private static MockServerWebExchange exchange(MockServerHttpRequest.BaseBuilder<?> builder) {
