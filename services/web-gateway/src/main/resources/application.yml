@@ -34,7 +34,12 @@ spring:
               uri: http://chat-service:8088
               predicates: [Path=/api/v1/chat/**]
             - id: chat-ws
-              uri: ws://chat-service:8088
+              # URI намеренно http://, а не ws://: WebsocketRoutingFilter Gateway 4.3
+              # сам превратит настоящий Upgrade-запрос в ws://, а обычные SockJS
+              # HTTP-запросы (/info, xhr*) пропустит дальше в Netty HTTP-прокси.
+              # С ws:// все запросы насильно считаются WebSocket-handshake,
+              # поэтому обязательный для SockJS GET /ws/chat/info получает 400.
+              uri: http://chat-service:8088
               predicates: [Path=/ws/chat/**]
             - id: chat-files
               uri: http://chat-file-service:8089

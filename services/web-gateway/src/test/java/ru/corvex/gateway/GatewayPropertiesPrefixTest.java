@@ -23,6 +23,11 @@ class GatewayPropertiesPrefixTest {
 
         String prefix = "spring.cloud.gateway.server.webflux";
         assertEquals("auth", environment.getProperty(prefix + ".routes[0].id"));
+        assertEquals("chat-ws", environment.getProperty(prefix + ".routes[3].id"));
+        // http:// здесь принципиален: Gateway превратит Upgrade в ws://, а SockJS /info
+        // и HTTP-fallback пойдут обычным HTTP-прокси. ws:// ломал /info ответом 400.
+        assertEquals("http://chat-service:8088", environment.getProperty(prefix + ".routes[3].uri"));
+        assertEquals("Path=/ws/chat/**", environment.getProperty(prefix + ".routes[3].predicates[0]"));
         assertEquals("admin", environment.getProperty(prefix + ".routes[5].id"));
         assertTrue(environment.getProperty(prefix + ".default-filters[0]")
                 .startsWith("AddRequestHeader=X-Request-Id"));
