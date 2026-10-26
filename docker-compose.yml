@@ -67,7 +67,7 @@ services:
     networks: [data]
 
   rabbitmq:
-    image: rabbitmq:4.3.6-management-alpine
+    image: rabbitmq:4.4.0-management-alpine
     restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-corvex}
@@ -301,7 +301,7 @@ services:
 
   # ------------------------- Мониторинг (профиль monitoring) ---------------
   prometheus:
-    image: prom/prometheus:v3.15.0
+    image: prom/prometheus:v3.15.1
     profiles: [monitoring]
     restart: unless-stopped
     command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=30d"]
@@ -330,7 +330,7 @@ services:
     networks: [monitoring, edge]
 
   loki:
-    image: grafana/loki:3.7.8
+    image: grafana/loki:3.7.9
     profiles: [monitoring]
     restart: unless-stopped
     command: ["-config.file=/etc/loki/loki.yml"]
