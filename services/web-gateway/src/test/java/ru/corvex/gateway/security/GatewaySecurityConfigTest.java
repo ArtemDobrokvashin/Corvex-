@@ -59,6 +59,14 @@ class GatewaySecurityConfigTest {
     }
 
     @Test
+    void chatHandshakeIsPublicAtHttpLayer() {
+        // Bearer для SockJS/WebSocket придёт в STOMP CONNECT и будет проверен chat-service;
+        // gateway не должен обрывать сам handshake анонимным 401.
+        assertEquals(HttpStatus.OK, execute(HttpMethod.GET, "/ws/chat/info", null));
+        assertEquals(HttpStatus.OK, execute(HttpMethod.GET, "/ws/chat/123/websocket", null));
+    }
+
+    @Test
     void protectedEndpointRejectsAnonymousRequest() {
         assertEquals(HttpStatus.UNAUTHORIZED, execute(HttpMethod.GET, "/api/v1/mail/messages", null));
     }

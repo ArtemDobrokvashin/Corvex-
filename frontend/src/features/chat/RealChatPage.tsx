@@ -51,14 +51,9 @@ import {
 import { firstGraphemes, insertTextAtSelection, stripMarkdownPreview } from '../../lib/text';
 import { renderChatMarkdown } from '../../lib/markdown';
 import { useSession } from '../../store/sessionStore';
+import { compareMessages, mergeMessages, type LocalMessage } from './realChatMessages';
 
 type Translate = ReturnType<typeof useI18n>['t'];
-type LocalStatus = 'sending' | 'failed';
-
-interface LocalMessage extends ChatMessageView {
-  localStatus?: LocalStatus;
-  localFileName?: string;
-}
 
 interface HistoryState {
   hasMore: boolean;
@@ -79,37 +74,6 @@ interface ChatErrorPayload {
 
 const cleanTitle = (title: string) => title.replace(/^[^A-Za-zА-Яа-я0-9]+/, '').trim();
 const plainText = stripMarkdownPreview;
-
-function compareMessages(first: ChatMessageView, second: ChatMessageView): number {
-  const byTime = Date.parse(first.createdAt) - Date.parse(second.createdAt);
-  return byTime !== 0 && Number.isFinite(byTime) ? byTime : first.id.localeCompare(second.id);
-}
-
-function mergeMessages(existing: LocalMessage[], incoming: LocalMessage[]): LocalMessage[] {
-  const byId = new Map(existing.map((message) => [message.id, message]));
-  const byClient = new Map(
-    existing
-      .filter((message) => message.clientMessageId)
-      .map((message) => [`${message.roomId}:${message.authorId}:${message.clientMessageId}`, message]),
-  );
-
-  incoming.forEach((message) => {
-    const clientKey = message.clientMessageId
-      ? `${message.roomId}:${message.authorId}:${message.clientMessageId}`
-      : null;
-    const prior = byId.get(message.id) ?? (clientKey ? byClient.get(clientKey) : undefined);
-    if (prior && prior.id !== message.id) byId.delete(prior.id);
-    byId.set(message.id, {
-      ...prior,
-      ...message,
-      localStatus: message.localStatus ?? prior?.localStatus,
-      localFileName: message.localFileName ?? prior?.localFileName,
-    });
-    if (clientKey) byClient.set(clientKey, byId.get(message.id) as LocalMessage);
-  });
-
-  return [...byId.values()].sort(compareMessages);
-}
 
 function sortRooms(rooms: RoomSummaryView[]): RoomSummaryView[] {
   return [...rooms].sort((first, second) => {
