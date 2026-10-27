@@ -28,6 +28,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -650,6 +651,48 @@ class ExternalMailSyncServiceTest {
         assertTrue(Duration.between(Instant.now(), account.getNextSyncAt()).toHours() >= 23);
         verify(accountService, times(2)).audit(eq(null), any(ExternalMailAccount.class),
                 eq("EXTERNAL_SYNC_FAILED"), anyString());
+    }
+
+    @Test
+    void folderConnectionFailureAfterHandledMessagePersistsCursorProgress() throws Exception {
+        remoteFolders = List.of(remoteFolder("INBOX", "INBOX", 7L, 10, 2));
+        var first = envelope("INBOX", "1", 7L, "<one@x>", "a@x", false);
+        fetchEnvelopes.put("INBOX", List.of(first));
+        when(client.fetchFolder(any(), anyString(), anyLong(), anyInt(), any())).thenAnswer(inv -> {
+            ExternalMailClient.MessageHandler handler = inv.getArgument(4);
+            handler.handle(first, () -> new ByteArrayInputStream(
+                    "Subject: one\r\n\r\nbody".getBytes(StandardCharsets.UTF_8)));
+            throw clientError(ExternalMailClient.ExternalMailClientException.Category.NETWORK, true,
+                    "Lost folder connection to server");
+        });
+
+        execute(ExternalMailSyncRun.Trigger.SCHEDULED);
+
+        assertEquals(ExternalMailSyncRun.Status.PARTIAL, run.getStatus());
+        assertEquals(1, run.getQueuedCount());
+        assertEquals(1, run.getFailedCount());
+        assertEquals(1, stateByFolder.get("INBOX").getLastSeenUid());
+    }
+
+    @Test
+    void dnsFailureStopsRemainingFoldersInRun() throws Exception {
+        account.setSyncScope(ExternalMailAccount.SyncScope.ALL_FOLDERS);
+        remoteFolders = List.of(
+                remoteFolder("INBOX", "INBOX", 7L, 10, 1),
+                remoteFolder("Archive", "ARCHIVE", 7L, 10, 1));
+        fetchFailures.put("INBOX", new ExternalMailClient.ExternalMailClientException(
+                ExternalMailClient.ExternalMailClientException.Category.NETWORK, true,
+                "Не удалось разрешить DNS-имя почтового сервера: imap.test",
+                new UnknownHostException("imap.test")));
+        fetchEnvelopes.put("Archive", List.of(envelope("Archive", "1", 7L, null, "a@x", false)));
+
+        execute(ExternalMailSyncRun.Trigger.SCHEDULED);
+
+        assertEquals(ExternalMailSyncRun.Status.FAILED, run.getStatus());
+        assertEquals(1, fetchCalls.get());
+        assertEquals(1, run.getFailedCount());
+        assertFalse(stateByFolder.containsKey("Archive"));
+        assertFalse(run.getError().contains("Archive:"));
     }
 
     @Test

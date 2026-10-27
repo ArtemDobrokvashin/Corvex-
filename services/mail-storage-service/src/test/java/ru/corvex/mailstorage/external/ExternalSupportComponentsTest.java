@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import ru.corvex.mailstorage.domain.ExternalMailAccount;
 
+import java.net.UnknownHostException;
 import java.util.Base64;
 import java.util.List;
 
@@ -103,6 +104,8 @@ class ExternalSupportComponentsTest {
                 () -> policy.validate("corvex-nonexistent.invalid", 993,
                         ExternalMailAccount.Security.SSL_TLS, false));
         assertTrue(error.getReason().contains("DNS"));
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, error.getStatusCode());
+        assertTrue(error.getCause() instanceof UnknownHostException);
     }
 
     @Test

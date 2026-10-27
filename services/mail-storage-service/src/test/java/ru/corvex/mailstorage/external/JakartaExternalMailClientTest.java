@@ -2,12 +2,15 @@ package ru.corvex.mailstorage.external;
 
 import jakarta.mail.Address;
 import jakarta.mail.AuthenticationFailedException;
+import jakarta.mail.FetchProfile;
 import jakarta.mail.Flags;
 import jakarta.mail.Folder;
+import jakarta.mail.FolderClosedException;
 import jakarta.mail.Message;
 import jakarta.mail.MessagingException;
 import jakarta.mail.Session;
 import jakarta.mail.Store;
+import jakarta.mail.UIDFolder;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
 import org.eclipse.angus.mail.imap.IMAPFolder;
@@ -15,6 +18,7 @@ import org.eclipse.angus.mail.pop3.POP3Folder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import ru.corvex.mailstorage.domain.ExternalMailAccount;
@@ -124,6 +128,25 @@ class JakartaExternalMailClientTest {
         var incomingError = assertThrows(ExternalMailClient.ExternalMailClientException.class,
                 () -> client.listFolders(config));
         assertEquals(ExternalMailClient.ExternalMailClientException.Category.CONFIG, incomingError.category());
+    }
+
+    @Test
+    void endpointDnsFailureBecomesTemporaryNetworkError() {
+        endpointFailure.set(new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                "Не удалось разрешить DNS-имя почтового сервера: imap.test",
+                new UnknownHostException("imap.test")));
+        var config = config(ExternalMailAccount.Protocol.IMAP, ExternalMailAccount.Security.SSL_TLS,
+                true, "smtp.test", 587, "secret");
+
+        var incomingError = assertThrows(ExternalMailClient.ExternalMailClientException.class,
+                () -> client.listFolders(config));
+        assertEquals(ExternalMailClient.ExternalMailClientException.Category.NETWORK, incomingError.category());
+        assertTrue(incomingError.temporary());
+
+        var smtpError = assertThrows(ExternalMailClient.ExternalMailClientException.class,
+                () -> client.testSmtp(config));
+        assertEquals(ExternalMailClient.ExternalMailClientException.Category.NETWORK, smtpError.category());
+        assertTrue(smtpError.temporary());
     }
 
     @Test
@@ -355,38 +378,57 @@ class JakartaExternalMailClientTest {
         assertEquals(11L, folders.get(0).UIDValidity());
         assertEquals(20L, folders.get(0).uidNext());
         assertEquals("ARCHIVE", folders.get(1).specialUse());
+        verify(inbox, org.mockito.Mockito.never()).open(anyInt());
+        verify(archive, org.mockito.Mockito.never()).open(anyInt());
     }
 
     @Test
-    void orderedMessagesFiltersAndSortsImapUidsAndLeavesPop3Order() throws Exception {
+    void candidateMessagesUsesUidRangeForImapAndLeavesPop3Order() throws Exception {
         IMAPFolder folder = mock(IMAPFolder.class);
         Message one = message(1);
         Message two = message(2);
         Message three = message(3);
-        when(folder.getMessages()).thenReturn(new Message[]{three, one, two});
+        when(folder.getMessagesByUID(2L, UIDFolder.MAXUID)).thenReturn(new Message[]{three, two});
         when(folder.getUID(one)).thenReturn(1L);
         when(folder.getUID(two)).thenReturn(2L);
         when(folder.getUID(three)).thenReturn(3L);
         var imapConfig = config(ExternalMailAccount.Protocol.IMAP, ExternalMailAccount.Security.SSL_TLS,
                 false, null, null, "s");
 
-        List<Message> ordered = invoke("orderedMessages",
+        List<Message> ordered = invoke("candidateMessages",
                 new Class<?>[]{Folder.class, ExternalMailClient.AccountConfig.class, long.class},
                 folder, imapConfig, 1L);
         assertEquals(List.of(two, three), ordered);
+        verify(folder, org.mockito.Mockito.never()).getMessages();
 
         Folder popFolder = mock(Folder.class);
         when(popFolder.getMessages()).thenReturn(new Message[]{three, one});
-        List<Message> popOrdered = invoke("orderedMessages",
+        List<Message> popOrdered = invoke("candidateMessages",
                 new Class<?>[]{Folder.class, ExternalMailClient.AccountConfig.class, long.class},
                 popFolder, pop3Config("s", false, false), 999L);
         assertEquals(List.of(three, one), popOrdered);
 
-        when(folder.getMessages()).thenReturn(new Message[0]);
-        List<Message> empty = invoke("orderedMessages",
+        when(folder.getMessagesByUID(1L, UIDFolder.MAXUID)).thenReturn(new Message[0]);
+        List<Message> empty = invoke("candidateMessages",
                 new Class<?>[]{Folder.class, ExternalMailClient.AccountConfig.class, long.class},
                 folder, imapConfig, 0L);
         assertTrue(empty.isEmpty());
+    }
+
+    @Test
+    void fetchProfileUsesEnvelopeFlagsAndUidWithoutBodystructure() throws Exception {
+        IMAPFolder folder = mock(IMAPFolder.class);
+        Message one = message(1);
+
+        invoke("fetchProfile", new Class<?>[]{Folder.class, List.class}, folder, List.of(one));
+
+        ArgumentCaptor<FetchProfile> captor = ArgumentCaptor.forClass(FetchProfile.class);
+        verify(folder).fetch(any(Message[].class), captor.capture());
+        FetchProfile profile = captor.getValue();
+        assertTrue(profile.contains(FetchProfile.Item.ENVELOPE));
+        assertTrue(profile.contains(FetchProfile.Item.FLAGS));
+        assertTrue(profile.contains(UIDFolder.FetchProfileItem.UID));
+        assertFalse(profile.contains(FetchProfile.Item.CONTENT_INFO));
     }
 
     @Test
@@ -541,6 +583,8 @@ class JakartaExternalMailClientTest {
         assertCategory(config, new MessagingException("x", new ConnectException("refused")),
                 ExternalMailClient.ExternalMailClientException.Category.NETWORK, true);
         assertCategory(config, new MessagingException("x", new SocketTimeoutException("slow")),
+                ExternalMailClient.ExternalMailClientException.Category.NETWORK, true);
+        assertCategory(config, new FolderClosedException(mock(Folder.class), "Lost folder connection to server"),
                 ExternalMailClient.ExternalMailClientException.Category.NETWORK, true);
         var protocol = assertCategory(config, new IllegalStateException("weird super-secret\r\nnext"),
                 ExternalMailClient.ExternalMailClientException.Category.PROTOCOL, true);

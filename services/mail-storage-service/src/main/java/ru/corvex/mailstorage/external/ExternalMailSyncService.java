@@ -27,6 +27,7 @@ import ru.corvex.mailstorage.service.MailDeliveryService;
 import ru.corvex.mailstorage.storage.RawMessageSpool;
 
 import java.io.InputStream;
+import java.net.UnknownHostException;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -229,6 +230,9 @@ public class ExternalMailSyncService {
                     counters.failed.incrementAndGet();
                     counters.errors.add(remoteFolder.name() + ": " + e.category() + ": " + e.getMessage());
                     if (!e.temporary()) counters.permanentCategory = e.category();
+                    log.warn("External mail sync folder failed account={} run={} folder={} category={} temporary={}: {}",
+                            accountId, runId, remoteFolder.name(), e.category(), e.temporary(), e.getMessage(), e);
+                    if (isAccountLevelFailure(e)) break;
                 } catch (RuntimeException e) {
                     counters.failed.incrementAndGet();
                     counters.errors.add(remoteFolder.name() + ": " + safeError(e));
@@ -303,12 +307,17 @@ public class ExternalMailSyncService {
 
         AtomicLong lastSuccessfulUid = new AtomicLong(state.getLastSeenUid());
         long afterUid = account.getIncomingProtocol() == ExternalMailAccount.Protocol.IMAP ? state.getLastSeenUid() : 0;
-        client.fetchFolder(config, remoteFolder.name(), afterUid, props.safeBatchSize(),
-                (envelope, source) -> handleMessage(account, owner, remoteFolder, target, envelope, source,
-                        counters, lastSuccessfulUid, migration));
-        state.setLastSeenUid(lastSuccessfulUid.get());
-        state.setLastSyncAt(Instant.now());
-        states.saveAndFlush(state);
+        try {
+            client.fetchFolder(config, remoteFolder.name(), afterUid, props.safeBatchSize(),
+                    (envelope, source) -> handleMessage(account, owner, remoteFolder, target, envelope, source,
+                            counters, lastSuccessfulUid, migration));
+        } finally {
+            // Даже при обрыве соединения уже успешно обработанные UID нельзя терять:
+            // иначе следующий запуск снова пойдёт по тому же тяжёлому диапазону.
+            state.setLastSeenUid(lastSuccessfulUid.get());
+            state.setLastSyncAt(Instant.now());
+            states.saveAndFlush(state);
+        }
     }
 
     private boolean snapshotExisting(ExternalMailAccount account,
@@ -647,6 +656,21 @@ public class ExternalMailSyncService {
         return new ExternalMailDtos.SyncRunView(run.getId(), run.getAccount().getId(), run.getTriggerType(), run.getStatus(),
                 run.getStartedAt(), run.getFinishedAt(), run.getFoldersCount(), run.getFetchedCount(),
                 run.getQueuedCount(), run.getSkippedCount(), run.getFailedCount(), run.getError());
+    }
+
+    private static boolean isAccountLevelFailure(ExternalMailClient.ExternalMailClientException e) {
+        if (e.category() == ExternalMailClient.ExternalMailClientException.Category.AUTH
+                || e.category() == ExternalMailClient.ExternalMailClientException.Category.TLS
+                || e.category() == ExternalMailClient.ExternalMailClientException.Category.CONFIG) {
+            return true;
+        }
+        Throwable current = e;
+        while (current != null) {
+            if (current instanceof UnknownHostException) return true;
+            if (current.getCause() == current) break;
+            current = current.getCause();
+        }
+        return false;
     }
 
     private static long parseUid(String remoteUid) {
