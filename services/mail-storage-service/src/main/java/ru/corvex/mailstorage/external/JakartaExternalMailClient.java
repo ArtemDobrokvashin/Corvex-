@@ -158,6 +158,9 @@ public class JakartaExternalMailClient implements ExternalMailClient {
                         try {
                             result = handler.handle(envelope, () -> openRaw(message));
                         } catch (StopFolderException stop) {
+                            if (isConnectionLoss(stop)) {
+                                throw map(config, stop);
+                            }
                             stopped = true;
                             break;
                         } catch (Exception handlerError) {
@@ -644,6 +647,19 @@ public class JakartaExternalMailClient implements ExternalMailClient {
     }
 
     // ------------------------------------------------------------------ errors
+
+    private static boolean isConnectionLoss(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof FolderClosedException || current instanceof StoreClosedException
+                    || current instanceof ConnectionException) {
+                return true;
+            }
+            if (current.getCause() == current) break;
+            current = current.getCause();
+        }
+        return false;
+    }
 
     private ExternalMailClientException map(AccountConfig config, Exception e) {
         Throwable root = rootCause(e);

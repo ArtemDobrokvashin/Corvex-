@@ -246,6 +246,15 @@ class JakartaExternalMailClientTest {
         assertEquals(ExternalMailClient.ExternalMailClientException.Category.PROTOCOL, error.category());
         assertTrue(error.temporary());
         assertFalse(error.getMessage().contains("secret"), "секрет должен маскироваться в ошибках обработчика");
+
+        var disconnected = assertThrows(ExternalMailClient.ExternalMailClientException.class,
+                () -> client.fetchFolder(pop3Config("secret", false, false), "INBOX", 0, 10,
+                        (envelope, source) -> {
+                            throw new ExternalMailClient.StopFolderException(
+                                    new FolderClosedException(mock(Folder.class), "Lost folder connection to server"));
+                        }));
+        assertEquals(ExternalMailClient.ExternalMailClientException.Category.NETWORK, disconnected.category());
+        assertTrue(disconnected.temporary());
     }
 
     @Test

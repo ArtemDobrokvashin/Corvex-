@@ -1,6 +1,9 @@
 package ru.corvex.mailstorage.external;
 
 import jakarta.annotation.PreDestroy;
+import jakarta.mail.FolderClosedException;
+import jakarta.mail.StoreClosedException;
+import org.eclipse.angus.mail.iap.ConnectionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
@@ -55,6 +58,7 @@ public class ExternalMailSyncService {
     private static final Logger log = LoggerFactory.getLogger(ExternalMailSyncService.class);
     private static final Duration LOCK_TTL = Duration.ofMinutes(30);
     private static final int POP3_SNAPSHOT_LIMIT = 5000;
+    private static final int MAX_RECONNECTS_PER_RUN = 2;
     private static final Set<ExternalMailImportedMessage.Status> DONE_STATUSES = Set.of(
             ExternalMailImportedMessage.Status.QUEUED,
             ExternalMailImportedMessage.Status.DELIVERED,
@@ -215,7 +219,8 @@ public class ExternalMailSyncService {
             ExternalMailClient.AccountConfig config = accountService.toConfig(account);
             boolean syncAllFolders = migration
                     || account.getSyncScope() == ExternalMailAccount.SyncScope.ALL_FOLDERS;
-            try (ExternalMailClient.IncomingSession incoming = client.openIncoming(config)) {
+            ExternalMailClient.IncomingSession incoming = client.openIncoming(config);
+            try {
                 List<ExternalMailClient.RemoteFolderInfo> remoteFolders = incoming.listFolders().stream()
                         .filter(f -> syncAllFolders
                                 || "INBOX".equalsIgnoreCase(f.specialUse()) || "INBOX".equalsIgnoreCase(f.name()))
@@ -223,26 +228,49 @@ public class ExternalMailSyncService {
                         .toList();
                 updateRun(runId, counters, remoteFolders.size(), null);
 
+                boolean stopRun = false;
+                int reconnects = 0;
                 for (ExternalMailClient.RemoteFolderInfo remoteFolder : remoteFolders) {
-                    try {
-                        syncFolder(account, owner, config, incoming, remoteFolder, counters, migration);
-                        counters.foldersDone++;
-                    } catch (ExternalMailClient.ExternalMailClientException e) {
-                        counters.failed.incrementAndGet();
-                        counters.errors.add(remoteFolder.name() + ": " + e.category() + ": " + e.getMessage());
-                        if (!e.temporary()) counters.permanentCategory = e.category();
-                        log.warn("External mail sync folder failed account={} run={} folder={} category={} temporary={}: {}",
-                                accountId, runId, remoteFolder.name(), e.category(), e.temporary(), e.getMessage(), e);
-                        if (isAccountLevelFailure(e)) break;
-                    } catch (RuntimeException e) {
-                        counters.failed.incrementAndGet();
-                        counters.errors.add(remoteFolder.name() + ": " + safeError(e));
-                    } finally {
-                        heartbeat(accountId, lockOwner);
-                        updateRun(runId, counters, remoteFolders.size(), String.join("; ", counters.errors));
+                    while (!stopRun) {
+                        boolean retry = false;
+                        try {
+                            syncFolder(account, owner, config, incoming, remoteFolder, counters, migration);
+                            counters.foldersDone++;
+                        } catch (ExternalMailClient.ExternalMailClientException e) {
+                            if (isConnectionLoss(e) && reconnects < MAX_RECONNECTS_PER_RUN) {
+                                reconnects++;
+                                log.warn("External mail sync connection lost; reconnecting account={} run={} folder={} attempt={}/{}",
+                                        accountId, runId, remoteFolder.name(), reconnects, MAX_RECONNECTS_PER_RUN);
+                                try {
+                                    incoming.close();
+                                    incoming = client.openIncoming(config);
+                                    retry = true;
+                                } catch (ExternalMailClient.ExternalMailClientException reconnectError) {
+                                    recordFolderFailure(accountId, runId, remoteFolder.name(), counters, reconnectError);
+                                    stopRun = true;
+                                } catch (RuntimeException reconnectError) {
+                                    counters.failed.incrementAndGet();
+                                    counters.errors.add(remoteFolder.name() + ": " + safeError(reconnectError));
+                                    stopRun = true;
+                                }
+                            } else {
+                                recordFolderFailure(accountId, runId, remoteFolder.name(), counters, e);
+                                if (isAccountLevelFailure(e)) stopRun = true;
+                            }
+                        } catch (RuntimeException e) {
+                            counters.failed.incrementAndGet();
+                            counters.errors.add(remoteFolder.name() + ": " + safeError(e));
+                        } finally {
+                            heartbeat(accountId, lockOwner);
+                            updateRun(runId, counters, remoteFolders.size(), String.join("; ", counters.errors));
+                        }
+                        if (!retry) break;
                     }
+                    if (stopRun) break;
                 }
                 finishRun(account, runId, counters, remoteFolders.size());
+            } finally {
+                incoming.close();
             }
         } catch (ExternalMailClient.ExternalMailClientException e) {
             counters.failed.incrementAndGet();
@@ -257,6 +285,15 @@ public class ExternalMailSyncService {
         } finally {
             releaseClaim(accountId, lockOwner);
         }
+    }
+
+    private void recordFolderFailure(UUID accountId, UUID runId, String remoteFolder, Counters counters,
+                                     ExternalMailClient.ExternalMailClientException e) {
+        counters.failed.incrementAndGet();
+        counters.errors.add(remoteFolder + ": " + e.category() + ": " + e.getMessage());
+        if (!e.temporary()) counters.permanentCategory = e.category();
+        log.warn("External mail sync folder failed account={} run={} folder={} category={} temporary={}: {}",
+                accountId, runId, remoteFolder, e.category(), e.temporary(), e.getMessage(), e);
     }
 
     private void syncFolder(ExternalMailAccount account,
@@ -413,6 +450,11 @@ public class ExternalMailSyncService {
             advanceCursor(account, envelope, lastSuccessfulUid);
             return ExternalMailClient.HandleResult.SKIPPED;
         } catch (Exception e) {
+            if (isConnectionLoss(e)) {
+                // Jakarta-клиент превратит это в NETWORK, а executeClaimed переподключится
+                // и повторит текущий UID. Восстановленный обрыв не должен портить итог run.
+                throw new ExternalMailClient.StopFolderException(e);
+            }
             counters.failed.incrementAndGet();
             counters.errors.add(envelope.remoteFolder() + "/" + envelope.remoteUid() + ": " + safeError(e));
             throw new ExternalMailClient.StopFolderException(e);
@@ -660,6 +702,19 @@ public class ExternalMailSyncService {
         return new ExternalMailDtos.SyncRunView(run.getId(), run.getAccount().getId(), run.getTriggerType(), run.getStatus(),
                 run.getStartedAt(), run.getFinishedAt(), run.getFoldersCount(), run.getFetchedCount(),
                 run.getQueuedCount(), run.getSkippedCount(), run.getFailedCount(), run.getError());
+    }
+
+    private static boolean isConnectionLoss(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof FolderClosedException || current instanceof StoreClosedException
+                    || current instanceof ConnectionException) {
+                return true;
+            }
+            if (current.getCause() == current) break;
+            current = current.getCause();
+        }
+        return false;
     }
 
     private static boolean isAccountLevelFailure(ExternalMailClient.ExternalMailClientException e) {

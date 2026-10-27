@@ -1,5 +1,6 @@
 package ru.corvex.mailstorage.external;
 
+import jakarta.mail.FolderClosedException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -673,6 +674,90 @@ class ExternalMailSyncServiceTest {
         assertEquals(1, run.getQueuedCount());
         assertEquals(1, run.getFailedCount());
         assertEquals(1, stateByFolder.get("INBOX").getLastSeenUid());
+    }
+
+    @Test
+    void rawConnectionLossIsRetriedWithoutCountingRecoveredFailure() throws Exception {
+        remoteFolders = List.of(remoteFolder("INBOX", "INBOX", 7L, 10, 1));
+        var message = envelope("INBOX", "21", 7L, "<twenty-one@x>", "a@x", false);
+        AtomicInteger attempts = new AtomicInteger();
+        when(client.fetchFolder(any(), anyString(), anyLong(), anyInt(), any())).thenAnswer(inv -> {
+            ExternalMailClient.MessageHandler handler = inv.getArgument(4);
+            if (attempts.getAndIncrement() == 0) {
+                var stop = assertThrows(ExternalMailClient.StopFolderException.class,
+                        () -> handler.handle(message, () -> {
+                            throw new IOException("raw connection lost",
+                                    new FolderClosedException(mock(jakarta.mail.Folder.class),
+                                            "Lost folder connection to server"));
+                        }));
+                throw new ExternalMailClient.ExternalMailClientException(
+                        ExternalMailClient.ExternalMailClientException.Category.NETWORK, true,
+                        "Lost folder connection to server", stop);
+            }
+            assertEquals(0L, (long) inv.getArgument(2), "необработанный UID не пропускается");
+            handler.handle(message, () -> new ByteArrayInputStream(
+                    "Subject: recovered\r\n\r\nbody".getBytes(StandardCharsets.UTF_8)));
+            return new ExternalMailClient.FetchStats(1, 1, false);
+        });
+
+        execute(ExternalMailSyncRun.Trigger.SCHEDULED);
+
+        assertEquals(ExternalMailSyncRun.Status.SUCCESS, run.getStatus());
+        assertEquals(2, attempts.get());
+        assertEquals(1, run.getQueuedCount());
+        assertEquals(0, run.getFailedCount());
+        assertNull(run.getError());
+        verify(client, times(2)).openIncoming(any());
+    }
+
+    @Test
+    void folderConnectionLossReconnectsAndResumesAfterLastSuccessfulUid() throws Exception {
+        remoteFolders = List.of(remoteFolder("INBOX", "INBOX", 7L, 10, 2));
+        var first = envelope("INBOX", "1", 7L, "<one@x>", "a@x", false);
+        var second = envelope("INBOX", "2", 7L, "<two@x>", "b@x", false);
+        AtomicInteger attempts = new AtomicInteger();
+        when(client.fetchFolder(any(), anyString(), anyLong(), anyInt(), any())).thenAnswer(inv -> {
+            long afterUid = inv.getArgument(2);
+            ExternalMailClient.MessageHandler handler = inv.getArgument(4);
+            if (attempts.getAndIncrement() == 0) {
+                assertEquals(0L, afterUid);
+                handler.handle(first, () -> new ByteArrayInputStream(
+                        "Subject: one\r\n\r\nbody".getBytes(StandardCharsets.UTF_8)));
+                throw new ExternalMailClient.ExternalMailClientException(
+                        ExternalMailClient.ExternalMailClientException.Category.NETWORK, true,
+                        "Lost folder connection to server",
+                        new FolderClosedException(mock(jakarta.mail.Folder.class), "Lost folder connection to server"));
+            }
+            assertEquals(1L, afterUid, "повтор начинается после последнего успешного UID");
+            handler.handle(second, () -> new ByteArrayInputStream(
+                    "Subject: two\r\n\r\nbody".getBytes(StandardCharsets.UTF_8)));
+            return new ExternalMailClient.FetchStats(1, 1, false);
+        });
+
+        execute(ExternalMailSyncRun.Trigger.SCHEDULED);
+
+        assertEquals(ExternalMailSyncRun.Status.SUCCESS, run.getStatus());
+        assertEquals(2, attempts.get());
+        assertEquals(2, run.getQueuedCount());
+        assertEquals(0, run.getFailedCount());
+        assertEquals(2, stateByFolder.get("INBOX").getLastSeenUid());
+        verify(client, times(2)).openIncoming(any());
+    }
+
+    @Test
+    void folderConnectionLossStopsAfterTwoReconnects() throws Exception {
+        remoteFolders = List.of(remoteFolder("INBOX", "INBOX", 7L, 10, 1));
+        fetchFailures.put("INBOX", new ExternalMailClient.ExternalMailClientException(
+                ExternalMailClient.ExternalMailClientException.Category.NETWORK, true,
+                "Lost folder connection to server",
+                new FolderClosedException(mock(jakarta.mail.Folder.class), "Lost folder connection to server")));
+
+        execute(ExternalMailSyncRun.Trigger.SCHEDULED);
+
+        assertEquals(ExternalMailSyncRun.Status.FAILED, run.getStatus());
+        assertEquals(3, fetchCalls.get(), "первая попытка и не более двух reconnect");
+        assertEquals(1, run.getFailedCount());
+        verify(client, times(3)).openIncoming(any());
     }
 
     @Test
