@@ -83,6 +83,55 @@ public interface ExternalMailClient {
     record FetchStats(int seenByClient, int handled, boolean stopped) {
     }
 
+    /**
+     * Один запуск синхронизации работает в одном входящем Store. Для IMAP это одно TCP-подключение
+     * на все папки; POP3 может последовательно переоткрывать INBOX по семантике Angus.
+     */
+    interface IncomingSession extends AutoCloseable {
+        List<RemoteFolderInfo> listFolders() throws ExternalMailClientException;
+
+        List<RemoteMessageEnvelope> listMessageEnvelopes(String remoteFolder, int limit)
+                throws ExternalMailClientException;
+
+        FetchStats fetchFolder(String remoteFolder, long afterUid, int limit, MessageHandler handler)
+                throws ExternalMailClientException;
+
+        /** Закрытие после завершённого запуска не должно перезаписывать его результат. */
+        @Override
+        void close();
+    }
+
+    /**
+     * Compatibility-реализация для альтернативных транспортов и Mockito. Jakarta-клиент ниже
+     * переопределяет её настоящим долгоживущим Store, а старый публичный контракт сохраняется.
+     */
+    default IncomingSession openIncoming(AccountConfig config) throws ExternalMailClientException {
+        ExternalMailClient delegate = this;
+        return new IncomingSession() {
+            @Override
+            public List<RemoteFolderInfo> listFolders() throws ExternalMailClientException {
+                return delegate.listFolders(config);
+            }
+
+            @Override
+            public List<RemoteMessageEnvelope> listMessageEnvelopes(String remoteFolder, int limit)
+                    throws ExternalMailClientException {
+                return delegate.listMessageEnvelopes(config, remoteFolder, limit);
+            }
+
+            @Override
+            public FetchStats fetchFolder(String remoteFolder, long afterUid, int limit, MessageHandler handler)
+                    throws ExternalMailClientException {
+                return delegate.fetchFolder(config, remoteFolder, afterUid, limit, handler);
+            }
+
+            @Override
+            public void close() {
+                // Старые методы сами закрывают свои краткоживущие подключения.
+            }
+        };
+    }
+
     class ExternalMailClientException extends Exception {
         public enum Category {AUTH, TLS, NETWORK, PROTOCOL, CONFIG}
 

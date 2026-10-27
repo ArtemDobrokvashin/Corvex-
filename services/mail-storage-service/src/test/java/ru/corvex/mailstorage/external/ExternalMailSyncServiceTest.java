@@ -225,6 +225,7 @@ class ExternalMailSyncServiceTest {
                     });
         });
 
+        when(client.openIncoming(any())).thenCallRealMethod();
         when(client.listFolders(any())).thenAnswer(inv -> remoteFolders);
         when(client.listMessageEnvelopes(any(), anyString(), anyInt())).thenAnswer(inv -> snapshotEnvelopes);
         when(client.fetchFolder(any(), anyString(), anyLong(), anyInt(), any())).thenAnswer(inv -> {

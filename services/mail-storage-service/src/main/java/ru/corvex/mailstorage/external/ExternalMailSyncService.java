@@ -215,33 +215,35 @@ public class ExternalMailSyncService {
             ExternalMailClient.AccountConfig config = accountService.toConfig(account);
             boolean syncAllFolders = migration
                     || account.getSyncScope() == ExternalMailAccount.SyncScope.ALL_FOLDERS;
-            List<ExternalMailClient.RemoteFolderInfo> remoteFolders = client.listFolders(config).stream()
-                    .filter(f -> syncAllFolders
-                            || "INBOX".equalsIgnoreCase(f.specialUse()) || "INBOX".equalsIgnoreCase(f.name()))
-                    .limit(props.safeMaxFolders())
-                    .toList();
-            updateRun(runId, counters, remoteFolders.size(), null);
+            try (ExternalMailClient.IncomingSession incoming = client.openIncoming(config)) {
+                List<ExternalMailClient.RemoteFolderInfo> remoteFolders = incoming.listFolders().stream()
+                        .filter(f -> syncAllFolders
+                                || "INBOX".equalsIgnoreCase(f.specialUse()) || "INBOX".equalsIgnoreCase(f.name()))
+                        .limit(props.safeMaxFolders())
+                        .toList();
+                updateRun(runId, counters, remoteFolders.size(), null);
 
-            for (ExternalMailClient.RemoteFolderInfo remoteFolder : remoteFolders) {
-                try {
-                    syncFolder(account, owner, config, remoteFolder, counters, migration);
-                    counters.foldersDone++;
-                } catch (ExternalMailClient.ExternalMailClientException e) {
-                    counters.failed.incrementAndGet();
-                    counters.errors.add(remoteFolder.name() + ": " + e.category() + ": " + e.getMessage());
-                    if (!e.temporary()) counters.permanentCategory = e.category();
-                    log.warn("External mail sync folder failed account={} run={} folder={} category={} temporary={}: {}",
-                            accountId, runId, remoteFolder.name(), e.category(), e.temporary(), e.getMessage(), e);
-                    if (isAccountLevelFailure(e)) break;
-                } catch (RuntimeException e) {
-                    counters.failed.incrementAndGet();
-                    counters.errors.add(remoteFolder.name() + ": " + safeError(e));
-                } finally {
-                    heartbeat(accountId, lockOwner);
-                    updateRun(runId, counters, remoteFolders.size(), String.join("; ", counters.errors));
+                for (ExternalMailClient.RemoteFolderInfo remoteFolder : remoteFolders) {
+                    try {
+                        syncFolder(account, owner, config, incoming, remoteFolder, counters, migration);
+                        counters.foldersDone++;
+                    } catch (ExternalMailClient.ExternalMailClientException e) {
+                        counters.failed.incrementAndGet();
+                        counters.errors.add(remoteFolder.name() + ": " + e.category() + ": " + e.getMessage());
+                        if (!e.temporary()) counters.permanentCategory = e.category();
+                        log.warn("External mail sync folder failed account={} run={} folder={} category={} temporary={}: {}",
+                                accountId, runId, remoteFolder.name(), e.category(), e.temporary(), e.getMessage(), e);
+                        if (isAccountLevelFailure(e)) break;
+                    } catch (RuntimeException e) {
+                        counters.failed.incrementAndGet();
+                        counters.errors.add(remoteFolder.name() + ": " + safeError(e));
+                    } finally {
+                        heartbeat(accountId, lockOwner);
+                        updateRun(runId, counters, remoteFolders.size(), String.join("; ", counters.errors));
+                    }
                 }
+                finishRun(account, runId, counters, remoteFolders.size());
             }
-            finishRun(account, runId, counters, remoteFolders.size());
         } catch (ExternalMailClient.ExternalMailClientException e) {
             counters.failed.incrementAndGet();
             counters.errors.add(e.category() + ": " + e.getMessage());
@@ -260,6 +262,7 @@ public class ExternalMailSyncService {
     private void syncFolder(ExternalMailAccount account,
                             AuthUserClient.MailboxOwner owner,
                             ExternalMailClient.AccountConfig config,
+                            ExternalMailClient.IncomingSession incoming,
                             ExternalMailClient.RemoteFolderInfo remoteFolder,
                             Counters counters,
                             boolean migration) throws ExternalMailClient.ExternalMailClientException {
@@ -289,7 +292,7 @@ public class ExternalMailSyncService {
 
         if (!state.isInitialSnapshotDone()
                 && account.getInitialSyncMode() == ExternalMailAccount.InitialSyncMode.NEW_ONLY) {
-            boolean done = snapshotExisting(account, config, remoteFolder, state, counters);
+            boolean done = snapshotExisting(account, config, incoming, remoteFolder, state, counters);
             state.setInitialSnapshotDone(done);
             state.setLastSyncAt(Instant.now());
             states.saveAndFlush(state);
@@ -308,7 +311,7 @@ public class ExternalMailSyncService {
         AtomicLong lastSuccessfulUid = new AtomicLong(state.getLastSeenUid());
         long afterUid = account.getIncomingProtocol() == ExternalMailAccount.Protocol.IMAP ? state.getLastSeenUid() : 0;
         try {
-            client.fetchFolder(config, remoteFolder.name(), afterUid, props.safeBatchSize(),
+            incoming.fetchFolder(remoteFolder.name(), afterUid, props.safeBatchSize(),
                     (envelope, source) -> handleMessage(account, owner, remoteFolder, target, envelope, source,
                             counters, lastSuccessfulUid, migration));
         } finally {
@@ -322,6 +325,7 @@ public class ExternalMailSyncService {
 
     private boolean snapshotExisting(ExternalMailAccount account,
                                      ExternalMailClient.AccountConfig config,
+                                     ExternalMailClient.IncomingSession incoming,
                                      ExternalMailClient.RemoteFolderInfo remoteFolder,
                                      ExternalMailFolderState state,
                                      Counters counters) throws ExternalMailClient.ExternalMailClientException {
@@ -329,7 +333,7 @@ public class ExternalMailSyncService {
             long cursor = Math.max(0, remoteFolder.uidNext() - 1);
             if (cursor == 0 && remoteFolder.messageCount() > 0) {
                 List<ExternalMailClient.RemoteMessageEnvelope> envelopes =
-                        client.listMessageEnvelopes(config, remoteFolder.name(), props.safeBatchSize());
+                        incoming.listMessageEnvelopes(remoteFolder.name(), props.safeBatchSize());
                 if (envelopes.size() < remoteFolder.messageCount()) return false;
                 cursor = envelopes.stream().mapToLong(e -> parseUid(e.remoteUid())).max().orElse(0);
             }
@@ -338,7 +342,7 @@ public class ExternalMailSyncService {
             return true;
         }
         List<ExternalMailClient.RemoteMessageEnvelope> envelopes =
-                client.listMessageEnvelopes(config, remoteFolder.name(), POP3_SNAPSHOT_LIMIT);
+                incoming.listMessageEnvelopes(remoteFolder.name(), POP3_SNAPSHOT_LIMIT);
         if (envelopes.size() < remoteFolder.messageCount()) return false;
         for (ExternalMailClient.RemoteMessageEnvelope envelope : envelopes) {
             if (imported.findRemote(account.getId(), envelope.remoteFolder(), envelope.UIDValidity(), envelope.remoteUid()).isPresent()) {
@@ -661,7 +665,10 @@ public class ExternalMailSyncService {
     private static boolean isAccountLevelFailure(ExternalMailClient.ExternalMailClientException e) {
         if (e.category() == ExternalMailClient.ExternalMailClientException.Category.AUTH
                 || e.category() == ExternalMailClient.ExternalMailClientException.Category.TLS
-                || e.category() == ExternalMailClient.ExternalMailClientException.Category.CONFIG) {
+                || e.category() == ExternalMailClient.ExternalMailClientException.Category.CONFIG
+                || e.category() == ExternalMailClient.ExternalMailClientException.Category.NETWORK) {
+            // Запуск использует один Store: после сетевого обрыва остальные папки уже нельзя
+            // безопасно читать в этой сессии. Следующий запуск создаст новое подключение.
             return true;
         }
         Throwable current = e;

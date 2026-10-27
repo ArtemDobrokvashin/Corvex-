@@ -416,7 +416,7 @@ class JakartaExternalMailClientTest {
     }
 
     @Test
-    void fetchProfileUsesEnvelopeFlagsAndUidWithoutBodystructure() throws Exception {
+    void imapFetchProfileAvoidsEnvelopeAndPrefetchesOnlyRequiredMetadata() throws Exception {
         IMAPFolder folder = mock(IMAPFolder.class);
         Message one = message(1);
 
@@ -425,10 +425,26 @@ class JakartaExternalMailClientTest {
         ArgumentCaptor<FetchProfile> captor = ArgumentCaptor.forClass(FetchProfile.class);
         verify(folder).fetch(any(Message[].class), captor.capture());
         FetchProfile profile = captor.getValue();
-        assertTrue(profile.contains(FetchProfile.Item.ENVELOPE));
+        assertFalse(profile.contains(FetchProfile.Item.ENVELOPE));
+        assertFalse(profile.contains(FetchProfile.Item.CONTENT_INFO));
         assertTrue(profile.contains(FetchProfile.Item.FLAGS));
         assertTrue(profile.contains(UIDFolder.FetchProfileItem.UID));
-        assertFalse(profile.contains(FetchProfile.Item.CONTENT_INFO));
+        assertTrue(profile.contains(IMAPFolder.FetchProfileItem.INTERNALDATE));
+        assertTrue(profile.contains(IMAPFolder.FetchProfileItem.SIZE));
+        assertEquals(Set.of("Message-ID", "From", "Sender", "Date"), Set.of(profile.getHeaderNames()));
+    }
+
+    @Test
+    void pop3FetchProfileKeepsTopAndListPrefetch() throws Exception {
+        POP3Folder folder = mock(POP3Folder.class);
+
+        invoke("fetchProfile", new Class<?>[]{Folder.class, List.class}, folder, List.of(message(1)));
+
+        ArgumentCaptor<FetchProfile> captor = ArgumentCaptor.forClass(FetchProfile.class);
+        verify(folder).fetch(any(Message[].class), captor.capture());
+        assertTrue(captor.getValue().contains(FetchProfile.Item.ENVELOPE));
+        assertTrue(captor.getValue().contains(UIDFolder.FetchProfileItem.UID));
+        assertFalse(captor.getValue().contains(IMAPFolder.FetchProfileItem.INTERNALDATE));
     }
 
     @Test
@@ -445,10 +461,10 @@ class JakartaExternalMailClientTest {
         when(folder.getUID(message)).thenReturn(42L);
         when(message.getFlags()).thenReturn(flags);
         when(message.getHeader("Message-ID")).thenReturn(new String[]{"<" + "x".repeat(1100) + ">"});
-        when(message.getFrom()).thenReturn(new Address[]{new InternetAddress("sender@partner.test")});
+        when(message.getHeader("From")).thenReturn(new String[]{"Sender <sender@partner.test>"});
         Date sent = Date.from(Instant.parse("2026-02-03T04:05:06Z"));
-        when(message.getReceivedDate()).thenReturn(null);
-        when(message.getSentDate()).thenReturn(sent);
+        when(message.getReceivedDate()).thenThrow(new MessagingException("NO [UNAVAILABLE] FETCH Completed"));
+        when(message.getHeader("Date")).thenReturn(new String[]{"Tue, 3 Feb 2026 04:05:06 +0000"});
         when(message.getSize()).thenReturn(-5);
 
         ExternalMailClient.RemoteMessageEnvelope env = invoke("envelope",
@@ -460,9 +476,12 @@ class JakartaExternalMailClientTest {
         assertEquals("42", env.remoteUid());
         assertEquals(77L, env.UIDValidity());
         assertEquals(998, env.messageIdHeader().length());
+        assertEquals("sender@partner.test", env.from());
         assertEquals(sent.toInstant(), env.internalDate());
         assertEquals(0, env.sizeBytes());
         assertTrue(env.seen() && env.answered() && env.flagged() && env.draft() && env.deleted());
+        verify(message, org.mockito.Mockito.never()).getFrom();
+        verify(message, org.mockito.Mockito.never()).getSentDate();
 
         Folder generic = mock(Folder.class);
         Message genericMessage = message(8);
@@ -583,6 +602,9 @@ class JakartaExternalMailClientTest {
         assertCategory(config, new MessagingException("x", new ConnectException("refused")),
                 ExternalMailClient.ExternalMailClientException.Category.NETWORK, true);
         assertCategory(config, new MessagingException("x", new SocketTimeoutException("slow")),
+                ExternalMailClient.ExternalMailClientException.Category.NETWORK, true);
+        assertCategory(config, new MessagingException("x",
+                        new org.eclipse.angus.mail.iap.ConnectionException("* BYE problems with connection")),
                 ExternalMailClient.ExternalMailClientException.Category.NETWORK, true);
         assertCategory(config, new FolderClosedException(mock(Folder.class), "Lost folder connection to server"),
                 ExternalMailClient.ExternalMailClientException.Category.NETWORK, true);
