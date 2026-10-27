@@ -443,7 +443,8 @@ class JakartaExternalMailClientTest {
         ArgumentCaptor<FetchProfile> captor = ArgumentCaptor.forClass(FetchProfile.class);
         verify(folder).fetch(any(Message[].class), captor.capture());
         assertTrue(captor.getValue().contains(FetchProfile.Item.ENVELOPE));
-        assertTrue(captor.getValue().contains(UIDFolder.FetchProfileItem.UID));
+        assertFalse(captor.getValue().contains(UIDFolder.FetchProfileItem.UID),
+                "POP3Folder не реализует UIDFolder: UIDL запрашивается через POP3Folder.getUID()");
         assertFalse(captor.getValue().contains(IMAPFolder.FetchProfileItem.INTERNALDATE));
     }
 
