@@ -190,8 +190,7 @@ public class JakartaExternalMailClient implements ExternalMailClient {
             endpoint = endpointPolicy.validate(config.incomingHost(), config.incomingPort(), config.incomingSecurity(),
                     config.provider() != ExternalMailAccount.Provider.CUSTOM);
         } catch (ResponseStatusException e) {
-            throw new ExternalMailClientException(ExternalMailClientException.Category.CONFIG, false,
-                    e.getReason(), e);
+            throw endpointFailure(e);
         }
         Session session = Session.getInstance(incomingProperties(config, endpoint));
         try {

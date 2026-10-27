@@ -367,7 +367,7 @@ class JakartaExternalMailClientTest {
         IMAPFolder archive = imapFolder("INBOX.Archive", '.', new String[0], 4, 22L, 30L);
         IMAPFolder inbox = imapFolder("INBOX", '.', new String[]{"\\HasNoChildren"}, 2, 11L, 20L);
         IMAPFolder broken = imapFolder("Broken", '.', new String[0], 1, 1L, 2L);
-        doThrow(new MessagingException("cannot open")).when(broken).open(Folder.READ_ONLY);
+        doThrow(new MessagingException("STATUS failed")).when(broken).getMessageCount();
         when(root.list("*")).thenReturn(new Folder[]{container, archive, broken, inbox});
 
         List<ExternalMailClient.RemoteFolderInfo> folders = invoke("listFolders",
