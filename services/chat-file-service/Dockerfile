@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # --- build stage ---
-FROM maven:3.9-eclipse-temurin-17 AS build
+FROM maven:3.9-eclipse-temurin-26 AS build
 WORKDIR /src
 COPY maven-settings.xml /root/.m2/settings.xml
 COPY pom.xml .
