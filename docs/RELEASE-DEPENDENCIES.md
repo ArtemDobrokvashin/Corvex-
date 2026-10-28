@@ -2,9 +2,10 @@
 
 _Последняя сверка с репозиторием и повторный frontend-прогон: 28 октября 2026 года._
 
-Этот документ фиксирует фактический baseline `main` после PR #95/#96. Версии ниже взяты
-из POM, `package-lock.json`, Dockerfile и `docker-compose.yml`, а не из предполагаемого
-будущего upgrade. Статус runtime-приёмки — в [`READINESS.md`](READINESS.md).
+Этот документ фиксирует версии в текущих файлах `main`. Они взяты из POM,
+`package-lock.json`, Dockerfile и `docker-compose.yml`, а не из предполагаемого будущего
+upgrade. Исторические runtime-результаты не переносятся на новые версии автоматически;
+границы приёмки — в [`READINESS.md`](READINESS.md).
 
 ## 1. Правила обновления
 
@@ -61,8 +62,8 @@ Boot/Cloud/Jackson, James и JDK, обновление observability-стека 
 | jsdom | **30.1.3** |
 | Tailwind CSS | **3.4.19** |
 | `@vitejs/plugin-legacy` / `@babel/core` | **8.2.3 / 7.29.7** |
-| Zustand | **5.0.15** |
-| Lucide React | **1.60.0** (lockfile; переход на 2.x — отдельная major-миграция) |
+| Zustand | **5.0.16** |
+| Lucide React | **1.61.0** (lockfile; переход на 2.x — отдельная major-миграция) |
 | Marked / DOMPurify | **18.1.1 / 3.4.17** |
 
 Повторная проверка 28.10.2026 на Node 22.22.3 / npm 10.9.8:
@@ -90,18 +91,25 @@ Production audit равен нулю на текущем lockfile. Это не �
 |---|---|
 | PostgreSQL | `postgres:16-alpine` |
 | Redis | `redis:7-alpine` |
-| RabbitMQ | `rabbitmq:4.3.6-management-alpine` |
+| RabbitMQ | `rabbitmq:4.3.7-management-alpine` |
 | Elasticsearch | `docker.elastic.co/elasticsearch/elasticsearch:8.19.23` |
 | SpamAssassin | `grepular/spamassassin:4.0.1-5` |
 | ClamAV | `clamav/clamav:1.5.4` |
 | nginx | `nginx:1.31-alpine` |
-| Prometheus | `prom/prometheus:v3.15.0` |
+| Prometheus | `prom/prometheus:v3.15.1` |
 | Alertmanager | `prom/alertmanager:v0.34.1` |
 | Grafana | `grafana/grafana:13.2.4` |
-| Loki | `grafana/loki:3.7.8` |
+| Loki | `grafana/loki:3.7.9` |
 | Promtail | `grafana/promtail:3.6.11` — до миграции на Alloy в G4 |
 | Frontend build | `node:22-alpine` → `nginx:1.31-alpine` |
 | Java services | `maven:3.9-eclipse-temurin-17` → `eclipse-temurin:17-jre-alpine` |
+
+RabbitMQ **4.4.0 намеренно не включён** в этот staged-update. Прямой переход с 4.3.6
+в образе 4.4.0 одновременно меняет RabbitMQ и Erlang/OTP 27→29; официальные release notes
+для такого случая рекомендуют сначала 4.3.7+. Кроме того, новые classic-queue v2-файлы
+4.4 нельзя откатить на 4.3.x с тем же volume. Поэтому сейчас зафиксирован 4.3.7, а 4.4
+требует отдельного изменения после backup, проверки очередей/DLQ/restart и rollback-плана.
+Dependabot minor-update для RabbitMQ до этого приостановлен; patch-обновления разрешены.
 
 Теги — не digest-пины. Для production G5 нужно отдельно решить политику digest/immutable
 artifacts, сканирование образов и обновление базовых ОС. SpamAssassin использует
@@ -114,7 +122,8 @@ supply-chain review.
 по понедельникам (Europe/Moscow): npm, Maven, Docker base images и Compose images.
 Major-версии автоматически не предлагаются. Для каждого ecosystem действует
 `open-pull-requests-limit: 1`; James minor/major заблокированы до согласованной JDK/James
-миграции. Это намеренно предотвращает десятки однотипных PR по 12 каталогам сервисов.
+миграции, RabbitMQ minor — до ручного staged-upgrade с backup/rollback smoke. Это намеренно
+предотвращает десятки однотипных PR по 12 каталогам сервисов и небезопасные coupled upgrades.
 
 Открытые Dependabot PR не следует смешивать с функциональным или документационным PR.
 
