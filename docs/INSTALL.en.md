@@ -158,7 +158,7 @@ docker compose up -d --build
 The first build of 12 Java services + frontend takes 10–30 minutes. Then:
 
 ```powershell
-docker compose ps        # wait until every service is (healthy)
+docker compose ps        # healthchecked services: healthy; nginx/frontend/spamd: Up
 docker compose --profile monitoring up -d
 ```
 

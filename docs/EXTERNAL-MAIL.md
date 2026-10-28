@@ -6,7 +6,7 @@
 
 External Mail Connector подключает существующий внешний почтовый ящик к ящику сотрудника в Corvex. Он нужен компаниям, у которых рабочий адрес исторически живёт на `@mail.ru`, `@yandex.ru`, в Gmail/Microsoft 365 или на другом почтовом сервере, а переписку нужно постепенно перенести в собственный Corvex.
 
-> Corvex в целом пока проходит ворота G1–G5 из `READINESS.md`. Коннектор нельзя считать принятым для настоящей рабочей почты, пока Maven, Docker и живой SMTP/IMAP smoke не пройдены. Начинайте с тестового внешнего ящика и synthetic-писем.
+> На 28.10.2026 полный PC-pass G1/G2 относится только к `b37db56`; на текущем `main` после смены Boot его нужно повторить. Коннектор имеет **ограниченный живой G3-результат** на тестовых ящиках Mail.ru и Яндекса. Это ещё не production-приёмка: архив, остальные провайдеры и часть send-as/операционных сценариев открыты. Используйте отдельный внешний ящик, app-password и synthetic-письма; рабочую почту не переносите.
 
 ### Что умеет коннектор
 
@@ -24,6 +24,15 @@ External Mail Connector подключает существующий внешн
 - RBAC-право `MAIL_EXTERNAL_ACCOUNTS`, аудит действий и шифрование секрета AES-256-GCM.
 
 Это односторонний сбор в Corvex. Коннектор не синхронизирует обратно каждое открытие/удаление письма в Corvex и не превращает Corvex в двухсторонний IMAP-агрегатор. Если домен принадлежит компании и DNS можно изменить, долгосрочная цель — перенести MX на Corvex после production-ворот; коннектор закрывает переходный период и адреса на чужих доменах провайдеров.
+
+### Что уже проверено живьём
+
+- **Яндекс:** после пересоздания подключения с правильным app-password IMAP-сбор работает без ошибок.
+- **Mail.ru:** повторные scheduled runs не создают дублей; контрольный запуск 28.10.2026 завершился `SUCCESS` (`folders=1`, `queued=1`, `skipped=0`, `errors=0`), новое письмо появилось в Corvex.
+- В том smoke письмо появилось примерно через **1–2 минуты**. Это polling, а не гарантия realtime: задержка зависит от интервала подключения, планировщика и провайдера. Не сокращайте интервал агрессивно без учёта лимитов; почти мгновенная доставка требует отдельного устойчивого IMAP IDLE с reconnect и polling fallback.
+- Автоматические тесты подтверждают продолжение с последнего подтверждённого UID после обрыва и ограничение reconnect initial + 2 попытки. Это не подменяет живой fault-injection у каждого провайдера.
+
+**Не запускалось / ещё не принято:** архив Mail.ru примерно на 6550 писем, полная archive migration с вложениями/папками/флагами, Gmail/Outlook/custom live-матрица и весь production-сценарий. Ниже остаётся контрольный список для повторной приёмки на новом SHA.
 
 ### Архитектура
 
@@ -197,4 +206,8 @@ External Mail Connector attaches an existing provider mailbox to a Corvex mailbo
 
 Secrets are AES-256-GCM encrypted, never returned by the API, and are fetched by the SMTP worker just-in-time over the internal API instead of travelling in RabbitMQ events. Custom endpoints are SSRF-checked (loopback/link-local/private networks and plaintext are blocked by default). Provider-specific OAuth2 is not impersonated as supported: Outlook/Microsoft tenants that require Modern Auth need a separate OAuth integration, while app-password tenants can use the preset.
 
-Corvex remains gated by `READINESS.md`: do not use the connector for real company mail until Maven, Docker, and live mail acceptance pass on an isolated host with a disposable external mailbox.
+### Verified status (28 October 2026)
+
+The full G1/G2 PC pass applies only to `b37db56` and must be repeated on current `main` after the Boot change. The connector has a **limited live G3 result**: Yandex IMAP collection worked after recreating the account with the correct app password; Mail.ru repeated scheduled runs created no duplicates and delivered a new message in the control run. The observed polling delay was about 1–2 minutes, not a realtime guarantee. Automated tests cover resuming after the last confirmed UID and bounded reconnects. The roughly 6,550-message Mail.ru archive, full archive migration, Gmail/Outlook/custom live coverage, and production acceptance remain open.
+
+Corvex remains gated by `READINESS.md`: use a disposable external mailbox, an app password, and synthetic mail on an isolated host. Do not migrate working company mail or treat this limited smoke as production approval.

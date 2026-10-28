@@ -1,176 +1,171 @@
-# Corvex: зависимости и ворота первого релиз-кандидата
+# Release dependencies и ворота Corvex
 
-_Last reviewed: 20 October 2026._
+_Последняя сверка с репозиторием и повторный frontend-прогон: 28 октября 2026 года._
 
-Этот документ фиксирует, на каких версиях Corvex идёт к первому полному тесту,
-какие исключения допущены осознанно и что запрещено называть «готовым к
-production», пока не пройдены все ворота ниже. Его цель простая: зависимости не
-обновляются хаотично, а ошибки не маскируются одновременной сменой нескольких
-платформ.
+Этот документ фиксирует фактический baseline `main` после PR #95/#96. Версии ниже взяты
+из POM, `package-lock.json`, Dockerfile и `docker-compose.yml`, а не из предполагаемого
+будущего upgrade. Статус runtime-приёмки — в [`READINESS.md`](READINESS.md).
 
-## 1. Правила работы
+## 1. Правила обновления
 
-1. **Lockfile обязателен.** Frontend ставится только `npm ci`; ручные правки
-   `package-lock.json` запрещены.
-2. **Нельзя `npm audit fix --force`** и массовые major-апгрейды одной командой.
-   Сначала patch/minor, затем по одному major-пласту: тесты, build, audit,
-   ручная проверка маршрутов.
-3. **Один релизный пласт за раз.** Нельзя одновременно менять Spring, Jackson,
-   James, базу данных и брокер: первая ошибка должна иметь одну вероятную
-   причину.
-4. **Поддерживаемая ветка важнее самой свежей цифры.** Для базы, брокера и JVM
-   выбирается поддерживаемый LTS/стабильный ряд, а не сегодняшний `.0`, если
-   тот ещё не получил patch-исправлений.
-5. **Неиспользуемая зависимость удаляется**, а не обновляется «на всякий
-   случай». Так убраны неиспользуемые Swagger annotations, GreenMail и прямая
-   MIME4J-зависимость SMTP-сервиса.
-6. **Исключение без срока и владельца не допускается.** Каждое исключение ниже
-   имеет причину и ворота, на которых оно закрывается.
+1. **Сначала исправления и зелёные ворота, затем новый baseline.** Не совмещать major-upgrade
+   с нестабильной сборкой, сменой архитектуры и большим количеством независимых правок.
+2. Patch/minor обновления проходят релевантные тесты. Major Spring/James/JDK/frontend —
+   отдельным изменением с повторением G0–G3.
+3. Не понижать JaCoCo и не отключать тесты ради зелёного результата. Не делать массовый
+   downgrade Spring/James по первой ошибке: сначала проверить точную сигнатуру API и
+   первый `Caused by`.
+4. `npm ci` обязателен для воспроизводимого frontend-графа. Docker build не заменяет
+   `mvn verify`: сервисные Dockerfile собирают артефакты с `-DskipTests`.
+5. Каждый отчёт содержит точный SHA, версии JDK/Maven/Node/Docker и первую ошибку.
 
-## 2. Frontend: закрытый и проверенный пласт
+## 2. Текущий backend baseline
 
-Текущий baseline:
+| Компонент | Зафиксировано сейчас | Комментарий |
+|---|---|---|
+| JDK | **17** | Все 12 сервисов используют `<java.version>17</java.version>`; Docker runtime — `eclipse-temurin:17-jre-alpine` |
+| Maven build image | `maven:3.9-eclipse-temurin-17` | Полный PC reactor на `b37db56` проверен Maven 3.10.0 / Java 17.0.20.1; на текущем Boot 3.5.16 повторить |
+| Spring Boot parent | **3.5.16** | Одинаковая версия во всех 12 service POM |
+| Spring Cloud BOM, gateway | **2025.0.3** | Используется `web-gateway` с Boot 3.5 |
+| Spring Cloud BOM, остальные POM | **2023.0.6** | Остаточный неоднородный dependency-management baseline; унификация относится к G4, не выдаётся за завершённую |
+| Apache James protocols | **3.8.2** | IMAP/POP3; Java 17 сохраняется до отдельной миграции G4 |
+| SubEtha SMTP | `com.github.subethasmtp:subethasmtp:7.2.2` | Поддерживаемый форк вместо заброшенной линии 3.1.7 |
+| dnsjava | **3.6.5** | MX/DNS-резолвинг SMTP |
+| Jakarta Mail API / Angus Mail | **2.1.5 / 2.0.5** | External Mail IMAP/POP3/SMTP; точные сигнатуры reconnect/fetch проверялись по исходникам |
+| JaCoCo | **0.8.15** | Coverage-гейты не понижались |
 
-- Node.js `^22.22.2 || ^24.15.0 || >=26.0.0` (нижняя граница задана jsdom 30; в Docker — актуальный Node 22);
-- React/ReactDOM 19.3.1, React Router DOM 7.18.4;
-- Vite 8.3.4, `@vitejs/plugin-react` 6.1.2, `@vitejs/plugin-legacy` 8.2.3;
-- Vitest 5.0.5 + jsdom 30.1.3 для DOM-тестов;
-- TypeScript 7.0.2;
-- Marked 18.1.1, Zustand 5.0.15, DOMPurify 3.4.17 через lockfile;
-- Markdown в demo- и реальном чате вынесен в один проверенный тестами путь
-  `frontend/src/lib/markdown.ts`; прямые вызовы Marked/DOMPurify из страниц
-  запрещены.
+**Граница доказательств:** полный PC-pass G1/G2 получен на `b37db56` с Boot 3.2.12,
+Cloud 2023.0.6 и James 3.8.2. PR #95 уже содержал Boot 3.5.16 при merge; текущий
+`main` использует Boot 3.5.16 и gateway Cloud 2025.0.3. Старый PASS нельзя задним
+числом приписать новой версии: G1/G2 на текущем `main` остаются обязательным повтором.
+Смешанные Cloud BOM, James 3.8.2 и Java 17 также показывают, почему нужен G4.
 
-Проверено фактически:
+### Запланированный G4
 
-- `npm test`: 4 файла, 15/15 тестов;
-- `npm run build`: TypeScript, modern bundle и legacy bundle для Chrome 109;
-- `npm audit --omit=dev`: **0 уязвимостей production-графа**.
+G4 — не косметический bump, а отдельная поддерживаемая платформа: согласованные Spring
+Boot/Cloud/Jackson, James и JDK, обновление observability-стека (включая замену Promtail
+на Alloy), затем полный повтор Maven, Docker, webmail, SMTP/IMAP/POP3 и chat-smoke.
+Точные целевые версии выбираются на момент G4 по официально поддерживаемым линиям и их
+совместимости; документ не объявляет непроверенный upgrade уже выполненным.
 
-### Осознанное исключение: Tailwind CSS 3.4 и Babel 7
+## 3. Текущий frontend baseline
 
-Tailwind CSS 4 рассчитан на Chrome 111+, а Corvex обязан работать в Chrome 109
-на Windows 7. Поэтому остаются Tailwind 3.4.19 и связанная legacy-цепочка
-Babel 7. Полный `npm audit` показывает 7 build-time находок в цепочке Tailwind
-(`braces`, `chokidar`, `fast-glob`, `micromatch`, `postcss-nested`,
-`postcss-selector-parser`, `tailwindcss`). Эти пакеты не попадают в
-production-граф; сборка должна выполняться только из доверенного lockfile и
-доверенных исходников репозитория. Исключение закрывается одним из двух путей:
-выход исправленной совместимой цепочки Tailwind 3 или отдельная миграция CSS
-без потери Chrome 109. Случайные `overrides` и принудительный Tailwind 4
-запрещены.
+Воспроизводимый граф определяется `frontend/package-lock.json`. Основные resolved-версии:
 
-`@babel/core` закреплён в major 7 как явная build-зависимость: он нужен
-legacy-трансформации и снимает peer-конфликт optional Babel-цепочки
-`@vitejs/plugin-react` 6.
+| Пакет / инструмент | Версия |
+|---|---|
+| Node.js engines | `^22.22.2 || ^24.15.0 || >=26.0.0`; npm `>=10` |
+| React / React DOM | **19.3.1 / 19.3.1** |
+| React Router DOM | **7.18.4** |
+| TypeScript / Vite / Vitest | **7.0.2 / 8.3.4 / 5.0.5** |
+| jsdom | **30.1.3** |
+| Tailwind CSS | **3.4.19** |
+| `@vitejs/plugin-legacy` / `@babel/core` | **8.2.3 / 7.29.7** |
+| Zustand | **5.0.15** |
+| Lucide React | **1.60.0** (lockfile; переход на 2.x — отдельная major-миграция) |
+| Marked / DOMPurify | **18.1.1 / 3.4.17** |
 
-## 3. Backend: baseline первого compile-теста
+Повторная проверка 28.10.2026 на Node 22.22.3 / npm 10.9.8:
 
-Для первого настоящего Maven-прогона выбран последний patch/SR существующей
-линии, а не одновременный прыжок через несколько major-платформ:
+- `npm ci` — успешно;
+- `npm test` — **9 test-файлов, 33/33 теста**;
+- `npm run build` — TypeScript, modern и `*-legacy-*.js` bundles успешно;
+- `npm audit --omit=dev --audit-level=moderate` — **0 уязвимостей**.
 
-- Java 17, Spring Boot 3.2.12, Spring Cloud 2023.0.6;
-- Apache James 3.8.2 в IMAP и POP3 (в POP3 добавлено отсутствовавшее
-  `james.version`, без которого POM был неработоспособен);
-- SMTP переведён с заброшенного `org.subethamail:subethasmtp` 3.1.7 (2012) на
-  поддерживаемый форк `com.github.davidmoten:subethasmtp` 7.2.2; код адаптирован
-  к Builder API, `String data(...)`, `Optional<AuthenticationHandler>` и
-  трёхаргументному `UsernamePasswordValidator` по исходникам версии 7.2.2;
-- dnsjava 3.6.5;
-- JaCoCo 0.8.15.
+### Осознанные исключения
 
-Это **не** production-платформа: Spring Boot 3.2 и Spring Cloud 2023.0 уже вне
-OSS-поддержки. Baseline нужен ровно для одного: получить первую честную
-компиляцию, тесты и runtime-сигнатуру существующего кода без одновременной
-миграции Jackson 3/Hibernate 7/Spring Security 7.
+- **Tailwind 4:** не применять без отдельного доказательства Chrome 109. Tailwind 4
+  использует более новые браузерные возможности; текущая обязательная цель — Chrome 109
+  на Windows 7. Это осознанное ограничение, а не разрешение игнорировать security-находки.
+- **Babel 8:** legacy-цепочка остаётся на Babel 7 до отдельной проверенной миграции.
+- **Major frontend-обновления:** например, переход Lucide на 2.x рассматривать по
+  changelog и smoke-результатам, а не объединять с независимой функциональной работой.
 
-### Обязательный platform gate до пилота
-
-После первого зелёного Maven/Docker baseline следующим отдельным релизным
-пластом выполняется:
-
-1. Spring Boot 4.1.x + совместимый Spring Cloud Oakwood;
-2. миграция Jackson 2 → Jackson 3 и связанных Spring AMQP/HTTP-конвертеров;
-3. проверка Hibernate/Spring Data/Spring Security/Gateway API тестами;
-4. Apache James 3.8.2 → актуальный поддерживаемый 3.9.x с повторной сверкой
-   каждого реализованного SPI;
-5. повторный полный прогон Maven, Docker, webmail, чата и SMTP/IMAP/POP3.
-
-До закрытого platform gate Corvex нельзя выпускать даже как «production
-pilot», даже если baseline соберётся и заработает локально.
+Production audit равен нулю на текущем lockfile. Это не утверждение, что весь dev-граф
+или любой будущий lockfile вечно чист: audit повторяется после каждого обновления.
 
 ## 4. Docker-инфраструктура
 
-Закреплены поддерживаемые ряды:
+| Компонент | Текущий image/tag |
+|---|---|
+| PostgreSQL | `postgres:16-alpine` |
+| Redis | `redis:7-alpine` |
+| RabbitMQ | `rabbitmq:4.3.6-management-alpine` |
+| Elasticsearch | `docker.elastic.co/elasticsearch/elasticsearch:8.19.23` |
+| SpamAssassin | `grepular/spamassassin:4.0.1-5` |
+| ClamAV | `clamav/clamav:1.5.4` |
+| nginx | `nginx:1.31-alpine` |
+| Prometheus | `prom/prometheus:v3.15.0` |
+| Alertmanager | `prom/alertmanager:v0.34.1` |
+| Grafana | `grafana/grafana:13.2.4` |
+| Loki | `grafana/loki:3.7.8` |
+| Promtail | `grafana/promtail:3.6.11` — до миграции на Alloy в G4 |
+| Frontend build | `node:22-alpine` → `nginx:1.31-alpine` |
+| Java services | `maven:3.9-eclipse-temurin-17` → `eclipse-temurin:17-jre-alpine` |
 
-| Компонент | Версия | Примечание |
-|---|---:|---|
-| PostgreSQL | `postgres:16-alpine` | major 16 поддерживается до 2028 года; тег получает последний patch |
-| Redis | `redis:7-alpine` | ряд 7.4 получает security-поддержку; миграция на 8.x отдельным gate |
-| RabbitMQ | `4.3.6-management-alpine` | поддерживаемый 4.3; 3.13 убран |
-| Elasticsearch | `8.19.23` | поддерживаемый ряд 8.19, совместимый с Java-клиентом major 8 |
-| SpamAssassin | `grepular/spamassassin:4.0.1-5` | Debian 13 package 4.0.1-5; официального Apache Docker-образа нет, поэтому закреплён прозрачный community-образ с `spamd:783` и ежедневным `sa-update` |
-| ClamAV | `1.5.4` | актуальный security patch |
-| nginx | `1.30-alpine` | stable-ветка |
-| Prometheus | `v3.13.4` | LTS-ряд 3.13 |
-| Alertmanager | `v0.34.1` | актуальный релиз |
-| Grafana | `13.2.4` | актуальный patch поддерживаемого ряда |
-| Loki | `3.7.8` | актуальный patch |
-| Promtail | `3.6.11` | последний ряд перед EOL; только optional `monitoring` profile |
+Теги — не digest-пины. Для production G5 нужно отдельно решить политику digest/immutable
+artifacts, сканирование образов и обновление базовых ОС. SpamAssassin использует
+community-образ, потому что официального Apache image нет; это нужно учитывать при
+supply-chain review.
 
-Promtail достиг EOL и не является production-решением. Его последний patch
-допустим лишь для первого optional monitoring smoke. До production-мониторинга
-Promtail заменяется на Grafana Alloy с конвертацией `infra/loki/promtail.yml` и
-проверкой доставки Docker-логов в Loki.
+## 5. Dependabot без потока мелких PR
 
-## 5. Ворота релиза
+`.github/dependabot.yml` настроен на еженедельные **сгруппированные minor/patch** updates
+по понедельникам (Europe/Moscow): npm, Maven, Docker base images и Compose images.
+Major-версии автоматически не предлагаются. Для каждого ecosystem действует
+`open-pull-requests-limit: 1`; James minor/major заблокированы до согласованной JDK/James
+миграции. Это намеренно предотвращает десятки однотипных PR по 12 каталогам сервисов.
 
-### G0 — статика и frontend (пройдено для этого кандидата)
+Открытые Dependabot PR не следует смешивать с функциональным или документационным PR.
 
-- frontend tests/build, production audit 0;
-- Java syntax, POM/XML/YAML/JSON, Markdown links;
-- Compose: все build-контексты существуют;
-- для каждого POM нет неопределённых локальных свойств.
+## 6. Ворота и фактический статус
 
-### G1 — Maven на ПК
+### G0 — frontend и статические проверки: ✅ пройдено, повторять на релизном SHA
 
-- `mvn -DskipTests compile` по всем 12 сервисам;
-- затем тесты по одному сервису в порядке первой ошибки;
-- `mvn package` без отключения JaCoCo и без массовых понижений версий.
+Минимум: `npm ci`, tests, TypeScript/modern/legacy build, production audit, YAML/XML/JSON,
+локальные Markdown-ссылки и `git diff --check`. Реальный Chrome 109 остаётся отдельным
+ручным G3-тестом — наличие legacy bundle его не заменяет.
 
-### G2 — Docker и первый запуск
+### G1 — Maven на JDK-хосте: ✅ `b37db56`; 🔁 повторить на текущем `main`
 
-- `docker compose config`, build всех образов;
-- `.env`, сертификаты, first-run super-admin;
-- все healthcheck зелёные, логи без restart loop.
+```bash
+mvn -B clean verify
+```
 
-### G3 — функциональная приёмка
+На `b37db56` с Boot 3.2.12 получен `BUILD SUCCESS` для 12 сервисов и parent.
+PR #95 уже содержал Boot 3.5.16 при merge, поэтому для текущего `main` нужен новый
+полный reactor; targeted test не выдаётся за полный прогон.
 
-- вход, refresh, 2FA, RBAC и аудит;
-- webmail и реальный чат после рестарта контейнеров;
-- SMTP submission/relay, IMAP и POP3 в Thunderbird;
-- backup → чистая среда → restore.
+### G2 — Docker и первый запуск: ✅ `b37db56`; 🔁 повторить на текущем `main`
 
-### G4 — поддерживаемая платформа
+```bash
+docker compose config -q
+docker compose build
+docker compose up -d
+docker compose ps
+```
 
-- Spring Boot 4.1/Spring Cloud/Jackson 3;
-- James 3.9.x;
-- Promtail → Alloy;
-- повтор G1–G3 без сокращений.
+На `b37db56` собраны 13 образов, применены Flyway-миграции и поднят базовый стек.
+Поздние targeted gateway/chat-пересборки не являются полным G2 текущего `main`.
+После смены Boot нужно повторить запуск. Для нового стенда сначала выполняется
+`scripts/first-run.ps1` (Windows) либо эквивалент из `docs/INSTALL.md`.
 
-### G5 — пилот и production
+### G3 — функциональная приёмка: 🚧 в работе
 
-- Windows 7 + Chrome 109 на реальной VM;
-- SPF/DKIM/DMARC, PTR, внешняя доставляемость и abuse-сценарии;
-- нагрузка на целевой объём пользователей, security review, CSP;
-- документированный rollback и проверенный restore из резервной копии.
+Подтверждены ограниченный External Mail ongoing и базовый realtime chat. Остаются
+собственные SMTP/IMAP/POP3 и почтовые клиенты, полный двухпользовательский чат/файлы,
+webmail/вложения, archive migration, backup/restore, мониторинг/alerting, реальный
+Chrome 109 и остальные сценарии из `READINESS.md`.
 
-## 6. Каденс обновлений после baseline
+### G4 — поддерживаемая платформа: ⏳ впереди
 
-- Security patch: вне очереди, отдельным PR, с полным G0 и релевантным G1/G2.
-- Patch/minor: ежемесячно, группами frontend/backend/Docker.
-- Major: Dependabot автоматически не предлагает. Такая миграция готовится
-  вручную одним отдельным изменением, проходит сверку API и отдельный gate;
-  десятки однотипных PR по каталогам сервисов не создаются.
-- Каждый PR с зависимостями обязан указывать: что изменилось, какие тесты
-  реально запущены, какой audit-результат получен и какое исключение осталось.
+Только отдельным изменением после стабильного baseline. Обязателен повтор G1–G3 без
+сокращения тестов и без скрытого понижения качества.
+
+### G5 — пилот / production: ⏳ впереди
+
+Нагрузка и 72 часа наблюдения, security hardening, AD/LDAP при необходимости,
+backup/restore/DR, ограниченный пилот и план отката. До этого production MX, рабочие
+ящики и публичный SMTP не разрешаются.
+
+Полная PC-инструкция: [`TESTING-ON-YOUR-PC.md`](TESTING-ON-YOUR-PC.md).

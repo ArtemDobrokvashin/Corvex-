@@ -4,11 +4,12 @@ POP3 (RFC 1939) для устаревших клиентов: порты 110 (pl
 
 ## Статус этапа 3
 
-Код написан, **runtime ещё не доказан**, поэтому сервис по умолчанию выключен
-(`CORVEX_POP3_ENABLED=false`) до G1 (`mvn -B clean verify`), G2 (Docker/Spring)
-и G3 (клиентский smoke). В POM зафиксирован `james.version=3.8.2`; это baseline
-первой компиляции, а переход на James 3.9.x должен быть отдельным G4-апгрейдом
-после зелёного прогона. Подробности: [`../../docs/READINESS.md`](../../docs/READINESS.md)
+Полный **G1 (Maven) и G2 (Docker/Spring) пройден только для `b37db56`**;
+на текущем `main` с Boot 3.5.16 его нужно повторить. Клиентский G3 ещё не выполнен,
+поэтому сервис по умолчанию остаётся выключенным
+(`CORVEX_POP3_ENABLED=false`) до smoke в реальном почтовом клиенте. В POM зафиксирован
+`james.version=3.8.2`; переход на согласованную поддерживаемую James/JDK-платформу —
+отдельный G4-апгрейд. Подробности: [`../../docs/READINESS.md`](../../docs/READINESS.md)
 и [`../../docs/RELEASE-DEPENDENCIES.md`](../../docs/RELEASE-DEPENDENCIES.md).
 
 ## Как устроен
@@ -57,10 +58,9 @@ QUIT
 
 ## Что ещё не проверено
 
-Компиляция против James 3.8.2 (конструкторы хендлеров взяты из исходников тега
-`james-project-3.8.2`, но сборкой не подтверждены), поведение Netty-цепочки
-`DelimiterBasedFrameDecoder -> BasicChannelInboundHandler` на реальных клиентах
-(Thunderbird/Outlook), CAPA-ответ и поведение при больших ящиках
+Компиляция против James 3.8.2 и базовый Docker/Spring-запуск подтверждены на
+`b37db56`; текущий `main` требует повтора после смены Boot. Остаются поведение Netty-цепочки `DelimiterBasedFrameDecoder -> BasicChannelInboundHandler`
+на реальных клиентах (Thunderbird/Outlook), CAPA-ответ и поведение при больших ящиках
 (`CORVEX_POP3_MAX_MESSAGES`, по умолчанию 1000 писем на сессию).
 
 ## Проверка модуля
@@ -78,5 +78,5 @@ mvn -B -pl :mail-pop3-service -am test
 большой INBOX у границы `CORVEX_POP3_MAX_MESSAGES`.
 
 Следующие задачи: клиентские интеграционные тесты, STLS только после
-отдельного security review, нагрузочный профиль больших ящиков и G4-апгрейд
-James 3.9.x. Правила вклада: [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md).
+отдельного security review, нагрузочный профиль больших ящиков и согласованный
+G4-апгрейд James/JDK. Правила вклада: [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md).
