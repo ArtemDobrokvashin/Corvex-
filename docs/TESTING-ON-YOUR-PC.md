@@ -1,49 +1,38 @@
-# Corvex: новая инструкция по тестированию на вашем ПК
+# Corvex: поэтапная инструкция по тестированию на вашем ПК
 
-> **Дата release-hardening проверки:** 20 октября 2026 года.
-> **Проверенная база кода:** `main` после PR #5 (`625aafe`), включающая Этап 3
-> `28d5b33`, инструкцию из PR #4 и release-hardening: обновлённые
-> frontend-зависимости, исправленный POP3 POM, поддерживаемый SMTP-движок,
-> Docker-версии, Dependabot и ворота G0–G5.
-> **Главный вывод:** G0 закрыт — фронтенд реально собирается, 15/15 тестов проходят,
-> production `npm audit` равен 0, статика репозитория чистая. В текущей среде разработки
-> нет JDK, Maven и Docker, поэтому G1/G2 — первая настоящая сборка Java/Docker — остаётся
-> на вашем ПК по шагам ниже. Это всё ещё **не production-ready**.
+> **Дата актуализации:** 28 октября 2026 года.
+> **Текущий исходный код:** `main` после PR #96 —
+> `7aee2983f691bb46e4ecac51fd2e377c089b49b3` (Boot 3.5.16).
+> **Исторический PC-pass G1/G2:** только `b37db56` (Boot 3.2.12 / Cloud 2023.0.6 /
+> James 3.8.2). На текущем `main` G1/G2 нужно повторить. G0 повторно проверен на
+> текущем `main`; G3 частично идёт: External Mail ongoing и базовый realtime-чат,
+> но собственные протоколы, полный чат, архив, restore и Chrome 109 ещё не приняты.
+> Это **не production-ready**.
 
-Эта инструкция заменяет разрозненные команды из старых ответов. Идите строго сверху вниз и
-**не переходите к следующему уровню, если предыдущий красный**: так первая ошибка не утонет
-в сотнях вторичных последствий.
+Эта инструкция позволяет воспроизвести проверки на вашем точном SHA и продолжить приёмку.
+Идите сверху вниз и **не переходите к следующему уровню, если предыдущий красный**: так
+первая ошибка не утонет в сотнях вторичных последствий. Выполняйте по одной логической
+команде, дожидайтесь результата и не публикуйте секреты.
 
----
+## Фактический статус проверок
 
-## Что уже проверено до вашего ПК (ворота G0)
-
-| Проверка | Результат 20.10.2026 | Комментарий |
+| Проверка | Результат | Комментарий |
 |---|---|---|
-| Git-история | ✅ PASS | Этап 3, инструкция и release-hardening уже в `main` через PR #3/#4/#5; проверенная база начинается с merge `625aafe` |
-| `npm ci` во `frontend` | ✅ PASS | Установка строго по обновлённому `package-lock.json`; Node.js 22.22.3 при G0, поддерживаются 22.22.2+/24.15+/26+ |
-| Frontend unit-тесты | ✅ PASS | 4 файла, **15/15 тестов**, включая jsdom-тесты Markdown/DOMPurify |
-| TypeScript + production build | ✅ PASS | TypeScript 7 + Vite 8; modern и legacy (`*-legacy-*.js`) бандлы созданы |
-| Vite dev-server | ✅ PASS | `0.0.0.0:5173`; `/`, `/login`, `/mail`, `/chat`, `/admin` отдают HTTP 200 |
-| Java-синтаксис | ✅ PASS* | Распарсено **213/213** `.java`; это не компиляция и не проверка типов |
-| XML / JSON / YAML | ✅ PASS | 13 XML, 3 JSON, 28 YAML, включая новый Dependabot-конфиг |
-| Структура Maven/Compose | ✅ PASS | 12 Java-модулей; в Compose 25 сервисов, 13 build-контекстов, все обязательные сервисы Corvex на месте |
-| Dockerfile/POM по сервисам | ✅ PASS | У всех 12 сервисов есть `Dockerfile` и `pom.xml`; порты healthcheck совпадают с `server.port` |
-| Локальные ссылки Markdown | ✅ PASS | Проверено 117 локальных ссылок/изображений (включая эту инструкцию), битых нет |
-| `git diff --check`, конфликт-маркеры | ✅ PASS | Чисто |
-| `npm audit` production-зависимостей | ✅ PASS | **0 уязвимостей** после React Router 7 и обновления production-графа |
-| `npm audit` всех зависимостей | ⚠️ ACCEPTED EXCEPTION | 7 build-time находок только в Tailwind 3.4-цепочке для Chrome 109; причина, граница риска и путь закрытия — `docs/RELEASE-DEPENDENCIES.md` |
-| `mvn verify` | ⏸ NOT RUN | В текущей среде разработки нет JDK/Maven; это ваш G1 ниже |
-| Docker build/`docker compose up` | ⏸ NOT RUN | В текущей среде разработки нет Docker; это ваш G2 ниже |
-| Spring/Flyway/БД/очереди | ⏸ NOT RUN | Проверяется только вашим первым запуском стека |
-| Thunderbird/Outlook IMAP/POP3 | ⏸ NOT RUN | Нужны собранные контейнеры и реальный клиент |
-| Windows 7 + Chrome 109 | ⏸ NOT RUN | Legacy-бандл построен, но браузерный smoke требует реальную VM |
+| Frontend `npm ci` | ✅ PASS | Повторено на текущем `main` 28.10.2026, Node 22.22.3 / npm 10.9.8 |
+| Frontend unit-тесты | ✅ PASS | **9 test-файлов, 33/33 теста** |
+| TypeScript + production build | ✅ PASS | Modern и `*-legacy-*.js` bundles созданы |
+| Production `npm audit` | ✅ PASS | **0 уязвимостей** на текущем lockfile |
+| Корневой `mvn -B clean verify` | ✅ PASS только на `b37db56` | 12 сервисов + parent, Boot 3.2.12; на текущем `main` с Boot 3.5.16 повторить |
+| Docker build / Compose | ✅ PASS только на `b37db56` | 13 образов, Compose config, базовый старт; на текущем `main` повторить |
+| Spring/Flyway/БД/очереди | ✅ Базовый PASS на `b37db56` | 20/20 основных контейнеров; healthchecked — `healthy`, `nginx`/`frontend`/`spamd` — `Up`; текущий `main` повторить |
+| Web runtime и базовый чат | 🟡 Частично | Вход, админка, webmail, история/SockJS/сообщения/emoji проверены; полный двухпользовательский сценарий остаётся |
+| External Mail ongoing | 🟡 Частично | Mail.ru/Яндекс на тестовых ящиках, polling и dedupe; архив и остальные провайдеры не приняты |
+| Собственные SMTP/IMAP/POP3 | ⏸ G3 НЕ ЗАВЕРШЁН | Maven/Docker пройдены только на `b37db56`, на `main` повторить; end-to-end и Thunderbird/Outlook ещё не проверены |
+| Windows 7 + Chrome 109 | ⏸ НЕ ПРОВЕРЕНО | Legacy bundle построен, но нужен реальный браузерный smoke |
+| Production / 1000 пользователей | ⏸ НЕ ПРОВЕРЕНО | Нагрузка, 72 часа, backup/restore, откат и пилот остаются в G3–G5 |
 
-При release-hardening дополнительно исправлены: отсутствовавший `james.version` в POP3;
-заброшенный SubEtha SMTP 3.1.7 заменён поддерживаемым форком 7.2.2 с адаптацией кода;
-неиспользуемые Swagger/GreenMail/MIME4J удалены; Spring Cloud поднят до финального
-2023.0.6 для baseline, а Docker-образы переведены на поддерживаемые ряды. Полная матрица —
-[`RELEASE-DEPENDENCIES.md`](RELEASE-DEPENDENCIES.md).
+Это результаты локальных/PC-проверок, а не выдуманные GitHub Actions checks. Полная
+матрица: [`READINESS.md`](READINESS.md); версии: [`RELEASE-DEPENDENCIES.md`](RELEASE-DEPENDENCIES.md).
 
 ---
 
@@ -118,11 +107,9 @@ docker info
 
 ## 1. Получить именно актуальный код
 
-Используйте актуальный **`main`**. В него уже слиты Этап 3, Stage 4, эта
-инструкция и release-hardening из PR #5: обновлённые зависимости, исправленный
-POP3 POM, поддерживаемый SMTP-движок, Docker-версии, Dependabot и ворота
-зависимостей. Не используйте старые feature-ветки из прошлых PR для первого
-прогона: отчёт должен относиться к SHA, который увидят другие тестировщики.
+Используйте актуальный **`main`** либо точный SHA pull request, который вы согласовали
+для проверки. Не используйте старые merged feature-ветки: отчёт должен относиться к коду,
+который увидят другие тестировщики.
 
 ### Новый клон
 
@@ -145,24 +132,15 @@ git log --oneline -4
 git status --short --branch
 ```
 
-В свежей истории должны быть видны merge PR #5 и три release-hardening коммита
-(если после них в `main` уже появились новые merge, это нормально — важен
-точный SHA вашего `HEAD` ниже):
-
-```text
-625aafe Merge pull request #5 from ArtemDobrokvashin
-7e95b32 Add release dependency gates and update PC testing guide
-808d5dd Harden backend and Docker dependency baseline
-60b7b69 Upgrade frontend toolchain and harden chat markdown
-```
-
-Запишите точный SHA до начала:
+Если проверяете PR, после `git fetch origin` перейдите на его ветку/SHA по инструкции PR,
+а не смешивайте его с локальными изменениями. Запишите точный SHA до начала:
 
 ```powershell
 git rev-parse HEAD
 ```
 
-Этот SHA нужен в любом отчёте об ошибке.
+Этот SHA нужен в любом отчёте об ошибке. Результаты из таблицы выше относятся к своему
+baseline и автоматически не доказывают другой коммит.
 
 ---
 
@@ -179,7 +157,7 @@ npm run build
 
 **Ожидаемый результат:**
 
-- Vitest: `Test Files 4 passed`, `Tests 15 passed`;
+- Vitest: `Test Files 9 passed`, `Tests 33 passed`;
 - сборка заканчивается `✓ built`;
 - в `frontend\dist\assets` есть обычные и `*-legacy-*.js` файлы.
 
@@ -216,7 +194,7 @@ cd ..
 
 ## 3. Первая настоящая проверка Java: Maven
 
-Это главный ещё не пройденный гейт проекта.
+G1 пройден на ПК только для `b37db56` с Boot 3.2.12. Текущий `main` уже использует Boot 3.5.16, поэтому полный прогон на вашем актуальном SHA обязателен.
 
 ```powershell
 mvn -B clean verify
@@ -327,7 +305,7 @@ ALL LOCAL GATES PASSED
 
 ---
 
-## 5. Поднять полный стек и дождаться `healthy`
+## 5. Поднять полный стек и дождаться готовности
 
 ```powershell
 docker compose up -d
@@ -336,14 +314,15 @@ docker compose ps
 
 Первый старт может занять несколько минут: Elasticsearch инициализируется,
 ClamAV загружает сигнатуры, Flyway создаёт схемы. Повторяйте `docker compose ps`,
-пока основные сервисы не станут `healthy`.
+пока сервисы с healthcheck не станут `healthy`, а остальные не будут стабильно `Up`.
 
 **Критерий PASS:**
 
 - нет сервисов в бесконечном `restarting`;
 - нет `Exited` у основных сервисов;
 - PostgreSQL, Redis, RabbitMQ, Elasticsearch, ClamAV и Java-сервисы `healthy`;
-- `frontend` и `nginx` запущены.
+- `frontend`, `nginx` и `spamd` запущены (`Up`): для них healthcheck в Compose не задан,
+  поэтому статус `healthy` у этих трёх контейнеров ожидать не нужно.
 
 Если сервис unhealthy/restarting, смотрите именно его полный лог:
 
@@ -756,10 +735,11 @@ docker compose up -d
 docker compose ps
 # открыть https://mail.company.local (hosts: 127.0.0.1 mail.company.local)
 
-# 6. Только после healthy и web-smoke: SMTP, затем IMAP/POP3 по шагам 8-9.
+# 6. Только после готовности стека и web-smoke: SMTP, затем IMAP/POP3 по шагам 8-9.
 ```
 
-**Следующий настоящий рубеж проекта — не новый код, а ваш первый `BUILD SUCCESS`
-и `docker compose ps`, где все основные сервисы `healthy`.** После этого ошибки
-перестанут быть гипотезами: по конкретному первому стеку их можно будет исправлять
-точечно и быстро.
+**Следующий рубеж проекта — закрыть оставшиеся сценарии G3, а не просто получить
+первый `BUILD SUCCESS`.** При воспроизведении на новом SHA сначала добейтесь зелёного
+Maven и стабильного `docker compose ps`: healthchecked-сервисы `healthy`, остальные `Up`.
+После этого переходите к собственной почте, двухпользовательскому чату, архиву и
+эксплуатационным проверкам по шагам выше.

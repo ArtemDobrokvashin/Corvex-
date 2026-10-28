@@ -29,11 +29,11 @@ TCP/RFC-парсер не пишется вручную: Corvex реализуе
   NOOP/пере-SELECT и при следующем IDLE-цикле клиента; распределённый EventBus — этап 5.
 - **ACL/METADATA/keyword-флаги** не заявляются возможностями: хранилище держит только
   системные флаги и owner-only права.
-- Сервис по умолчанию **выключен** (`CORVEX_IMAP_ENABLED=false`), пока не пройдены
-  G1 (`mvn verify`), G2 (Docker/Spring) и G3 (клиентский smoke). Текущий
-  James 3.8.2 — baseline первой компиляции; переход на James 3.9.x делается
-  отдельным G4-апгрейдом после зелёного baseline, а не одновременно с поиском
-  первичных ошибок. Подробности: [`../../docs/READINESS.md`](../../docs/READINESS.md)
+- Сервис по умолчанию **выключен** (`CORVEX_IMAP_ENABLED=false`) до клиентского G3.
+  Полный G1/G2 на ПК относится только к `b37db56`; на текущем `main` с Boot 3.5.16
+  его нужно повторить. Thunderbird/Outlook smoke ещё не выполнен. James 3.8.2 — фактический
+  baseline; переход на согласованную поддерживаемую James/JDK-платформу выполняется
+  отдельным G4-апгрейдом. Подробности: [`../../docs/READINESS.md`](../../docs/READINESS.md)
   и [`../../docs/RELEASE-DEPENDENCIES.md`](../../docs/RELEASE-DEPENDENCIES.md).
 
 ## Запуск и TLS

@@ -1,84 +1,53 @@
-# Screenshots / Скриншоты Corvex
+# Corvex screenshots / Скриншоты Corvex
 
-These PNG files are **real captures of the Corvex frontend in Chromium**, not
-design mock-ups. Mail and Messages use the clearly labelled demo data set;
-Sign-in and Administration show the real Stage 1 screens. A screenshot proves
-that the interface renders—it does **not** prove that Java, Docker, SMTP,
-IMAP/POP3, or the persistent chat have passed runtime acceptance.
+## English
 
-Эти PNG — **настоящие кадры фронтенда Corvex в Chromium**, а не дизайн-макеты.
-Почта и сообщения используют честно помеченные демо-данные; вход и
-администрирование — реальные экраны Stage 1. Скриншот доказывает только то,
-что интерфейс отрисовывается. Он **не доказывает**, что Java, Docker, SMTP,
-IMAP/POP3 или persistent-чат уже прошли runtime-приёмку.
+The images in this directory are **UI evidence only**. They show real captures of the
+built Corvex frontend with clearly labelled demo data. They do not, by themselves,
+prove Java compilation, Docker startup, SMTP/IMAP/POP3 delivery, chat realtime, or
+production readiness.
 
-| File | Screen |
-|---|---|
-| `login-ru.png`, `login-en.png` | Sign-in / Вход |
-| `mail-ru.png`, `mail-en.png` | Mail / Почта |
-| `chat-ru.png`, `chat-en.png` | Messages with the emoji picker open / Сообщения с открытым emoji-picker |
-| `admin-ru.png`, `admin-en.png` | Administration / Администрирование |
-| `mail-mobile-ru.png` | Mobile mail / Мобильная почта |
+As of 28 October 2026, the full G1/G2 PC evidence applies only to baseline
+`b37db56`; current `main` needs a repeat after the Boot change. Part of G3 has
+separate topical runtime evidence. See [`../READINESS.md`](../READINESS.md), and do
+not infer any of these results from a screenshot.
 
-## Keeping the set current / Поддержание набора в актуальном состоянии
+### Capture rules
 
-To keep the captures accurate and current:
+- Use synthetic/demo identities, addresses, rooms, and messages.
+- Never expose `.env`, app passwords, JWT/internal tokens, private keys, real customer
+  addresses, or working correspondence.
+- Keep RU/EN filenames and alt text consistent with the visible language.
+- Prefer a clean browser profile and hide bookmarks, notifications, and personal tabs.
+- Runtime/deployment captures may be added only for a scenario that actually passed;
+  use synthetic data and sanitize logs. A healthy container screenshot is not a
+  substitute for the functional acceptance checklist.
 
-- recapture the set after visible UI changes;
-- after the G1–G3 runtime gates pass, add captures from a real test
-  deployment with **synthetic users and mail only**;
-- add a real Windows 7 + Chrome 109 capture when that environment is tested;
-- never publish real correspondence, names, addresses, hostnames, tokens,
-  passwords, or unredacted infrastructure details.
+The current set contains sign-in, mail, chat/emoji, and administration screens in RU/EN.
+They are linked from the root [`README.md`](../../README.md).
 
-Чтобы кадры оставались точными и актуальными:
+## Русский
 
-- переснимайте набор после видимых изменений интерфейса;
-- после прохождения runtime-ворот G1–G3 добавляйте кадры настоящего тестового
-  развёртывания только с **синтетическими пользователями и письмами**;
-- добавьте настоящий кадр Windows 7 + Chrome 109, когда эта среда будет
-  проверена;
-- никогда не публикуйте настоящую переписку, имена, адреса, hostnames,
-  токены, пароли и детали инфраструктуры без редактирования.
+Изображения в этом каталоге — **доказательство только отрисовки UI**. Это реальные
+кадры собранного frontend Corvex с явно обозначенными демонстрационными данными.
+Сами по себе они не доказывают компиляцию Java, запуск Docker, доставку
+SMTP/IMAP/POP3, realtime-чат или production-готовность.
 
-## Reproduce / Как переснять
+На 28 октября 2026 года полный PC-pass G1/G2 относится только к `b37db56`;
+на текущем `main` после смены Boot его нужно повторить. Часть G3 подтверждена
+отдельными тематическими проверками. См. [`../READINESS.md`](../READINESS.md):
+не выводите эти результаты из скриншота и не заявляйте, что все функции приняты.
 
-Requirements: Node.js 22.22.2+, 24.15+, or 26+ (see `frontend/package.json` engines), Playwright
-Chromium (or any Chromium via `CHROMIUM_PATH` with `playwright-core`), and a
-color emoji font (Noto Color Emoji on Linux; Segoe UI Emoji on Windows; Apple
-Color Emoji on macOS).
+### Правила съёмки
 
-The frontend baseline is React 19 + Vite 8. The capture flow below builds the
-current production bundle, serves it locally, opens RU and EN demo sessions,
-inserts 🚀 through the picker, sends the message, and captures desktop and
-mobile frames. After a toolchain-only upgrade, rerun the flow and compare the
-pixels: keep the checked-in set only if the current bundle still produces the
-same intentional layout, and mention that comparison in the PR.
+- Используйте только synthetic/demo-пользователей, адреса, комнаты и сообщения.
+- Не показывайте `.env`, app-password, JWT/internal token, приватные ключи, настоящие
+  адреса клиентов или рабочую переписку.
+- Сохраняйте соответствие RU/EN имени файла, alt-текста и языка интерфейса.
+- Используйте чистый браузерный профиль без личных вкладок, закладок и уведомлений.
+- Runtime/deployment-кадры добавляйте только для фактически пройденного сценария,
+  с synthetic-данными и очищенными логами. Скриншот здорового контейнера не заменяет
+  функциональный чек-лист.
 
-```bash
-cd frontend
-npm ci
-npm install --no-save --package-lock=false playwright@1.49.1
-npx playwright install chromium
-npm run build
-npm run preview -- --host 127.0.0.1 --port 4173 --strictPort
-# second terminal / второй терминал:
-SCREENSHOT_DIR=../docs/screenshots node scripts/capture-screenshots.mjs
-```
-
-If emojis render as empty boxes, the operating system has no color emoji
-font—install Noto Color Emoji and rerun. If a capture differs because the UI
-changed, that is useful information: include the commit SHA and explain the
-visual change in the pull request instead of silently replacing every frame.
-
-Before opening a screenshot PR, also run the frontend gates:
-
-```bash
-npm test
-npm run build
-npm audit --omit=dev --audit-level=moderate
-```
-
-For a layout problem at a phone/tablet width, a missing translation, or a
-broken emoji, a useful issue includes the browser, OS, viewport, locale, and
-a redacted screenshot.
+Текущий набор содержит вход, почту, чат/emoji и админ-панель на RU/EN. Изображения
+подключены в корневом [`README.md`](../../README.md).

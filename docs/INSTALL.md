@@ -190,8 +190,10 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Ждите, пока колонка STATUS у всех сервисов станет `healthy` (первый старт ClamAV
-скачивает базы сигнатур — это нормально до 5 минут). Если что-то в `restarting`:
+Ждите, пока сервисы с healthcheck станут `healthy`, а остальные — стабильно `Up`.
+У `frontend`, `nginx` и `spamd` healthcheck в Compose не задан, поэтому статуса
+`healthy` у них не будет (первый старт ClamAV скачивает базы сигнатур — это нормально
+до 5 минут). Если что-то в `restarting`:
 
 ```powershell
 docker compose logs --tail 100 <имя-сервиса>

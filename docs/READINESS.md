@@ -1,118 +1,99 @@
-# Готовность к запуску на сервере / Production readiness
+# Corvex: фактическая готовность и ворота релиза
 
-**Короткий ответ: этап 1 выполнен, Stages 2A/2B и Stage 4 реализованы в коде — входящий и
-исходящий почтовые конвейеры, submission 587, DKIM, retry/DSN, настоящий webmail
-на `/api/v1/mail/**`, а также persistent-чат на `/api/v1/chat/**`, `/ws/chat` и
-`/api/v1/files/**`. Этап 3 реализован в коде полностью: внутренний протокольный API хранилища,
-POP3 и IMAP-движок на Apache James написаны и выключены по умолчанию до сборки и клиентского smoke.
-Как рабочую корпоративную почту для
-сотрудников — пока нет: нужен runtime-smoke на JDK/Docker-хосте.** Ниже — честный
-аудит по состоянию этого коммита, включая блокеры, исправленные при аудите, и
-обязательные ворота перед пилотом. Полный реестр находок октября 2026 года:
-[`12-full-audit-2026-10.md`](12-full-audit-2026-10.md); зафиксированный
-dependency-baseline, исключения и порядок G0–G5 —
-[`RELEASE-DEPENDENCIES.md`](RELEASE-DEPENDENCIES.md).
+> **Срез актуализирован 28 октября 2026 года.** Текущий исходный `main` —
+> `7aee2983f691bb46e4ecac51fd2e377c089b49b3`. Полный PC-pass G1/G2 относится к более
+> раннему baseline **`b37db56`** с Boot 3.2.12 / Cloud 2023.0.6 / James 3.8.2.
+> Текущий `main` уже содержит Boot 3.5.16, поэтому его G1/G2 нужно повторить.
 
-_English summary: Identity & admin (Stage 1), Stages 2A/2B mail, and Stage 4 persistent
-chat are implemented in code: durable inbound spooling, spam/AV/Maildir delivery,
-outbound MX queue with retry/DSN, DKIM signing, authenticated submission, a
-server-backed webmail, and PostgreSQL-backed rooms/messages with STOMP realtime,
-presence, reactions/pins/read receipts and antivirus-checked files. It is still **not**
-a production mail/chat server: the Java/Docker runtime gate remains, Stage 3 has the
-storage protocol API plus James-based POP3/IMAP in code (disabled by default until the
-Maven build and mail-client smoke pass on a JDK host).
-Do not point production MX records at it yet. SMTP stays disabled by default until the
-runtime smoke passes._
+**Коротко: G0 повторно пройден на текущем `main`; G1/G2 имеют полный PC-pass только
+для `b37db56` и требуют повтора на текущем Boot 3.5.16; G3 выполняется; G4/G5 впереди.
+Corvex уже не является только набором незапущенного кода, но ещё не production-ready.**
 
-Обозначения: 🟢 готово · 🟡 каркас/частично, стартует · 🔴 не реализовано
+## 1. Что уже подтверждено фактическими проверками
 
-## 1. Статус по компонентам
-
-| Компонент | Статус | Что именно |
+| Область | Подтверждённый результат | Что этот результат не доказывает |
 |---|---|---|
-| Frontend (почта/чат/админка) | 🟢 вход/почта/админка / 🟡 чат | Собирается (React 19/Vite 8, modern + legacy для Chrome 109), 15 unit-тестов проходят, production `npm audit` — 0. Интерфейс полностью RU/EN, есть нативный Unicode emoji-picker и графемно-безопасная работа с текстом. Вход, смена пароля, 2FA, пароли приложений, админ-панель и webmail работают с настоящим API; демо-режим — только явной кнопкой витрины. В реальной сессии чат использует REST/STOMP Stage 4: история, комнаты, direct/группы, реакции, pin/edit/delete, read/typing/presence, поиск и вложения; демо-экран остался только в явном demo-режиме, а Java/Docker runtime всё ещё не подтверждён |
-| Docker Compose (25 сервисов) | 🟡 | Вся инфраструктура и порядок старта по healthcheck описаны; в текущей среде разработки нет Docker, поэтому **фактический `docker compose up` на вашем сервере будет первым настоящим дымовым тестом** |
-| Инфраструктура (PostgreSQL, Redis, RabbitMQ, Elasticsearch, SpamAssassin, ClamAV, nginx, Prometheus/Grafana/Loki) | 🟢 конфиги | Официальные образы, сети, тома, алерты настроены. Требуется первый реальный запуск для подтверждения |
-| Схемы БД (Flyway) | 🟢 | 4 базы, миграции и сид групп/прав готовы |
-| auth-service | 🟢 этап 1 | Полный контур входа: сущности пользователей, Argon2id, login (lockout после 5 неудач/15 мин), вращающиеся refresh в HttpOnly cookie с детектом кражи, /me, смена пароля, TOTP setup/confirm/disable без опасного повторного setup, пароли приложений, internal API (CRUD для админки, verify-password для протоколов, статистика), сид суперадмина при первом старте. Публичные ошибки локализуются RU/EN; `/internal/**` защищён fail-closed `X-Corvex-Internal-Token`. Осталось на этап 5: AD/LDAP и политики из админки |
-| web-gateway | 🟢 | Маршруты, JWT-проверка по JWKS и rate-limit работают с реальными токенами; ошибочный `SCOPE_admin` убран — права по claim `permissions` проверяет admin-service. Rate-limit теперь видит реальный IP из доверенного nginx, а logout доступен с валидной refresh-cookie после истечения access token |
-| mail-smtp-service | 🟡 Stages 2A/2B в коде | Поддерживаемый SubEtha-форк 7.2.2 (код адаптирован к его Builder/Optional API по исходникам релиза), приём: RCPT проверяется по домену и существующему активному ящику auth-service; DATA потоково пишется в durable spool storage (лимит до heap), событие публикуется с publisher confirm, при недоступности storage/RabbitMQ — SMTP `451`. Добавлены исходящая MX-очередь (dnsjava, STARTTLS, retry 5m/15m/1h/4h до 72ч, DSN), DKIM rsa-sha256 relaxed/relaxed и submission 587 с обязательным STARTTLS+AUTH и проверкой прав/отправителя. `CORVEX_SMTP_ENABLED=false` по умолчанию до runtime-smoke |
-| mail-imap / mail-pop3 | 🟡 Этап 3 в коде полностью | Внутренний протокольный API в mail-storage (папки/UID/MODSEQ/флаги/expunge/APPEND/COPY-MOVE/квота), POP3 на Apache James 3.8.2 (снапшот INBOX, UIDL=UUID письма, DELE на QUIT, implicit TLS 995, plain 110 только по явному флагу) и IMAP-движок на Apache James IMAP (MailboxManager/MessageManager поверх storage API, LOGIN через auth, LIST/CREATE/RENAME, SELECT/FETCH/STORE/EXPUNGE/APPEND/SEARCH/COPY/MOVE, QUOTA, CONDSTORE по MODSEQ, 143 STARTTLS/993). `CORVEX_POP3_ENABLED=false` и `CORVEX_IMAP_ENABLED=false` по умолчанию до сборки и клиентского smoke |
-| mail-storage-service | 🟡 Stages 2A/2B в коде | Internal raw API (`POST/GET/DELETE /internal/raw`), потребитель `mail.av.checked`, MIME-разбор, идемпотентная доставка по `raw_ref+owner`, Maildir+CAS вложений, папки/UID под блокировкой, квота по auth+mail_db, индексация Elasticsearch и webmail API `/api/v1/mail/**`: folders/list/detail/flags/move/send, Sent-копия, локальная/внешняя маршрутизация и генерация DSN по `mail.outbound.bounced`. Нужна живая проверка Maven/Docker |
-| mail-spam / mail-antivirus | 🟡 Stage 2A в коде | Потребители конвейера подключены: spam читает spool и публикует `mail.spam.checked` (fail-open при недоступном spamd), AV потоково сканирует ClamAV INSTREAM и публикует `mail.av.checked` (ERROR блокирует вложения по статусу). Очереди durable, 5 retry, DLQ |
-| chat-service | 🟡 Stage 4 в коде | Flyway V2, JPA-сущности/репозитории комнат, участников, сообщений, edit-history, реакций и упоминаний; REST для rooms/direct/members, cursor-history, идемпотентной отправки по `clientMessageId`, edit/soft-delete, reactions, pin, монотонных read-позиций, membership-scoped поиска, каталога и presence. STOMP: Bearer JWT на `CONNECT`, перепроверка членства/права записи на `SUBSCRIBE`/`SEND`, события после коммита БД, typing и mention/queue ошибок. Redis presence с TTL сессии 120 с. Unit-тесты написаны, но Maven/Spring/Flyway runtime ещё не подтверждён |
-| chat-file-service | 🟡 Stage 4 в коде | JWT resource-server, потоковая загрузка до 25 MiB с SHA-256, синхронный fail-closed ClamAV INSTREAM, content-addressable blob + атомарно публикуемые JSON-метаданные на persistent volume. Upload требует `CHAT_SEND_FILES` и актуальное writable-членство; download каждый раз перепроверяет членство через internal API chat-service и не является публичной ссылкой. Unit-тесты написаны; Maven/Docker/ClamAV runtime ещё не подтверждён |
-| admin-service | 🟢 этап 1 | REST по контракту: пользователи (через защищённый токеном internal API auth, с компенсацией при сбое), группы и чекбоксы 25 прав, назначение групп, валидируемые одной транзакцией настройки KV, аудит всех действий, сводное здоровье сервисов, базовая аналитика по пользователям/входам, запрос бэкапа в аудит. Последнего SUPER_ADMIN нельзя лишить членства, заблокировать или отключить. Внутренний access-эндпоинт отдаёт auth группы и права для JWT; при старте назначает бутстрап-пользователю SUPER_ADMIN |
-| notification-service | 🟡 | Цепочка Alertmanager → вебхук → очередь → email теперь замкнута кодом; не тестировалась живьём |
-| Скрипты PowerShell | 🟡 | `first-run.ps1`/`backup.ps1` написаны аккуратно, но на настоящем Windows не выполнялись |
-| Сборка Java | 🟡 | Найденные аудитом ошибки компиляции/контекста исправлены статически (см. §2). Для первого compile-baseline закреплены Spring Boot 3.2.12 + Spring Cloud 2023.0.6 (финальные patch/SR своей линии), James 3.8.2, поддерживаемый SubEtha 7.2.2, dnsjava 3.6.5 и JaCoCo 0.8.15; неиспользуемые Swagger/GreenMail/MIME4J удалены, отсутствовавшее `james.version` в POP3 добавлено. В текущей среде разработки нет JDK/Maven, поэтому `mvn package` ещё не выполнен. Это baseline только для первой честной компиляции: переход на поддерживаемые Spring Boot 4.1/Spring Cloud/Jackson 3 и James 3.9.x — обязательный отдельный G4-гейт до пилота (`RELEASE-DEPENDENCIES.md`) |
+| Frontend на текущем `main` | `npm ci`, **9 test-файлов / 33 теста**, TypeScript + modern/legacy production build успешны; production `npm audit` — **0** | Это не заменяет реальный Windows 7 + Chrome 109 и полную ручную responsive-приёмку |
+| Java / Maven | **Только `b37db56`:** на ПК с JDK 17 корневой `mvn -B clean verify` завершился `BUILD SUCCESS`: 12 сервисов + parent, тесты и JaCoCo | Текущий `main` с Boot 3.5.16 этим результатом не покрыт; нужен полный повтор |
+| Docker-образы | **На `b37db56`:** все 13 build-контекстов собраны; позднее были отдельные пересборки gateway/chat | Полный Docker-запуск текущего `main` нужно повторить; Docker build не равен `mvn verify` (`-DskipTests`) |
+| Первый запуск | **На `b37db56`:** Compose config, `.env`/ключи, 20/20 основных контейнеров; healthchecked — `healthy`, `nginx`/`frontend`/`spamd` без healthcheck — `Up` | Текущий `main`: повторный запуск; нагрузка, 72 часа и backup/restore также не проверены |
+| Flyway и хранилища | **На `b37db56`:** миграции auth/admin/mail/chat/notification применились на чистом PostgreSQL; RabbitMQ, Redis и Elasticsearch стартовали | Текущий `main`: повтор; миграции между будущими релизами и восстановление после потери диска также не доказаны |
+| Web runtime | Вход, админка и webmail запускались с реальным backend; базовый чат проверен: история, SockJS handshake HTTP 200, отправка сообщений и emoji | Полный двухпользовательский chat/file/security smoke и вся frontend-матрица ещё не закрыты |
+| External Mail Connector | На тестовых ящиках подтверждён ongoing IMAP-сбор Mail.ru и Яндекса; повторные запуски не дали дублей; новое письмо Mail.ru дошло через polling | Не приняты архивная миграция, Gmail/Outlook/custom live-сценарии и почти realtime-IDLE |
 
-## 2. Блокеры запуска, найденные и исправленные этим аудитом
+Frontend-результат 9/33 и build/audit повторно получены на текущем `main` 28.10.2026.
+Полный Maven/Docker-pass получен на ПК для `b37db56` **до merge PR #95**, который
+уже содержал Boot 3.5.16. Более поздние тематические gateway/chat/External Mail
+проверки не заменяют полный G1/G2 на текущем `main`. Это не GitHub Actions checks:
+настроенных checks у репозитория на момент среза нет.
 
-До аудита `docker compose up --build` **гарантированно падал**. Исправлено:
+## 2. Статус по компонентам
 
-1. `chat-service` не компилировался: импорты Spring Security/OAuth2 при отсутствующих зависимостях → добавлены в `pom.xml`.
-2. `auth-service` не стартовал: `TokenService` требовал бин `JwtEncoder`, которого не было → `JwtKeyConfig` (ключ из PEM + эфемерный dev-режим), `AuthSecurityConfig`, JWKS-эндпоинт.
-3. `mail-smtp-service` не собирал контекст: не было бинов `LocalDomainPolicy`/`RawMessageStoreClient`, никто не запускал сам SMTP-сервер, сигнатура `data()` не соответствовала SubEtha 3.1.7 → `SmtpServerConfig`, исправлена сигнатура.
-4. `web-gateway` не создавал маршруты: SpEL ссылался на несуществующие `ipKeyResolver`/`userKeyResolver`, фильтр CircuitBreaker без зависимости resilience4j, `lb:ws` без loadbalancer → добавлены бины, маршруты упрощены до прямого `ws://`, лишний AMQP убран из pom.
-5. `notification-service`: не создавался `JavaMailSender` (не было `spring.mail`), очередь `corvex.alerts` не декларировалась, вебхука Alertmanager не было → конфиг + `NotificationConfig`.
-6. Redis/Elasticsearch **не были прокинуты** в Java-сервисы: healthcheck навсегда оставался DOWN и зависимые сервисы не стартовали → `REDIS_*`/`ELASTIC_PASSWORD` в общим env compose + маппинги в `application.yml` сервисов.
-7. Плагин `rabbitmq_stomp` (брокер-реле чата) никогда не включался (комментарий обещал несуществующую обёртку) → `infra/rabbitmq/enabled_plugins`.
-8. nginx падал при старте без профиля monitoring (upstream `grafana` не резолвился) → ленивый резолв через Docker DNS.
-9. `first-run.ps1`: все пароли заменялись **одним** значением, а очередь действий из старого README вообще пропускала генерацию → скрипт переписан (уникальный секрет на переменную, генератор на .NET RNG), инструкции синхронизированы.
-10. Защита от потери почты: SMTP-листенер выключен по умолчанию до готовности хранилища.
+> Если ниже указано «G1/G2», «Maven/Docker пройдены» или «собран и запущен» без
+> отдельного SHA, это исторический результат для `b37db56`, а не полный повтор на
+> текущем `main`. Тематические live-результаты чата и External Mail перечислены отдельно.
 
-Перед первым полным тестом дополнительно закрыт release-hardening пласт:
-frontend переведён на React 19/Vite 8/Vitest 5/TypeScript 7 с production audit 0;
-в POP3 определён `james.version`; заброшенный SubEtha 3.1.7 заменён поддерживаемым
-форком 7.2.2 с адаптацией кода; неиспользуемые зависимости удалены; Docker-образы
-RabbitMQ, Elasticsearch, SpamAssassin, ClamAV, nginx и monitoring подняты до
-поддерживаемых рядов. Точная матрица и оставшиеся исключения — в
-[`RELEASE-DEPENDENCIES.md`](RELEASE-DEPENDENCIES.md).
+| Компонент | Статус | Фактическая граница готовности |
+|---|---|---|
+| `auth-service`, `admin-service` | 🟡 Частично принято | Локальный вход и админка работали на стенде; сервисы прошли Maven/Docker/Flyway. Полные сценарии 2FA, app passwords, RBAC-матрицы, instant JWT revocation и AD/LDAP остаются в G3–G5 |
+| `web-gateway`, frontend | 🟡 Частично принято | JWT/rate-limit и современный RU/EN UI подключены к API; frontend-тесты и оба bundle зелёные. Нужны реальный Chrome 109, оставшаяся адаптивность и ручная клиентская приёмка |
+| `mail-smtp-service` | 🟡 Собран и запущен, сквозная почта не принята | Durable spool, retry/DSN, DKIM и submission реализованы; собственный end-to-end SMTP с реальными клиентами ещё не проверен. По умолчанию SMTP остаётся выключен |
+| `mail-storage-service` | 🟡 Частично принято | Maildir/CAS, webmail, очереди и поиск стартовали; внешняя почта прошла ограниченный live-smoke. Собственный SMTP→spam→AV→storage→search и archive migration ещё требуют приёмки |
+| `mail-spam-service`, `mail-antivirus-service` | 🟡 Инфраструктурно проверено | SpamAssassin/ClamAV и сервисы поднялись; EICAR, ложные срабатывания и поведение при недоступности сканеров нужно проверять сквозными тестами |
+| `mail-imap-service` | 🟡 G1/G2, не G3 | Apache James 3.8.2, STARTTLS/implicit TLS, UID/MODSEQ/CONDSTORE/MOVE/QUOTA собраны и стартуют. Thunderbird/Outlook, persistent LSUB и ACL/keyword flags ещё не приняты; сервис выключен по умолчанию |
+| `mail-pop3-service` | 🟡 G1/G2, не G3 | James POP3, UIDL и implicit TLS собраны и стартуют. Реальный клиентский smoke ещё не выполнен; сервис выключен по умолчанию |
+| External Mail Connector | 🟡 Ограниченный live-smoke пройден | Подтверждены ongoing Mail.ru/Яндекс, app passwords, polling и dedupe. Архив 6550 писем специально не запускался; OAuth провайдеров и distributed IMAP IDLE — будущая работа |
+| `chat-service` | 🟡 Базовый runtime пройден | Persistent rooms/messages и SockJS работали на стенде. Два пользователя, direct/group security, refresh JWT, reconnect и перезапуск под нагрузкой ещё нужно проверить комплексно |
+| `chat-file-service` | 🟡 G1/G2 | Сервис и ClamAV-контур запускаются; upload/download, чужой доступ, большие файлы и EICAR ещё не приняты в двухпользовательском сценарии |
+| `notification-service` | 🟡 G1/G2 | Сервис и миграции прошли запуск; реальная цепочка Alertmanager→email→администратор ещё требует smoke |
+| Наблюдаемость и эксплуатация | 🟡 Базовый стек поднят | Prometheus/Grafana/Loki описаны; доставка логов, alert rules, 72 часа, backup/restore и DR не приняты |
 
-## 3. Что можно делать с системой прямо сейчас
+## 3. Что остаётся в G3
 
-- ✅ Развернуть весь стек на тестовом сервере/VM и проверить здоровье контейнеров (`docs compose ps`) — ожидается, что все сервисы станут `healthy`; **это ваш первый настоящий G1/G2-гейт; в текущей среде разработки он не пройден из-за отсутствия Docker/JDK**;
-- ✅ Входить суперадмином (пароль первого старта: `docker compose logs auth-service | Select-String BOOTSTRAP` или `CORVEX_BOOTSTRAP_ADMIN_PASSWORD`), менять пароль, заводить пользователей и группы в админке, включать себе 2FA;
-- ✅ Смотреть и принимать веб-интерфейс (демо-режим помечен плашкой);
-- ✅ Проверять инфраструктуру: PostgreSQL принимает миграции Flyway, Grafana/Prometheus/Loki поднимаются, алерт при остановке контейнера уходит (после настройки `ALERT_SMTP_*`);
-- ✅ Готовить DNS и сертификаты впрок (docs/INSTALL), не публикуя MX в прод.
+G3 нельзя закрывать только потому, что контейнеры зелёные. Оставшиеся темы выполняются
+и принимаются отдельно:
 
-## 4. Что НЕЛЬЗЯ делать до runtime-гейтов и этапа 3
+1. **Собственная почта:** SMTP inbound/submission/outbound, restart safety, дедупликация,
+   spam/AV/EICAR, поиск, IMAP/POP3 в Thunderbird и Outlook, папки/флаги/UID/reconnect.
+2. **Webmail:** чужой доступ, вложения, HTML/изображения, длинные/кириллические имена,
+   Sent/DSN и сценарии из issue #99.
+3. **Identity и RBAC:** смена пароля, 2FA, app passwords, union-прав групп, защита
+   последнего SUPER_ADMIN и запрет доступа к чужой почте. AD/LDAP на текущем стенде
+   намеренно не настраивается.
+4. **Чат:** два независимых пользователя, direct/group, реакции/read/typing/presence,
+   идемпотентность `clientMessageId`, refresh/reconnect, файлы, EICAR и запрет чужого
+   скачивания.
+5. **External Mail:** archive migration с контрольными папками/датами/флагами/вложениями,
+   pause/resume/delete, send-as и Sent, остальные провайдеры; затем безопасно настраиваемый
+   polling и устойчивый IMAP IDLE с reconnect/polling fallback.
+6. **Frontend:** реальный Windows 7 + Chrome 109, смартфон/планшет, RU/EN, keyboard/Escape,
+   длинный Unicode-текст и отложенная ручная матрица. Legacy build сам по себе недостаточен.
+7. **Эксплуатация:** мониторинг/alerting, persistent volumes после restart, backup на
+   другом диске, реальное восстановление и наблюдаемость в течение 72 часов.
 
-- ⛔ Направлять настоящие MX-записи и переносить рабочие ящики;
-- ⛔ Включать `CORVEX_SMTP_ENABLED=true` с внешним доступом к 25 порту;
-- ⛔ Давать сотрудникам доступ как к боевой «почте» или «корпоративному чату»: webmail и persistent-чат уже серверные в коде, но Java/Docker runtime-smoke, Flyway/Spring-старт и сквозная проверка STOMP/файлов ещё не пройдены;
-- ⛔ Подключать Outlook/Thunderbird как боевые клиенты до runtime-гейтов: IMAP/POP3 написаны, но ещё не прошли `mvn verify`, старт Spring и клиентский smoke на JDK-хосте — на стенде включать только осознанно.
+## 4. Ворота G0–G5
 
-## 5. Ворота готовности к пилоту (50 ящиков)
+| Gate | Статус | Критерий / следующий шаг |
+|---|---|---|
+| **G0 — frontend и статика** | ✅ Пройден; повторяется для каждого релизного SHA | Актуальный повтор: 9/33, modern+legacy build, production audit 0 |
+| **G1 — Maven** | ✅ `b37db56`; 🔁 повторить на `main` | Исторический PASS: 12 сервисов + parent, `BUILD SUCCESS`, JaCoCo не понижен; текущий Boot 3.5.16 требует нового полного прогона |
+| **G2 — Docker и первый запуск** | ✅ `b37db56`; 🔁 повторить на `main` | Исторический PASS: 13 образов, Compose config, Flyway и базовый стек; поздние targeted recreate не заменяют полный повтор |
+| **G3 — функциональная приёмка** | 🚧 В работе | External Mail ongoing и базовый чат проверены; закрыть раздел 3 целиком |
+| **G4 — поддерживаемая платформа** | ⏳ Не начат | Отдельная миграция Spring Boot/Cloud/Jackson, James/JDK и observability-стека; затем повтор G1–G3 |
+| **G5 — пилот и production** | ⏳ Не начат | Нагрузка, backup/restore, security hardening, AD/LDAP при необходимости, ограниченный пилот и план отката |
 
-- [ ] `mvn` сборка всех образов на целевом сервере зелёная, `docker compose ps` — все `healthy` 72 часа без рестартов;
-- [ ] G4 dependency-платформа: поддерживаемые Spring Boot 4.1/Spring Cloud/Jackson 3 и James 3.9.x отдельным апгрейдом после первого зелёного baseline, с повторными Maven/Docker/mail/client smoke; Promtail заменён на Grafana Alloy, если monitoring включается в production;
-- [x] Этап 1: login/refresh/me, Argon2id+lockout, создание пользователей из админки, группы/права, аудит, сид суперадмина — **реализован в коде**, остаётся живая проверка сборкой на сервере;
-- [x] RU/EN интерфейс и ошибки API, emoji/Unicode-тесты, internal API token, доверенный клиентский IP и защита последнего SUPER_ADMIN — **реализованы в коде**; Java-тесты локализаторов/фильтра ждут первого Maven-запуска;
-- [x] Stage 2A в коде: потоковое сохранение .eml в durable spool, конвейер spam→AV→доставка с DLQ, MIME/Maildir/CAS/квота/Elasticsearch, read-side webmail API, anti-open-relay на RCPT + unit-тест политики доменов;
-- [ ] Runtime Stage 2A: на JDK/Docker-хосте письмо проходит SMTP→spool→spam→AV→Maildir→ES, переживает рестарт контейнеров и не дублируется при повторной доставке события;
-- [x] Stage 2B в коде: submission 587 (AUTH+STARTTLS, anti-spoofing, права), webmail send/move, исходящая MX-очередь с retry/DSN, DKIM-подпись и DNS-инструкции SPF/DKIM/DMARC;
-- [ ] Runtime Stage 2B: webmail отправляет локально и во внешний MX; submission принимает app-password по STARTTLS; внешняя проверка подтверждает DKIM/SPF/DMARC; при 4xx письмо retry-ится, при 5xx отправитель получает DSN;
-- [x] Stage 4 в коде: Flyway V2, persistent комнаты/сообщения/реакции/упоминания, cursor-history и идемпотентный `clientMessageId`, STOMP с Bearer на CONNECT и перепроверкой SUBSCRIBE/SEND, presence, настоящий frontend без demo-данных в реальной сессии, файлы CAS+ClamAV с проверкой членства на upload/download; unit-тесты сервисов чата и файлов написаны;
-- [ ] Runtime Stage 4: на JDK/Docker-хосте два пользователя обмениваются сообщениями в direct/группе, история переживает рестарт, не-участник не читает комнату и не скачивает файл, повтор `clientMessageId` не создаёт дубль, EICAR отклоняется антивирусом, STOMP переживает refresh JWT;
-- [x] Этап 3 в коде: внутренний протокольный API mail-storage (папки/UID/MODSEQ/флаги/expunge/APPEND/COPY-MOVE/квота, owner-скоупинг, защита системных папок, RENAME со сменой родителя), POP3 и IMAP на Apache James 3.8.2 (снапшот INBOX/UIDL для POP3; MailboxManager/MessageManager, QUOTA/CONDSTORE, 143 STARTTLS/993 для IMAP); unit-тесты написаны, серверы выключены по умолчанию;
-- [ ] Runtime этапа 3: `mvn` собирает James-зависимости; Thunderbird/Outlook проходят IMAP 993/143 (LOGIN c app-password, LIST/SELECT/FETCH, отправка сохраняет копию в Sent, MOVE/DELETE/EXPUNGE, IDLE) и POP3 995 (DELE без QUIT ничего не удаляет, повторный логин не дублирует письма при «оставлять на сервере»);
-- [ ] (опционально после smoke) персистентные LSUB-подписки и распределённый IDLE из SMTP/storage переезжают в этап 5 hardening;
-- [ ] DNS по чек-листу + mail-tester ≥ 9/10;
-- [ ] Бэкап и **учебное восстановление** выполнены на стенде (docs/10 §10.5);
-- [ ] Только после всего выше: `CORVEX_SMTP_ENABLED=true`, пилотный поддомен, прогрев IP.
+Подробные версии и dependency-политика: [`RELEASE-DEPENDENCIES.md`](RELEASE-DEPENDENCIES.md).
+Пошаговые команды воспроизведения: [`TESTING-ON-YOUR-PC.md`](TESTING-ON-YOUR-PC.md).
 
-## 6. Соответствие критериев приёмки из ТЗ (§11) на сегодня
+## 5. Что пока запрещено
 
-| Критерий | Сегодня |
-|---|---|
-| Сервисы запускаются через docker-compose | Ожидаемо после фикса блокеров; требуется подтверждение первым реальным запуском |
-| Почта SMTP/IMAP/POP3 работает | SMTP inbound/submission/outbound — Stages 2A/2B в коде; протокольный API хранилища, POP3 и IMAP-движок (James) — этап 3 в коде полностью; всё ждёт runtime-smoke на JDK/Docker и приёмку почтовыми клиентами |
-| Веб-клиент показывает/отправляет письма | Да в коде: серверные folders/list/detail/flags/move/send; демо-данные только при явном demo-входе |
-| Чат realtime | Stage 4 в коде: серверная персистенция, авторизованный STOMP, настоящий UI в реальной сессии и файлы; требуется Maven/Docker runtime-smoke |
-| Админка и права | Да (код этапа 1): пользователи, группы/чекбоксы, аудит; нужна живая сборка на сервере |
-| Поиск < 1 с | Elasticsearch-индексация письма при доставке есть в коде; замер latency на боевом объёме — runtime-гейт |
-| Алертинг email | Цепочка закодирована, нужна живая проверка |
-| Chrome 109 / адаптив | Да, сборка проверена (legacy-бандл) |
+- Не направлять production MX на Corvex и не переносить рабочие ящики без плана отката.
+- Не открывать публичный SMTP и не обещать сотрудникам production-ready Outlook/Thunderbird.
+- Не считать подключение внешнего тестового ящика доказательством безопасности рабочей почты.
+- Не включать `CORVEX_SMTP_ENABLED`, `CORVEX_IMAP_ENABLED` или `CORVEX_POP3_ENABLED`
+  вне изолированного стенда до соответствующей клиентской приёмки.
+- Не публиковать `.env`, app-password, internal token, сертификаты или настоящие письма
+  в issue и скриншотах.
+
+**Итог:** репозиторий содержит работающий и частично проверенный стенд, а не только UI.
+До production остаются повтор G1/G2 на текущем `main`, полный G3, отдельный G4 и контролируемый пилот G5.
