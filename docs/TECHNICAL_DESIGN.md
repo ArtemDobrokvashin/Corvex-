@@ -34,7 +34,7 @@
   Spring WebSocket/STOMP (чат), Flyway, JaCoCo-gate 70%;
 - **Данные:** PostgreSQL 16 (4 БД по сервисам), Redis 7, RabbitMQ 4.3,
   Elasticsearch 8.19 (поиск), Maildir + контентно-адресуемые вложения на ФС;
-- **Почтовая гигиена:** SpamAssassin 4.0.2, ClamAV 1.5.4, DKIM/SPF/DMARC, TLS везде;
+- **Почтовая гигиена:** SpamAssassin 4.0.1 (Debian 13, community Docker-образ), ClamAV 1.5.4, DKIM/SPF/DMARC, TLS везде;
 - **Frontend:** React 19 + TypeScript 7 + Vite 8 (`plugin-legacy` → Babel 7 под Chrome 109),
   Tailwind CSS 3.4, Inter Variable, Lucide, Zustand 5, React Router 7, адаптив от 320 px;
 - **Инфраструктура:** Docker Compose, nginx 1.30 (TLS/HSTS), Prometheus 3.13 LTS + Alertmanager +

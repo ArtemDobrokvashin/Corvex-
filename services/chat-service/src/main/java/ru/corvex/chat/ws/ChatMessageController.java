@@ -25,7 +25,7 @@ import java.util.UUID;
  *   клиент -&gt; /app/rooms/{roomId}/send         (persistent send через ChatService)
  *   клиент -&gt; /app/rooms/{roomId}/read         (точка прочтения)
  *   клиент -&gt; /app/rooms/{roomId}/typing       (эфемерное событие)
- *   сервер -&gt; /topic/rooms/{roomId}            (ChatEventView после commit в chat_db)
+ *   сервер -&gt; /topic/rooms.{roomId}            (ChatEventView после commit в chat_db)
  *   сервер -&gt; /user/queue/notifications        (упоминания)
  *   сервер -&gt; /user/queue/errors               (ошибки валидации/доступа в handler)
  * </pre>

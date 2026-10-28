@@ -1,5 +1,6 @@
 package ru.corvex.mailstorage.external;
 
+import org.eclipse.angus.mail.iap.ConnectionException;
 import org.eclipse.angus.mail.imap.IMAPFolder;
 import org.eclipse.angus.mail.pop3.POP3Folder;
 import jakarta.mail.Address;
@@ -7,13 +8,17 @@ import jakarta.mail.AuthenticationFailedException;
 import jakarta.mail.FetchProfile;
 import jakarta.mail.Flags;
 import jakarta.mail.Folder;
+import jakarta.mail.FolderClosedException;
 import jakarta.mail.Message;
 import jakarta.mail.MessagingException;
 import jakarta.mail.Session;
 import jakarta.mail.Store;
+import jakarta.mail.StoreClosedException;
 import jakarta.mail.Transport;
 import jakarta.mail.UIDFolder;
+import jakarta.mail.internet.AddressException;
 import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.internet.MailDateFormat;
 import jakarta.mail.internet.MimeMessage;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
@@ -29,6 +34,7 @@ import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.text.ParseException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -45,6 +51,9 @@ import java.util.Set;
 @Component
 public class JakartaExternalMailClient implements ExternalMailClient {
 
+    /** Ограничивает один IMAP FETCH служебных полей: вся папка одним ответом провайдерам тяжела. */
+    private static final int FETCH_PROFILE_CHUNK_SIZE = 100;
+
     private final ExternalMailProperties props;
     private final ExternalMailEndpointPolicy endpointPolicy;
 
@@ -55,17 +64,13 @@ public class JakartaExternalMailClient implements ExternalMailClient {
 
     @Override
     public TestResult testIncoming(AccountConfig config) throws ExternalMailClientException {
-        try (StoreConnection connection = connectIncoming(config)) {
-            List<RemoteFolderInfo> folders = listFolders(connection.store(), config);
+        try (IncomingSession session = openIncoming(config)) {
+            List<RemoteFolderInfo> folders = session.listFolders();
             int inboxCount = folders.stream()
                     .filter(f -> "INBOX".equalsIgnoreCase(f.name()))
                     .mapToInt(RemoteFolderInfo::messageCount)
                     .findFirst().orElse(0);
             return new TestResult(true, "Входящее подключение успешно", folders.size(), inboxCount);
-        } catch (ExternalMailClientException e) {
-            throw e;
-        } catch (Exception e) {
-            throw map(config, e);
         }
     }
 
@@ -86,21 +91,25 @@ public class JakartaExternalMailClient implements ExternalMailClient {
 
     @Override
     public List<RemoteFolderInfo> listFolders(AccountConfig config) throws ExternalMailClientException {
-        try (StoreConnection connection = connectIncoming(config)) {
-            return listFolders(connection.store(), config);
-        } catch (ExternalMailClientException e) {
-            throw e;
-        } catch (Exception e) {
-            throw map(config, e);
+        try (IncomingSession session = openIncoming(config)) {
+            return session.listFolders();
         }
     }
 
     @Override
     public List<RemoteMessageEnvelope> listMessageEnvelopes(AccountConfig config, String remoteFolder, int limit)
             throws ExternalMailClientException {
+        try (IncomingSession session = openIncoming(config)) {
+            return session.listMessageEnvelopes(remoteFolder, limit);
+        }
+    }
+
+    private List<RemoteMessageEnvelope> listMessageEnvelopes(AccountConfig config, Store store,
+                                                              String remoteFolder, int limit)
+            throws ExternalMailClientException {
         List<RemoteMessageEnvelope> result = new ArrayList<>();
         int safeLimit = Math.max(1, Math.min(limit <= 0 ? props.safeBatchSize() : limit, 5000));
-        fetchFolder(config, remoteFolder, 0, safeLimit, (envelope, source) -> {
+        fetchFolder(config, store, remoteFolder, 0, safeLimit, (envelope, source) -> {
             result.add(envelope);
             if (result.size() >= safeLimit) throw new StopFolderException(null);
             return HandleResult.SKIPPED;
@@ -111,9 +120,16 @@ public class JakartaExternalMailClient implements ExternalMailClient {
     @Override
     public FetchStats fetchFolder(AccountConfig config, String remoteFolder, long afterUid, int limit,
                                   MessageHandler handler) throws ExternalMailClientException {
+        try (IncomingSession session = openIncoming(config)) {
+            return session.fetchFolder(remoteFolder, afterUid, limit, handler);
+        }
+    }
+
+    private FetchStats fetchFolder(AccountConfig config, Store store, String remoteFolder, long afterUid, int limit,
+                                   MessageHandler handler) throws ExternalMailClientException {
         int safeLimit = Math.max(1, Math.min(limit <= 0 ? props.safeBatchSize() : limit, 5000));
-        try (StoreConnection connection = connectIncoming(config)) {
-            Folder folder = connection.store().getFolder(remoteFolder);
+        try {
+            Folder folder = store.getFolder(remoteFolder);
             if (folder == null || !folder.exists()) {
                 throw new ExternalMailClientException(ExternalMailClientException.Category.PROTOCOL, false,
                         "Удалённая папка не найдена: " + remoteFolder, null);
@@ -125,32 +141,41 @@ public class JakartaExternalMailClient implements ExternalMailClient {
             int handled = 0;
             int queued = 0;
             try {
-                List<Message> ordered = orderedMessages(folder, config, afterUid);
-                for (Message message : ordered) {
+                List<Message> candidates = candidateMessages(folder, config, afterUid);
+                for (int offset = 0; offset < candidates.size() && !stopped; offset += FETCH_PROFILE_CHUNK_SIZE) {
                     // The batch limit bounds newly downloaded/queued messages. Already-known
                     // POP3/IMAP envelopes are still scanned, otherwise an old mailbox larger
                     // than one batch would permanently hide newer messages at the end.
                     if (queued >= safeLimit) break;
-                    seen++;
-                    RemoteMessageEnvelope envelope = envelope(folder, message, config, remoteFolder);
-                    HandleResult result;
-                    try {
-                        result = handler.handle(envelope, () -> openRaw(message));
-                    } catch (StopFolderException stop) {
-                        stopped = true;
-                        break;
-                    } catch (Exception handlerError) {
-                        throw new ExternalMailClientException(ExternalMailClientException.Category.PROTOCOL, true,
-                                "Обработка письма внешнего ящика остановлена: " + safeMessage(config, handlerError), handlerError);
-                    }
-                    handled++;
-                    if (result == HandleResult.QUEUED) {
-                        queued++;
-                        if (config.markSeenOnServer()) {
-                            message.setFlag(Flags.Flag.SEEN, true);
+                    List<Message> chunk = candidates.subList(offset,
+                            Math.min(candidates.size(), offset + FETCH_PROFILE_CHUNK_SIZE));
+                    fetchProfile(folder, chunk);
+                    for (Message message : chunk) {
+                        if (queued >= safeLimit) break;
+                        seen++;
+                        RemoteMessageEnvelope envelope = envelope(folder, message, config, remoteFolder);
+                        HandleResult result;
+                        try {
+                            result = handler.handle(envelope, () -> openRaw(message));
+                        } catch (StopFolderException stop) {
+                            if (isConnectionLoss(stop)) {
+                                throw map(config, stop);
+                            }
+                            stopped = true;
+                            break;
+                        } catch (Exception handlerError) {
+                            throw new ExternalMailClientException(ExternalMailClientException.Category.PROTOCOL, true,
+                                    "Обработка письма внешнего ящика остановлена: " + safeMessage(config, handlerError), handlerError);
                         }
-                    } else if (result == HandleResult.DELETE_ON_SERVER) {
-                        message.setFlag(Flags.Flag.DELETED, true);
+                        handled++;
+                        if (result == HandleResult.QUEUED) {
+                            queued++;
+                            if (config.markSeenOnServer()) {
+                                message.setFlag(Flags.Flag.SEEN, true);
+                            }
+                        } else if (result == HandleResult.DELETE_ON_SERVER) {
+                            message.setFlag(Flags.Flag.DELETED, true);
+                        }
                     }
                 }
                 return new FetchStats(seen, handled, stopped);
@@ -173,14 +198,72 @@ public class JakartaExternalMailClient implements ExternalMailClient {
         }
     }
 
+    @Override
+    public IncomingSession openIncoming(AccountConfig config) throws ExternalMailClientException {
+        return new JakartaIncomingSession(config, connectIncoming(config));
+    }
+
+    private final class JakartaIncomingSession implements IncomingSession {
+        private final AccountConfig config;
+        private final StoreConnection connection;
+        private boolean closed;
+
+        private JakartaIncomingSession(AccountConfig config, StoreConnection connection) {
+            this.config = config;
+            this.connection = connection;
+        }
+
+        @Override
+        public List<RemoteFolderInfo> listFolders() throws ExternalMailClientException {
+            try {
+                return JakartaExternalMailClient.this.listFolders(store(), config);
+            } catch (ExternalMailClientException e) {
+                throw e;
+            } catch (Exception e) {
+                throw map(config, e);
+            }
+        }
+
+        @Override
+        public List<RemoteMessageEnvelope> listMessageEnvelopes(String remoteFolder, int limit)
+                throws ExternalMailClientException {
+            return JakartaExternalMailClient.this.listMessageEnvelopes(
+                    config, store(), remoteFolder, limit);
+        }
+
+        @Override
+        public FetchStats fetchFolder(String remoteFolder, long afterUid, int limit, MessageHandler handler)
+                throws ExternalMailClientException {
+            return JakartaExternalMailClient.this.fetchFolder(
+                    config, store(), remoteFolder, afterUid, limit, handler);
+        }
+
+        private Store store() throws ExternalMailClientException {
+            if (closed) {
+                throw new ExternalMailClientException(ExternalMailClientException.Category.CONFIG, false,
+                        "Входящее соединение уже закрыто", null);
+            }
+            return connection.store();
+        }
+
+        @Override
+        public void close() {
+            closed = true;
+            try {
+                connection.close();
+            } catch (MessagingException ignored) {
+                // Результат синхронизации уже зафиксирован; ошибка закрытия не отменяет его.
+            }
+        }
+    }
+
     private StoreConnection connectIncoming(AccountConfig config) throws ExternalMailClientException {
         ExternalMailEndpointPolicy.Endpoint endpoint;
         try {
             endpoint = endpointPolicy.validate(config.incomingHost(), config.incomingPort(), config.incomingSecurity(),
                     config.provider() != ExternalMailAccount.Provider.CUSTOM);
         } catch (ResponseStatusException e) {
-            throw new ExternalMailClientException(ExternalMailClientException.Category.CONFIG, false,
-                    e.getReason(), e);
+            throw endpointFailure(e);
         }
         Session session = Session.getInstance(incomingProperties(config, endpoint));
         try {
@@ -239,8 +322,22 @@ public class JakartaExternalMailClient implements ExternalMailClient {
             return endpointPolicy.validate(config.smtpHost(), config.smtpPort(), config.smtpSecurity(),
                     config.provider() != ExternalMailAccount.Provider.CUSTOM);
         } catch (ResponseStatusException e) {
-            throw new ExternalMailClientException(ExternalMailClientException.Category.CONFIG, false, e.getReason(), e);
+            throw endpointFailure(e);
         }
+    }
+
+    private static ExternalMailClientException endpointFailure(ResponseStatusException e) {
+        Throwable current = e;
+        while (current != null) {
+            if (current instanceof UnknownHostException) {
+                return new ExternalMailClientException(ExternalMailClientException.Category.NETWORK, true,
+                        e.getReason(), e);
+            }
+            if (current.getCause() == current) break;
+            current = current.getCause();
+        }
+        return new ExternalMailClientException(ExternalMailClientException.Category.CONFIG, false,
+                e.getReason(), e);
     }
 
     private static String storeProtocol(AccountConfig config) {
@@ -283,15 +380,12 @@ public class JakartaExternalMailClient implements ExternalMailClient {
             long uidNext = 0;
             int count = 0;
             try {
-                folder.open(Folder.READ_ONLY);
-                try {
-                    count = folder.getMessageCount();
-                    if (folder instanceof UIDFolder UIDFolder) {
-                        UIDValidity = UIDFolder.getUIDValidity();
-                        uidNext = UIDFolder.getUIDNext();
-                    }
-                } finally {
-                    closeFolder(folder, false);
+                // Не открываем каждую папку SELECT-ом только ради счётчиков: у IMAPFolder эти
+                // вызовы на закрытой папке используют STATUS, что заметно легче для провайдера.
+                count = Math.max(0, folder.getMessageCount());
+                if (folder instanceof UIDFolder UIDFolder) {
+                    UIDValidity = UIDFolder.getUIDValidity();
+                    uidNext = Math.max(0, UIDFolder.getUIDNext());
                 }
             } catch (MessagingException ignored) {
                 // \Noselect и служебные папки некоторых провайдеров нельзя открыть: они не источник почты.
@@ -305,26 +399,19 @@ public class JakartaExternalMailClient implements ExternalMailClient {
         return result;
     }
 
-    private List<Message> orderedMessages(Folder folder, AccountConfig config, long afterUid) throws MessagingException {
-        Message[] messages = folder.getMessages();
-        if (messages.length == 0) return List.of();
-        FetchProfile profile = new FetchProfile();
-        profile.add(FetchProfile.Item.ENVELOPE);
-        profile.add(FetchProfile.Item.FLAGS);
-        profile.add(FetchProfile.Item.CONTENT_INFO);
-        if (folder instanceof UIDFolder) {
-            profile.add(UIDFolder.FetchProfileItem.UID);
-        }
-        folder.fetch(messages, profile);
-        List<Message> result = new ArrayList<>();
-        for (Message message : messages) {
-            if (config.incomingProtocol() == ExternalMailAccount.Protocol.IMAP && folder instanceof UIDFolder UIDFolder) {
-                long uid = UIDFolder.getUID(message);
-                if (uid <= afterUid) continue;
+    private List<Message> candidateMessages(Folder folder, AccountConfig config, long afterUid)
+            throws MessagingException {
+        if (config.incomingProtocol() == ExternalMailAccount.Protocol.IMAP
+                && folder instanceof UIDFolder UIDFolder) {
+            if (afterUid >= UIDFolder.MAXUID) return List.of();
+            long startUid = Math.max(1L, afterUid + 1L);
+            // MAXUID (не LASTUID): LASTUID вернул бы последнее письмо даже при пустом диапазоне.
+            Message[] messages = UIDFolder.getMessagesByUID(startUid, UIDFolder.MAXUID);
+            if (messages == null || messages.length == 0) return List.of();
+            List<Message> result = new ArrayList<>(messages.length);
+            for (Message message : messages) {
+                if (message != null) result.add(message);
             }
-            result.add(message);
-        }
-        if (folder instanceof UIDFolder UIDFolder) {
             result.sort((a, b) -> {
                 try {
                     return Long.compare(UIDFolder.getUID(a), UIDFolder.getUID(b));
@@ -332,8 +419,39 @@ public class JakartaExternalMailClient implements ExternalMailClient {
                     return Integer.compare(a.getMessageNumber(), b.getMessageNumber());
                 }
             });
+            return result;
+        }
+
+        Message[] messages = folder.getMessages();
+        if (messages == null || messages.length == 0) return List.of();
+        List<Message> result = new ArrayList<>(messages.length);
+        for (Message message : messages) {
+            if (message != null) result.add(message);
         }
         return result;
+    }
+
+    private void fetchProfile(Folder folder, List<Message> messages) throws MessagingException {
+        if (messages.isEmpty()) return;
+        FetchProfile profile = new FetchProfile();
+        profile.add(FetchProfile.Item.FLAGS);
+        if (folder instanceof UIDFolder) {
+            profile.add(UIDFolder.FetchProfileItem.UID);
+        }
+        if (folder instanceof IMAPFolder) {
+            // Не используем ENVELOPE/BODYSTRUCTURE: Angus после проигнорированного ответа NO
+            // иначе скрыто повторяет FETCH одного письма из getReceivedDate()/getFrom().
+            profile.add(IMAPFolder.FetchProfileItem.INTERNALDATE);
+            profile.add(IMAPFolder.FetchProfileItem.SIZE);
+            profile.add("Message-ID");
+            profile.add("From");
+            profile.add("Sender");
+            profile.add("Date");
+        } else {
+            // POP3 ENVELOPE означает TOP + LIST и заранее заполняет заголовки и размер.
+            profile.add(FetchProfile.Item.ENVELOPE);
+        }
+        folder.fetch(messages.toArray(new Message[0]), profile);
     }
 
     private RemoteMessageEnvelope envelope(Folder folder, Message message, AccountConfig config, String remoteFolder)
@@ -357,16 +475,18 @@ public class JakartaExternalMailClient implements ExternalMailClient {
             remoteUid = String.valueOf(message.getMessageNumber());
         }
         Flags flags = message.getFlags();
-        Instant internal = message.getReceivedDate() != null ? message.getReceivedDate().toInstant()
-                : (message.getSentDate() != null ? message.getSentDate().toInstant() : Instant.now());
+        boolean imap = folder instanceof IMAPFolder;
+        Instant internal = imap ? imapInternalDate(message) : legacyInternalDate(message);
+        long size = imap ? imapSize(message) : Math.max(0, message.getSize());
+        String from = imap ? firstAddressHeader(message) : firstAddress(message.getFrom());
         return new RemoteMessageEnvelope(
                 remoteFolder,
                 remoteUid,
                 UIDValidity,
                 firstHeader(message, "Message-ID"),
-                firstAddress(message.getFrom()),
+                from,
                 internal,
-                Math.max(0, message.getSize()),
+                size,
                 flags.contains(Flags.Flag.SEEN),
                 flags.contains(Flags.Flag.ANSWERED),
                 flags.contains(Flags.Flag.FLAGGED),
@@ -465,6 +585,53 @@ public class JakartaExternalMailClient implements ExternalMailClient {
         return idx >= 0 ? fullName.substring(idx + d.length()) : fullName;
     }
 
+    private static Instant legacyInternalDate(Message message) throws MessagingException {
+        var received = message.getReceivedDate();
+        if (received != null) return received.toInstant();
+        var sent = message.getSentDate();
+        return sent != null ? sent.toInstant() : Instant.now();
+    }
+
+    private static Instant imapInternalDate(Message message) throws MessagingException {
+        try {
+            var received = message.getReceivedDate();
+            if (received != null) return received.toInstant();
+        } catch (MessagingException ignored) {
+            // IMAPFolder.fetch() может проглотить NO по RFC 2180. Не повторяем падение папки
+            // из-за необязательных метаданных: ниже используется обычный заголовок Date.
+        }
+        String header = firstHeader(message, "Date");
+        if (header != null) {
+            try {
+                return new MailDateFormat().parse(header).toInstant();
+            } catch (ParseException ignored) {
+                // Фактическая дата будет восстановлена MIME-парсером после скачивания письма.
+            }
+        }
+        return Instant.now();
+    }
+
+    private static long imapSize(Message message) {
+        try {
+            return Math.max(0, message.getSize());
+        } catch (MessagingException ignored) {
+            // Для доставки используется размер фактически сохранённого raw .eml, а не этот hint.
+            return 0;
+        }
+    }
+
+    private static String firstAddressHeader(Message message) throws MessagingException {
+        String header = firstHeader(message, "From");
+        if (header == null) header = firstHeader(message, "Sender");
+        if (header == null) return null;
+        try {
+            return firstAddress(InternetAddress.parseHeader(header, false));
+        } catch (AddressException ignored) {
+            // Невалидный From не должен блокировать сбор: отправитель разберётся из raw MIME.
+            return null;
+        }
+    }
+
     private static String firstHeader(Message message, String name) throws MessagingException {
         String[] values = message.getHeader(name);
         if (values == null || values.length == 0 || values[0] == null) return null;
@@ -481,6 +648,19 @@ public class JakartaExternalMailClient implements ExternalMailClient {
 
     // ------------------------------------------------------------------ errors
 
+    private static boolean isConnectionLoss(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof FolderClosedException || current instanceof StoreClosedException
+                    || current instanceof ConnectionException) {
+                return true;
+            }
+            if (current.getCause() == current) break;
+            current = current.getCause();
+        }
+        return false;
+    }
+
     private ExternalMailClientException map(AccountConfig config, Exception e) {
         Throwable root = rootCause(e);
         String message = safeMessage(config, root);
@@ -495,9 +675,15 @@ public class JakartaExternalMailClient implements ExternalMailClient {
             return new ExternalMailClientException(ExternalMailClientException.Category.TLS, false,
                     "Ошибка TLS внешнего почтового сервера: " + message, e);
         }
-        if (root instanceof UnknownHostException || root instanceof ConnectException || root instanceof SocketTimeoutException) {
+        if (root instanceof UnknownHostException || root instanceof ConnectException || root instanceof SocketTimeoutException
+                || e instanceof ConnectionException || root instanceof ConnectionException) {
             return new ExternalMailClientException(ExternalMailClientException.Category.NETWORK, true,
                     "Внешний почтовый сервер недоступен: " + message, e);
+        }
+        if (e instanceof FolderClosedException || e instanceof StoreClosedException
+                || root instanceof FolderClosedException || root instanceof StoreClosedException) {
+            return new ExternalMailClientException(ExternalMailClientException.Category.NETWORK, true,
+                    "Соединение с внешним почтовым сервером потеряно: " + message, e);
         }
         return new ExternalMailClientException(ExternalMailClientException.Category.PROTOCOL, true,
                 "Ошибка внешнего почтового сервера: " + message, e);

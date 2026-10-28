@@ -3,6 +3,7 @@ package ru.corvex.gateway.security;
 import org.springframework.cloud.gateway.filter.ratelimit.KeyResolver;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import reactor.core.publisher.Mono;
 
@@ -19,8 +20,15 @@ public class RateLimitConfig {
         return exchange -> Mono.just(clientIp(exchange.getRequest()));
     }
 
-    /** Лимиты по пользователю из JWT (Principal), для анонимных — по IP. */
+    /**
+     * Лимиты по пользователю из JWT (Principal), для анонимных — по IP.
+     * GatewayAutoConfiguration требует один KeyResolver по умолчанию для
+     * RequestRateLimiterGatewayFilterFactory; маршруты по-прежнему могут
+     * явно выбирать ip/user через SpEL, поэтому @Primary нужен только как
+     * однозначный fallback, когда key-resolver в маршруте не указан.
+     */
     @Bean
+    @Primary
     KeyResolver userKeyResolver() {
         return exchange -> exchange.getPrincipal()
                 .flatMap(principal -> Mono.justOrEmpty(principal.getName()))

@@ -307,7 +307,9 @@ public class ChatService {
 
         List<ChatMessage> rows = messages.findHistory(
                 roomId,
+                effectiveThreadRoot != null,
                 effectiveThreadRoot,
+                cursor != null,
                 cursor == null ? null : cursor.getCreatedAt(),
                 cursor == null ? null : cursor.getId(),
                 PageRequest.of(0, safeLimit + 1));

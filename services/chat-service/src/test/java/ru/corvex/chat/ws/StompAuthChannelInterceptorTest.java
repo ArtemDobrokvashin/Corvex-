@@ -186,7 +186,7 @@ class StompAuthChannelInterceptorTest {
     @Test
     void subscribeChecksRoomTopicsAndRejectsUnknownTopics() {
         StompHeaderAccessor room = accessor(StompCommand.SUBSCRIBE);
-        room.setDestination("/topic/rooms/" + ROOM_ID + "/typing");
+        room.setDestination("/topic/rooms." + ROOM_ID + ".typing");
         room.setUser(authentication());
         interceptor.preSend(message(room), channel);
         verify(chatService).requireRealtimeAccess(any(ChatPrincipal.class), eq(ROOM_ID), eq(false));
@@ -201,6 +201,12 @@ class StompAuthChannelInterceptorTest {
         unknown.setUser(authentication());
         assertThrows(MessageDeliveryException.class,
                 () -> interceptor.preSend(message(unknown), channel));
+
+        StompHeaderAccessor legacySlash = accessor(StompCommand.SUBSCRIBE);
+        legacySlash.setDestination("/topic/rooms/" + ROOM_ID);
+        legacySlash.setUser(authentication());
+        assertThrows(MessageDeliveryException.class,
+                () -> interceptor.preSend(message(legacySlash), channel));
 
         StompHeaderAccessor blank = accessor(StompCommand.SUBSCRIBE);
         blank.setUser(authentication());
@@ -255,7 +261,7 @@ class StompAuthChannelInterceptorTest {
     @Test
     void malformedUuidInMatchingDestinationIsRejected() {
         StompHeaderAccessor accessor = accessor(StompCommand.SUBSCRIBE);
-        accessor.setDestination("/topic/rooms/------------------------------------");
+        accessor.setDestination("/topic/rooms.------------------------------------");
         accessor.setUser(authentication());
 
         assertThrows(MessageDeliveryException.class,

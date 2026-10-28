@@ -109,7 +109,7 @@ pilot», даже если baseline соберётся и заработает �
 | Redis | `redis:7-alpine` | ряд 7.4 получает security-поддержку; миграция на 8.x отдельным gate |
 | RabbitMQ | `4.3.6-management-alpine` | поддерживаемый 4.3; 3.13 убран |
 | Elasticsearch | `8.19.23` | поддерживаемый ряд 8.19, совместимый с Java-клиентом major 8 |
-| SpamAssassin | `4.0.2` | актуальный patch 4.0.x |
+| SpamAssassin | `grepular/spamassassin:4.0.1-5` | Debian 13 package 4.0.1-5; официального Apache Docker-образа нет, поэтому закреплён прозрачный community-образ с `spamd:783` и ежедневным `sa-update` |
 | ClamAV | `1.5.4` | актуальный security patch |
 | nginx | `1.30-alpine` | stable-ветка |
 | Prometheus | `v3.13.4` | LTS-ряд 3.13 |

@@ -17,6 +17,11 @@ spring:
 management:
   endpoints.web.exposure.include: health,info,prometheus,metrics
   endpoint.health.probes.enabled: true
+  # Alert SMTP — внешняя интеграция: на первом запуске собственный SMTP может
+  # быть сознательно выключен (CORVEX_SMTP_ENABLED=false), а production-релей
+  # ещё не настроен. Недоступность релея не должна делать unhealthy сам
+  # webhook/Rabbit-консьюмер; ошибки доставки остаются видны в логах отправки.
+  health.mail.enabled: false
   metrics.tags.application: notification-service
 logging:
   # Структурные JSON-логи -> Promtail -> Loki (см. docs/01-architecture.md)

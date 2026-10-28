@@ -8,18 +8,22 @@
 | Группа | Сервисы | Образы |
 |---|---|---|
 | Данные | postgres, redis, rabbitmq, elasticsearch | официальные: `postgres:16-alpine`, `redis:7-alpine`, `rabbitmq:4.3.6-management-alpine`, ES `8.19.23` |
-| Фильтры | spamd, clamav | `apache/spamassassin:4.0.2`, `clamav/clamav:1.5.4` (freshclam внутри) |
+| Фильтры | spamd, clamav | `grepular/spamassassin:4.0.1-5` (community-образ SpamAssassin 4.0.1 из Debian 13; официального Apache Docker-образа нет), `clamav/clamav:1.5.4` (freshclam внутри) |
 | Corvex | 12 микросервисов + frontend | собираются локально из `services/*` и `frontend/` |
 | Периметр | nginx | `nginx:1.30-alpine`, конфиг в `infra/nginx` |
 | Мониторинг (профиль `monitoring`) | prometheus, alertmanager, grafana, loki, promtail | Prometheus `v3.13.4`, Alertmanager `v0.34.1`, Grafana `13.2.4`, Loki `3.7.8`; Promtail `3.6.11` — только временный optional smoke перед миграцией на Alloy (см. `docs/RELEASE-DEPENDENCIES.md`) |
 
 ## 5.2. Dockerfile микросервиса (одинаковый паттерн у всех 12)
 
-- стадия build: `maven:3.9-eclipse-temurin-17`, `dependency:go-offline` отдельным слоем
-  (кэш зависимостей переживает изменения кода);
-- стадия runtime: `eclipse-temurin:17-jre-alpine`, пользователь `corvex` (non-root),
-  поэтому почтовые порты внутри контейнера непривилегированные (2525/2587/1143/…),
-  наружу Docker публикует стандартные 25/587/143/993/110/995;
+- стадия build: `maven:3.9-eclipse-temurin-17`, `dependency:go-offline` отдельным слоем;
+  `maven-settings.xml` в каждом сервисе сначала опрашивает Google-зеркала Maven Central,
+  а Central из Super POM остаётся fallback на случай CDN `403/429`. Общий BuildKit
+  cache-mount `/root/.m2/repository` сохраняет скачанные POM/JAR между сервисами и
+  пересборками, поэтому изменения только в `src/` не требуют повторной загрузки мира;
+- стадия runtime: `eclipse-temurin:17-jre-alpine`, пользователь `corvex` (non-root,
+  фиксированный `UID:GID = 100:101`; `first-run.ps1` под этот аккаунт нормализует права
+  на сгенерированные ключи), поэтому почтовые порты внутри контейнера непривилегированные
+  (2525/2587/1143/…), наружу Docker публикует стандартные 25/587/143/993/110/995;
 - `JAVA_OPTS=-XX:MaxRAMPercentage=75` — heap считается от лимита контейнера, а не хоста;
 - `HEALTHCHECK` по `/actuator/health` — на нём строятся `depends_on: condition:
   service_healthy`, поэтому `docker compose up` стартует в правильном порядке

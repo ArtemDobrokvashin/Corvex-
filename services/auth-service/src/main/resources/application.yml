@@ -27,6 +27,9 @@ spring:
 management:
   endpoints.web.exposure.include: health,info,prometheus,metrics
   endpoint.health.probes.enabled: true
+  # AD/LDAP — этап 5 и пока не настроен; наличие spring-ldap на classpath не должно
+  # делать локальную аутентификацию unhealthy из-за пробы default localhost:389.
+  health.ldap.enabled: false
   metrics.tags.application: auth-service
 logging:
   # Структурные JSON-логи -> Promtail -> Loki (см. docs/01-architecture.md)

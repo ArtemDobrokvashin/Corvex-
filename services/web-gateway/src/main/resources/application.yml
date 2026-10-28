@@ -10,44 +10,54 @@ spring:
   security.oauth2.resourceserver.jwt.jwk-set-uri: ${CORVEX_JWK_SET_URI:http://auth-service:8081/oauth2/jwks}
   cloud:
     gateway:
-      # Маршрутизация: наружу единый /api/v1/**, внутри — свои сервисы (ТЗ §2.3)
-      routes:
-        - id: auth
-          uri: http://auth-service:8081
-          predicates: [Path=/api/v1/auth/**]
-          filters:
-            # Анти-брутфорс входа: 10 попыток/мин с IP (дополняет lockout в auth-service)
-            - name: RequestRateLimiter
-              args: { redis-rate-limiter.replenishRate: 10, redis-rate-limiter.burstCapacity: 10, key-resolver: "#{@ipKeyResolver}" }
-        - id: mail
-          uri: http://mail-storage-service:8085
-          predicates: [Path=/api/v1/mail/**]
-          filters:
-            - name: RequestRateLimiter
-              args: { redis-rate-limiter.replenishRate: 50, redis-rate-limiter.burstCapacity: 100, key-resolver: "#{@userKeyResolver}" }
-        - id: chat-rest
-          uri: http://chat-service:8088
-          predicates: [Path=/api/v1/chat/**]
-        - id: chat-ws
-          uri: ws://chat-service:8088
-          predicates: [Path=/ws/chat/**]
-        - id: chat-files
-          uri: http://chat-file-service:8089
-          predicates: [Path=/api/v1/files/**]
-        - id: admin
-          uri: http://admin-service:8090
-          predicates: [Path=/api/v1/admin/**]
-      default-filters:
-        - AddRequestHeader=X-Request-Id, ${HOSTNAME:gateway}
-        - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials RETAIN_FIRST
-      globalcors:
-        cors-configurations:
-          '[/**]':
-            allowedOriginPatterns: "${CORVEX_WEB_ORIGINS:https://${CORVEX_DOMAIN:mail.company.local}}"
-            allowedMethods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
-            allowedHeaders: ["*"]
-            allowCredentials: true
-            maxAge: 3600
+      server:
+        webflux:
+          # trusted-proxies не задаём: Gateway 4.3 не должен доверять клиентским
+          # Forwarded/X-Forwarded-*; реальный IP для rate limit даёт X-Real-IP,
+          # который edge-nginx перезаписывает из TCP-соединения.
+          # Маршрутизация: наружу единый /api/v1/**, внутри — свои сервисы (ТЗ §2.3)
+          routes:
+            - id: auth
+              uri: http://auth-service:8081
+              predicates: [Path=/api/v1/auth/**]
+              filters:
+                # Анти-брутфорс входа: 10 попыток/мин с IP (дополняет lockout в auth-service)
+                - name: RequestRateLimiter
+                  args: { redis-rate-limiter.replenishRate: 10, redis-rate-limiter.burstCapacity: 10, key-resolver: "#{@ipKeyResolver}" }
+            - id: mail
+              uri: http://mail-storage-service:8085
+              predicates: [Path=/api/v1/mail/**]
+              filters:
+                - name: RequestRateLimiter
+                  args: { redis-rate-limiter.replenishRate: 50, redis-rate-limiter.burstCapacity: 100, key-resolver: "#{@userKeyResolver}" }
+            - id: chat-rest
+              uri: http://chat-service:8088
+              predicates: [Path=/api/v1/chat/**]
+            - id: chat-ws
+              # URI намеренно http://, а не ws://: WebsocketRoutingFilter Gateway 4.3
+              # сам превратит настоящий Upgrade-запрос в ws://, а обычные SockJS
+              # HTTP-запросы (/info, xhr*) пропустит дальше в Netty HTTP-прокси.
+              # С ws:// все запросы насильно считаются WebSocket-handshake,
+              # поэтому обязательный для SockJS GET /ws/chat/info получает 400.
+              uri: http://chat-service:8088
+              predicates: [Path=/ws/chat/**]
+            - id: chat-files
+              uri: http://chat-file-service:8089
+              predicates: [Path=/api/v1/files/**]
+            - id: admin
+              uri: http://admin-service:8090
+              predicates: [Path=/api/v1/admin/**]
+          default-filters:
+            - AddRequestHeader=X-Request-Id, ${HOSTNAME:gateway}
+            - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials RETAIN_FIRST
+          globalcors:
+            cors-configurations:
+              '[/**]':
+                allowedOriginPatterns: "${CORVEX_WEB_ORIGINS:https://${CORVEX_DOMAIN:mail.company.local}}"
+                allowedMethods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+                allowedHeaders: ["*"]
+                allowCredentials: true
+                maxAge: 3600
 management:
   endpoints.web.exposure.include: health,info,prometheus,metrics,gateway
   endpoint.health.probes.enabled: true

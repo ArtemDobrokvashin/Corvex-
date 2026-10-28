@@ -57,7 +57,7 @@ class ChatEventPublisherTest {
 
         ArgumentCaptor<Object> payload = ArgumentCaptor.forClass(Object.class);
         verify(broker, org.mockito.Mockito.times(4))
-                .convertAndSend(eq("/topic/rooms/" + ROOM_ID), payload.capture());
+                .convertAndSend(eq("/topic/rooms." + ROOM_ID), payload.capture());
         List<ChatDtos.ChatEventView> events = payload.getAllValues().stream()
                 .map(ChatDtos.ChatEventView.class::cast).toList();
         assertEquals(List.of(
@@ -78,7 +78,7 @@ class ChatEventPublisherTest {
         publisher.publishMention(message(), MENTIONED_ID);
 
         ArgumentCaptor<Object> typing = ArgumentCaptor.forClass(Object.class);
-        verify(broker).convertAndSend(eq("/topic/rooms/" + ROOM_ID), typing.capture());
+        verify(broker).convertAndSend(eq("/topic/rooms." + ROOM_ID), typing.capture());
         assertEquals(ChatEventPublisher.TYPING,
                 ((ChatDtos.ChatEventView) typing.getValue()).type());
 
@@ -122,7 +122,7 @@ class ChatEventPublisherTest {
                 TransactionSynchronizationManager.getSynchronizations();
         assertEquals(1, synchronizations.size());
         synchronizations.get(0).afterCommit();
-        verify(broker).convertAndSend(eq("/topic/rooms/" + ROOM_ID), any(Object.class));
+        verify(broker).convertAndSend(eq("/topic/rooms." + ROOM_ID), any(Object.class));
     }
 
     @Test

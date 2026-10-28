@@ -53,7 +53,7 @@ export function connectChat(
         const parsed = parseMessage(message);
         if (parsed !== null) onMessage(parsed);
       };
-      client.subscribe(`/topic/rooms/${roomId}`, forward);
+      client.subscribe(`/topic/rooms.${roomId}`, forward);
       client.subscribe('/user/queue/notifications', forward);
       client.subscribe('/user/queue/errors', forward);
     },

@@ -45,10 +45,15 @@ public class ExternalMailEndpointPolicy {
         try {
             resolved = InetAddress.getAllByName(host);
         } catch (UnknownHostException e) {
-            throw bad("Не удалось разрешить DNS-имя почтового сервера: " + host);
+            // DNS может быть временно недоступен внутри Docker; это не доказывает,
+            // что сохранённая конфигурация постоянного ящика неверна.
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Не удалось разрешить DNS-имя почтового сервера: " + host, e);
         }
         if (resolved.length == 0) {
-            throw bad("DNS-имя почтового сервера не разрешилось: " + host);
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "DNS-имя почтового сервера не разрешилось: " + host,
+                    new UnknownHostException(host));
         }
         for (InetAddress address : resolved) {
             if (isAlwaysBlocked(address) || (!props.allowPrivateNetworks() && isPrivateOrReserved(address))) {
