@@ -110,3 +110,7 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: [version-update:semver-major]
+      # RabbitMQ minor-релизы могут одновременно менять Erlang/OTP и on-disk формат.
+      # Их выполняем вручную staged-upgrade с backup/rollback smoke; patch-версии разрешены.
+      - dependency-name: "rabbitmq"
+        update-types: [version-update:semver-minor]
