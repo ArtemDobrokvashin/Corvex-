@@ -12,11 +12,13 @@ import io.netty.handler.codec.DelimiterBasedFrameDecoder;
 import io.netty.handler.codec.Delimiters;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.stream.ChunkedWriteHandler;
 import org.apache.james.metrics.api.MetricFactory;
 import org.apache.james.protocols.api.handler.CommandDispatcher;
 import org.apache.james.protocols.api.handler.CommandHandlerResultLogger;
 import org.apache.james.protocols.api.handler.ProtocolHandler;
 import org.apache.james.protocols.netty.BasicChannelInboundHandler;
+import org.apache.james.protocols.netty.HandlerConstants;
 import org.apache.james.protocols.netty.ProtocolMDCContextFactory;
 import org.apache.james.protocols.pop3.POP3Configuration;
 import org.apache.james.protocols.pop3.POP3Protocol;
@@ -150,10 +152,15 @@ public class JamesPop3Server implements SmartLifecycle {
                     @Override
                     protected void initChannel(SocketChannel ch) {
                         if (ssl != null) {
-                            ch.pipeline().addLast(ssl.newHandler(ch.alloc()));
+                            ch.pipeline().addLast(HandlerConstants.SSL_HANDLER, ssl.newHandler(ch.alloc()));
                         }
-                        ch.pipeline().addLast(new DelimiterBasedFrameDecoder(MAX_LINE_BYTES, Delimiters.lineDelimiter()));
-                        ch.pipeline().addLast(new BasicChannelInboundHandler(
+                        ch.pipeline().addLast(HandlerConstants.FRAMER,
+                                new DelimiterBasedFrameDecoder(MAX_LINE_BYTES, Delimiters.lineDelimiter()));
+                        // NettyProtocolTransport выдаёт RETR/TOP через ChunkedStream: без этого
+                        // outbound-обработчика клиент получает только «+OK Message follows» и ждёт тело до таймаута.
+                        ch.pipeline().addLast(HandlerConstants.CHUNK_HANDLER, new ChunkedWriteHandler());
+                        // Имя обязательно: NettyProtocolTransport ищет coreHandler при QUIT/endSession.
+                        ch.pipeline().addLast(HandlerConstants.CORE_HANDLER, new BasicChannelInboundHandler(
                                 new ProtocolMDCContextFactory.Standard(), protocol));
                     }
                 });
