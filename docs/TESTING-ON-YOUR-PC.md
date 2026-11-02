@@ -1,13 +1,13 @@
 # Corvex: поэтапная инструкция по тестированию на вашем ПК
 
-> **Дата актуализации:** 28 октября 2026 года.
+> **Дата актуализации:** 2 ноября 2026 года.
 > **Проверяемый исходный код:** актуальный `main`; точный SHA запишите до старта.
-> Текущий backend использует Boot 3.5.16, dependency-пины — в `RELEASE-DEPENDENCIES.md`.
-> **Исторический PC-pass G1/G2:** только `b37db56` (Boot 3.2.12 / Cloud 2023.0.6 /
-> James 3.8.2). На текущем `main` G1/G2 нужно повторить. G0 повторно проверен на
-> текущем `main`; G3 частично идёт: External Mail ongoing и базовый realtime-чат,
-> но собственные протоколы, полный чат, архив, restore и Chrome 109 ещё не приняты.
-> Это **не production-ready**.
+> Backend использует Boot 3.5.16, dependency-пины — в `RELEASE-DEPENDENCIES.md`.
+> **Полный PC-pass G1/G2:** `8cccaee`; G2 выполнен на существующих volumes,
+> clean-volume install не выполнялся. POP3-исправление и клиентский smoke относятся
+> к `d75fb97`. G3 частично идёт: External Mail ongoing, базовый realtime-чат,
+> ограниченные SMTP/IMAP и согласованный POP3 995 smoke уже проверены; полный IMAP,
+> чат, архив, restore и Chrome 109 ещё не приняты. Это **не production-ready**.
 
 Эта инструкция позволяет воспроизвести проверки на вашем точном SHA и продолжить приёмку.
 Идите сверху вниз и **не переходите к следующему уровню, если предыдущий красный**: так
@@ -22,12 +22,14 @@
 | Frontend unit-тесты | ✅ PASS | **9 test-файлов, 33/33 теста** |
 | TypeScript + production build | ✅ PASS | Modern и `*-legacy-*.js` bundles созданы |
 | Production `npm audit` | ✅ PASS | **0 уязвимостей** на текущем lockfile |
-| Корневой `mvn -B clean verify` | ✅ PASS только на `b37db56` | 12 сервисов + parent, Boot 3.2.12; на текущем `main` с Boot 3.5.16 повторить |
-| Docker build / Compose | ✅ PASS только на `b37db56` | 13 образов, Compose config, базовый старт; на текущем `main` повторить |
-| Spring/Flyway/БД/очереди | ✅ Базовый PASS на `b37db56` | 20/20 основных контейнеров; healthchecked — `healthy`, `nginx`/`frontend`/`spamd` — `Up`; текущий `main` повторить |
-| Web runtime и базовый чат | 🟡 Частично | Вход, админка, webmail, история/SockJS/сообщения/emoji проверены; полный двухпользовательский сценарий остаётся |
-| External Mail ongoing | 🟡 Частично | Mail.ru/Яндекс на тестовых ящиках, polling и dedupe; архив и остальные провайдеры не приняты |
-| Собственные SMTP/IMAP/POP3 | ⏸ G3 НЕ ЗАВЕРШЁН | Maven/Docker пройдены только на `b37db56`, на `main` повторить; end-to-end и Thunderbird/Outlook ещё не проверены |
+| Корневой `mvn -B clean verify` | ✅ PASS на `8cccaee` | 12 сервисов + parent, Boot 3.5.16; повторять для каждого release SHA |
+| Docker build / Compose | ✅ PASS на `8cccaee` | 13 образов, Compose config, базовый старт на существующих volumes; clean-volume install не выполнялся |
+| Spring/Flyway/БД/очереди | ✅ Базовый PASS на `8cccaee` | 20/20 основных контейнеров; healthchecked — `healthy`, `nginx`/`frontend`/`spamd` — `Up`; существующие volumes |
+| Web runtime и базовый чат | 🟡 Частично | Вход, админка, webmail, история/SockJS/сообщения/emoji проверены; полный двухпользовательский сценарий остаётся. 02.11 одна отправка webmail вернула HTTP 401 — причина не локализована |
+| External Mail ongoing | 🟡 Частично | Mail.ru/Яндекс на тестовых ящиках, polling и dedupe; на `8cccaee` MANUAL/SCHEDULED regression SUCCESS без ошибок; архив и остальные провайдеры не приняты |
+| Собственный SMTP | 🟡 Ограниченный PASS | Submission 587 STARTTLS, локальная доставка и Sent в Thunderbird; полный inbound/outbound/spam/AV/EICAR/search ещё не закрыт |
+| Собственный IMAP | 🟡 G3 в работе | IMAP 993 LOGIN/папки/чтение PASS; полный 143 STARTTLS без exception, вложения, MOVE/EXPUNGE, поиск и restart остаются |
+| Собственный POP3 | ✅ Согласованный 995 smoke на `d75fb97` | 44/44 module tests; Thunderbird LOGIN/STAT/LIST/UIDL/RETR, keep-on-server, повтор без дублей и UIDL после restart; расширенная матрица остаётся |
 | Windows 7 + Chrome 109 | ⏸ НЕ ПРОВЕРЕНО | Legacy bundle построен, но нужен реальный браузерный smoke |
 | Production / 1000 пользователей | ⏸ НЕ ПРОВЕРЕНО | Нагрузка, 72 часа, backup/restore, откат и пилот остаются в G3–G5 |
 
@@ -194,7 +196,7 @@ cd ..
 
 ## 3. Первая настоящая проверка Java: Maven
 
-G1 пройден на ПК только для `b37db56` с Boot 3.2.12. Текущий `main` уже использует Boot 3.5.16, поэтому полный прогон на вашем актуальном SHA обязателен.
+G1 пройден на ПК для `8cccaee` с Boot 3.5.16. Полный прогон обязателен для каждого актуального release SHA: targeted-тест одного сервиса его не заменяет.
 
 ```powershell
 mvn -B clean verify
@@ -588,16 +590,24 @@ QUIT
 | Поле | IMAP | POP3 | Исходящая почта |
 |---|---|---|---|
 | Сервер | `mail.company.local` | `mail.company.local` | `mail.company.local` |
-| Порт | 993 | 995 | 587 |
-| Защита | SSL/TLS | SSL/TLS | STARTTLS |
+| Порт | 993 или 143 | 995 | 587 |
+| Защита | SSL/TLS для 993, STARTTLS для 143 | SSL/TLS | STARTTLS |
 | Аутентификация | Обычный пароль | Обычный пароль | Обычный пароль |
 | Логин | полный e-mail | полный e-mail | полный e-mail |
 | Пароль | основной или app-password при 2FA | основной или app-password | основной или app-password |
 
-Самоподписанный сертификат вызовет предупреждение. На закрытом стенде сверьте,
-что подключаетесь именно к своему `mail.company.local`, и только после этого
-подтверждайте исключение. Для пилота с пользователями нужен нормальный сертификат
-корпоративного CA или Let's Encrypt с SAN на почтовое имя.
+Для воспроизводимого доверия используйте сертификат сервера с SAN на почтовое имя и
+цепочку к тестовому/корпоративному CA. На Windows достаточно импортировать **публичный
+сертификат CA**, не leaf и не приватный ключ:
+
+```powershell
+import-certificate -filepath c:\corvex-pki\corvex-test-ca.crt -certstorelocation cert:\currentuser\root
+```
+
+В Thunderbird `security.enterprise_roots.enabled=true`. При такой конфигурации на
+стенде POP3 995 работает без per-server exception. Не отключайте TLS/проверку
+сертификата и не добавляйте исключение вместо диагностики цепочки. Для пилота нужен
+нормальный сертификат корпоративного CA или Let's Encrypt с SAN на почтовое имя.
 
 Чек-лист IMAP:
 
@@ -614,6 +624,40 @@ QUIT
 - [ ] Забирается только INBOX.
 - [ ] При «оставлять копии на сервере» повторное получение не плодит дубликаты в клиенте.
 - [ ] Удаление из клиента при соответствующей настройке удаляет письмо после QUIT.
+
+### 9.5. Фактический protocol smoke 02.11.2026
+
+Проверки выполнялись только с локальными пользователями, без AD/LDAP и без публичного
+SMTP/MX. Полный G1/G2 относится к `8cccaee`; POP3-исправление проверено на `d75fb97`.
+
+**SMTP/IMAP, ограниченный объём:**
+
+- Thunderbird: SMTP submission 587 STARTTLS, локальная доставка и Sent — PASS.
+- IMAP 993: LOGIN, системные папки и чтение — PASS.
+- IMAP 143 STARTTLS: отдельная приёмка без per-server exception ещё выполняется;
+  диагностический аккаунт со старым exception не засчитывается как доказательство
+  глобального доверия. Вложения/FETCH, MOVE/EXPUNGE, поиск и restart остаются.
+
+**POP3 995, согласованный smoke — PASS на `d75fb97`:**
+
+1. `mvn -B -pl :mail-pop3-service -am test`: **44/44**, `BUILD SUCCESS`;
+   `JamesPop3ServerTest` — 7/7, включая настоящий socket RETR/QUIT.
+2. Windows CurrentUser Root + Thunderbird enterprise roots: TLS без exception 995.
+3. LOGIN, STAT, LIST и UIDL успешны; исходный INBOX содержал три письма.
+4. На прежнем коде RETR возвращал только `+OK Message follows`, после чего клиент
+   ждал тело до 100-секундного таймаута. PR **#109** добавил обязательный Netty
+   `ChunkedWriteHandler` и стандартное имя `coreHandler` для endSession/QUIT.
+5. После исправления все RETR передали тела и завершающие точки; QUIT завершился без
+   NPE/timeout. Первый прогон также выявил снятую клиентскую настройку
+   «оставлять копии»: Thunderbird отправил DELE 1–3. Это не скрывается в результатах.
+6. Для контрольного письма включено «оставлять копии», оба правила автоматического
+   удаления выключены. Повторная сессия: `STAT +OK 1 3712`, тот же UIDL, нет RETR/DELE,
+   дублей нет. После `docker compose restart mail-pop3-service` результат и UIDL
+   `2bb373c9-27ef-477f-b7a6-2b2ab6c19dd4` сохранились.
+
+Этот PASS не распространяется на TOP, DELE без QUIT / DELE + QUIT, app-password/2FA,
+большие ящики и Outlook. После подробной диагностики `mailnews.pop3.loglevel` возвращён
+из `All` в `Warn`, чтобы тела писем не оставались в консоли.
 
 ---
 
