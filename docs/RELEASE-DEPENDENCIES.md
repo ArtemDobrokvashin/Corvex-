@@ -1,6 +1,6 @@
 # Release dependencies и ворота Corvex
 
-_Последняя сверка dependency-версий и повторный frontend-прогон: 28 октября 2026 года; граница PC-pass обновлена 2 ноября 2026 года._
+_Последняя сверка dependency-версий и повторный frontend-прогон: 2 ноября 2026 года._
 
 Этот документ фиксирует версии в текущих файлах `main`. Они взяты из POM,
 `package-lock.json`, Dockerfile и `docker-compose.yml`, а не из предполагаемого будущего
@@ -59,7 +59,8 @@ Boot/Cloud/Jackson, James и JDK, обновление observability-стека 
 | Node.js engines | `^22.22.2 || ^24.15.0 || >=26.0.0`; npm `>=10` |
 | React / React DOM | **19.3.1 / 19.3.1** |
 | React Router DOM | **7.18.4** |
-| TypeScript / Vite / Vitest | **7.0.2 / 8.3.4 / 5.0.5** |
+| TypeScript / Vite / Vitest | **7.0.2 / 8.3.5 / 5.0.5** |
+| Autoprefixer / PostCSS | **10.6.2 / 8.5.32** |
 | jsdom | **30.1.3** |
 | Tailwind CSS | **3.4.19** |
 | `@vitejs/plugin-legacy` / `@babel/core` | **8.2.3 / 7.29.7** |
@@ -67,12 +68,12 @@ Boot/Cloud/Jackson, James и JDK, обновление observability-стека 
 | Lucide React | **1.61.0** (lockfile; переход на 2.x — отдельная major-миграция) |
 | Marked / DOMPurify | **18.1.1 / 3.4.17** |
 
-Повторная проверка 28.10.2026 на Node 22.22.3 / npm 10.9.8:
+Повторная проверка обновления PR #106 02.11.2026 на Node 22.22.3 / npm 10.9.8:
 
 - `npm ci` — успешно;
 - `npm test` — **9 test-файлов, 33/33 теста**;
 - `npm run build` — TypeScript, modern и `*-legacy-*.js` bundles успешно;
-- `npm audit --omit=dev --audit-level=moderate` — **0 уязвимостей**.
+- `npm audit --omit=dev` — **0 уязвимостей**.
 
 ### Осознанные исключения
 
@@ -98,8 +99,8 @@ Production audit равен нулю на текущем lockfile. Это не �
 | ClamAV | `clamav/clamav:1.5.4` |
 | nginx | `nginx:1.31-alpine` |
 | Prometheus | `prom/prometheus:v3.15.1` |
-| Alertmanager | `prom/alertmanager:v0.34.1` |
-| Grafana | `grafana/grafana:13.2.4` |
+| Alertmanager | `prom/alertmanager:v0.34.2` |
+| Grafana | `grafana/grafana:13.3.0` |
 | Loki | `grafana/loki:3.7.9` |
 | Promtail | `grafana/promtail:3.6.11` — до миграции на Alloy в G4 |
 | Frontend build | `node:22-alpine` → `nginx:1.31-alpine` |
@@ -112,6 +113,11 @@ RabbitMQ **4.4.0 намеренно не включён** в этот staged-upd
 требует отдельного изменения после backup, проверки очередей/DLQ/restart и rollback-плана.
 Dependabot minor-update для RabbitMQ до этого приостановлен; patch-обновления разрешены.
 
+Для Alertmanager 0.34.2 и Grafana 13.3.0 перед merge проверены объявленные breaking changes:
+Corvex не использует browser cross-origin API Alertmanager и не задаёт переименованную Grafana
+config-секцию `marketplace`. Compose YAML и monitoring-профили проверены статически; запуск
+новых monitoring-образов и alert/email-smoke остаются обязательной частью повторных G2/G3.
+
 Теги — не digest-пины. Для production G5 нужно отдельно решить политику digest/immutable
 artifacts, сканирование образов и обновление базовых ОС. SpamAssassin использует
 community-образ, потому что официального Apache image нет; это нужно учитывать при
@@ -123,8 +129,11 @@ supply-chain review.
 по понедельникам (Europe/Moscow): npm, Maven, Docker base images и Compose images.
 Major-версии автоматически не предлагаются. Для каждого ecosystem действует
 `open-pull-requests-limit: 1`; James minor/major заблокированы до согласованной JDK/James
-миграции, RabbitMQ minor — до ручного staged-upgrade с backup/rollback smoke. Это намеренно
-предотвращает десятки однотипных PR по 12 каталогам сервисов и небезопасные coupled upgrades.
+миграции, RabbitMQ minor — до ручного staged-upgrade с backup/rollback smoke. Spring Cloud
+minor release trains отложены до G4, а automatic Docker updates тега `maven` отключены:
+один такой тег связывает Maven и JDK, поэтому смену JDK нельзя считать обычным patch.
+Это намеренно предотвращает десятки однотипных PR по 12 каталогам сервисов и небезопасные
+coupled upgrades.
 
 Открытые Dependabot PR не следует смешивать с функциональным или документационным PR.
 

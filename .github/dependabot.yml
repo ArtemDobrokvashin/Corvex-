@@ -65,6 +65,10 @@ updates:
         update-types: [version-update:semver-minor, version-update:semver-major]
       - dependency-name: "org.apache.james.protocols:*"
         update-types: [version-update:semver-minor, version-update:semver-major]
+      # Minor release train Spring Cloud меняет согласованное поколение модулей.
+      # Такой переход выполняется в G4 вместе с проверкой Boot/Jackson/JDK; patch разрешён.
+      - dependency-name: "org.springframework.cloud:spring-cloud-dependencies"
+        update-types: [version-update:semver-minor]
 
   - package-ecosystem: docker
     directories:
@@ -94,6 +98,10 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: [version-update:semver-major]
+      # Тег совмещает Maven и JDK: 3.9-eclipse-temurin-17 → …-26 выглядит для
+      # Dependabot как patch, хотя меняет release baseline JDK. Обновляем этот
+      # build image вручную после проверки обеих версий и полного Maven/Docker-прогона.
+      - dependency-name: "maven"
 
   - package-ecosystem: docker-compose
     directory: /
