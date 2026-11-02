@@ -313,14 +313,14 @@ services:
     networks: [app, monitoring]
 
   alertmanager:
-    image: prom/alertmanager:v0.34.1
+    image: prom/alertmanager:v0.34.2
     profiles: [monitoring]
     restart: unless-stopped
     volumes: ["./infra/prometheus/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro"]
     networks: [monitoring, app]
 
   grafana:
-    image: grafana/grafana:13.2.4
+    image: grafana/grafana:13.3.0
     profiles: [monitoring]
     restart: unless-stopped
     environment:
