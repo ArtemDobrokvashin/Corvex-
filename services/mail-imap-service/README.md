@@ -29,12 +29,18 @@ TCP/RFC-парсер не пишется вручную: Corvex реализуе
   NOOP/пере-SELECT и при следующем IDLE-цикле клиента; распределённый EventBus — этап 5.
 - **ACL/METADATA/keyword-флаги** не заявляются возможностями: хранилище держит только
   системные флаги и owner-only права.
-- Сервис по умолчанию **выключен** (`CORVEX_IMAP_ENABLED=false`) до клиентского G3.
-  Полный G1/G2 на ПК относится только к `b37db56`; на текущем `main` с Boot 3.5.16
-  его нужно повторить. Thunderbird/Outlook smoke ещё не выполнен. James 3.8.2 — фактический
-  baseline; переход на согласованную поддерживаемую James/JDK-платформу выполняется
-  отдельным G4-апгрейдом. Подробности: [`../../docs/READINESS.md`](../../docs/READINESS.md)
-  и [`../../docs/RELEASE-DEPENDENCIES.md`](../../docs/RELEASE-DEPENDENCIES.md).
+- Сервис по умолчанию **выключен** (`CORVEX_IMAP_ENABLED=false`) для новых установок
+  вне изолированного стенда. Полный G1/G2 на ПК получен на `8cccaee` с Boot 3.5.16;
+  G2 проверен на существующих volumes, clean-volume install не выполнялся.
+- В Thunderbird на `8cccaee` ограниченно подтверждены IMAP 993 LOGIN, список папок и
+  чтение. Полноценная приёмка 143 STARTTLS без per-server exception, вложения/FETCH,
+  MOVE/EXPUNGE, поиск и restart persistence ещё выполняется. Старый диагностический
+  аккаунт 143 с exception не считается доказательством глобального доверия CA.
+  Outlook отложен и не заявляется проверенным.
+- James 3.8.2 — фактический baseline; переход на согласованную поддерживаемую
+  James/JDK-платформу выполняется отдельным G4-апгрейдом. Подробности:
+  [`../../docs/READINESS.md`](../../docs/READINESS.md) и
+  [`../../docs/RELEASE-DEPENDENCIES.md`](../../docs/RELEASE-DEPENDENCIES.md).
 
 ## Запуск и TLS
 

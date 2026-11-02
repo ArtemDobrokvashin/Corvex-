@@ -4,13 +4,19 @@ POP3 (RFC 1939) для устаревших клиентов: порты 110 (pl
 
 ## Статус этапа 3
 
-Полный **G1 (Maven) и G2 (Docker/Spring) пройден только для `b37db56`**;
-на текущем `main` с Boot 3.5.16 его нужно повторить. Клиентский G3 ещё не выполнен,
-поэтому сервис по умолчанию остаётся выключенным
-(`CORVEX_POP3_ENABLED=false`) до smoke в реальном почтовом клиенте. В POM зафиксирован
-`james.version=3.8.2`; переход на согласованную поддерживаемую James/JDK-платформу —
-отдельный G4-апгрейд. Подробности: [`../../docs/READINESS.md`](../../docs/READINESS.md)
-и [`../../docs/RELEASE-DEPENDENCIES.md`](../../docs/RELEASE-DEPENDENCIES.md).
+Полный PC-pass **G1 (Maven) и G2 (Docker/Spring)** получен на **`8cccaee`** с
+Boot 3.5.16; G2 проверен на существующих volumes, clean-volume install отдельно не
+принят. На **`d75fb97`** пройден ограниченный клиентский G3-smoke в Thunderbird:
+implicit TLS 995 без per-server exception, LOGIN/STAT/LIST/UIDL/RETR, сохранение копии
+на сервере, повторная проверка без дублей и стабильный UIDL после restart. Это не
+закрывает TOP, DELE без QUIT, app-password/2FA, большие ящики и Outlook.
+
+Для новых установок сервис по умолчанию остаётся выключенным
+(`CORVEX_POP3_ENABLED=false`): включение относится к изолированному стенду и release
+gates, а не к production MX. В POM зафиксирован `james.version=3.8.2`; переход на
+согласованную поддерживаемую James/JDK-платформу — отдельный G4-апгрейд. Подробности:
+[`../../docs/READINESS.md`](../../docs/READINESS.md) и
+[`../../docs/RELEASE-DEPENDENCIES.md`](../../docs/RELEASE-DEPENDENCIES.md).
 
 ## Как устроен
 
@@ -19,6 +25,10 @@ POP3 (RFC 1939) для устаревших клиентов: порты 110 (pl
   парсер RFC не писался. Guice-инфраструктура James (`POP3Server`/`ProtocolHandlerLoader`)
   не используется: цепочка хендлеров собирается вручную в `JamesPop3Server`, проводку
   расширяемых хендлеров (CommandDispatcher, Capa) делает `ListProtocolHandlerChain`.
+  Netty pipeline содержит обязательный `ChunkedWriteHandler` для потоковых RETR/TOP;
+  основной обработчик зарегистрирован как `coreHandler`, который James ищет при
+  endSession/QUIT. Сквозной socket-тест предотвращает возврат дефекта «есть +OK,
+  но нет тела письма».
 - Corvex добавляет только два адаптера: `CorvexPassCmdHandler` (пароль проверяет
   `auth-service`: основной без TOTP или app-password) и `CorvexPop3Mailbox` поверх
   внутреннего протокольного API `mail-storage-service` (`/internal/protocol/...`).
@@ -56,12 +66,16 @@ RETR 1
 QUIT
 ```
 
-## Что ещё не проверено
+## Фактическая проверка и оставшаяся матрица
 
-Компиляция против James 3.8.2 и базовый Docker/Spring-запуск подтверждены на
-`b37db56`; текущий `main` требует повтора после смены Boot. Остаются поведение Netty-цепочки `DelimiterBasedFrameDecoder -> BasicChannelInboundHandler`
-на реальных клиентах (Thunderbird/Outlook), CAPA-ответ и поведение при больших ящиках
-(`CORVEX_POP3_MAX_MESSAGES`, по умолчанию 1000 писем на сессию).
+На `d75fb97` модульный прогон завершился `BUILD SUCCESS`: **44/44 теста**, включая
+реальный socket `USER/PASS → STAT → RETR → QUIT`; targeted Docker build и запуск также
+успешны. Thunderbird подтвердил CAPA и передачу тел писем по TLS 995.
+
+Остаются TOP, DELE без QUIT и DELE + QUIT как отдельная негативная матрица,
+app-password при 2FA, большой INBOX у границы `CORVEX_POP3_MAX_MESSAGES` (по умолчанию
+1000 писем на сессию), нагрузочный профиль и Outlook. Outlook сейчас отложен и не
+заявляется совместимым по результатам Thunderbird.
 
 ## Проверка модуля
 

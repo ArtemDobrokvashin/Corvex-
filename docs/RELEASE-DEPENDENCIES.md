@@ -1,6 +1,6 @@
 # Release dependencies и ворота Corvex
 
-_Последняя сверка с репозиторием и повторный frontend-прогон: 28 октября 2026 года._
+_Последняя сверка dependency-версий и повторный frontend-прогон: 28 октября 2026 года; граница PC-pass обновлена 2 ноября 2026 года._
 
 Этот документ фиксирует версии в текущих файлах `main`. Они взяты из POM,
 `package-lock.json`, Dockerfile и `docker-compose.yml`, а не из предполагаемого будущего
@@ -25,7 +25,7 @@ upgrade. Исторические runtime-результаты не перено
 | Компонент | Зафиксировано сейчас | Комментарий |
 |---|---|---|
 | JDK | **17** | Все 12 сервисов используют `<java.version>17</java.version>`; Docker runtime — `eclipse-temurin:17-jre-alpine` |
-| Maven build image | `maven:3.9-eclipse-temurin-17` | Полный PC reactor на `b37db56` проверен Maven 3.10.0 / Java 17.0.20.1; на текущем Boot 3.5.16 повторить |
+| Maven build image | `maven:3.9-eclipse-temurin-17` | Полный PC reactor на `8cccaee` с Boot 3.5.16 завершился `BUILD SUCCESS`; повторять для каждого release SHA |
 | Spring Boot parent | **3.5.16** | Одинаковая версия во всех 12 service POM |
 | Spring Cloud BOM, gateway | **2025.0.3** | Используется `web-gateway` с Boot 3.5 |
 | Spring Cloud BOM, остальные POM | **2023.0.6** | Остаточный неоднородный dependency-management baseline; унификация относится к G4, не выдаётся за завершённую |
@@ -35,10 +35,11 @@ upgrade. Исторические runtime-результаты не перено
 | Jakarta Mail API / Angus Mail | **2.1.5 / 2.0.5** | External Mail IMAP/POP3/SMTP; точные сигнатуры reconnect/fetch проверялись по исходникам |
 | JaCoCo | **0.8.15** | Coverage-гейты не понижались |
 
-**Граница доказательств:** полный PC-pass G1/G2 получен на `b37db56` с Boot 3.2.12,
-Cloud 2023.0.6 и James 3.8.2. PR #95 уже содержал Boot 3.5.16 при merge; текущий
-`main` использует Boot 3.5.16 и gateway Cloud 2025.0.3. Старый PASS нельзя задним
-числом приписать новой версии: G1/G2 на текущем `main` остаются обязательным повтором.
+**Граница доказательств:** полный PC-pass G1/G2 получен на `8cccaee` с Boot 3.5.16,
+gateway Cloud 2025.0.3 и James 3.8.2. G2 выполнен на существующих volumes;
+clean-volume install не выполнялся. Более ранний `b37db56` остаётся историческим
+результатом. На `d75fb97` выполнен targeted POP3-модульный прогон и Docker/client
+smoke, а не новый полный reactor: G1/G2 повторяются для каждого release SHA.
 Смешанные Cloud BOM, James 3.8.2 и Java 17 также показывают, почему нужен G4.
 
 ### Запланированный G4
