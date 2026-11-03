@@ -121,6 +121,10 @@ Alerts from one Alertmanager webhook are combined into one external message. Cha
 attempted independently. Partial success does not make Alertmanager retry and duplicate an
 already delivered channel; total failure returns HTTP 502 for retry.
 
+If the entrypoint fails immediately with `set: illegal option -`, check the bind-mounted
+shell script for CRLF: Linux shells treat `\r` as part of the option. The repository's
+`.gitattributes` enforces `*.sh text eol=lf`, including on Windows checkouts.
+
 The existing `scripts/alert_e2e.py` creates one bounded synthetic alert without stopping
 services. Its JSON PASS proves the internal IMAP path only. Confirm external delivery in
 the actual external mailbox/Telegram/MAX separately, and check relay logs for sanitised

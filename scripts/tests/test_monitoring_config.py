@@ -90,6 +90,18 @@ class MonitoringConfigTest(unittest.TestCase):
         self.assertIn("python3 -m unittest discover", linux)
         self.assertIn("sh -n infra/prometheus/alertmanager-entrypoint.sh", linux)
 
+    def test_windows_checkout_cannot_turn_container_shell_scripts_into_crlf(self):
+        attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8")
+        self.assertIn("*.sh text eol=lf", attributes)
+        for script in ROOT.rglob("*.sh"):
+            self.assertNotIn(b"\r\n", script.read_bytes(), str(script))
+        entrypoint = (ROOT / "infra/prometheus/alertmanager-entrypoint.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            ".gitattributes keeps this bind-mounted script LF-only", entrypoint
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

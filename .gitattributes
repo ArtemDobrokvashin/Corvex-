@@ -1,0 +1,3 @@
+# Linux shells execute these files directly or through bind-mounted containers.
+# Force LF even when a Windows checkout uses core.autocrlf=true.
+*.sh text eol=lf
