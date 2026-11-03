@@ -799,6 +799,10 @@ py -3 scripts/mail_persistence.py --host mail.company.local --sender sender@comp
 # Оба разрешения обязательны; restart только storage -> IMAP; Sent отправителя сохраняется.
 py -3 scripts/mail_persistence.py --host mail.company.local --sender sender@company.local --recipient recipient@company.local --run-id <32-hex-run-id> --ca-file C:\corvex-pki\corvex-test-ca.crt --wait-seconds 180 --allow-mutating --allow-restart --report artifacts\smoke\mail-persistence.json
 # Cleanup выполняется только для собственного UID в уникальной папке; существующая почта не трогается.
+
+# 6D. Controlled monitoring alert -> email -> read-only IMAP; monitoring profile должен быть запущен.
+# Ящик должен входить в CORVEX_ALERT_RECIPIENTS. Сервисы не останавливаются; alert завершается после проверки.
+py -3 scripts/alert_e2e.py --host mail.company.local --username admin@company.local --ca-file C:\corvex-pki\corvex-test-ca.crt --wait-seconds 180 --report artifacts\smoke\alert-e2e.json
 ```
 
 **Следующий рубеж проекта — закрыть оставшиеся сценарии G3, а не просто получить

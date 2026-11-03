@@ -7,6 +7,7 @@
 |---|---|---|
 | `verify.ps1` / `verify.sh` | Frontend, production audit, Maven 12 сервисов + JaCoCo, Compose config; опционально Docker build | Собирает артефакты/образы, но не запускает и не удаляет контейнеры |
 | `runtime_smoke.py` | Уже созданные контейнеры, running/healthy, HTTPS frontend | **Нет**: не выполняет `up`, `down`, restart или prune |
+| `alert_e2e.py` | Synthetic Alertmanager alert → webhook/Rabbit → SMTP → IMAP INBOX | **Да, ограниченно**: создаёт и завершает один alert с run ID; не останавливает сервисы и не меняет существующие письма |
 | `mail_smoke.py` | SMTP 587, IMAP 143/993, POP3 995 через стандартные клиенты Python | **Нет**: не отправляет письма и не выполняет MOVE/DELE/EXPUNGE |
 | `mail_e2e.py` | SMTP send → Sent APPEND → INBOX получателя → Sent отправителя, text/HTML + SHA-256 вложения | **Да, ограниченно**: создаёт одно новое письмо и его Sent-копию с уникальным run ID; старые письма не трогает |
 | `mail_persistence.py` | IMAP MOVE, flags/reconnect, restart-persistence и UID EXPUNGE для письма из e2e | **По умолчанию нет**: без флагов только precheck; полный режим требует двух явных разрешений и работает только с собственным run ID/временной папкой |
@@ -53,6 +54,33 @@ monitoring-контейнеры.
 через `docker inspect`, ждёт только состояние `health=starting` и отдельно требует
 HTTP 200 + Corvex SPA `#root` по HTTPS. Опция `--skip-web` даёт статус `SKIP`, а не
 скрытый PASS.
+
+## 2A. Controlled monitoring alert → email e2e
+
+После запуска `--profile monitoring` и настройки локальной почты укажите ящик, который
+уже входит в `CORVEX_ALERT_RECIPIENTS`. Скрипт сначала проверяет эффективную настройку
+и не создаёт alert, если ящик в ней отсутствует. Пароль запрашивается скрыто:
+
+```powershell
+py -3 scripts/alert_e2e.py `
+  --host mail.company.local `
+  --username admin@company.local `
+  --ca-file C:\corvex-pki\corvex-test-ca.crt `
+  --wait-seconds 180 `
+  --report artifacts\smoke\alert-e2e.json
+```
+
+Для protected CI поддерживается `CORVEX_TEST_ALERT_PASSWORD`; пароль нельзя передавать
+аргументом CLI. Скрипт использует `amtool` внутри существующего контейнера Alertmanager,
+поэтому публиковать порт 9093 наружу не требуется. Он создаёт один
+`CorvexAlertSmoke` с уникальным run ID и ограниченным сроком жизни, ждёт письмо с
+учётом `group_wait`, проверяет по IMAP 993 точные Subject/body и затем завершает alert.
+Resolve выполняется и после FAIL доставки; при `send_resolved: true` Alertmanager может
+отправить отдельное resolved-уведомление.
+
+Сервисы не останавливаются. INBOX открывается через `EXAMINE`, тело читается через
+`BODY.PEEK[]`; существующие письма не изменяются и не удаляются. Тестовое alert-письмо
+сохраняется для диагностики, а JSON содержит только технические статусы, TLS и run ID.
 
 ## 3. Read-only SMTP/IMAP/POP3 smoke
 
@@ -205,8 +233,8 @@ py -3 -m unittest discover -s scripts/tests -v
 Тесты используют fake SMTP/IMAP/POP3 и не обращаются к реальному стенду. Они
 проверяют STARTTLS до AUTH, read-only IMAP, POP3 reconnect/UIDL без DELE, точный
 SMTP envelope, Sent APPEND, MIME/SHA-256 и обнаружение дублей, UID MOVE/UID EXPUNGE
-с guards, reconnect/restart-оркестрацию, healthcheck-логику и фильтрацию
-Compose-профилей.
+с guards, reconnect/restart-оркестрацию, healthcheck-логику, фильтрацию
+Compose-профилей и controlled alert→email с обязательным resolve.
 
 ## Граница автоматизации
 
