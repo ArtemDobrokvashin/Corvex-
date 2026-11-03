@@ -18,6 +18,7 @@ import { LanguageSwitcher, systemGroupName, useI18n } from '../i18n';
 import { Avatar, LoadingScreen, LogoMark } from '../components/ui';
 import ChangePasswordModal from '../features/auth/ChangePasswordModal';
 import SecuritySettingsModal from '../features/auth/SecuritySettingsModal';
+import { canAccessAdmin } from '../features/admin/adminAccess';
 import { useSession } from '../store/sessionStore';
 
 interface QuickAction {
@@ -111,8 +112,8 @@ export default function AppShell() {
       { id: 'compose', label: t('Написать письмо'), description: t('Новый черновик'), icon: PenSquare, shortcut: 'C', run: () => navigate('/mail?compose=1') },
       { id: 'chat', label: t('Открыть сообщения'), description: t('Каналы и личные чаты'), icon: MessageSquare, run: () => navigate('/chat') },
     ];
-    if (has('ADMIN_USERS_MANAGE') || has('ADMIN_GROUPS_MANAGE')) {
-      actions.push({ id: 'admin', label: t('Администрирование'), description: t('Пользователи, группы и аудит'), icon: Settings2, run: () => navigate('/admin') });
+    if (canAccessAdmin(has)) {
+      actions.push({ id: 'admin', label: t('Администрирование'), description: t('Пользователи, сервер, аналитика и аудит'), icon: Settings2, run: () => navigate('/admin') });
     }
     actions.push(
       { id: 'security', label: t('Безопасность'), description: t('Пароль, 2FA и пароли приложений'), icon: ShieldCheck, run: () => setSecurityOpen(true) },
@@ -128,7 +129,7 @@ export default function AppShell() {
   if (!bootstrapped) return <LoadingScreen label={t('Восстанавливаем сессию')} />;
   if (!user) return <LoadingScreen label={t('Переходим ко входу')} />;
 
-  const canAdmin = has('ADMIN_USERS_MANAGE') || has('ADMIN_GROUPS_MANAGE');
+  const canAdmin = canAccessAdmin(has);
   const nextLocale = locale === 'ru' ? 'en' : 'ru';
   const demoMailUnreadCount = DEMO_MAILS.filter(
     (mail) => !mail.seen && !demoReadMailIds.includes(mail.id),

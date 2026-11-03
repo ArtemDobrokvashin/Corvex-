@@ -16,6 +16,13 @@ describe('RU/EN localization', () => {
     expect(translate('en', '{current} из {total}', { current: 2, total: 9 })).toBe('2 of 9');
   });
 
+  it('localizes server analytics and keeps the backup request wording honest', () => {
+    expect(translate('en', 'Аналитика активности')).toBe('Activity analytics');
+    expect(translate('en', 'Сформировано: {time}', { time: '03.11, 12:00' })).toBe('Generated: 03.11, 12:00');
+    expect(translate('en', 'Зафиксировать запрос в аудите')).toBe('Record request in audit');
+    expect(translate('en', 'Резервная копия этим действием не создавалась.')).toBe('This action did not create a backup.');
+  });
+
   it('localizes canonical API errors, dynamic patterns and prefixes', () => {
     expect(localizeApiDetail('Неверный логин или пароль', 'en')).toBe('Incorrect username or password');
     expect(localizeApiDetail('Слишком много неверных попыток. Повторите через 15 минут', 'en'))
