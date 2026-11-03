@@ -18,7 +18,7 @@
 | 2 | Структура проекта (дерево, шаблон микросервиса, карта ответственности) | [02-project-structure.md](02-project-structure.md) |
 | 3 | API-контракты (карта, STOMP, события RabbitMQ, internal API) + 4 OpenAPI-спецификации | [03-api-contracts.md](03-api-contracts.md), [`api/`](api/) |
 | 4 | Схема БД (ER-диаграмма 4 баз, индексы Elasticsearch, квоты) | [04-database.md](04-database.md) |
-| 5 | Docker-конфигурация (compose из 25 сервисов, Dockerfile, сети, тома) | [05-docker.md](05-docker.md) |
+| 5 | Docker-конфигурация (compose из 26 сервисов, Dockerfile, сети, тома) | [05-docker.md](05-docker.md) |
 | 6 | Примеры кода ключевых компонентов | [06-backend-code.md](06-backend-code.md) |
 | 7 | Frontend: компоненты, маршрутизация, состояние, Chrome 109 | [07-frontend.md](07-frontend.md) |
 | 8 | Развёртывание на Windows Server (12 шагов, DNS-чек-лист, траблшутинг) | [08-deployment-windows-server.md](08-deployment-windows-server.md) |
@@ -39,7 +39,8 @@
   Tailwind CSS 3.4, Inter Variable, Lucide, Zustand 5, React Router 7, адаптив от 320 px;
 - **Инфраструктура:** Docker Compose, nginx 1.30 (TLS/HSTS), Prometheus 3.13 LTS + Alertmanager +
   Grafana 13, Loki 3.7 + Promtail 3.6 как временный агент до миграции на Alloy,
-  email-алерты через отдельный канал. Точные baseline-версии и исключения —
+  внутренние email-алерты + независимый внешний SMTP/Telegram/MAX через `alert-relay`.
+  Точные baseline-версии и исключения —
   `docs/RELEASE-DEPENDENCIES.md`.
 
 ## Главные архитектурные решения одной строкой
@@ -59,7 +60,7 @@ Docker Desktop на сервере). Обоснования — таблица A
 | Веб-почта и чат реального времени | `frontend/` (собранная витрина), STOMP-контракт docs/03 §3.3 |
 | Админка и все роли §6.1 | `Permission.java`, `EffectivePermissionService`, SQL-сид групп, экран чекбоксов во фронтенде |
 | Поиск < 1 с | индексы ES docs/04 §4.4, нагрузочный порог в docs/10 §10.3 |
-| Алертинг email-ом | `infra/prometheus/alerts.yml` → Alertmanager → `AlertListener.java` |
+| Алертинг и внешние уведомления | `infra/prometheus/alerts.yml` → Alertmanager → `AlertListener.java` и независимый `infra/alert-relay/app.py`; настройка — `docs/ALERTING.md` |
 | 1000 одновременных, API p95 < 500 мс | расчёт docs/01 §1.8, нагрузочные цели docs/10 §10.3 |
 | Chrome 109 на Windows 7, адаптив | legacy-бандл (docs/07 §7.1), матрица docs/10 §10.4 |
 | Бэкап и шифрование каналов | `scripts/backup.ps1`, nginx TLS/HSTS, обязательный TLS почтовых протоколов |

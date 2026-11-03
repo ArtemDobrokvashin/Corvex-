@@ -5,10 +5,11 @@
 
 | Инструмент | Что проверяет | Меняет стенд? |
 |---|---|---|
-| `verify.ps1` / `verify.sh` | Frontend, production audit, Maven 12 сервисов + JaCoCo, Compose config; опционально Docker build | Собирает артефакты/образы, но не запускает и не удаляет контейнеры |
+| `verify.ps1` / `verify.sh` | Frontend, Python operations/alert-relay tests, production audit, Maven 12 сервисов + JaCoCo, Compose config; опционально Docker build | Собирает артефакты/образы, но не запускает и не удаляет контейнеры |
 | `backup.ps1` / `restore.ps1` / `restore_verify.ps1` | Binary-safe PostgreSQL dumps, Maildir/CAS/chat files, SHA-256 manifest, isolated restore и содержательная сверка | Backup не останавливает стенд; `-DataOnly` создаёт отдельный проект, verify не меняет рабочий `corvex`; полный restore требует `-Force` |
 | `runtime_smoke.py` | Уже созданные контейнеры, running/healthy, HTTPS frontend | **Нет**: не выполняет `up`, `down`, restart или prune |
 | `alert_e2e.py` | Synthetic Alertmanager alert → webhook/Rabbit → SMTP → IMAP INBOX | **Да, ограниченно**: создаёт и завершает один alert с run ID; не останавливает сервисы и не меняет существующие письма |
+| `alerts.ps1` | Repeat intervals в статусе и Alertmanager silence для внутреннего + внешнего каналов | **Да, ограниченно**: `silence/unsilence` меняет только правила уведомлений; мониторинг и сервисы не останавливаются |
 | `mail_smoke.py` | SMTP 587, IMAP 143/993, POP3 995 через стандартные клиенты Python | **Нет**: не отправляет письма и не выполняет MOVE/DELE/EXPUNGE |
 | `mail_e2e.py` | SMTP send → Sent APPEND → INBOX получателя → Sent отправителя, text/HTML + SHA-256 вложения | **Да, ограниченно**: создаёт одно новое письмо и его Sent-копию с уникальным run ID; старые письма не трогает |
 | `mail_persistence.py` | IMAP MOVE, flags/reconnect, restart-persistence и UID EXPUNGE для письма из e2e | **По умолчанию нет**: без флагов только precheck; полный режим требует двух явных разрешений и работает только с собственным run ID/временной папкой |
@@ -78,6 +79,23 @@ py -3 scripts/alert_e2e.py `
 учётом `group_wait`, проверяет по IMAP 993 точные Subject/body и затем завершает alert.
 Resolve выполняется и после FAIL доставки; при `send_resolved: true` Alertmanager может
 отправить отдельное resolved-уведомление.
+
+### 2B. Частота, silence и внешние Telegram/MAX/SMTP
+
+Настройки `CORVEX_ALERT_REPEAT_INTERVAL` и `CORVEX_ALERT_CRITICAL_REPEAT_INTERVAL`
+находятся в `.env`. Временная тишина не требует редактирования конфигурации или остановки
+мониторинга:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\alerts.ps1 silence -Minutes 60
+powershell -ExecutionPolicy Bypass -File scripts\alerts.ps1 status
+powershell -ExecutionPolicy Bypass -File scripts\alerts.ps1 unsilence -SilenceId <uuid>
+```
+
+Независимый `alert-relay` отправляет внешний SMTP/Telegram/MAX без RabbitMQ и Corvex SMTP.
+Его каналы выключены по умолчанию. Настройка, границы отказоустойчивости и команды targeted
+recreate: [`docs/ALERTING.md`](../docs/ALERTING.md). PASS `alert_e2e.py` доказывает внутреннюю
+IMAP-цепочку, но сам по себе не подтверждает доставку во внешний мессенджер или ящик.
 
 Сервисы не останавливаются. INBOX открывается через `EXAMINE`, тело читается через
 `BODY.PEEK[]`; существующие письма не изменяются и не удаляются. Тестовое alert-письмо

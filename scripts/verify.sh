@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Corvex: локальные ворота готовности на хосте с JDK 17, Maven 3.9+, Node.js 22.22.2+/24.15+/26+ и Docker.
 # Использование: scripts/verify.sh [--docker-build]
-#   без флагов      — frontend-тесты/сборка, mvn verify всех сервисов, проверка compose-конфига
+#   без флагов      — frontend, Python unit/static tests, mvn verify всех сервисов, compose config
 #   --docker-build  — дополнительно собрать все Docker-образы (долго)
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -21,6 +21,7 @@ java -version
 mvn -version | head -1
 node --version
 npm --version
+python3 --version
 docker --version
 docker compose version
 
@@ -35,6 +36,10 @@ step "Frontend: tests + production build (modern + legacy Chrome 109)"
 
 step "Java: mvn verify for all 12 services (tests + JaCoCo gates)"
 mvn -B clean verify
+
+step "Python operations + alert relay: unit/static tests"
+python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+sh -n infra/prometheus/alertmanager-entrypoint.sh
 
 step "Docker Compose: config validation"
 docker compose config -q

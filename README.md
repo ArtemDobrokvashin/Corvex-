@@ -248,9 +248,10 @@ docker compose logs auth-service | Select-String BOOTSTRAP
 - `mail-storage` — Maildir и вложения по SHA-256 с дедупликацией;
 - `mail-spam`, `mail-antivirus` — тонкие клиенты SpamAssassin и ClamAV;
 - `chat-service`, `chat-file-service` — STOMP и файлы;
-- `notification-service` превращает Alertmanager webhook в email администраторам.
+- `notification-service` превращает Alertmanager webhook в email администраторам;
+- `alert-relay` независимо отправляет внешний SMTP/Telegram/MAX без RabbitMQ и почты Corvex; частота и silence настраиваются по [`docs/ALERTING.md`](docs/ALERTING.md).
 
-Данные: PostgreSQL 16 (database-per-service), Redis, RabbitMQ, Elasticsearch, Maildir + CAS. Наблюдаемость: Prometheus, Grafana, Loki. Один `docker-compose.yml`: 25 контейнеров, 4 сети, 12 томов.
+Данные: PostgreSQL 16 (database-per-service), Redis, RabbitMQ, Elasticsearch, Maildir + CAS. Наблюдаемость: Prometheus, Grafana, Loki. Один `docker-compose.yml`: 26 контейнеров, 4 сети, 13 томов.
 
 Диаграммы и ADR: [`docs/01-architecture.md`](docs/01-architecture.md).
 
@@ -501,9 +502,9 @@ Complete guide: [`docs/INSTALL.en.md`](docs/INSTALL.en.md).
 
 ### Architecture
 
-Twelve Java 17 / Spring Boot services sit behind one gateway. Auth owns accounts, passwords, TOTP, and sessions; Admin owns groups, permissions, settings, and audit; Gateway verifies JWTs and rate limits. Mail protocols are separated from Maildir/SHA-256 storage, spam uses SpamAssassin, antivirus uses ClamAV, chat uses STOMP/RabbitMQ, and notifications turn Alertmanager webhooks into administrator email.
+Twelve Java 17 / Spring Boot services sit behind one gateway. Auth owns accounts, passwords, TOTP, and sessions; Admin owns groups, permissions, settings, and audit; Gateway verifies JWTs and rate limits. Mail protocols are separated from Maildir/SHA-256 storage, spam uses SpamAssassin, antivirus uses ClamAV, chat uses STOMP/RabbitMQ, and notifications turn Alertmanager webhooks into administrator email. An independent `alert-relay` adds external SMTP/Telegram/MAX without RabbitMQ or Corvex mail; repeat intervals and silences are documented in [`docs/ALERTING.en.md`](docs/ALERTING.en.md).
 
-Data lives in PostgreSQL 16 (database-per-service), Redis, RabbitMQ, Elasticsearch, and Maildir + CAS. Observability uses Prometheus, Grafana, and Loki. One `docker-compose.yml` defines 25 containers, 4 networks, and 12 volumes.
+Data lives in PostgreSQL 16 (database-per-service), Redis, RabbitMQ, Elasticsearch, and Maildir + CAS. Observability uses Prometheus, Grafana, and Loki. One `docker-compose.yml` defines 26 containers, 4 networks, and 13 volumes.
 
 Diagrams and ADRs: [`docs/01-architecture.md`](docs/01-architecture.md).
 

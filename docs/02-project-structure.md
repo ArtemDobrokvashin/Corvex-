@@ -8,7 +8,7 @@
 
 ```
 Corvex-/
-├── docker-compose.yml              # вся система: 25 сервисов, 4 сети, 12 томов
+├── docker-compose.yml              # вся система: 26 сервисов, 4 сети, 13 томов
 ├── .env.example                    # образец конфигурации (секреты, домены, LDAP)
 ├── README.md                       # быстрый старт
 ├── docs/
@@ -31,6 +31,8 @@ Corvex-/
 │   ├── nginx/                      # reverse proxy, TLS, HSTS, проброс /api и /ws
 │   ├── postgres/init/              # создание четырёх БД
 │   ├── prometheus/                 # scrape-конфиг, правила алертов, Alertmanager
+│   ├── alert-relay/                # независимый внешний SMTP/Telegram/MAX sidecar
+│   ├── alert-ca/                   # только публичные CA для внешних API, read-only
 │   ├── grafana/provisioning/       # датасорсы Prometheus+Loki
 │   ├── loki/                       # Loki + Promtail (сбор логов Docker)
 │   ├── certs/                      # TLS-сертификаты (не в git)
@@ -86,6 +88,9 @@ services/mail-storage-service/
 | chat-file-service | 8089 | — (ФС) | загрузка/раздача файлов чата, превью, AV перед публикацией |
 | admin-service | 8090 | admin_db | пользователи* , группы и права, настройки, аудит, аналитика |
 | notification-service | 8091 | — | email-алерты Alertmanager и служебные письма |
+
+Отдельный не-Java `alert-relay :8092` входит только в monitoring-профиль: прямой внешний
+SMTP/Telegram/MAX без RabbitMQ и Corvex SMTP. Он не меняет обязательные 12 Java-сервисов.
 
 \* Физически учётные записи хранит auth_db; admin-service управляет ими через internal
 API auth-service — единая точка владения identity, админка не пишет в чужую БД.

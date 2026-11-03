@@ -32,7 +32,8 @@
 |---|---|
 | `services/chat-service/.../config/WebSocketConfig.java` | STOMP broker relay в RabbitMQ (масштабирование чата), SockJS-fallback, heartbeat |
 | `services/chat-service/.../ws/ChatMessageController.java` | адресация `/app`/`/topic`/`/user`, идемпотентность по `clientMessageId`, авторизация на каждое сообщение |
-| `services/notification-service/.../AlertListener.java` | алерты уходят через отдельный (рекомендуется внешний) SMTP — уведомление о падении почты не зависит от почты |
+| `services/notification-service/.../AlertListener.java` | внутренний Alertmanager→RabbitMQ→email канал; его SMTP настраивается отдельно |
+| `infra/alert-relay/app.py` | независимый fanout во внешний SMTP/Telegram/MAX без RabbitMQ и Corvex SMTP; TLS, sanitised errors, группировка и защита от повторной доставки успешных каналов |
 
 ## 6.4. Стандарты кода (применяются ко всем сервисам)
 

@@ -12,6 +12,7 @@ flowchart TB
         WEB["Веб-клиент React<br/>Chrome 109 / Яндекс / Edge / Firefox<br/>desktop · планшет · смартфон"]
         DESK["Outlook · Thunderbird<br/>IMAP/POP3/SMTP + TLS"]
         EXT["Внешние почтовые<br/>серверы Интернета"]
+        OPS["Внешняя почта / Telegram / MAX<br/>дежурные администраторы"]
     end
 
     subgraph Edge["Периметр (сеть edge)"]
@@ -46,6 +47,7 @@ flowchart TB
 
     subgraph Obs["Наблюдаемость (профиль monitoring)"]
         PROM["Prometheus + Alertmanager"]
+        RELAY["alert-relay :8092<br/>внешний SMTP / Telegram / MAX"]
         GRAF["Grafana"]
         LOKI["Loki + Promtail (логи)"]
     end
@@ -70,8 +72,12 @@ flowchart TB
     App -.->|"метрики /actuator/prometheus"| PROM
     App -.->|"JSON-логи stdout"| LOKI
     PROM --> GRAF
-    PROM -->|"webhook алертов"| NOTIF
+    PROM -->|"webhook внутренних алертов"| NOTIF
+    PROM -->|"независимый webhook"| RELAY --> OPS
 ```
+
+`alert-relay` переживает отказ внутренней почты/RabbitMQ, но находится на том же Docker-хосте.
+Полный отказ хоста требует внешнего watchdog; см. [`ALERTING.md`](ALERTING.md).
 
 ## 1.2. Конвейер входящего письма (самая ответственная цепочка)
 

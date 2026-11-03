@@ -1,7 +1,7 @@
 # 5. Docker-конфигурация
 
 > К пункту 5 формата вывода. Источник истины — [`/docker-compose.yml`](../docker-compose.yml)
-> (25 сервисов) и Dockerfile каждого микросервиса; здесь — как это устроено и почему.
+> (26 сервисов) и Dockerfile каждого микросервиса; здесь — как это устроено и почему.
 
 ## 5.1. Состав compose
 
@@ -11,7 +11,7 @@
 | Фильтры | spamd, clamav | `grepular/spamassassin:4.0.1-5` (community-образ SpamAssassin 4.0.1 из Debian 13; официального Apache Docker-образа нет), `clamav/clamav:1.5.4` (freshclam внутри) |
 | Corvex | 12 микросервисов + frontend | собираются локально из `services/*` и `frontend/` |
 | Периметр | nginx | `nginx:1.31-alpine`, конфиг в `infra/nginx` |
-| Мониторинг (профиль `monitoring`) | prometheus, alertmanager, grafana, loki, promtail | Prometheus `v3.15.1`, Alertmanager `v0.34.2`, Grafana `13.3.0`, Loki `3.7.9`; Promtail `3.6.11` — только временный optional smoke перед миграцией на Alloy (см. `docs/RELEASE-DEPENDENCIES.md`) |
+| Мониторинг (профиль `monitoring`) | prometheus, alertmanager, alert-relay, grafana, loki, promtail | Prometheus `v3.15.1`, Alertmanager `v0.34.2`, Grafana `13.3.0`, Loki `3.7.9`; `alert-relay` — non-root Python 3.13 stdlib для прямого внешнего SMTP/Telegram/MAX; Promtail `3.6.11` — только временный optional smoke перед миграцией на Alloy (см. `docs/RELEASE-DEPENDENCIES.md`) |
 
 ## 5.2. Dockerfile микросервиса (одинаковый паттерн у всех 12)
 
@@ -35,7 +35,7 @@
 - `app` — все микросервисы и фильтры между собой;
 - `data` (`internal: true`) — postgres/redis/rabbitmq/elasticsearch: даже маршрутов
   наружу нет, порты на хост не публикуются;
-- `monitoring` — prometheus/alertmanager/grafana/loki/promtail.
+- `monitoring` — prometheus/alertmanager/alert-relay/grafana/loki/promtail.
 
 ## 5.4. Тома и что бэкапится
 
@@ -48,6 +48,7 @@
 | `elasticsearch-data` | поисковый индекс | нет (переиндексация из БД) |
 | `clamav-data`, `spamd-data` | сигнатуры, обученные правила Bayes | желательно (экономит время первого старта) |
 | `prometheus-data`, `loki-data` | метрики 30 дн., логи 31 дн. | нет |
+| `alertmanager-data` | активные/expired silence и notification log | нет: operational state, silence временные |
 
 ## 5.5. Команды эксплуатации
 

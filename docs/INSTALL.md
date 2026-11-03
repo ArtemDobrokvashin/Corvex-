@@ -129,8 +129,8 @@ Set-ExecutionPolicy -Scope Process Bypass   # если политики запр
 | `CORVEX_INTERNAL_API_TOKEN` | **обязательный** секрет внутренних auth/admin API; `first-run.ps1` генерирует его и добавляет в старый `.env`, если переменной ещё нет. Не оставлять `change-me-strong-password` |
 | `CORVEX_SMTP_ENABLED` | оставить `false` до этапа 2 (защита от потери почты, см. READINESS) |
 | `CORVEX_LDAP_URL`, `CORVEX_LDAP_BASE` | заполнить при наличии Active Directory, иначе оставить как есть (логины будут локальными — этап 5 плана) |
-| `CORVEX_ALERT_RECIPIENTS` | **внешний** ящик администратора для алертов |
-| `ALERT_SMTP_HOST` | SMTP, через который уйдут алерты; желательно внешний резервный |
+| `CORVEX_ALERT_RECIPIENTS` | Получатели внутреннего email-канала алертов |
+| `ALERT_SMTP_HOST` | SMTP только внутреннего канала; независимый внешний — `CORVEX_ALERT_EXTERNAL_*` |
 
 ## 6. Настоящий TLS-сертификат (обязательно перед боевым доступом извне)
 
@@ -211,6 +211,10 @@ Grafana: `https://mail.<домен>/grafana/` — только из подсет
 (allowlist в `infra\nginx\conf.d\corvex.conf`, поправьте под свою сеть),
 логин `admin`, пароль — `GRAFANA_PASSWORD` из `.env`.
 
+Частота повторов, временный silence и независимые внешние SMTP/Telegram/MAX настраиваются
+по [`docs/ALERTING.md`](ALERTING.md). Внутренний `ALERT_SMTP_HOST` сам по себе не спасает
+уведомление при отказе почты Corvex; для production настройте хотя бы один внешний канал.
+
 ## 9. Проверки после запуска (дымовые тесты)
 
 Выполняйте по порядку; каждый пункт либо проходит, либо даёт конкретную подсказку.
@@ -232,9 +236,10 @@ Grafana: `https://mail.<домен>/grafana/` — только из подсет
    `mail-storage-service`.
 5. **SMTP выключен (так задумано).** `docker compose logs mail-smtp-service`
    содержит `SMTP listener disabled`. Это норма до этапа 2.
-6. **Алертинг.** `docker compose stop chat-service`, через 2–4 минуты письмо
-   `[Corvex critical] ServiceDown` должно прийти на `CORVEX_ALERT_RECIPIENTS`
-   (если настроен рабочий `ALERT_SMTP_HOST`). Вернуть: `docker compose start chat-service`.
+6. **Алертинг.** Не останавливайте рабочий сервис ради проверки: используйте controlled
+   `scripts/alert_e2e.py` из [`scripts/README.md`](../scripts/README.md). Он создаёт один
+   synthetic alert с ограниченным сроком и затем завершает его. Для временной тишины —
+   `scripts\alerts.ps1 silence -Minutes 60`; внешние каналы — [`docs/ALERTING.md`](ALERTING.md).
 
 ## 10. Повседневная эксплуатация
 
