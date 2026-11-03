@@ -9,6 +9,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.access.prepost.PreAuthorize;
 import ru.corvex.admin.api.dto.AdminDtos.AccessView;
 import ru.corvex.admin.api.dto.AdminDtos.AdminUserView;
 import ru.corvex.admin.api.dto.AdminDtos.AnalyticsResponse;
@@ -21,6 +22,7 @@ import ru.corvex.admin.api.dto.AdminDtos.PageResult;
 import ru.corvex.admin.api.dto.AdminDtos.PatchUserRequest;
 import ru.corvex.admin.api.dto.AdminDtos.SetGroupsRequest;
 import ru.corvex.admin.api.dto.AdminDtos.SetPermissionsRequest;
+import ru.corvex.admin.api.dto.AdminDtos.UpdateQuotaRequest;
 import ru.corvex.admin.client.AuthServiceClient;
 import ru.corvex.admin.client.AuthServiceClient.RemoteUser;
 import ru.corvex.admin.service.AdminGroupService;
@@ -30,6 +32,7 @@ import ru.corvex.admin.service.AuditService;
 import ru.corvex.admin.service.AuditService.Actor;
 
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -88,11 +91,14 @@ class AdminControllersTest {
         when(users.list("iv", "ACTIVE", "Sales", 1, 20)).thenReturn(page);
         when(users.create(create, ACTOR)).thenReturn(view);
         when(users.patch(USER_ID, patch, ACTOR)).thenReturn(view);
+        when(users.updateQuota(USER_ID, 5_368_709_120L, ACTOR)).thenReturn(view);
         when(users.setGroups(USER_ID, List.of("USER"), ACTOR)).thenReturn(view);
 
         assertSame(page, userController.list("iv", "ACTIVE", "Sales", 1, 20));
         assertSame(view, userController.create(create, jwt, request));
         assertSame(view, userController.patch(USER_ID, patch, jwt, request));
+        assertSame(view, userController.updateQuota(
+                USER_ID, new UpdateQuotaRequest(5_368_709_120L), jwt, request));
         userController.disable(USER_ID, jwt, request);
         userController.block(USER_ID, jwt, request);
         assertSame(view, userController.setGroups(
@@ -100,6 +106,13 @@ class AdminControllersTest {
 
         verify(users).disable(USER_ID, ACTOR);
         verify(users).block(USER_ID, ACTOR);
+    }
+
+    @Test
+    void quotaRoleCanReadUsersAndChangeOnlyTheDedicatedQuotaContract() {
+        assertEquals("hasAnyAuthority('ADMIN_USERS_MANAGE','ADMIN_QUOTAS_MANAGE')", preAuthorize("list"));
+        assertEquals("hasAnyAuthority('ADMIN_USERS_MANAGE','ADMIN_QUOTAS_MANAGE')", preAuthorize("updateQuota"));
+        assertEquals("hasAuthority('ADMIN_USERS_MANAGE')", preAuthorize("patch"));
     }
 
     @Test
@@ -212,6 +225,13 @@ class AdminControllersTest {
         assertNull(Actors.userId(null));
         assertNull(Actors.userId(malformedSubject));
         assertEquals(ACTOR_ID, Actors.userId(jwt));
+    }
+
+    private String preAuthorize(String methodName) {
+        return Arrays.stream(AdminUserController.class.getDeclaredMethods())
+                .filter(method -> method.getName().equals(methodName))
+                .findFirst().orElseThrow()
+                .getAnnotation(PreAuthorize.class).value();
     }
 
     private Authentication authentication(String authority) {

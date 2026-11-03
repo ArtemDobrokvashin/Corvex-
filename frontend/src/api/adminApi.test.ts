@@ -26,6 +26,15 @@ describe('adminApi system endpoints', () => {
     expect(new URLSearchParams(url.split('?')[1]).get('department')).toBe('Отдел продаж / Центр');
   });
 
+  it('uses the narrow quota endpoint with an integer byte value', async () => {
+    await adminApi.updateQuota('user-7', 2684354560);
+
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/admin/users/user-7/quota', {
+      method: 'PATCH',
+      body: JSON.stringify({ quotaBytes: 2684354560 }),
+    });
+  });
+
   it('uses the explicit audit-request backup endpoint without claiming a physical backup', async () => {
     await adminApi.requestBackup();
 

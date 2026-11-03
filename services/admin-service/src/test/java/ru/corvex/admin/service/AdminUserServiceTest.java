@@ -168,6 +168,27 @@ class AdminUserServiceTest {
     }
 
     @Test
+    void quotaUpdateSendsOnlyQuotaAndAuditsPreviousValue() {
+        RemoteUser previous = remoteUser("ACTIVE");
+        RemoteUser updated = new RemoteUser(
+                previous.id(), previous.username(), previous.email(), previous.displayName(),
+                previous.source(), previous.status(), previous.department(), previous.groups(),
+                previous.permissions(), 5_368_709_120L, previous.usedBytes(), previous.mustChangePassword(),
+                previous.totpEnabled(), previous.lastLoginAt(), previous.createdAt());
+        when(auth.getUser(USER_ID)).thenReturn(previous);
+        when(auth.patchUser(eq(USER_ID), any())).thenReturn(updated);
+        when(groupService.groupCodesOf(USER_ID)).thenReturn(List.of("USER"));
+
+        AdminUserView result = service.updateQuota(USER_ID, 5_368_709_120L, ACTOR);
+
+        assertEquals(5_368_709_120L, result.quotaBytes());
+        verify(auth).patchUser(USER_ID, Map.of("quotaBytes", 5_368_709_120L));
+        verify(audit).record(ACTOR, "USER_QUOTA_CHANGED", "user", USER_ID.toString(), Map.of(
+                "previousQuotaBytes", previous.quotaBytes(), "quotaBytes", 5_368_709_120L));
+        verify(groupService, never()).assertNotSoleSuperAdmin(USER_ID);
+    }
+
+    @Test
     void patchActiveOrUnchangedStatusSkipsSoleSuperAdminGuard() {
         when(auth.patchUser(eq(USER_ID), any())).thenReturn(remoteUser("ACTIVE"));
         when(groupService.groupCodesOf(USER_ID)).thenReturn(List.of("USER"));

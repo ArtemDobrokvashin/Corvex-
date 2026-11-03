@@ -96,7 +96,7 @@ Corvex придумал и сейчас ведёт один разработчи
 
 - **Identity:** Argon2id, lockout после 5 неудач на 15 минут, JWT RS256 на 15 минут, вращающиеся refresh-сессии в HttpOnly `SameSite=Strict` cookie и детект повторного использования refresh-токена.
 - **2FA и клиенты:** TOTP setup/confirm/disable, MFA-шаг при входе и пароли приложений; SMTP submission, POP3 и IMAP в коде используют их для протокольных логинов.
-- **Администрирование:** пользователи, квоты, блокировка/отключение, 6 системных и пользовательские группы, 25 прав, аудит, настройки, health и базовая аналитика.
+- **Администрирование:** пользователи, квоты, блокировка/отключение, 6 системных и пользовательские группы, 25 прав, аудит, настройки, health и базовая аналитика. Дисковая квота редактируется в **«Администрирование → Квоты»** (`ADMIN_USERS_MANAGE` или `ADMIN_QUOTAS_MANAGE`); `0` означает безлимит, изменение применяется к новым письмам без перезапуска.
 - **Защита от самоблокировки:** последнего `SUPER_ADMIN` нельзя лишить группы, заблокировать или отключить через API.
 - **RU/EN до конца:** переключаются интерфейс, demo-данные, системные группы, формат дат/чисел/байт и `ProblemDetail` ошибки auth/admin по `Accept-Language`.
 - **Эмодзи без картинок и CDN:** нативный Unicode picker, вставка в курсор, реакции и графемно-безопасная обрезка сложного текста.
@@ -359,7 +359,7 @@ Reproduce the captures with [`docs/screenshots/README.md`](docs/screenshots/READ
 
 - **Identity:** Argon2id, 15-minute lockout after 5 failures, 15-minute RS256 JWTs, rotating refresh sessions in an HttpOnly `SameSite=Strict` cookie, and refresh-token reuse detection.
 - **2FA and clients:** TOTP setup/confirm/disable, an MFA sign-in step, and app passwords; SMTP submission, POP3, and IMAP use them for protocol logins in code.
-- **Administration:** users, quotas, block/disable, 6 system plus custom groups, 25 permissions, audit, settings, service health, and basic sign-in analytics.
+- **Administration:** users, quotas, block/disable, 6 system plus custom groups, 25 permissions, audit, settings, service health, and basic sign-in analytics. Edit mailbox quotas under **Administration → Quotas** (`ADMIN_USERS_MANAGE` or `ADMIN_QUOTAS_MANAGE`); `0` means unlimited, and changes apply to new messages without a restart.
 - **No accidental lock-out:** the last `SUPER_ADMIN` cannot lose membership, be blocked, or be disabled through the API.
 - **RU/EN end to end:** UI, demo data, system groups, dates/numbers/bytes, and auth/admin `ProblemDetail` errors localized by `Accept-Language`.
 - **Emoji without images or a CDN:** a native Unicode picker, cursor-aware insertion, reactions, and grapheme-safe text handling.

@@ -99,6 +99,12 @@ export const adminApi = {
     body: Partial<{ displayName: string; email: string; department: string; quotaBytes: number; status: string }>,
   ) => apiFetch<AdminUser>(`/api/v1/admin/users/${userId}`, { method: 'PATCH', body: JSON.stringify(body) }),
 
+  updateQuota: (userId: string, quotaBytes: number) =>
+    apiFetch<AdminUser>(`/api/v1/admin/users/${userId}/quota`, {
+      method: 'PATCH',
+      body: JSON.stringify({ quotaBytes }),
+    }),
+
   blockUser: (userId: string) => apiFetch<void>(`/api/v1/admin/users/${userId}/block`, { method: 'POST' }),
 
   disableUser: (userId: string) => apiFetch<void>(`/api/v1/admin/users/${userId}`, { method: 'DELETE' }),

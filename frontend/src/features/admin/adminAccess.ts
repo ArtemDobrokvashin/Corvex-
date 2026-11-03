@@ -1,21 +1,19 @@
 export type PermissionCheck = (permission: string) => boolean;
+type AccessCheck = (has: PermissionCheck) => boolean;
 
-/** Health endpoint принимает эти же три права; ADMIN_BACKUP его не открывает. */
-export const canViewSystemHealth = (has: PermissionCheck) => (
-  has('ADMIN_SERVER_CONFIG') || has('ADMIN_USERS_MANAGE') || has('ADMIN_GROUPS_MANAGE')
-);
+export const canManageUsers: AccessCheck = (has) => has('ADMIN_USERS_MANAGE');
+export const canManageGroups: AccessCheck = (has) => has('ADMIN_GROUPS_MANAGE');
+export const canViewAudit: AccessCheck = (has) => has('AUDIT_VIEW');
+export const canViewSystemHealth: AccessCheck = (has) =>
+  has('ADMIN_SERVER_CONFIG') || has('ADMIN_USERS_MANAGE') || has('ADMIN_GROUPS_MANAGE');
+export const canManageQuotas: AccessCheck = (has) =>
+  has('ADMIN_USERS_MANAGE') || has('ADMIN_QUOTAS_MANAGE');
 
-export const canViewServer = (has: PermissionCheck) => canViewSystemHealth(has) || has('ADMIN_BACKUP');
+export const canViewAnalytics: AccessCheck = (has) =>
+  has('ANALYTICS_VIEW_COMPANY') || has('ANALYTICS_VIEW_OWN_UNIT');
+export const canViewServer: AccessCheck = (has) => canViewSystemHealth(has) || has('ADMIN_BACKUP');
 
-export const canViewAnalytics = (has: PermissionCheck) => (
-  has('ANALYTICS_VIEW_COMPANY') || has('ANALYTICS_VIEW_OWN_UNIT')
-);
-
-/** Доступ к маршруту определяется наличием хотя бы одного реально доступного раздела. */
-export const canAccessAdmin = (has: PermissionCheck) => (
-  has('ADMIN_USERS_MANAGE')
-  || has('ADMIN_GROUPS_MANAGE')
-  || canViewServer(has)
-  || canViewAnalytics(has)
-  || has('AUDIT_VIEW')
-);
+/** Не открываем пустую админку для прав, у которых пока нет самостоятельного runtime UI. */
+export const canAccessAdmin: AccessCheck = (has) =>
+  canManageUsers(has) || canManageGroups(has) || canManageQuotas(has) ||
+  canViewServer(has) || canViewAnalytics(has) || canViewAudit(has);

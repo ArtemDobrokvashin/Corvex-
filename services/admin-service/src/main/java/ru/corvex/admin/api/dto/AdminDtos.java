@@ -44,6 +44,10 @@ public final class AdminDtos {
             String status) {
     }
 
+    public record UpdateQuotaRequest(
+            @NotNull(message = "quotaBytes обязателен") @PositiveOrZero Long quotaBytes) {
+    }
+
     public record SetGroupsRequest(@NotNull(message = "groupCodes обязателен (может быть пустым)") List<String> groupCodes) {
     }
 

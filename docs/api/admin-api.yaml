@@ -8,13 +8,13 @@ servers:
 paths:
   /admin/users:
     get:
-      summary: Список пользователей (ADMIN_USERS_MANAGE), фильтр по статусу/подразделению/источнику
+      summary: Список пользователей (ADMIN_USERS_MANAGE или ADMIN_QUOTAS_MANAGE), фильтр по статусу/подразделению/источнику
       parameters:
         - { name: q, in: query, schema: { type: string } }
         - { name: status, in: query, schema: { type: string, enum: [ACTIVE, BLOCKED, DISABLED] } }
         - { name: page, in: query, schema: { type: integer, default: 0 } }
         - { name: size, in: query, schema: { type: integer, default: 50 } }
-      responses: { '200': { description: Страница пользователей }, '403': { description: Нет права ADMIN_USERS_MANAGE } }
+      responses: { '200': { description: Страница пользователей }, '403': { description: Нет права ADMIN_USERS_MANAGE или ADMIN_QUOTAS_MANAGE } }
     post:
       summary: Создать локального пользователя (ящик и системные папки создаются транзакционно через события)
       requestBody:
@@ -35,13 +35,31 @@ paths:
       responses: { '201': { description: Создан }, '409': { description: Логин или email занят } }
   /admin/users/{userId}:
     patch:
-      summary: Изменить профиль/квоту/подразделение
+      summary: Изменить профиль/квоту/подразделение (только ADMIN_USERS_MANAGE)
       parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
-      responses: { '200': { description: Обновлён } }
+      responses: { '200': { description: Обновлён }, '403': { description: Нет права ADMIN_USERS_MANAGE } }
     delete:
       summary: Удалить (ящик архивируется на срок из настроек, затем удаляется физически)
       parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
       responses: { '204': { description: Удаления запланировано/выполнено } }
+  /admin/users/{userId}/quota:
+    patch:
+      summary: Изменить только дисковую квоту (ADMIN_USERS_MANAGE или ADMIN_QUOTAS_MANAGE); 0 — без лимита
+      parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quotaBytes]
+              properties:
+                quotaBytes: { type: integer, format: int64, minimum: 0 }
+      responses:
+        '200': { description: Квота сохранена в auth-service; записан USER_QUOTA_CHANGED }
+        '400': { description: quotaBytes отсутствует или отрицателен }
+        '403': { description: Нет права ADMIN_USERS_MANAGE или ADMIN_QUOTAS_MANAGE }
+        '404': { description: Пользователь не найден }
   /admin/users/{userId}/block:
     post:
       summary: Заблокировать и отозвать все сессии

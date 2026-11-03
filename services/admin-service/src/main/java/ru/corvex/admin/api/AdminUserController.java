@@ -22,6 +22,7 @@ import ru.corvex.admin.api.dto.AdminDtos.CreateUserRequest;
 import ru.corvex.admin.api.dto.AdminDtos.PageResult;
 import ru.corvex.admin.api.dto.AdminDtos.PatchUserRequest;
 import ru.corvex.admin.api.dto.AdminDtos.SetGroupsRequest;
+import ru.corvex.admin.api.dto.AdminDtos.UpdateQuotaRequest;
 import ru.corvex.admin.service.AdminUserService;
 
 import java.util.UUID;
@@ -38,7 +39,7 @@ public class AdminUserController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('ADMIN_USERS_MANAGE')")
+    @PreAuthorize("hasAnyAuthority('ADMIN_USERS_MANAGE','ADMIN_QUOTAS_MANAGE')")
     PageResult<AdminUserView> list(@RequestParam(required = false) String q,
                                    @RequestParam(required = false) String status,
                                    @RequestParam(required = false) String department,
@@ -56,10 +57,17 @@ public class AdminUserController {
     }
 
     @PatchMapping("/{userId}")
-    @PreAuthorize("hasAnyAuthority('ADMIN_USERS_MANAGE','ADMIN_QUOTAS_MANAGE')")
+    @PreAuthorize("hasAuthority('ADMIN_USERS_MANAGE')")
     AdminUserView patch(@PathVariable UUID userId, @Valid @RequestBody PatchUserRequest req,
                         @AuthenticationPrincipal Jwt jwt, HttpServletRequest http) {
         return users.patch(userId, req, Actors.from(jwt, http));
+    }
+
+    @PatchMapping("/{userId}/quota")
+    @PreAuthorize("hasAnyAuthority('ADMIN_USERS_MANAGE','ADMIN_QUOTAS_MANAGE')")
+    AdminUserView updateQuota(@PathVariable UUID userId, @Valid @RequestBody UpdateQuotaRequest req,
+                              @AuthenticationPrincipal Jwt jwt, HttpServletRequest http) {
+        return users.updateQuota(userId, req.quotaBytes(), Actors.from(jwt, http));
     }
 
     @DeleteMapping("/{userId}")
