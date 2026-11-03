@@ -6,6 +6,7 @@
 | Инструмент | Что проверяет | Меняет стенд? |
 |---|---|---|
 | `verify.ps1` / `verify.sh` | Frontend, production audit, Maven 12 сервисов + JaCoCo, Compose config; опционально Docker build | Собирает артефакты/образы, но не запускает и не удаляет контейнеры |
+| `backup.ps1` / `restore.ps1` | Binary-safe PostgreSQL dumps, Maildir/CAS/chat files, config и SHA-256 manifest; isolated data restore | Backup не останавливает стенд; `-DataOnly` создаёт отдельный проект, полный restore перезаписывает данные и требует `-Force` |
 | `runtime_smoke.py` | Уже созданные контейнеры, running/healthy, HTTPS frontend | **Нет**: не выполняет `up`, `down`, restart или prune |
 | `alert_e2e.py` | Synthetic Alertmanager alert → webhook/Rabbit → SMTP → IMAP INBOX | **Да, ограниченно**: создаёт и завершает один alert с run ID; не останавливает сервисы и не меняет существующие письма |
 | `mail_smoke.py` | SMTP 587, IMAP 143/993, POP3 995 через стандартные клиенты Python | **Нет**: не отправляет письма и не выполняет MOVE/DELE/EXPUNGE |
@@ -212,6 +213,43 @@ py -3 scripts/mail_persistence.py `
 для protected CI используются те же `CORVEX_TEST_SENDER_PASSWORD` и
 `CORVEX_TEST_RECIPIENT_PASSWORD`, а не аргументы CLI.
 
+## 5A. Backup и изолированный data-restore на одном ПК
+
+Backup запускается из корня репозитория и не останавливает сервисы:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\backup.ps1 -BackupRoot D:\CorvexBackup
+```
+
+`pg_dump -Fc` создаёт файл внутри PostgreSQL-контейнера и переносится через binary-safe
+`docker compose cp`; текстовое перенаправление PowerShell не используется. Эффективный
+`POSTGRES_USER` читается из контейнера, поэтому хост не обязан импортировать `.env` в
+переменные процесса. Файловые volumes монтируются read-only. Backup содержит четыре БД,
+Maildir/CAS/chat files, `.env`, сертификаты, JWT-секреты и `manifest.json` с размерами и
+SHA-256 всех файлов. Храните его на зашифрованном отдельном носителе с ограниченными ACL.
+Старые копии скрипт не удаляет: retention настраивается отдельно.
+
+Перед любым restore manifest проверяется до остановки контейнеров или изменения volumes.
+Для учебного data-restore на том же ПК используйте отдельное имя проекта:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\restore.ps1 `
+  -BackupDir D:\CorvexBackup\<timestamp> `
+  -ProjectName corvex-restore-drill `
+  -DataOnly `
+  -Force
+```
+
+Этот режим создаёт только изолированные volumes и PostgreSQL, восстанавливает туда дампы
+и архивы и **не запускает application-контейнеры**, поэтому порты и рабочий Corvex не
+затрагиваются. Перед изменением файлов или БД дополнительно проверяется Docker label
+`com.docker.compose.project`. Изолированные ресурсы сохраняются для последующей проверки
+и автоматически не удаляются. `-RestoreConfig` и `-DataOnly` несовместимы.
+
+Data-only drill доказывает физическую восстановимость дампов и файлов, но не заменяет
+полный вход в восстановленные webmail/chat. Полный restore текущего проекта выполняется
+только отдельно с `-Force`; он останавливает стек и перезаписывает его данные.
+
 ## 6. Коды завершения и отчёты
 
 - `0` — все выбранные проверки PASS;
@@ -234,7 +272,8 @@ py -3 -m unittest discover -s scripts/tests -v
 проверяют STARTTLS до AUTH, read-only IMAP, POP3 reconnect/UIDL без DELE, точный
 SMTP envelope, Sent APPEND, MIME/SHA-256 и обнаружение дублей, UID MOVE/UID EXPUNGE
 с guards, reconnect/restart-оркестрацию, healthcheck-логику, фильтрацию
-Compose-профилей и controlled alert→email с обязательным resolve.
+Compose-профилей, controlled alert→email с обязательным resolve и статические guards
+binary-safe backup/isolated restore.
 
 ## Граница автоматизации
 

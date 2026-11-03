@@ -205,10 +205,14 @@ migrations automatically). Rollback: restore previous commit/image tags and
    `powershell -ExecutionPolicy Bypass -File C:\Corvex\scripts\backup.ps1 -BackupRoot D:\CorvexBackup`
 2. Store copies on **different physical media** — a backup on the same SSD does
    not survive disk death or ransomware.
-3. The script saves: dumps of all 4 PostgreSQL databases, archives of mail /
-   attachment / chat-file volumes, `.env`, certificates and the JWT key.
-   The Elasticsearch index is excluded on purpose (rebuildable from the DBs).
-4. Rehearse a full restore quarterly. An untested backup is not a backup.
+3. The script saves: binary-safe dumps of all 4 PostgreSQL databases, archives of
+   mail / attachment / chat-file volumes, `.env`, certificates, the JWT key, and
+   `manifest.json` with SHA-256 hashes for every file. The Elasticsearch index is
+   excluded on purpose (rebuildable from the DBs).
+4. For an isolated data-only restore on the same PC, use `restore.ps1 -DataOnly`
+   with a separate `-ProjectName`: source volumes and published ports stay untouched.
+   See [`scripts/README.md`](../scripts/README.md) for the command and scope.
+5. Rehearse a full restore quarterly. An untested backup is not a backup.
 
 ## 12. Pre-exposure security checklist
 
