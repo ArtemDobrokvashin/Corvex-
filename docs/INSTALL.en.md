@@ -210,8 +210,9 @@ migrations automatically). Rollback: restore previous commit/image tags and
    `manifest.json` with SHA-256 hashes for every file. The Elasticsearch index is
    excluded on purpose (rebuildable from the DBs).
 4. For an isolated data-only restore on the same PC, use `restore.ps1 -DataOnly`
-   with a separate `-ProjectName`: source volumes and published ports stay untouched.
-   See [`scripts/README.md`](../scripts/README.md) for the command and scope.
+   with a separate `-ProjectName`, then `restore_verify.ps1`: all 4 databases and 3
+   file volumes are compared with the backup while source volumes and published ports
+   stay untouched. See [`scripts/README.md`](../scripts/README.md) for details.
 5. Rehearse a full restore quarterly. An untested backup is not a backup.
 
 ## 12. Pre-exposure security checklist

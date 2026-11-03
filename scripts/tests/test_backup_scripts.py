@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 BACKUP = (ROOT / "scripts/backup.ps1").read_text(encoding="utf-8")
 RESTORE = (ROOT / "scripts/restore.ps1").read_text(encoding="utf-8")
+VERIFY = (ROOT / "scripts/restore_verify.ps1").read_text(encoding="utf-8")
 
 
 class BackupScriptsTest(unittest.TestCase):
@@ -55,6 +56,29 @@ class BackupScriptsTest(unittest.TestCase):
             RESTORE.index('"pg_restore"'),
         )
         self.assertNotIn('down -v', RESTORE)
+
+    def test_restore_verify_forbids_source_and_never_starts_or_stops_application(self):
+        self.assertIn("Refusing to verify the source corvex project", VERIFY)
+        self.assertIn("Application services were not started", VERIFY)
+        self.assertNotIn('"down"', VERIFY)
+        self.assertNotIn('"up"', VERIFY)
+        self.assertNotIn("prune", VERIFY)
+
+    def test_restore_verify_uses_readonly_file_diffs_and_project_guard(self):
+        self.assertIn(":/restored:ro", VERIFY)
+        self.assertIn(":/backup:ro", VERIFY)
+        self.assertIn("diff -qr /expected /restored", VERIFY)
+        self.assertIn("--format '{{json .Config.Labels}}'", VERIFY)
+        self.assertIn("Compose project mismatch", VERIFY)
+
+    def test_reference_db_is_dropped_only_after_canonical_diff_passes(self):
+        self.assertIn("createdb -h postgres", VERIFY)
+        self.assertIn("pg_restore -h postgres", VERIFY)
+        self.assertIn("pg_dump -h postgres", VERIFY)
+        self.assertIn("/tmp/actual.sql $Db", VERIFY)
+        self.assertIn("/tmp/expected.sql $ReferenceDb", VERIFY)
+        self.assertLess(VERIFY.index("diff -q /tmp/expected.norm"), VERIFY.index("dropdb"))
+        self.assertIn("${Db}_logical_match", VERIFY)
 
 
 if __name__ == "__main__":
