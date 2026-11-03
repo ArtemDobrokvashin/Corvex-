@@ -39,6 +39,7 @@ import {
   type MailReadFilter,
   type MailSortOrder,
 } from './mailListControls';
+import { formatMailRecipients } from './mailRecipients';
 import { EmojiPickerButton } from '../../components/EmojiPicker';
 import { Avatar, EmptyState, IconButton, cleanPersonName, emailFromHeader } from '../../components/ui';
 import { countLabel, formatBytes, formatDateTime, useI18n } from '../../i18n';
@@ -141,6 +142,7 @@ export default function MailPage() {
   const folderCounts = demoMode ? demoFolderCounts : serverFolderCounts;
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadedBodies, setLoadedBodies] = useState<Record<string, string>>({});
+  const [loadedRecipients, setLoadedRecipients] = useState<Record<string, { to: string[]; cc: string[] }>>({});
   const searchRef = useRef<HTMLInputElement>(null);
   const sortPanelRef = useRef<HTMLDivElement>(null);
   const filtersPanelRef = useRef<HTMLDivElement>(null);
@@ -191,6 +193,23 @@ export default function MailPage() {
   const activeBody = active ? (loadedBodies[active.id] ?? active.body) : '';
   const activeIndex = active ? visible.findIndex((m) => m.id === active.id) : -1;
   const currentFolder = folders.find((f) => f.id === folder);
+  const activeRecipientData = active ? loadedRecipients[active.id] : undefined;
+  const recipientIdentity = {
+    email: sessionUser?.email,
+    displayName: sessionUser?.displayName,
+  };
+  const recipientFallbacks = {
+    loading: t('получатели загружаются'),
+    empty: t('получатель не указан'),
+  };
+  const recipientText = active ? formatMailRecipients(
+    demoMode ? [sessionUser?.email ?? ''] : activeRecipientData?.to,
+    recipientIdentity,
+    recipientFallbacks,
+  ) : '';
+  const ccText = active && !demoMode && activeRecipientData?.cc.length
+    ? formatMailRecipients(activeRecipientData.cc, recipientIdentity, recipientFallbacks)
+    : '';
 
   const toMailView = (item: MailMessageListItem, folderKey: string): DemoMail => {
     const timestamp = Date.parse(item.date);
@@ -271,7 +290,12 @@ export default function MailPage() {
     let cancelled = false;
     mailApi.message(activeRealId)
       .then((detail) => {
-        if (!cancelled) setLoadedBodies((prev) => ({ ...prev, [activeRealId]: detail.bodyText ?? '' }));
+        if (cancelled) return;
+        setLoadedBodies((prev) => ({ ...prev, [activeRealId]: detail.bodyText ?? '' }));
+        setLoadedRecipients((prev) => ({
+          ...prev,
+          [activeRealId]: { to: detail.to ?? [], cc: detail.cc ?? [] },
+        }));
       })
       .catch((error) => { if (!cancelled) setLoadError(errorMessage(error)); });
     return () => { cancelled = true; };
@@ -692,7 +716,13 @@ export default function MailPage() {
                     <Avatar name={active.from} size={44} />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[15px] font-semibold">{cleanPersonName(active.from)}</div>
-                      <div className="mt-0.5 truncate text-[13px] text-muted">{emailFromHeader(active.from) || t('внутренний отправитель')} · {t('мне')}</div>
+                      <div
+                        className="mt-0.5 truncate text-[13px] text-muted"
+                        title={`${t('Кому')}: ${recipientText}${ccText ? ` · ${t('Копия')}: ${ccText}` : ''}`}
+                      >
+                        {emailFromHeader(active.from) || t('внутренний отправитель')} · {t('Кому')}: {recipientText}
+                        {ccText ? ` · ${t('Копия')}: ${ccText}` : ''}
+                      </div>
                     </div>
                     <time className="shrink-0 text-[13px] text-faint">{active.date}</time>
                   </div>
