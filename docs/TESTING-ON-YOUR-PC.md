@@ -779,7 +779,13 @@ docker compose up -d
 docker compose ps
 # открыть https://mail.company.local (hosts: 127.0.0.1 mail.company.local)
 
-# 6. Только после готовности стека и web-smoke: SMTP, затем IMAP/POP3 по шагам 8-9.
+# 5A. Optional non-destructive runtime-smoke (Python 3.10+; PASS/FAIL + JSON)
+py -3 scripts/runtime_smoke.py --url https://mail.company.local/ --ca-file C:\corvex-pki\corvex-test-ca.crt --report artifacts\smoke\runtime.json
+
+# 6. Только после включения SMTP/IMAP/POP3 по шагам 8-9: read-only protocol smoke.
+# Пароль будет запрошен скрыто; письма не отправляются, MOVE/DELE/EXPUNGE не выполняются.
+py -3 scripts/mail_smoke.py --host mail.company.local --username user@company.local --ca-file C:\corvex-pki\corvex-test-ca.crt --report artifacts\smoke\mail-readonly.json
+# Полный send/delivery/Sent, MOVE/EXPUNGE и restart-persistence выполняется отдельно по шагам 8-9.
 ```
 
 **Следующий рубеж проекта — закрыть оставшиеся сценарии G3, а не просто получить

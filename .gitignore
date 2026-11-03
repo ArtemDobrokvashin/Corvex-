@@ -12,3 +12,6 @@ frontend/dist/
 *.iml
 .vscode/
 *.tsbuildinfo
+__pycache__/
+*.py[cod]
+artifacts/
