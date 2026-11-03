@@ -1,6 +1,8 @@
 #!/bin/sh
 # Render only non-secret duration settings. Channel credentials stay in alert-relay's env.
-set -eu
+# .gitattributes keeps this bind-mounted script LF-only on Windows checkouts.
+set -e
+set -u
 
 repeat_interval="${CORVEX_ALERT_REPEAT_INTERVAL:-4h}"
 critical_repeat_interval="${CORVEX_ALERT_CRITICAL_REPEAT_INTERVAL:-30m}"

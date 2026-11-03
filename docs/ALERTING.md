@@ -171,6 +171,11 @@ powershell -ExecutionPolicy Bypass -File scripts\alerts.ps1 status
 docker compose logs --tail 100 alertmanager alert-relay notification-service
 ```
 
+Если entrypoint сразу пишет `set: illegal option -`, проверьте CRLF в bind-mounted
+`alertmanager-entrypoint.sh`: Linux-shell воспринимает `\r` как часть опции. В репозитории
+`.gitattributes` принудительно задаёт `*.sh text eol=lf`; после обновления такой скрипт должен
+остаться LF даже при Windows `core.autocrlf=true`, ручная правка контейнера не требуется.
+
 Не публикуйте `.env`, Docker Compose config с environment, SMTP password, bot token или
 полные внешние HTTP-запросы. Для отчёта достаточно имени канала, HTTP-статуса и sanitised
 строки ошибки.
