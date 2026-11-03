@@ -312,11 +312,53 @@ services:
       - prometheus-data:/prometheus
     networks: [app, monitoring]
 
+  alert-relay:
+    build: ./infra/alert-relay
+    profiles: [monitoring]
+    restart: unless-stopped
+    environment:
+      CORVEX_ALERT_EXTERNAL_EMAIL_ENABLED: ${CORVEX_ALERT_EXTERNAL_EMAIL_ENABLED:-false}
+      CORVEX_ALERT_EXTERNAL_EMAIL_RECIPIENTS: ${CORVEX_ALERT_EXTERNAL_EMAIL_RECIPIENTS:-}
+      CORVEX_ALERT_EXTERNAL_SMTP_HOST: ${CORVEX_ALERT_EXTERNAL_SMTP_HOST:-}
+      CORVEX_ALERT_EXTERNAL_SMTP_PORT: ${CORVEX_ALERT_EXTERNAL_SMTP_PORT:-587}
+      CORVEX_ALERT_EXTERNAL_SMTP_TLS_MODE: ${CORVEX_ALERT_EXTERNAL_SMTP_TLS_MODE:-starttls}
+      CORVEX_ALERT_EXTERNAL_SMTP_USERNAME: ${CORVEX_ALERT_EXTERNAL_SMTP_USERNAME:-}
+      CORVEX_ALERT_EXTERNAL_SMTP_PASSWORD: ${CORVEX_ALERT_EXTERNAL_SMTP_PASSWORD:-}
+      CORVEX_ALERT_EXTERNAL_SMTP_FROM: ${CORVEX_ALERT_EXTERNAL_SMTP_FROM:-}
+      CORVEX_ALERT_TELEGRAM_ENABLED: ${CORVEX_ALERT_TELEGRAM_ENABLED:-false}
+      CORVEX_ALERT_TELEGRAM_BOT_TOKEN: ${CORVEX_ALERT_TELEGRAM_BOT_TOKEN:-}
+      CORVEX_ALERT_TELEGRAM_CHAT_ID: ${CORVEX_ALERT_TELEGRAM_CHAT_ID:-}
+      CORVEX_ALERT_MAX_ENABLED: ${CORVEX_ALERT_MAX_ENABLED:-false}
+      CORVEX_ALERT_MAX_BOT_TOKEN: ${CORVEX_ALERT_MAX_BOT_TOKEN:-}
+      CORVEX_ALERT_MAX_CHAT_ID: ${CORVEX_ALERT_MAX_CHAT_ID:-}
+      CORVEX_ALERT_MAX_USER_ID: ${CORVEX_ALERT_MAX_USER_ID:-}
+      CORVEX_ALERT_EXTERNAL_CA_FILE: ${CORVEX_ALERT_EXTERNAL_CA_FILE:-}
+      CORVEX_ALERT_EXTERNAL_TIMEOUT_SECONDS: ${CORVEX_ALERT_EXTERNAL_TIMEOUT_SECONDS:-10}
+    volumes:
+      - "${CORVEX_ALERT_CA_DIR:-./infra/alert-ca}:/etc/corvex/alert-ca:ro"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8092/healthz', timeout=2).close()"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+    networks: [monitoring]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
   alertmanager:
     image: prom/alertmanager:v0.34.2
     profiles: [monitoring]
     restart: unless-stopped
-    volumes: ["./infra/prometheus/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro"]
+    entrypoint: ["/bin/sh", "/etc/corvex/alertmanager-entrypoint.sh"]
+    command: ["--config.file=/alertmanager/alertmanager.yml", "--storage.path=/alertmanager"]
+    environment:
+      CORVEX_ALERT_REPEAT_INTERVAL: ${CORVEX_ALERT_REPEAT_INTERVAL:-4h}
+      CORVEX_ALERT_CRITICAL_REPEAT_INTERVAL: ${CORVEX_ALERT_CRITICAL_REPEAT_INTERVAL:-30m}
+    volumes:
+      - "./infra/prometheus/alertmanager.yml:/etc/corvex/alertmanager.template.yml:ro"
+      - "./infra/prometheus/alertmanager-entrypoint.sh:/etc/corvex/alertmanager-entrypoint.sh:ro"
+      - "alertmanager-data:/alertmanager"
     networks: [monitoring, app]
 
   grafana:
@@ -369,5 +411,6 @@ volumes:
   spamd-data: {}
   clamav-data: {}
   prometheus-data: {}
+  alertmanager-data: {}
   grafana-data: {}
   loki-data: {}

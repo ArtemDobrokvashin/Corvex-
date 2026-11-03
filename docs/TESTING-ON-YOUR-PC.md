@@ -666,7 +666,8 @@ SMTP/MX. Полный G1/G2 относится к `8cccaee`; POP3-исправл
 Эти пункты не нужны, чтобы впервые увидеть интерфейс, но обязательны до пилота:
 
 - [ ] Мониторинг: `docker compose --profile monitoring up -d`, Grafana/Loki доступны только из админ-сети.
-- [ ] Алерт: остановка некритичного сервиса приводит к email-уведомлению на внешний ящик.
+- [ ] Controlled synthetic alert доставлен по внутренней цепочке; отдельно подтверждены внешний SMTP/Telegram/MAX и sanitised logs `alert-relay` (без остановки сервиса).
+- [ ] `alerts.ps1 silence` подавляет оба канала на заданный срок, мониторинг продолжает работать, после `unsilence`/expiry доставка возобновляется.
 - [ ] Backup на отдельный носитель с binary-safe дампами и SHA-256 manifest: `scripts\backup.ps1`.
 - [ ] **Isolated data-restore на этом же ПК:** `restore.ps1 -DataOnly` с отдельным проектом, затем `restore_verify.ps1`: 4 БД и 3 файловых volumes совпали с backup, рабочий стенд не изменён.
 - [ ] **Полный учебный restore** на чистой VM/папке: вход в систему, ящики, чаты и файлы реально восстановились.
@@ -804,6 +805,10 @@ py -3 scripts/mail_persistence.py --host mail.company.local --sender sender@comp
 # 6D. Controlled monitoring alert -> email -> read-only IMAP; monitoring profile должен быть запущен.
 # Ящик должен входить в CORVEX_ALERT_RECIPIENTS. Сервисы не останавливаются; alert завершается после проверки.
 py -3 scripts/alert_e2e.py --host mail.company.local --username admin@company.local --ca-file C:\corvex-pki\corvex-test-ca.crt --wait-seconds 180 --report artifacts\smoke\alert-e2e.json
+
+# 6E. Только чтение effective repeat intervals и списка silence; секреты не выводятся.
+powershell -ExecutionPolicy Bypass -File scripts\alerts.ps1 status
+# Silence/unsilence выполняйте отдельно по docs/ALERTING.md — это изменение политики уведомлений.
 ```
 
 **Следующий рубеж проекта — закрыть оставшиеся сценарии G3, а не просто получить

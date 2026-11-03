@@ -2,19 +2,22 @@ global:
   resolve_timeout: 5m
 route:
   receiver: corvex-notify
+  group_by: [alertname, severity]
   group_wait: 30s
   group_interval: 5m
-  repeat_interval: 4h          # эскалация: повтор, пока алерт активен
+  repeat_interval: __CORVEX_ALERT_REPEAT_INTERVAL__
   routes:
     - matchers: [severity="critical"]
       receiver: corvex-notify
-      repeat_interval: 30m
+      repeat_interval: __CORVEX_ALERT_CRITICAL_REPEAT_INTERVAL__
 receivers:
-  # Webhook -> notification-service (очередь corvex.alerts) -> email админам.
-  # Сюда же дублируется прямой email через ВНЕШНИЙ SMTP как резервный канал.
+  # Independent deliveries: Corvex/RabbitMQ email and direct external channels.
+  # A failure of notification-service or Corvex SMTP does not block alert-relay.
   - name: corvex-notify
     webhook_configs:
       - url: http://notification-service:8091/internal/alerts/webhook
+        send_resolved: true
+      - url: http://alert-relay:8092/alerts/webhook
         send_resolved: true
 inhibit_rules:
   - source_matchers: [alertname="ServiceDown"]

@@ -129,3 +129,7 @@ per caller или mTLS остаются усилением Stage 5, а не те
   APPEND сверх квоты владельца — `507`;
 - `notification-service POST /internal/alerts/webhook` — вебхук Alertmanager;
 - `admin-service → auth-service /internal/users/**` — управление учётками из админки.
+
+Отдельный `alert-relay` принимает `POST /alerts/webhook` и отдаёт `GET /healthz` только в
+сети `monitoring`; порт не публикуется и через gateway не маршрутизируется. Он вызывает
+внешний SMTP/Telegram/MAX напрямую и не входит в RabbitMQ-контракт `corvex.alerts`.

@@ -116,8 +116,8 @@ inside PostgreSQL. On a blank test stand you can start over with
 | `CORVEX_INTERNAL_API_TOKEN` | **required** secret for the internal auth/admin APIs; `first-run.ps1` generates it and appends it to an older `.env` when missing. Never keep `change-me-strong-password` |
 | `CORVEX_SMTP_ENABLED` | keep `false` until stage 2 (data-loss guard, see READINESS) |
 | `CORVEX_LDAP_URL`, `CORVEX_LDAP_BASE` | fill if you have Active Directory (stage 5), otherwise leave |
-| `CORVEX_ALERT_RECIPIENTS` | the admin's **external** mailbox |
-| `ALERT_SMTP_HOST` | SMTP used for alerts — ideally an external relay |
+| `CORVEX_ALERT_RECIPIENTS` | Recipients of the internal alert-email channel |
+| `ALERT_SMTP_HOST` | SMTP for the internal channel only; use `CORVEX_ALERT_EXTERNAL_*` for independent delivery |
 
 ## 6. Real TLS certificate (required before any external access)
 
@@ -168,6 +168,10 @@ normal. For problems: `docker compose logs --tail 100 <service>`.
 Grafana: `https://mail.<domain>/grafana/` (admin subnet allowlist in the nginx
 config — adjust it), user `admin`, password from `GRAFANA_PASSWORD` in `.env`.
 
+See [`docs/ALERTING.en.md`](ALERTING.en.md) for repeat intervals, temporary silences, and
+independent external SMTP/Telegram/MAX delivery. The internal `ALERT_SMTP_HOST` alone
+cannot provide an independent notification path when Corvex mail itself is down.
+
 ## 9. Post-launch smoke tests
 
 1. **Web UI & first sign-in:** `https://mail.<domain>` → Corvex login. On the very
@@ -181,9 +185,10 @@ config — adjust it), user `admin`, password from `GRAFANA_PASSWORD` in `.env`.
 4. **Migrations applied:** `docker compose logs auth-service | Select-String Flyway` (repeat for admin/chat/mail-storage services).
 5. **SMTP intentionally off:** `docker compose logs mail-smtp-service` contains
    `SMTP listener disabled`. This is correct until stage 2.
-6. **Alerting:** `docker compose stop chat-service` → within 2–4 minutes an email
-   `[Corvex critical] ServiceDown` should reach `CORVEX_ALERT_RECIPIENTS`
-   (requires a working `ALERT_SMTP_HOST`). Restore with `docker compose start chat-service`.
+6. **Alerting:** do not stop a production service just for a test. Use the bounded
+   synthetic alert in `scripts/alert_e2e.py` as described in [`scripts/README.md`](../scripts/README.md).
+   For a temporary silence, run `scripts\alerts.ps1 silence -Minutes 60`; external channels
+   are documented in [`docs/ALERTING.en.md`](ALERTING.en.md).
 
 ## 10. Day-2 operations
 

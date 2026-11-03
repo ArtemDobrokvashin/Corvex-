@@ -100,6 +100,7 @@ Production audit равен нулю на текущем lockfile. Это не �
 | nginx | `nginx:1.31-alpine` |
 | Prometheus | `prom/prometheus:v3.15.1` |
 | Alertmanager | `prom/alertmanager:v0.34.2` |
+| External alert relay | `python:3.13-alpine`; только стандартная библиотека, non-root UID 10001 |
 | Grafana | `grafana/grafana:13.3.0` |
 | Loki | `grafana/loki:3.7.9` |
 | Promtail | `grafana/promtail:3.6.11` — до миграции на Alloy в G4 |
