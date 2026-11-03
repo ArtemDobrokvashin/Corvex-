@@ -31,7 +31,8 @@ import java.util.UUID;
 @RequestMapping("/api/v1/mail/external-accounts")
 public class ExternalMailController {
 
-    private static final String CAN_MANAGE = "hasAnyAuthority('MAIL_EXTERNAL_ACCOUNTS','ADMIN_MAIL_POLICY')";
+    private static final String CAN_READ = "hasAnyAuthority('MAIL_EXTERNAL_ACCOUNTS','ADMIN_MAIL_POLICY')";
+    private static final String CAN_MANAGE = "hasAuthority('ADMIN_MAIL_POLICY')";
 
     private final ExternalMailAccountService accounts;
     private final ExternalMailSyncService sync;
@@ -48,7 +49,7 @@ public class ExternalMailController {
     }
 
     @GetMapping("/owners")
-    @PreAuthorize("hasAuthority('ADMIN_MAIL_POLICY')")
+    @PreAuthorize(CAN_MANAGE)
     List<ExternalMailDtos.OwnerView> owners(@AuthenticationPrincipal Jwt jwt,
                                             @RequestParam(required = false) String q,
                                             @RequestParam(required = false) Integer limit) {
@@ -69,7 +70,7 @@ public class ExternalMailController {
     }
 
     @GetMapping
-    @PreAuthorize(CAN_MANAGE)
+    @PreAuthorize(CAN_READ)
     List<ExternalMailDtos.AccountView> list(@AuthenticationPrincipal Jwt jwt,
                                             @RequestParam(required = false) UUID ownerId) {
         return accounts.list(userId(jwt), permissions(jwt), ownerId);
@@ -91,7 +92,7 @@ public class ExternalMailController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize(CAN_MANAGE)
+    @PreAuthorize(CAN_READ)
     ExternalMailDtos.AccountView get(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
         return accounts.get(userId(jwt), permissions(jwt), id);
     }
@@ -145,7 +146,7 @@ public class ExternalMailController {
     }
 
     @GetMapping("/{id}/runs")
-    @PreAuthorize(CAN_MANAGE)
+    @PreAuthorize(CAN_READ)
     List<ExternalMailDtos.SyncRunView> runs(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
         return sync.listRuns(userId(jwt), permissions(jwt), id);
     }

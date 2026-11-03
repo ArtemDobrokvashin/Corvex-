@@ -82,7 +82,7 @@ mail.outbound.external.queued ──► mail-smtp-service
 
    `ALLOW_PRIVATE_NETWORKS=true` нужен только для сознательно доверенного внутреннего legacy-сервера. `ALLOW_INSECURE_PLAIN=true` не включайте для интернет-провайдеров: пароль и письма пойдут без TLS.
 
-3. Группе сотрудника должно быть выдано право `MAIL_EXTERNAL_ACCOUNTS`. Администратор с `ADMIN_MAIL_POLICY` может сам найти сотрудника по имени, email, логину или отделу и подключить ему личный внешний ящик; общий legacy-ящик подключается так же, но на отдельном сервисном пользователе Corvex. Уже выданный JWT обновится при refresh сессии.
+3. Группе сотрудника должно быть выдано право `MAIL_EXTERNAL_ACCOUNTS`: оно позволяет видеть назначенные ему адреса и использовать их в send-as. Подключение и настройка внешних ящиков доступны **только администратору с `ADMIN_MAIL_POLICY`**. Он находит сотрудника по имени, email, логину или отделу и подключает ему личный внешний ящик; общий legacy-ящик подключается так же, но на отдельном сервисном пользователе Corvex. Кнопка управления и mutating API у обычного сотрудника отсутствуют/возвращают 403. Уже выданный JWT обновится при refresh сессии.
 
 ### Подготовка Mail.ru
 
@@ -106,8 +106,10 @@ mail.outbound.external.queued ──► mail-smtp-service
 
 ### Подключение в интерфейсе
 
+Подключение выполняет администратор с `ADMIN_MAIL_POLICY`; обычный сотрудник видит только назначенные адреса в селекторе «От кого».
+
 1. Откройте **Почта → Внешние ящики → Подключить ящик**.
-2. Если вы администратор почты, сначала в левой панели найдите и выберите сотрудника Corvex. Список подключений, целевая папка и новая форма будут относиться именно к нему; UUID вручную вводить не нужно.
+2. В левой панели найдите и выберите сотрудника Corvex. Список подключений, целевая папка и новая форма будут относиться именно к нему; UUID вручную вводить не нужно.
 3. Выберите провайдера, укажите адрес, логин и пароль приложения.
 4. Для обычной работы оставьте:
    - протокол IMAP;
@@ -186,7 +188,8 @@ mail.outbound.external.queued ──► mail-smtp-service
 - [ ] при включённом сохранении копия появляется в Sent провайдера;
 - [ ] пауза останавливает сбор, возобновление продолжает с курсора;
 - [ ] удаление подключения не удаляет уже импортированные письма;
-- [ ] пользователь без `MAIL_EXTERNAL_ACCOUNTS` получает 403, чужой аккаунт для него выглядит как 404;
+- [ ] пользователь без `MAIL_EXTERNAL_ACCOUNTS` получает 403 на чтение списка, чужой аккаунт для него выглядит как 404;
+- [ ] сотрудник с `MAIL_EXTERNAL_ACCOUNTS`, но без `ADMIN_MAIL_POLICY`, не видит кнопку управления, получает 403 на create/update/delete/sync и может выбрать назначенный адрес только в send-as;
 - [ ] администратор находит сотрудника по имени/email, подключает ему ящик и видит его в списке именно этого владельца;
 - [ ] целевая папка выбирается из папок сотрудника; собранная почта и send-as доступны владельцу, но администратор не может отправить письмо от его имени.
 
@@ -199,7 +202,7 @@ External Mail Connector attaches an existing provider mailbox to a Corvex mailbo
 ### Setup
 
 1. Generate `CORVEX_EXTERNAL_MAIL_ENC_KEY` (32 random bytes, Base64). `scripts/first-run.ps1` does this. Back this key up with `.env`; losing it means external accounts must be connected again.
-2. Grant `MAIL_EXTERNAL_ACCOUNTS` to the employee's group. An `ADMIN_MAIL_POLICY` administrator can find an employee by name, email, login, or department and connect a personal external mailbox for them; a shared legacy mailbox is connected the same way under a dedicated Corvex service user.
+2. Grant `MAIL_EXTERNAL_ACCOUNTS` to the employee's group so they can see assigned addresses and use send-as. Only an `ADMIN_MAIL_POLICY` administrator can connect or configure external mailboxes: they find an employee by name, email, login, or department and connect a personal external mailbox for them; a shared legacy mailbox is connected the same way under a dedicated Corvex service user. The management button is hidden from employees, and mutating API calls return 403 without `ADMIN_MAIL_POLICY`.
 3. At the provider, create an app password (required by Mail.ru and Yandex) and enable IMAP mail-client access. Prefer IMAP over POP3.
 4. In **Mail → External mailboxes**, an administrator first selects the employee in the left panel; then pick Mail.ru, Yandex, Gmail, Outlook/Microsoft 365, or a custom server; test the connection; save; run **Synchronize now**. The account list and target folders follow the selected owner. Use **Import archive** for a one-time all-folder migration.
 5. In the composer, **From** lets the mailbox owner send as the external address through provider SMTP. Corvex does not add its own DKIM signature to such mail.

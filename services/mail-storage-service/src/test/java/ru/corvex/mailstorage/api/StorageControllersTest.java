@@ -6,6 +6,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.server.ResponseStatusException;
 import ru.corvex.mailstorage.api.dto.ExternalMailDtos;
@@ -22,6 +23,7 @@ import ru.corvex.mailstorage.storage.RawMessageSpool;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -139,6 +141,31 @@ class StorageControllersTest {
         verify(accounts).resetSyncState(userId, permissions, accountId);
         verify(sync).listRuns(userId, permissions, accountId);
         verify(accounts).audit(userId, permissions, accountId);
+    }
+
+    @Test
+    void externalControllerSeparatesOwnerReadAccessFromAdminOnlyMutations() {
+        String ownerRead = "hasAnyAuthority('MAIL_EXTERNAL_ACCOUNTS','ADMIN_MAIL_POLICY')";
+        String adminManage = "hasAuthority('ADMIN_MAIL_POLICY')";
+
+        for (String method : List.of("list", "get", "runs")) {
+            assertEquals(ownerRead, externalAuthority(method), method);
+        }
+        for (String method : List.of(
+                "owners", "owner", "ownerFolders", "create", "test", "update", "delete",
+                "enabled", "testStored", "syncNow", "migrate", "resetSync", "audit")) {
+            assertEquals(adminManage, externalAuthority(method), method);
+        }
+    }
+
+    private static String externalAuthority(String methodName) {
+        for (Method method : ExternalMailController.class.getDeclaredMethods()) {
+            if (method.getName().equals(methodName)) {
+                PreAuthorize annotation = method.getAnnotation(PreAuthorize.class);
+                return annotation == null ? null : annotation.value();
+            }
+        }
+        throw new AssertionError("Unknown ExternalMailController method: " + methodName);
     }
 
     @Test
