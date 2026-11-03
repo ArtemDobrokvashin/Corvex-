@@ -52,7 +52,7 @@ public class NotificationConfig {
                         Map<?, ?> labels = asMap(alert.get("labels"));
                         Map<?, ?> ann = asMap(alert.get("annotations"));
                         var event = new AlertListener.AlertEvent(
-                                text(labels, "alertName", "alert"),
+                                text(labels, "alertname", "alert"),
                                 text(labels, "severity", "warning"),
                                 text(labels, "application", text(labels, "instance", "corvex")),
                                 text(ann, "summary", ""),

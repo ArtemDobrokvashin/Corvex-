@@ -42,10 +42,10 @@ class NotificationConfigTest {
     }
 
     @Test
-    void webhookMapsAlertmanagerLabelsAndAnnotationsToQueueEvents() {
+    void webhookMapsStandardAlertmanagerLabelsAndAnnotationsToQueueEvents() {
         Map<String, Object> alert = Map.of(
                 "labels", Map.of(
-                        "alertName", "DiskAlmostFull",
+                        "alertname", "DiskAlmostFull",
                         "severity", "warning",
                         "application", "mail-storage-service"),
                 "annotations", Map.of(
@@ -98,8 +98,8 @@ class NotificationConfigTest {
     void webhookPublishesEachAlertAndIgnoresNonMapItems() {
         controller.webhook(Map.of("alerts", List.of(
                 "ignored",
-                Map.of("labels", Map.of("alertName", "One")),
-                Map.of("labels", Map.of("alertName", "Two")))));
+                Map.of("labels", Map.of("alertname", "One")),
+                Map.of("labels", Map.of("alertname", "Two")))));
 
         ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
         verify(rabbit, times(2)).convertAndSend(eq(NotificationConfig.ALERTS_QUEUE), captor.capture());
