@@ -790,7 +790,15 @@ py -3 scripts/mail_smoke.py --host mail.company.local --username user@company.lo
 # Создаёт новое письмо + Sent APPEND с run ID, проверяет text/HTML и SHA-256 вложения.
 # Старые письма не изменяет; тестовые копии сохраняет для persistence-smoke.
 py -3 scripts/mail_e2e.py --host mail.company.local --sender sender@company.local --recipient recipient@company.local --ca-file C:\corvex-pki\corvex-test-ca.crt --report artifacts\smoke\mail-e2e.json
-# MOVE/EXPUNGE и restart-persistence выполняются отдельно по шагам 8-9.
+
+# 6B. Шаг 3: сначала только read-only precheck письма с точным run ID из 6A.
+# Не создаёт папки, не меняет flags и не перезапускает сервисы.
+py -3 scripts/mail_persistence.py --host mail.company.local --sender sender@company.local --recipient recipient@company.local --run-id <32-hex-run-id> --ca-file C:\corvex-pki\corvex-test-ca.crt --report artifacts\smoke\mail-persistence-precheck.json
+
+# 6C. Только после PASS 6B и отдельного подтверждения: MOVE/flags/restart/UID EXPUNGE.
+# Оба разрешения обязательны; restart только storage -> IMAP; Sent отправителя сохраняется.
+py -3 scripts/mail_persistence.py --host mail.company.local --sender sender@company.local --recipient recipient@company.local --run-id <32-hex-run-id> --ca-file C:\corvex-pki\corvex-test-ca.crt --wait-seconds 180 --allow-mutating --allow-restart --report artifacts\smoke\mail-persistence.json
+# Cleanup выполняется только для собственного UID в уникальной папке; существующая почта не трогается.
 ```
 
 **Следующий рубеж проекта — закрыть оставшиеся сценарии G3, а не просто получить
