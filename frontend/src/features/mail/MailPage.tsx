@@ -33,6 +33,8 @@ import { demoFolders, demoMails, DemoMail } from '../../api/demoData';
 import { externalMailApi, ExternalMailAccount } from '../../api/externalMailApi';
 import { mailApi, MailFolderView, MailMessageListItem, SendAttachment } from '../../api/mailApi';
 import ExternalMailAccountsModal from './ExternalMailAccountsModal';
+import MailSidebarActions from './MailSidebarActions';
+import { canAdministerExternalMail, canUseExternalMail } from './externalMailAccess';
 import {
   applyMailListControls,
   hasActiveMailFilters,
@@ -126,14 +128,8 @@ export default function MailPage() {
   const [composeDraft, setComposeDraft] = useState<ComposeDraft | null>(null);
   const [externalAccounts, setExternalAccounts] = useState<ExternalMailAccount[]>([]);
   const [externalOpen, setExternalOpen] = useState(false);
-  const canExternalAccounts = Boolean(
-    sessionUser?.permissions.includes('MAIL_EXTERNAL_ACCOUNTS')
-    || sessionUser?.permissions.includes('ADMIN_MAIL_POLICY')
-    || sessionUser?.permissions.includes('*'),
-  );
-  const canAdminExternalAccounts = Boolean(
-    sessionUser?.permissions.includes('ADMIN_MAIL_POLICY') || sessionUser?.permissions.includes('*'),
-  );
+  const canExternalAccounts = canUseExternalMail(sessionUser?.permissions);
+  const canAdminExternalAccounts = canAdministerExternalMail(sessionUser?.permissions);
   const [serverFolderCounts, setServerFolderCounts] = useState<Record<string, number>>({});
   const demoFolderCounts = useMemo<Record<string, number>>(() => {
     const counts: Record<string, number> = {};
@@ -266,6 +262,10 @@ export default function MailPage() {
       });
     return () => { cancelled = true; };
   }, [demoMode, canExternalAccounts]);
+
+  useEffect(() => {
+    if (!canAdminExternalAccounts) setExternalOpen(false);
+  }, [canAdminExternalAccounts]);
 
   const selectedRealFolder = realFolders.find((f) => (f.specialUse ?? f.id) === folder);
   const selectedRealFolderId = selectedRealFolder?.id;
@@ -507,27 +507,24 @@ export default function MailPage() {
       <div className="flex h-full min-h-0 overflow-hidden bg-surface lg:rounded-[18px] lg:border lg:border-line lg:shadow-soft">
         {/* Папки */}
         <aside className="hidden w-[238px] shrink-0 flex-col border-r border-line bg-chrome p-3 xl:flex">
-          <div className="flex items-center justify-between px-2 pb-3 pt-1">
+          <div className="flex shrink-0 items-center justify-between px-2 pb-3 pt-1">
             <h1 className="text-[17px] font-semibold tracking-[-0.02em]">{t('Почта')}</h1>
             <span className="text-xs text-faint">{countLabel(locale, folderCounts.INBOX ?? 0, ['новое', 'новых', 'новых'], ['new', 'new'])}</span>
           </div>
-          <button type="button" onClick={() => setComposeDraft({ to: '', subject: '', body: '' })} className="btn-primary w-full">
-            <PenSquare size={16} /> {t('Написать')} <span className="ml-auto hidden xl:inline-flex"><span className="kbd border-white/20 bg-white/10 text-white/70 shadow-none">C</span></span>
-          </button>
-          {canExternalAccounts && (
-            <button type="button" onClick={() => setExternalOpen(true)} className="btn-secondary mt-2 w-full">
-              <Settings2 size={16} /> {t('Внешние ящики')}
-              {externalAccounts.length > 0 && <span className="ml-auto text-xs text-faint">{externalAccounts.length}</span>}
-            </button>
-          )}
+          <MailSidebarActions
+            canAdminExternalAccounts={canAdminExternalAccounts}
+            externalAccountCount={externalAccounts.length}
+            onCompose={() => setComposeDraft({ to: '', subject: '', body: '' })}
+            onOpenExternal={() => setExternalOpen(true)}
+          />
 
-          <p className="section-label mb-1.5 mt-6">{t('Папки')}</p>
-          <nav className="space-y-0.5" aria-label={t('Папки почты')}>
+          <p className="section-label mb-1.5 mt-6 shrink-0">{t('Папки')}</p>
+          <nav className="scroll-area min-h-0 space-y-0.5 pr-1" aria-label={t('Папки почты')}>
             {folders.map((f) => {
               const Icon = FOLDER_ICONS[f.id] ?? Folder;
               const count = folderCounts[f.id] ?? 0;
               return (
-                <button key={f.id} type="button" onClick={() => selectFolder(f.id)} className={`nav-row ${folder === f.id ? 'nav-row-active' : ''}`}>
+                <button key={f.id} type="button" onClick={() => selectFolder(f.id)} className={`nav-row shrink-0 ${folder === f.id ? 'nav-row-active' : ''}`}>
                   <Icon size={16} strokeWidth={1.8} />
                   <span className="min-w-0 flex-1 truncate">{f.name}</span>
                   {count > 0 && <span className={`text-xs ${folder === f.id ? 'font-semibold text-accent' : 'font-medium text-faint'}`}>{count}</span>}
@@ -536,7 +533,7 @@ export default function MailPage() {
             })}
           </nav>
 
-          <div className="mt-auto rounded-xl bg-black/[0.035] p-3">
+          <div className="mt-auto shrink-0 rounded-xl bg-black/[0.035] p-3">
             <div className="flex items-center gap-2 text-xs font-medium text-ink-soft"><HardDrive size={14} className="text-muted" />{t('Ящик')}</div>
             <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-black/[0.08]"><div className="h-full w-[62%] rounded-full bg-accent" /></div>
             <p className="mt-2 text-[11px] leading-relaxed text-muted">{t('Использовано {used} из {total}', { used: formatBytes(locale, 3.1 * 1024 ** 3), total: formatBytes(locale, 5 * 1024 ** 3) })}</p>
@@ -585,7 +582,7 @@ export default function MailPage() {
                   </div>
                 )}
               </div>
-              {canExternalAccounts && <IconButton icon={Settings2} label={t('Внешние ящики')} className="h-8 w-8 xl:hidden" size={16} onClick={() => setExternalOpen(true)} />}
+              {canAdminExternalAccounts && <IconButton icon={Settings2} label={t('Внешние ящики')} className="h-8 w-8 xl:hidden" size={16} onClick={() => setExternalOpen(true)} />}
               <div ref={filtersPanelRef} className="relative">
                 <IconButton
                   icon={SlidersHorizontal}
@@ -813,7 +810,7 @@ export default function MailPage() {
         </main>
       </div>
 
-      {externalOpen && canExternalAccounts && (
+      {externalOpen && canAdminExternalAccounts && (
         <ExternalMailAccountsModal
           demoMode={demoMode}
           canAdmin={canAdminExternalAccounts}

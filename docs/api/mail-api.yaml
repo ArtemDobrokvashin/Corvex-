@@ -191,15 +191,15 @@ paths:
         '403': { description: Нет ADMIN_MAIL_POLICY }
   /mail/external-accounts/owners/{ownerId}:
     get:
-      summary: Владелец внешнего ящика (сам сотрудник или ADMIN_MAIL_POLICY)
+      summary: Владелец внешнего ящика для администрирования (ADMIN_MAIL_POLICY)
       parameters: [{ name: ownerId, in: path, required: true, schema: { type: string, format: uuid } }]
       responses:
         '200': { description: Профиль владельца и счётчик внешних ящиков }
         '400': { description: Пользователь не найден }
-        '403': { description: Чужой владелец без ADMIN_MAIL_POLICY }
+        '403': { description: Нет ADMIN_MAIL_POLICY }
   /mail/external-accounts/owners/{ownerId}/folders:
     get:
-      summary: Папки выбранного владельца для целевого размещения собранной почты
+      summary: Папки выбранного владельца для администратора (ADMIN_MAIL_POLICY)
       parameters: [{ name: ownerId, in: path, required: true, schema: { type: string, format: uuid } }]
       responses:
         '200':
@@ -210,7 +210,7 @@ paths:
                 type: array
                 items: { $ref: '#/components/schemas/ExternalMailTargetFolder' }
         '400': { description: Пользователь не найден }
-        '403': { description: Чужой владелец без ADMIN_MAIL_POLICY }
+        '403': { description: Нет ADMIN_MAIL_POLICY }
   /mail/external-accounts:
     get:
       summary: Внешние ящики владельца (MAIL_EXTERNAL_ACCOUNTS; ADMIN_MAIL_POLICY может указать ownerId)
@@ -225,7 +225,7 @@ paths:
                 type: array
                 items: { $ref: '#/components/schemas/ExternalMailAccount' }
     post:
-      summary: Подключить внешний ящик; пароль приложения сохраняется только AES-256-GCM шифртекстом
+      summary: Подключить внешний ящик сотруднику (только ADMIN_MAIL_POLICY); секрет сохраняется AES-256-GCM шифртекстом
       requestBody:
         required: true
         content:
@@ -234,12 +234,12 @@ paths:
       responses:
         '201': { description: Подключён, первая синхронизация запланирована }
         '400': { description: Некорректный адрес/хост/TLS или проверка подключения не пройдена }
-        '403': { description: Нет MAIL_EXTERNAL_ACCOUNTS }
+        '403': { description: Нет ADMIN_MAIL_POLICY }
         '409': { description: Ящик уже подключён либо достигнут лимит }
         '503': { description: Не настроен CORVEX_EXTERNAL_MAIL_ENC_KEY }
   /mail/external-accounts/test:
     post:
-      summary: Проверить IMAP/POP3 и SMTP по черновику формы без сохранения
+      summary: Проверить черновик подключения (ADMIN_MAIL_POLICY)
       requestBody:
         required: true
         content:
@@ -249,27 +249,27 @@ paths:
         '200': { description: Отдельные результаты входящего подключения и SMTP-аутентификации }
   /mail/external-accounts/{accountId}:
     parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }]
-    get: { summary: Один внешний ящик и его статус, responses: { '200': { description: Аккаунт без секрета }, '404': { description: Не найден или чужой } } }
+    get: { summary: Назначенный ящик и статус (владелец или ADMIN_MAIL_POLICY), responses: { '200': { description: Аккаунт без секрета }, '404': { description: Не найден или чужой } } }
     put:
-      summary: Изменить внешний ящик; пустой secret сохраняет текущий пароль
+      summary: Изменить внешний ящик (ADMIN_MAIL_POLICY); пустой secret сохраняет текущий пароль
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/ExternalMailAccountRequest' }
       responses: { '200': { description: Обновлён } }
-    delete: { summary: Отключить внешний ящик; импортированные письма остаются, responses: { '204': { description: Отключён } } }
+    delete: { summary: Отключить внешний ящик (ADMIN_MAIL_POLICY); импортированные письма остаются, responses: { '204': { description: Отключён } } }
   /mail/external-accounts/{accountId}/test:
-    post: { summary: Проверить сохранённое подключение, parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Результат проверки } } }
+    post: { summary: Проверить сохранённое подключение (ADMIN_MAIL_POLICY), parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Результат проверки } } }
   /mail/external-accounts/{accountId}/sync:
-    post: { summary: Запустить ручной сбор новых писем, parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '202': { description: Запуск принят }, '409': { description: Синхронизация уже выполняется или отключена } } }
+    post: { summary: Запустить ручной сбор новых писем (ADMIN_MAIL_POLICY), parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '202': { description: Запуск принят }, '409': { description: Синхронизация уже выполняется или отключена } } }
   /mail/external-accounts/{accountId}/migrate:
-    post: { summary: Импортировать архив всех папок с дедупликацией, parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '202': { description: Миграция принята } } }
+    post: { summary: Импортировать архив всех папок (ADMIN_MAIL_POLICY), parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '202': { description: Миграция принята } } }
   /mail/external-accounts/{accountId}/reset-sync:
-    post: { summary: Сбросить курсоры папок, сохранив дедупликацию, parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Сброшено } } }
+    post: { summary: Сбросить курсоры папок (ADMIN_MAIL_POLICY), parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Сброшено } } }
   /mail/external-accounts/{accountId}/enabled:
     patch:
-      summary: Пауза/возобновление сбора или send-as
+      summary: Пауза/возобновление сбора или send-as (ADMIN_MAIL_POLICY)
       parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }]
       requestBody:
         required: true
@@ -280,9 +280,9 @@ paths:
               properties: { enabled: { type: boolean }, syncEnabled: { type: boolean }, sendEnabled: { type: boolean } }
       responses: { '200': { description: Обновлённый аккаунт } }
   /mail/external-accounts/{accountId}/runs:
-    get: { summary: Последние запуски синхронизации/миграции, parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: История запусков } } }
+    get: { summary: Запуски синхронизации (владелец или ADMIN_MAIL_POLICY), parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: История запусков } } }
   /mail/external-accounts/{accountId}/audit:
-    get: { summary: Аудит действий с внешним ящиком без секретов, parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Аудит } } }
+    get: { summary: Аудит внешнего ящика без секретов (ADMIN_MAIL_POLICY), parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Аудит } } }
   /mail/rules:
     get: { summary: Правила автосортировки пользователя, responses: { '200': { description: Список по позиции } } }
     post: { summary: Создать правило (условия/действия JSON — см. схему mail_rules), responses: { '201': { description: Создано } } }
