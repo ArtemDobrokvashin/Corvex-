@@ -104,8 +104,14 @@ if ($DataOnly) {
   if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($PostgresId)) {
     throw "Cannot locate the isolated postgres container"
   }
-  $ActualProject = & docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' $PostgresId.Trim()
-  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($ActualProject) -or $ActualProject.Trim() -ne $ProjectName) {
+  # JSON avoids nested quotes in Go templates: Windows PowerShell may strip them.
+  $RawLabels = & docker inspect --format '{{json .Config.Labels}}' $PostgresId.Trim()
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($RawLabels)) {
+    throw "Cannot read labels from the isolated postgres container"
+  }
+  $Labels = $RawLabels | ConvertFrom-Json
+  $ActualProject = [string]$Labels.'com.docker.compose.project'
+  if ([string]::IsNullOrWhiteSpace($ActualProject) -or $ActualProject.Trim() -ne $ProjectName) {
     throw "Compose project mismatch: expected $ProjectName, got $ActualProject"
   }
 } else {

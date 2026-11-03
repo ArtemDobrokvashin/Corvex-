@@ -43,7 +43,9 @@ class BackupScriptsTest(unittest.TestCase):
         self.assertNotIn('"corvex_chat-file-data"', RESTORE)
 
     def test_project_label_guard_precedes_file_restore_and_pg_restore(self):
-        self.assertIn('com.docker.compose.project', RESTORE)
+        self.assertIn("--format '{{json .Config.Labels}}'", RESTORE)
+        self.assertNotIn("index .Config.Labels", RESTORE)
+        self.assertIn("$Labels.'com.docker.compose.project'", RESTORE)
         self.assertLess(
             RESTORE.index("Compose project mismatch"),
             RESTORE.index('Write-Host "Restoring volume'),
