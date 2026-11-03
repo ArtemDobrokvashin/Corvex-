@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canAccessAdmin, canViewAnalytics, canViewServer, canViewSystemHealth } from './adminAccess';
+import { canAccessAdmin, canManageQuotas, canViewAnalytics, canViewServer, canViewSystemHealth } from './adminAccess';
 
 const has = (...permissions: string[]) => (permission: string) => permissions.includes(permission);
 
@@ -7,6 +7,7 @@ describe('admin section access', () => {
   it.each([
     'ADMIN_USERS_MANAGE',
     'ADMIN_GROUPS_MANAGE',
+    'ADMIN_QUOTAS_MANAGE',
     'ADMIN_SERVER_CONFIG',
     'ADMIN_BACKUP',
     'ANALYTICS_VIEW_COMPANY',
@@ -31,6 +32,12 @@ describe('admin section access', () => {
     expect(canViewSystemHealth(has('ADMIN_SERVER_CONFIG'))).toBe(true);
     expect(canViewSystemHealth(has('ADMIN_USERS_MANAGE'))).toBe(true);
     expect(canViewSystemHealth(has('ADMIN_GROUPS_MANAGE'))).toBe(true);
+  });
+
+  it('matches the dedicated quota endpoint authorities', () => {
+    expect(canManageQuotas(has('ADMIN_QUOTAS_MANAGE'))).toBe(true);
+    expect(canManageQuotas(has('ADMIN_USERS_MANAGE'))).toBe(true);
+    expect(canManageQuotas(has('ADMIN_GROUPS_MANAGE'))).toBe(false);
   });
 
   it('supports company and own-unit analytics scopes', () => {

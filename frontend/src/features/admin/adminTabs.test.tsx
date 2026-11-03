@@ -7,6 +7,8 @@ import { useSession, type SessionUser } from '../../store/sessionStore';
 
 const apiMocks = vi.hoisted(() => ({
   analyticsActivity: vi.fn(),
+  listGroups: vi.fn(),
+  listUsers: vi.fn(),
   requestBackup: vi.fn(),
   systemHealth: vi.fn(),
 }));
@@ -14,11 +16,14 @@ const apiMocks = vi.hoisted(() => ({
 vi.mock('../../api/adminApi', () => ({
   adminApi: {
     analyticsActivity: apiMocks.analyticsActivity,
+    listGroups: apiMocks.listGroups,
+    listUsers: apiMocks.listUsers,
     requestBackup: apiMocks.requestBackup,
     systemHealth: apiMocks.systemHealth,
   },
 }));
 
+import AdminPage from './AdminPage';
 import AnalyticsTab from './AnalyticsTab';
 import ServerTab from './ServerTab';
 
@@ -54,6 +59,8 @@ describe('admin server and analytics tabs', () => {
     document.body.appendChild(container);
     root = createRoot(container);
     apiMocks.analyticsActivity.mockReset().mockResolvedValue(analytics);
+    apiMocks.listGroups.mockReset().mockResolvedValue([]);
+    apiMocks.listUsers.mockReset().mockResolvedValue({ content: [], page: 0, size: 25, totalElements: 0, totalPages: 0 });
     apiMocks.requestBackup.mockReset().mockResolvedValue({ status: 'REQUESTED', note: 'recorded' });
     apiMocks.systemHealth.mockReset().mockResolvedValue({ services: [], diskFreeBytes: 0, mailQueueDepth: 0 });
   });
@@ -91,6 +98,21 @@ describe('admin server and analytics tabs', () => {
     expect(apiMocks.analyticsActivity).toHaveBeenCalledWith('');
     expect(container.querySelector('#analytics-department')).not.toBeNull();
     expect(container.textContent).toContain('Entire company');
+  });
+
+  it('opens the quota workspace directly without loading groups for a quota-only role', async () => {
+    useSession.getState().setSession(user(['ADMIN_QUOTAS_MANAGE']), false);
+
+    await act(async () => {
+      root.render(<AdminPage />);
+      await Promise.resolve();
+    });
+
+    expect(apiMocks.listUsers).toHaveBeenCalledWith({ q: '', page: 0, size: 25 });
+    expect(apiMocks.listGroups).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Disk quotas');
+    expect(container.textContent).toContain('Limits and storage used');
+    expect(container.textContent).not.toContain('New user');
   });
 
   it('does not request health for a backup-only role and reports only an audit request', async () => {

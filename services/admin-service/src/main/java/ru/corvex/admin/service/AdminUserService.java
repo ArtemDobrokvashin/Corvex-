@@ -91,6 +91,15 @@ public class AdminUserService {
         return toView(updated, groupService.groupCodesOf(userId));
     }
 
+    /** Отдельный узкий контракт: quota-роль не получает возможности менять профиль или статус. */
+    public AdminUserView updateQuota(UUID userId, long quotaBytes, Actor actor) {
+        RemoteUser previous = authClient.getUser(userId);
+        RemoteUser updated = authClient.patchUser(userId, Map.of("quotaBytes", quotaBytes));
+        audit.record(actor, "USER_QUOTA_CHANGED", "user", userId.toString(), Map.of(
+                "previousQuotaBytes", previous.quotaBytes(), "quotaBytes", quotaBytes));
+        return toView(updated, groupService.groupCodesOf(userId));
+    }
+
     public void block(UUID userId, Actor actor) {
         groupService.assertNotSoleSuperAdmin(userId);
         authClient.blockUser(userId); // auth попутно отзывает все refresh-сессии

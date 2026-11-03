@@ -5,6 +5,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  HardDrive,
   KeyRound,
   Lock,
   Plus,
@@ -24,10 +25,11 @@ import { Avatar, EmptyState, Notice } from '../../components/ui';
 import { countLabel, formatBytes, formatDateTime, systemGroupName, useI18n } from '../../i18n';
 import { useSession } from '../../store/sessionStore';
 import AnalyticsTab from './AnalyticsTab';
+import QuotasTab from './QuotasTab';
 import ServerTab from './ServerTab';
-import { canViewAnalytics, canViewServer, canViewSystemHealth } from './adminAccess';
+import { canManageQuotas, canViewAnalytics, canViewServer, canViewSystemHealth } from './adminAccess';
 
-type Tab = 'users' | 'groups' | 'server' | 'analytics' | 'audit';
+type Tab = 'users' | 'quotas' | 'groups' | 'server' | 'analytics' | 'audit';
 
 
 const STATUS_META: Record<string, { label: string; dot: string; className: string }> = {
@@ -51,8 +53,10 @@ export default function AdminPage() {
   const canBackup = has('ADMIN_BACKUP');
   const canServer = canViewServer(has);
   const canAnalytics = canViewAnalytics(has);
+  const canQuotas = canManageQuotas(has);
   const availableTabs: Tab[] = [
     ...(has('ADMIN_USERS_MANAGE') ? ['users' as const] : []),
+    ...(canQuotas ? ['quotas' as const] : []),
     ...(canViewGroups ? ['groups' as const] : []),
     ...(canServer ? ['server' as const] : []),
     ...(canAnalytics ? ['analytics' as const] : []),
@@ -109,6 +113,7 @@ export default function AdminPage() {
             <aside className="lg:sticky lg:top-8">
               <nav className="flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0" aria-label={t('Разделы администрирования')}>
                 {has('ADMIN_USERS_MANAGE') && navBtn('users', t('Пользователи'), Users, t('Учётные записи и статусы'))}
+                {canQuotas && navBtn('quotas', t('Квоты'), HardDrive, t('Лимиты и занятое место'))}
                 {canViewGroups && navBtn('groups', t('Группы и права'), ShieldCheck, t('Кто что может делать'))}
                 {canServer && navBtn('server', t('Сервер'), Server, t('Состояние и резервное копирование'))}
                 {canAnalytics && navBtn('analytics', t('Аналитика'), BarChart3, t('Сотрудники и события входа'))}
@@ -123,6 +128,7 @@ export default function AdminPage() {
             <div className="min-w-0">
               {groupsError && <Notice tone="error" className="mb-4">{t('Не удалось загрузить группы: {error}', { error: groupsError })}</Notice>}
               {activeTab === 'users' && <UsersTab groups={groups} demoMode={demoMode} />}
+              {activeTab === 'quotas' && <QuotasTab demoMode={demoMode} />}
               {activeTab === 'groups' && <GroupsTab groups={groups} setGroups={setGroups} demoMode={demoMode} canManage={has('ADMIN_GROUPS_MANAGE')} />}
               {activeTab === 'server' && <ServerTab canViewHealth={canHealth} canBackup={canBackup} />}
               {activeTab === 'analytics' && <AnalyticsTab />}
