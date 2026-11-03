@@ -90,11 +90,11 @@ paths:
       responses: { '200': { description: Права сохранены }, '422': { description: Попытка отнять у SUPER_ADMIN критичные права отклонена } }
   /admin/settings:
     get:
-      summary: Серверные настройки (лимиты вложений, политики паролей/2FA, пороги спама, квоты по умолчанию)
-      responses: { '200': { description: Карта настроек } }
+      summary: Реестр серверных настроек; наличие ключа не подтверждает наличие runtime-потребителя
+      responses: { '200': { description: Карта настроек из server_settings } }
     patch:
-      summary: Изменить настройки (кэш потребителей инвалидируется событием settings.changed)
-      responses: { '200': { description: Применено } }
+      summary: Сохранить и аудировать настройки; применение зависит от потребителей конкретного ключа
+      responses: { '200': { description: Сохранено в server_settings; не подтверждает применение работающими сервисами } }
   /admin/audit:
     get:
       summary: Журнал аудита (AUDIT_VIEW) — кто, что, когда, с какого IP
@@ -106,11 +106,33 @@ paths:
       responses: { '200': { description: Записи аудита } }
   /admin/analytics/activity:
     get:
-      summary: Активность (ANALYTICS_VIEW_COMPANY или _OWN_UNIT) — письма/сообщения/активные пользователи, без содержимого
+      summary: Учётные записи и входы за 24 часа/7 дней (ANALYTICS_VIEW_COMPANY или _OWN_UNIT), без содержимого писем и сообщений
       parameters:
-        - { name: period, in: query, schema: { type: string, enum: [day, week, month] } }
-        - { name: department, in: query, schema: { type: string } }
-      responses: { '200': { description: Агрегаты } }
+        - name: period
+          in: query
+          description: Зарезервировано; текущий backend игнорирует параметр и возвращает фиксированные окна 24 часа и 7 дней
+          schema: { type: string, enum: [day, week, month] }
+        - name: department
+          in: query
+          description: Фильтр для COMPANY; для OWN_UNIT сервер использует только подразделение текущего пользователя
+          schema: { type: string }
+      responses:
+        '200':
+          description: Агрегаты; null в loginsLast24h/loginsLast7d означает недоступность статистики, а не ноль
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  scope: { type: string, enum: [COMPANY, OWN_UNIT] }
+                  department: { type: string, nullable: true }
+                  usersTotal: { type: integer, format: int64 }
+                  usersActive: { type: integer, format: int64 }
+                  usersBlocked: { type: integer, format: int64 }
+                  usersDisabled: { type: integer, format: int64 }
+                  loginsLast24h: { type: integer, format: int64, nullable: true }
+                  loginsLast7d: { type: integer, format: int64, nullable: true }
+                  generatedAt: { type: string, format: date-time }
   /admin/system/health:
     get:
       summary: Сводное здоровье всех сервисов и очередей для дашборда админки
@@ -122,8 +144,17 @@ paths:
               schema: { type: object, properties: { services: { type: array, items: { type: object, properties: { name: { type: string }, status: { type: string, enum: [UP, DOWN, DEGRADED] }, version: { type: string } } } }, diskFreeBytes: { type: integer, format: int64 }, mailQueueDepth: { type: integer } } }
   /admin/backup/run:
     post:
-      summary: Ручной запуск резервного копирования (ADMIN_BACKUP)
-      responses: { '202': { description: Задание принято } }
+      summary: Зафиксировать BACKUP_REQUESTED в аудите (ADMIN_BACKUP); физический backup не запускается
+      responses:
+        '202':
+          description: Запрос зарегистрирован; копирование выполняет scripts/backup.ps1 на хосте по расписанию
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [REQUESTED] }
+                  note: { type: string }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }

@@ -1,11 +1,10 @@
 import { Dispatch, FormEvent, SetStateAction, useEffect, useMemo, useState } from 'react';
 import {
-  Activity,
   Ban,
+  BarChart3,
   Check,
   ChevronLeft,
   ChevronRight,
-  HardDrive,
   KeyRound,
   Lock,
   Plus,
@@ -13,32 +12,22 @@ import {
   Save,
   ScrollText,
   Search,
+  Server,
   ShieldCheck,
   UserPlus,
   Users,
 } from 'lucide-react';
-import { AdminGroup, AdminUser, AuditEntry, SystemHealth, adminApi } from '../../api/adminApi';
+import { AdminGroup, AdminUser, AuditEntry, adminApi } from '../../api/adminApi';
 import { errorText } from '../../api/authApi';
 import { DEMO_AUDIT, demoGroups, demoUsers, permissionLabels } from '../../api/demoData';
 import { Avatar, EmptyState, Notice } from '../../components/ui';
 import { countLabel, formatBytes, formatDateTime, systemGroupName, useI18n } from '../../i18n';
 import { useSession } from '../../store/sessionStore';
+import AnalyticsTab from './AnalyticsTab';
+import ServerTab from './ServerTab';
+import { canViewAnalytics, canViewServer, canViewSystemHealth } from './adminAccess';
 
-type Tab = 'users' | 'groups' | 'audit';
-
-const DEMO_HEALTH: SystemHealth = {
-  services: [
-    { name: 'auth-service', status: 'UP', version: null },
-    { name: 'admin-service', status: 'UP', version: null },
-    { name: 'mail-smtp-service', status: 'UP', version: null },
-    { name: 'mail-storage-service', status: 'UP', version: null },
-    { name: 'chat-service', status: 'UP', version: null },
-    { name: 'web-gateway', status: 'UP', version: null },
-    { name: 'elasticsearch (поиск)', status: 'DEGRADED', version: null },
-  ],
-  diskFreeBytes: 412 * 1024 ** 3,
-  mailQueueDepth: 0,
-};
+type Tab = 'users' | 'groups' | 'server' | 'analytics' | 'audit';
 
 
 const STATUS_META: Record<string, { label: string; dot: string; className: string }> = {
@@ -53,15 +42,33 @@ function StatusPill({ status }: { status: string }) {
   return <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${meta.className}`}><span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />{t(meta.label)}</span>;
 }
 
-/** Администрирование Quiet Work: пользователи, группы и аудит в паттерне современных настроек. */
+/** Администрирование Quiet Work: только разделы, разрешённые текущей сессии. */
 export default function AdminPage() {
   const { locale, t } = useI18n();
   const { has, demoMode } = useSession();
-  const [tab, setTab] = useState<Tab>(has('ADMIN_USERS_MANAGE') ? 'users' : 'groups');
-  const [groups, setGroups] = useState<AdminGroup[]>(demoMode ? demoGroups(locale) : []);
+  const canViewGroups = has('ADMIN_GROUPS_MANAGE') || has('ADMIN_USERS_MANAGE');
+  const canHealth = canViewSystemHealth(has);
+  const canBackup = has('ADMIN_BACKUP');
+  const canServer = canViewServer(has);
+  const canAnalytics = canViewAnalytics(has);
+  const availableTabs: Tab[] = [
+    ...(has('ADMIN_USERS_MANAGE') ? ['users' as const] : []),
+    ...(canViewGroups ? ['groups' as const] : []),
+    ...(canServer ? ['server' as const] : []),
+    ...(canAnalytics ? ['analytics' as const] : []),
+    ...(has('AUDIT_VIEW') ? ['audit' as const] : []),
+  ];
+  const [tab, setTab] = useState<Tab>('users');
+  const activeTab = availableTabs.includes(tab) ? tab : availableTabs[0];
+  const [groups, setGroups] = useState<AdminGroup[]>(demoMode && canViewGroups ? demoGroups(locale) : []);
   const [groupsError, setGroupsError] = useState('');
 
   useEffect(() => {
+    if (!canViewGroups) {
+      setGroups([]);
+      setGroupsError('');
+      return;
+    }
     if (demoMode) {
       const localized = demoGroups(locale);
       setGroups((prev) => (prev.length ? prev.map((group) => {
@@ -71,10 +78,10 @@ export default function AdminPage() {
       return;
     }
     adminApi.listGroups().then(setGroups).catch((e) => setGroupsError(errorText(e, locale)));
-  }, [demoMode, locale]);
+  }, [canViewGroups, demoMode, locale]);
 
-  const navBtn = (t: Tab, label: string, Icon: typeof Users, description: string) => (
-    <button key={t} type="button" onClick={() => setTab(t)} className={`nav-row shrink-0 lg:min-h-[52px] ${tab === t ? 'nav-row-active' : ''}`}>
+  const navBtn = (id: Tab, label: string, Icon: typeof Users, description: string) => (
+    <button key={id} type="button" onClick={() => setTab(id)} aria-current={activeTab === id ? 'page' : undefined} className={`nav-row shrink-0 lg:min-h-[52px] ${activeTab === id ? 'nav-row-active' : ''}`}>
       <Icon size={17} strokeWidth={1.8} />
       <span className="min-w-0">
         <span className="block truncate">{label}</span>
@@ -90,31 +97,39 @@ export default function AdminPage() {
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-faint">{t('Организация')}</p>
             <h1 className="mt-2 text-[29px] font-semibold tracking-[-0.03em] text-ink">{t('Администрирование')}</h1>
-            <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted">{t('Люди, доступы и история изменений. Опасные действия всегда подтверждаются и попадают в аудит.')}</p>
+            <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted">{t('Люди, доступы, состояние сервера и аналитика. Опасные действия подтверждаются и попадают в аудит.')}</p>
           </div>
-          <span className="chip bg-surface"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{countLabel(locale, groups.length, ['группа доступа', 'группы доступа', 'групп доступа'], ['access group', 'access groups'])}</span>
+          {canViewGroups && <span className="chip bg-surface"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{countLabel(locale, groups.length, ['группа доступа', 'группы доступа', 'групп доступа'], ['access group', 'access groups'])}</span>}
         </header>
 
-        <div className="grid items-start gap-6 lg:grid-cols-[226px_minmax(0,1fr)]">
-          <aside className="lg:sticky lg:top-8">
-            <nav className="flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0" aria-label={t('Разделы администрирования')}>
-              {has('ADMIN_USERS_MANAGE') && navBtn('users', t('Пользователи'), Users, t('Учётные записи и статусы'))}
-              {(has('ADMIN_GROUPS_MANAGE') || has('ADMIN_USERS_MANAGE')) && navBtn('groups', t('Группы и права'), ShieldCheck, t('Кто что может делать'))}
-              {has('AUDIT_VIEW') && navBtn('audit', t('Аудит'), ScrollText, t('История административных действий'))}
-            </nav>
-            <div className="mt-6 hidden rounded-xl border border-line bg-chrome p-4 text-[13px] leading-relaxed text-muted lg:block">
-              <div className="mb-1.5 flex items-center gap-2 font-medium text-ink-soft"><ShieldCheck size={15} className="text-accent" />{t('Как действуют права')}</div>
-              {t('Итоговый доступ человека — объединение прав всех его групп. Новые права попадут в токены при обновлении сессии, не позднее 15 минут.')}
-            </div>
-          </aside>
+        {availableTabs.length === 0 ? (
+          <Notice tone="warning">{t('Для текущей учётной записи нет доступных разделов администрирования.')}</Notice>
+        ) : (
+          <div className="grid items-start gap-6 lg:grid-cols-[226px_minmax(0,1fr)]">
+            <aside className="lg:sticky lg:top-8">
+              <nav className="flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0" aria-label={t('Разделы администрирования')}>
+                {has('ADMIN_USERS_MANAGE') && navBtn('users', t('Пользователи'), Users, t('Учётные записи и статусы'))}
+                {canViewGroups && navBtn('groups', t('Группы и права'), ShieldCheck, t('Кто что может делать'))}
+                {canServer && navBtn('server', t('Сервер'), Server, t('Состояние и резервное копирование'))}
+                {canAnalytics && navBtn('analytics', t('Аналитика'), BarChart3, t('Сотрудники и события входа'))}
+                {has('AUDIT_VIEW') && navBtn('audit', t('Аудит'), ScrollText, t('История административных действий'))}
+              </nav>
+              <div className="mt-6 hidden rounded-xl border border-line bg-chrome p-4 text-[13px] leading-relaxed text-muted lg:block">
+                <div className="mb-1.5 flex items-center gap-2 font-medium text-ink-soft"><ShieldCheck size={15} className="text-accent" />{t('Как действуют права')}</div>
+                {t('Итоговый доступ человека — объединение прав всех его групп. Новые права попадут в токены при обновлении сессии, не позднее 15 минут.')}
+              </div>
+            </aside>
 
-          <div className="min-w-0">
-            {groupsError && <Notice tone="error" className="mb-4">{t('Не удалось загрузить группы: {error}', { error: groupsError })}</Notice>}
-            {tab === 'users' && <UsersTab groups={groups} demoMode={demoMode} />}
-            {tab === 'groups' && <GroupsTab groups={groups} setGroups={setGroups} demoMode={demoMode} canManage={has('ADMIN_GROUPS_MANAGE')} />}
-            {tab === 'audit' && <AuditTab demoMode={demoMode} />}
+            <div className="min-w-0">
+              {groupsError && <Notice tone="error" className="mb-4">{t('Не удалось загрузить группы: {error}', { error: groupsError })}</Notice>}
+              {activeTab === 'users' && <UsersTab groups={groups} demoMode={demoMode} />}
+              {activeTab === 'groups' && <GroupsTab groups={groups} setGroups={setGroups} demoMode={demoMode} canManage={has('ADMIN_GROUPS_MANAGE')} />}
+              {activeTab === 'server' && <ServerTab canViewHealth={canHealth} canBackup={canBackup} />}
+              {activeTab === 'analytics' && <AnalyticsTab />}
+              {activeTab === 'audit' && <AuditTab demoMode={demoMode} />}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -406,13 +421,6 @@ function GroupsTab({ groups, setGroups, demoMode, canManage }: {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
-  const [health, setHealth] = useState<SystemHealth | null>(demoMode ? DEMO_HEALTH : null);
-
-  useEffect(() => {
-    if (!demoMode) {
-      adminApi.systemHealth().then(setHealth).catch(() => setHealth(null));
-    }
-  }, [demoMode]);
 
   const active = groups.find((g) => g.code === activeCode) ?? groups[0];
 
@@ -494,23 +502,6 @@ function GroupsTab({ groups, setGroups, demoMode, canManage }: {
           </form>
         </section>
 
-        <section className="panel p-5">
-          <div className="mb-3 flex items-center gap-2 font-semibold"><Activity size={17} className="text-accent" />{t('Состояние сервисов')}</div>
-          {!health && <p className="text-[13px] leading-relaxed text-muted">{t('Нет данных. Возможно, у текущей роли нет права на системное состояние.')}</p>}
-          {health?.services.map((s) => (
-            <div key={s.name} className="flex items-center gap-2.5 border-b border-line/70 py-2 text-[13px] last:border-0">
-              <span className={`h-2 w-2 shrink-0 rounded-full ${s.status === 'UP' ? 'bg-emerald-500' : s.status === 'DEGRADED' ? 'bg-amber-500' : 'bg-red-500'}`} />
-              <span className="min-w-0 flex-1 truncate text-ink-soft">{t(s.name)}</span>
-              <span className="text-[11px] text-faint">{s.status === 'UP' ? t('работает') : s.status === 'DEGRADED' ? t('деградация') : t('недоступен')}</span>
-            </div>
-          ))}
-          {health && (
-            <div className="mt-4 flex items-start gap-2 rounded-xl bg-chrome p-3 text-xs leading-relaxed text-muted">
-              <HardDrive size={15} className="mt-0.5 shrink-0" />
-              <span>{t('Свободно на диске:')} <b className="font-medium text-ink-soft">{formatBytes(locale, health.diskFreeBytes)}</b><br />{t('Очередь почты:')} {health.mailQueueDepth < 0 ? t('нет данных RabbitMQ') : health.mailQueueDepth}</span>
-            </div>
-          )}
-        </section>
       </div>
 
       <section className="panel animate-rise-in overflow-hidden">

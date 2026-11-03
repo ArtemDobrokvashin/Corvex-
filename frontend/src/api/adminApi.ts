@@ -54,6 +54,23 @@ export interface SystemHealth {
   mailQueueDepth: number;
 }
 
+export interface AnalyticsActivity {
+  scope: 'COMPANY' | 'OWN_UNIT' | string;
+  department: string | null;
+  usersTotal: number;
+  usersActive: number;
+  usersBlocked: number;
+  usersDisabled: number;
+  loginsLast24h: number | null;
+  loginsLast7d: number | null;
+  generatedAt: string;
+}
+
+export interface BackupRequestResult {
+  status: 'REQUESTED' | string;
+  note: string;
+}
+
 const qs = (params: Record<string, string | number | undefined | null>) => {
   const s = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
@@ -107,4 +124,10 @@ export const adminApi = {
     apiFetch<PageResult<AuditEntry>>(`/api/v1/admin/audit${qs({ page, size })}`),
 
   systemHealth: () => apiFetch<SystemHealth>('/api/v1/admin/system/health'),
+
+  analyticsActivity: (department?: string) =>
+    apiFetch<AnalyticsActivity>(`/api/v1/admin/analytics/activity${qs({ department: department?.trim() })}`),
+
+  /** Регистрирует запрос в аудите; физический backup выполняет планировщик на хосте. */
+  requestBackup: () => apiFetch<BackupRequestResult>('/api/v1/admin/backup/run', { method: 'POST' }),
 };
