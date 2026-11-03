@@ -785,7 +785,12 @@ py -3 scripts/runtime_smoke.py --url https://mail.company.local/ --ca-file C:\co
 # 6. Только после включения SMTP/IMAP/POP3 по шагам 8-9: read-only protocol smoke.
 # Пароль будет запрошен скрыто; письма не отправляются, MOVE/DELE/EXPUNGE не выполняются.
 py -3 scripts/mail_smoke.py --host mail.company.local --username user@company.local --ca-file C:\corvex-pki\corvex-test-ca.crt --report artifacts\smoke\mail-readonly.json
-# Полный send/delivery/Sent, MOVE/EXPUNGE и restart-persistence выполняется отдельно по шагам 8-9.
+
+# 6A. Только для двух выделенных тестовых ящиков: controlled send/delivery/Sent e2e.
+# Создаёт новое письмо + Sent APPEND с run ID, проверяет text/HTML и SHA-256 вложения.
+# Старые письма не изменяет; тестовые копии сохраняет для persistence-smoke.
+py -3 scripts/mail_e2e.py --host mail.company.local --sender sender@company.local --recipient recipient@company.local --ca-file C:\corvex-pki\corvex-test-ca.crt --report artifacts\smoke\mail-e2e.json
+# MOVE/EXPUNGE и restart-persistence выполняются отдельно по шагам 8-9.
 ```
 
 **Следующий рубеж проекта — закрыть оставшиеся сценарии G3, а не просто получить

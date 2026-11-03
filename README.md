@@ -193,7 +193,7 @@ SMTP/IMAP/POP3 остаются выключенными по умолчанию
 
   Пункты 1–3 одной командой также выполняет `scripts\verify.ps1` (Windows Server) или `scripts/verify.sh` (Linux); с флагом `-DockerBuild` / `--docker-build` дополнительно собираются все Docker-образы.
 
-  Дополнительные non-destructive runtime и read-only SMTP/IMAP/POP3 smoke с JSON-отчётами описаны в [`scripts/README.md`](scripts/README.md).
+  Дополнительные non-destructive runtime, read-only protocol smoke и сквозной SMTP/IMAP e2e с JSON-отчётами описаны в [`scripts/README.md`](scripts/README.md).
 
 - [x] **2. Зелёный frontend текущего `main`:** `npm ci`, **9/33** test files/tests, `npm run build` с modern+legacy и production audit 0. Каждый релизный кандидат повторяет G0 без сокращений.
 - [ ] **3. Повторить базовый Compose-подъём на текущем `main`.** Для `b37db56` на ПК проверены config, 13 образов, Flyway и 20/20 основных контейнеров. После смены Boot повторить чистый запуск и проверить restart loops/DLQ; последующие точечные gateway/chat-фиксы не заменяют полный повтор.
@@ -455,7 +455,7 @@ future commits. Repeat G0–G2 on every release SHA.
 
   `scripts\verify.ps1` (Windows Server) or `scripts/verify.sh` (Linux) runs gates 1–3 as one command; add `-DockerBuild` / `--docker-build` to also build every Docker image.
 
-  Additional non-destructive runtime and read-only SMTP/IMAP/POP3 smokes with JSON reports are documented in [`scripts/README.md`](scripts/README.md).
+  Additional non-destructive runtime, read-only protocol smokes, and an end-to-end SMTP/IMAP test with JSON reports are documented in [`scripts/README.md`](scripts/README.md).
 
 - [x] **2. Make the current `main` frontend green:** `npm ci`, **9 files / 33 tests**, `npm run build` with modern+legacy output, and production audit 0. Every release candidate repeats G0 without shortcuts.
 - [ ] **3. Repeat the base Compose launch on current `main`.** For `b37db56`, a PC passed config validation, 13 images, Flyway, and 20/20 core containers. Repeat a clean launch after the Boot change and inspect restart loops/DLQs; later targeted gateway/chat fixes do not replace a full repeat.

@@ -8,6 +8,7 @@
 | `verify.ps1` / `verify.sh` | Frontend, production audit, Maven 12 сервисов + JaCoCo, Compose config; опционально Docker build | Собирает артефакты/образы, но не запускает и не удаляет контейнеры |
 | `runtime_smoke.py` | Уже созданные контейнеры, running/healthy, HTTPS frontend | **Нет**: не выполняет `up`, `down`, restart или prune |
 | `mail_smoke.py` | SMTP 587, IMAP 143/993, POP3 995 через стандартные клиенты Python | **Нет**: не отправляет письма и не выполняет MOVE/DELE/EXPUNGE |
+| `mail_e2e.py` | SMTP send → Sent APPEND → INBOX получателя → Sent отправителя, text/HTML + SHA-256 вложения | **Да, ограниченно**: создаёт одно новое письмо и его Sent-копию с уникальным run ID; старые письма не трогает |
 
 Для Python-скриптов нужен **Python 3.10+**, сторонние pip-пакеты не требуются.
 Windows: `py -3`; Linux/macOS: `python3`. Все команды ниже выполняются из корня
@@ -90,7 +91,42 @@ IMAP открывается через `EXAMINE` и `BODY.PEEK[]`; POP3 не о�
 превышении лимита протокол получает `SKIP`/exit `3`: логин не выдаётся за полный
 FETCH/RETR-pass. Лимит можно осознанно изменить через `--max-message-bytes`.
 
-## 4. Коды завершения и отчёты
+## 4. Сквозной SMTP/IMAP e2e с вложением
+
+Используйте **только два выделенных тестовых ящика**. Команда реально отправляет
+одно локальное письмо и сохраняет его копию в Sent — это не read-only режим.
+
+```powershell
+py -3 scripts/mail_e2e.py `
+  --host mail.company.local `
+  --sender sender@company.local `
+  --recipient recipient@company.local `
+  --ca-file C:\corvex-pki\corvex-test-ca.crt `
+  --wait-seconds 120 `
+  --report artifacts\smoke\mail-e2e.json
+```
+
+Скрипт скрыто запрашивает разные пароли отправителя и получателя. Для protected CI
+предусмотрены `CORVEX_TEST_SENDER_PASSWORD` и `CORVEX_TEST_RECIPIENT_PASSWORD`;
+пароли по-прежнему нельзя передавать аргументами CLI.
+
+Один прогон проверяет четыре обязательных шага:
+
+1. SMTP 587 STARTTLS + AUTH + точный envelope sender/recipient + принятое DATA;
+2. IMAP APPEND того же RAW в `Sent`, как это делает обычный почтовый клиент;
+3. polling INBOX получателя до timeout и UID SEARCH по `X-Corvex-Smoke-ID`;
+4. проверка Sent отправителя по тому же уникальному ID.
+
+У найденных писем проверяются From/To, Subject, text/plain, text/html, имя вложения,
+его размер и SHA-256. Более одного сообщения с тем же run ID — FAIL как дубль.
+Новый UUID создаётся на каждый запуск; автоматических повторов отправки нет.
+
+**INBOX и Sent-копии сохраняются** для следующего persistence-smoke. Run ID печатается
+и попадает в JSON. Существующие сообщения не изменяются; DELE/MOVE/EXPUNGE и очистка
+пока не выполняются. Если SMTP send не принят, зависимые шаги получают SKIP, а общий
+результат остаётся FAIL, а не ложным PASS.
+
+## 5. Коды завершения и отчёты
 
 - `0` — все выбранные проверки PASS;
 - `1` — хотя бы одна проверка FAIL;
@@ -102,21 +138,21 @@ JSON содержит UTC-время, Git SHA, длительность и ре�
 серверной ошибки могут быть чувствительными. Не прикладывайте `.env` или реальные
 письма.
 
-## 5. Проверка самих скриптов
+## 6. Проверка самих скриптов
 
 ```powershell
 py -3 -m unittest discover -s scripts/tests -v
 ```
 
 Тесты используют fake SMTP/IMAP/POP3 и не обращаются к реальному стенду. Они
-проверяют STARTTLS до AUTH, read-only IMAP, POP3 reconnect/UIDL без DELE,
-healthcheck-логику и фильтрацию Compose-профилей.
+проверяют STARTTLS до AUTH, read-only IMAP, POP3 reconnect/UIDL без DELE, точный
+SMTP envelope, Sent APPEND, MIME/SHA-256 и обнаружение дублей, healthcheck-логику
+и фильтрацию Compose-профилей.
 
 ## Граница автоматизации
 
-Эти скрипты **не закрывают полный G3**. Отдельными e2e-наборами на выделенных
-тестовых ящиках ещё нужны SMTP send → доставка → Sent, IMAP MOVE/EXPUNGE,
-restart-persistence, webmail 401/realtime, chat, backup/restore, monitoring
-alert→email и реальный Chrome 109. Mutating e2e должен маркировать созданные
-письма уникальным run ID и удалять только собственные артефакты, не затрагивая
-существующую почту.
+Эти скрипты **не закрывают полный G3**. Даже после успешного `mail_e2e.py` ещё нужны
+IMAP MOVE/EXPUNGE, restart-persistence, webmail 401/realtime, chat, backup/restore,
+monitoring alert→email и реальный Chrome 109. Любой следующий mutating e2e должен
+маркировать созданные письма уникальным run ID и удалять только собственные
+артефакты, не затрагивая существующую почту.
