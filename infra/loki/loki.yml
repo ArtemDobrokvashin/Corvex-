@@ -9,4 +9,4 @@ schema_config:
     - { from: 2020-10-24, store: tsdb, object_store: filesystem, schema: v13, index: { prefix: index_, period: 24h } }
 limits_config:
   retention_period: 744h   # 31 день (настраивает админ, ТЗ §9.1)
-compactor: { retention_enabled: true, working_directory: /loki/compactor }
+compactor: { retention_enabled: true, delete_request_store: filesystem, working_directory: /loki/compactor }
