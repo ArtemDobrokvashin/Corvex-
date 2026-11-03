@@ -40,6 +40,7 @@ import {
   type MailSortOrder,
 } from './mailListControls';
 import { formatMailRecipients } from './mailRecipients';
+import { activeMailAfterRefresh, replaceFolderMessages } from './mailRefresh';
 import { EmojiPickerButton } from '../../components/EmojiPicker';
 import { Avatar, EmptyState, IconButton, cleanPersonName, emailFromHeader } from '../../components/ui';
 import { countLabel, formatBytes, formatDateTime, useI18n } from '../../i18n';
@@ -86,6 +87,8 @@ const FOLDER_ICONS: Record<string, typeof Inbox> = {
   SPAM: OctagonAlert,
   TRASH: Trash2,
 };
+
+const MAIL_REFRESH_INTERVAL_MS = 15_000;
 
 /** Почта Quiet Work: папки → сканируемый список → письмо как документ, composer поверх контекста. */
 export default function MailPage() {
@@ -281,6 +284,47 @@ export default function MailPage() {
       .catch((error) => { if (!cancelled) setLoadError(errorMessage(error)); });
     return () => { cancelled = true; };
     // toMailView зависит только от locale; folder/selectedRealFolderId — триггер загрузки.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demoMode, folder, selectedRealFolderId, locale]);
+
+  useEffect(() => {
+    if (demoMode || !selectedRealFolderId) return;
+    let cancelled = false;
+    let refreshing = false;
+
+    const refresh = async () => {
+      if (cancelled || refreshing || document.visibilityState === 'hidden') return;
+      refreshing = true;
+      try {
+        const [folderItems, messageItems] = await Promise.all([
+          mailApi.folders(),
+          mailApi.messages(selectedRealFolderId),
+        ]);
+        if (cancelled) return;
+        const mapped = messageItems.map((item) => toMailView(item, folder));
+        setRealFolders(folderItems);
+        setServerFolderCounts(Object.fromEntries(folderItems.map((f) => [f.specialUse ?? f.id, f.unread])));
+        setMails((prev) => replaceFolderMessages(prev, folder, mapped));
+        setActiveId((current) => activeMailAfterRefresh(current, mapped));
+        setLoadError(null);
+      } catch (error) {
+        if (!cancelled) setLoadError(errorMessage(error));
+      } finally {
+        refreshing = false;
+      }
+    };
+
+    const timer = window.setInterval(() => { void refresh(); }, MAIL_REFRESH_INTERVAL_MS);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void refresh();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+    // toMailView зависит только от locale; snapshot обновляется для выбранной папки.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demoMode, folder, selectedRealFolderId, locale]);
 
