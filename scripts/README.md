@@ -6,7 +6,7 @@
 | Инструмент | Что проверяет | Меняет стенд? |
 |---|---|---|
 | `verify.ps1` / `verify.sh` | Frontend, production audit, Maven 12 сервисов + JaCoCo, Compose config; опционально Docker build | Собирает артефакты/образы, но не запускает и не удаляет контейнеры |
-| `backup.ps1` / `restore.ps1` | Binary-safe PostgreSQL dumps, Maildir/CAS/chat files, config и SHA-256 manifest; isolated data restore | Backup не останавливает стенд; `-DataOnly` создаёт отдельный проект, полный restore перезаписывает данные и требует `-Force` |
+| `backup.ps1` / `restore.ps1` / `restore_verify.ps1` | Binary-safe PostgreSQL dumps, Maildir/CAS/chat files, SHA-256 manifest, isolated restore и содержательная сверка | Backup не останавливает стенд; `-DataOnly` создаёт отдельный проект, verify не меняет рабочий `corvex`; полный restore требует `-Force` |
 | `runtime_smoke.py` | Уже созданные контейнеры, running/healthy, HTTPS frontend | **Нет**: не выполняет `up`, `down`, restart или prune |
 | `alert_e2e.py` | Synthetic Alertmanager alert → webhook/Rabbit → SMTP → IMAP INBOX | **Да, ограниченно**: создаёт и завершает один alert с run ID; не останавливает сервисы и не меняет существующие письма |
 | `mail_smoke.py` | SMTP 587, IMAP 143/993, POP3 995 через стандартные клиенты Python | **Нет**: не отправляет письма и не выполняет MOVE/DELE/EXPUNGE |
@@ -246,7 +246,24 @@ powershell -ExecutionPolicy Bypass -File scripts\restore.ps1 `
 `com.docker.compose.project`. Изолированные ресурсы сохраняются для последующей проверки
 и автоматически не удаляются. `-RestoreConfig` и `-DataOnly` несовместимы.
 
-Data-only drill доказывает физическую восстановимость дампов и файлов, но не заменяет
+После DataOnly одной командой проверьте содержимое восстановленной копии:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\restore_verify.ps1 `
+  -BackupDir C:\CorvexBackup\<timestamp> `
+  -ProjectName corvex-restore-drill
+```
+
+Verify сначала подтверждает Docker label изолированного проекта и запрещает `corvex` как
+цель. Три volumes сравниваются read-only с исходными архивами через `diff`. Для каждой БД
+создаётся уникальная temporary reference-БД из того же backup; actual и reference затем
+сравниваются одним и тем же `pg_dump`, что исключает ложные различия представления DDL.
+Reference-БД удаляется только после соответствующего PASS; при mismatch она остаётся для
+диагностики. Рабочий проект и application-контейнеры не затрагиваются, а восстановленные
+PostgreSQL/volumes сохраняются. Пароль БД не печатается и не передаётся аргументом:
+sidecar использует защищённый `.env` через `--env-file` и не публикует порты.
+
+Data-only drill с verify доказывает восстановимость дампов и файлов, но не заменяет
 полный вход в восстановленные webmail/chat. Полный restore текущего проекта выполняется
 только отдельно с `-Force`; он останавливает стек и перезаписывает его данные.
 
@@ -273,7 +290,7 @@ py -3 -m unittest discover -s scripts/tests -v
 SMTP envelope, Sent APPEND, MIME/SHA-256 и обнаружение дублей, UID MOVE/UID EXPUNGE
 с guards, reconnect/restart-оркестрацию, healthcheck-логику, фильтрацию
 Compose-профилей, controlled alert→email с обязательным resolve и статические guards
-binary-safe backup/isolated restore.
+binary-safe backup/isolated restore и canonical reference-DB verification.
 
 ## Граница автоматизации
 
