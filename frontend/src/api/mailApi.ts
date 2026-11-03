@@ -1,6 +1,12 @@
 import { apiFetch } from './httpClient';
 
 /** Контракты mail-storage-service (gateway: /api/v1/mail/**). */
+export interface MailboxQuota {
+  usedBytes: number;
+  quotaBytes: number;
+  messageCount: number;
+}
+
 export interface MailFolderView {
   id: string;
   name: string;
@@ -71,6 +77,7 @@ export interface SendMessageResult {
 }
 
 export const mailApi = {
+  quota: () => apiFetch<MailboxQuota>('/api/v1/mail/quota'),
   folders: () => apiFetch<MailFolderView[]>('/api/v1/mail/folders'),
   messages: (folderId: string, cursorUid?: number, limit = 50) => {
     const params = new URLSearchParams({ limit: String(limit) });

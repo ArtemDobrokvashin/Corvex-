@@ -148,11 +148,11 @@ export default function QuotasTab({ demoMode = false }: { demoMode?: boolean }) 
                     </div>
                   </td>
                   <td className="px-4 py-4 text-muted">{user.department || '—'}</td>
-                  <td className="whitespace-nowrap px-4 py-4 text-ink-soft">{formatBytes(locale, user.usedBytes)}</td>
+                  <td className="whitespace-nowrap px-4 py-4 text-ink-soft">{user.usedBytes === null ? '—' : formatBytes(locale, user.usedBytes)}</td>
                   <td className="px-4 py-4">
                     {!editing ? <>
                       <div className="font-medium text-ink-soft">{user.quotaBytes === 0 ? t('Без лимита') : formatBytes(locale, user.quotaBytes)}</div>
-                      {usage === null ? <div className="mt-1 text-xs text-faint">{t('Объём занятого места не ограничен')}</div> : <>
+                      {user.usedBytes === null ? <div className="mt-1 text-xs text-faint">{t('Фактический объём временно недоступен')}</div> : usage === null ? <div className="mt-1 text-xs text-faint">{t('Объём занятого места не ограничен')}</div> : <>
                         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/[0.07]"><div className={`h-full rounded-full ${barClass}`} style={{ width: `${Math.min(100, usage)}%` }} /></div>
                         <div className={`mt-1 text-xs ${usage > 100 ? 'font-medium text-danger' : 'text-faint'}`}>{t('{used}% занято', { used: usage })}</div>
                       </>}
@@ -160,7 +160,7 @@ export default function QuotasTab({ demoMode = false }: { demoMode?: boolean }) 
                       <label htmlFor={`quota-${user.id}`} className="field-label">{t('Новый лимит, ГБ')}</label>
                       <input id={`quota-${user.id}`} value={quotaInput} onChange={(event) => setQuotaInput(event.target.value)} type="text" inputMode="decimal" autoFocus disabled={savingId === user.id} className="field h-9 py-0" aria-describedby={`quota-help-${user.id}`} />
                       <p id={`quota-help-${user.id}`} className="mt-1.5 text-xs text-faint">{t('0 — без лимита. Можно использовать дробное значение.')}</p>
-                      {pendingBytes !== null && pendingBytes > 0 && pendingBytes < user.usedBytes && <p className="mt-2 text-xs leading-5 text-amber-700">{t('Лимит меньше занятого места: новые письма и Sent-копии не будут сохраняться, пока занятый объём превышает лимит.')}</p>}
+                      {pendingBytes !== null && pendingBytes > 0 && user.usedBytes !== null && pendingBytes < user.usedBytes && <p className="mt-2 text-xs leading-5 text-amber-700">{t('Лимит меньше занятого места: новые письма и Sent-копии не будут сохраняться, пока занятый объём превышает лимит.')}</p>}
                       <div className="mt-3 flex gap-2">
                         <button className="btn-primary h-8 px-3 text-xs" disabled={savingId !== null}>{savingId === user.id ? <Loader2 size={14} className="animate-spin" /> : null}{t('Сохранить')}</button>
                         <button type="button" className="btn-ghost h-8 px-3 text-xs" disabled={savingId !== null} onClick={() => setEditingId(null)}>{t('Отмена')}</button>

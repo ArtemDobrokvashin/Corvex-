@@ -88,7 +88,7 @@ public final class AuthDtos {
                     groups == null ? List.of() : groups,
                     permissions == null ? List.of() : permissions,
                     u.getQuotaBytes(),
-                    0L, // usedBytes появится с почтовым хранилищем на этапе 2
+                    0L, // legacy-поле /me; авторитетный usage отдаёт mail-storage /api/v1/mail/quota
                     u.isMustChangePassword(), u.isTotpEnabled(),
                     u.getLastLoginAt(), u.getCreatedAt());
         }

@@ -363,6 +363,25 @@ class ProtocolMailServiceAdditionalTest {
     }
 
     @Test
+    void batchUsageIncludesZeroForEmptyMailboxesAndDeduplicatesIds() {
+        UUID emptyOwner = UUID.randomUUID();
+        MessageMetadataRepository.MailboxUsageProjection row = mock(MessageMetadataRepository.MailboxUsageProjection.class);
+        when(row.getOwnerId()).thenReturn(ownerId);
+        when(row.getUsedBytes()).thenReturn(3_435_973_837L);
+        when(row.getMessageCount()).thenReturn(12L);
+        when(messages.summarizeByOwnerIds(List.of(ownerId, emptyOwner))).thenReturn(List.of(row));
+
+        var usage = service.usage(List.of(ownerId, emptyOwner, ownerId));
+
+        assertEquals(2, usage.size());
+        assertEquals(3_435_973_837L, usage.get(0).usedBytes());
+        assertEquals(12, usage.get(0).messageCount());
+        assertEquals(emptyOwner, usage.get(1).ownerId());
+        assertEquals(0, usage.get(1).usedBytes());
+        verify(messages).summarizeByOwnerIds(List.of(ownerId, emptyOwner));
+    }
+
+    @Test
     void staticHelpersCoverRemainingEdgeCases() {
         assertNull(ProtocolMailService.replaceFolderSegment(null, "New"));
         assertEquals("only/two", ProtocolMailService.replaceFolderSegment("only/two", "New"));

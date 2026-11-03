@@ -16,6 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 import ru.corvex.mailstorage.api.dto.MailDtos;
 import ru.corvex.mailstorage.service.MailApiService;
 import ru.corvex.mailstorage.service.MailSendService;
+import ru.corvex.mailstorage.service.ProtocolMailService;
 
 import java.io.IOException;
 import java.util.HashSet;
@@ -33,10 +34,19 @@ public class MailController {
 
     private final MailApiService mail;
     private final MailSendService sender;
+    private final ProtocolMailService protocol;
 
-    public MailController(MailApiService mail, MailSendService sender) {
+    public MailController(MailApiService mail, MailSendService sender, ProtocolMailService protocol) {
         this.mail = mail;
         this.sender = sender;
+        this.protocol = protocol;
+    }
+
+    @GetMapping("/quota")
+    @PreAuthorize("hasAuthority('MAIL_READ_OWN')")
+    MailDtos.QuotaView quota(@AuthenticationPrincipal Jwt jwt) {
+        var quota = protocol.quota(userId(jwt));
+        return new MailDtos.QuotaView(quota.usedBytes(), quota.quotaBytes(), quota.messageCount());
     }
 
     @GetMapping("/folders")

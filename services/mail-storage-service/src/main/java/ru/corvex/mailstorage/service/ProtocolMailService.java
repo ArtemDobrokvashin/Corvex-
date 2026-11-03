@@ -23,6 +23,7 @@ import java.io.InputStream;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -387,6 +388,22 @@ public class ProtocolMailService {
             targetUids.add(newUid);
         }
         return new ProtocolDtos.CopyResponse(sourceUids, targetUids);
+    }
+
+    /** Фактический logical usage по тем же метаданным, которые участвуют в quota enforcement. */
+    @Transactional(readOnly = true)
+    public List<ProtocolDtos.MailboxUsageView> usage(List<UUID> ownerIds) {
+        if (ownerIds == null || ownerIds.isEmpty()) {
+            return List.of();
+        }
+        List<UUID> distinctIds = ownerIds.stream().distinct().toList();
+        Map<UUID, ProtocolDtos.MailboxUsageView> result = new LinkedHashMap<>();
+        distinctIds.forEach(id -> result.put(id, new ProtocolDtos.MailboxUsageView(id, 0, 0)));
+        for (MessageMetadataRepository.MailboxUsageProjection row : messages.summarizeByOwnerIds(distinctIds)) {
+            result.put(row.getOwnerId(), new ProtocolDtos.MailboxUsageView(
+                    row.getOwnerId(), row.getUsedBytes(), row.getMessageCount()));
+        }
+        return List.copyOf(result.values());
     }
 
     @Transactional(readOnly = true)

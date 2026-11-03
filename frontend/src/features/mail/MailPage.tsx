@@ -12,7 +12,6 @@ import {
   FilePenLine,
   Folder,
   Forward,
-  HardDrive,
   Inbox,
   MailOpen,
   Minus,
@@ -31,8 +30,9 @@ import {
 } from 'lucide-react';
 import { demoFolders, demoMails, DemoMail } from '../../api/demoData';
 import { externalMailApi, ExternalMailAccount } from '../../api/externalMailApi';
-import { mailApi, MailFolderView, MailMessageListItem, SendAttachment } from '../../api/mailApi';
+import { mailApi, MailboxQuota, MailFolderView, MailMessageListItem, SendAttachment } from '../../api/mailApi';
 import ExternalMailAccountsModal from './ExternalMailAccountsModal';
+import MailboxUsage from './MailboxUsage';
 import MailSidebarActions from './MailSidebarActions';
 import { canAdministerExternalMail, canUseExternalMail } from './externalMailAccess';
 import {
@@ -100,6 +100,8 @@ export default function MailPage() {
   const demoReadMailIds = useSession((s) => s.demoReadMailIds);
   const markDemoMailRead = useSession((s) => s.markDemoMailRead);
   const [realFolders, setRealFolders] = useState<MailFolderView[]>([]);
+  const [mailboxQuota, setMailboxQuota] = useState<MailboxQuota | null>(null);
+  const [mailboxQuotaUnavailable, setMailboxQuotaUnavailable] = useState(false);
   const folders = useMemo<FolderTab[]>(() => {
     const localized = demoFolders(locale);
     if (demoMode) return localized;
@@ -249,6 +251,43 @@ export default function MailPage() {
       })
       .catch((error) => { if (!cancelled) setLoadError(errorMessage(error)); });
     return () => { cancelled = true; };
+  }, [demoMode]);
+
+  useEffect(() => {
+    if (demoMode) {
+      setMailboxQuota({ usedBytes: 3.1 * 1024 ** 3, quotaBytes: 5 * 1024 ** 3, messageCount: 5 });
+      setMailboxQuotaUnavailable(false);
+      return;
+    }
+    let cancelled = false;
+    let refreshing = false;
+    setMailboxQuota(null);
+    setMailboxQuotaUnavailable(false);
+    const refresh = async () => {
+      if (cancelled || refreshing || document.visibilityState === 'hidden') return;
+      refreshing = true;
+      try {
+        const quota = await mailApi.quota();
+        if (cancelled) return;
+        setMailboxQuota(quota);
+        setMailboxQuotaUnavailable(false);
+      } catch {
+        if (!cancelled) setMailboxQuotaUnavailable(true);
+      } finally {
+        refreshing = false;
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => { void refresh(); }, MAIL_REFRESH_INTERVAL_MS);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void refresh();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [demoMode]);
 
   useEffect(() => {
@@ -533,11 +572,7 @@ export default function MailPage() {
             })}
           </nav>
 
-          <div className="mt-auto shrink-0 rounded-xl bg-black/[0.035] p-3">
-            <div className="flex items-center gap-2 text-xs font-medium text-ink-soft"><HardDrive size={14} className="text-muted" />{t('Ящик')}</div>
-            <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-black/[0.08]"><div className="h-full w-[62%] rounded-full bg-accent" /></div>
-            <p className="mt-2 text-[11px] leading-relaxed text-muted">{t('Использовано {used} из {total}', { used: formatBytes(locale, 3.1 * 1024 ** 3), total: formatBytes(locale, 5 * 1024 ** 3) })}</p>
-          </div>
+          <MailboxUsage quota={mailboxQuota} unavailable={mailboxQuotaUnavailable} />
         </aside>
 
         {/* Список писем */}

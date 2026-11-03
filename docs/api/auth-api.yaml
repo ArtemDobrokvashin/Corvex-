@@ -87,7 +87,7 @@ paths:
                   groups: { type: array, items: { type: string } }
                   permissions: { type: array, items: { type: string } }
                   quotaBytes: { type: integer, format: int64 }
-                  usedBytes: { type: integer, format: int64 }
+                  usedBytes: { type: integer, format: int64, description: Legacy-поле /me (0); фактический объём — GET /api/v1/mail/quota }
   /auth/change-password:
     post:
       summary: Смена своего пароля (прочие refresh-сессии отзываются)
