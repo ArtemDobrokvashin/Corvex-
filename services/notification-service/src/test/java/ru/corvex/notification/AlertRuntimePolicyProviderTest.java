@@ -1,6 +1,7 @@
 package ru.corvex.notification;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -10,10 +11,22 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class AlertRuntimePolicyProviderTest {
+
+    @Test
+    void springSelectsValueAnnotatedProductionConstructor() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.registerBean(AlertRuntimePolicyProvider.class);
+
+            context.refresh();
+
+            assertNotNull(context.getBean(AlertRuntimePolicyProvider.class));
+        }
+    }
 
     @Test
     void cachesSuccessfulPolicyAndKeepsItWhenAdminBecomesUnavailable() {

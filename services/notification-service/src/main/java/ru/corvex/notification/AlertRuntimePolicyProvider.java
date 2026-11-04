@@ -2,6 +2,7 @@ package ru.corvex.notification;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -51,6 +52,7 @@ public class AlertRuntimePolicyProvider {
     private Instant lastSuccess;
     private String lastStatus = "ENVIRONMENT";
 
+    @Autowired
     public AlertRuntimePolicyProvider(
             @Value("${corvex.admin-service-url:http://admin-service:8090}") String adminUrl,
             @Value("${corvex.internal.api-token:}") String internalToken,

@@ -3,6 +3,7 @@ package ru.corvex.notification;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 
@@ -14,6 +15,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -35,6 +37,19 @@ class AlertListenerTest {
         clock = new MutableClock(Instant.parse("2026-11-04T10:00:00Z"));
         when(policies.current()).thenAnswer(invocation -> policy(true));
         listener = new AlertListener(mailSender, policies, clock);
+    }
+
+    @Test
+    void springSelectsProductionConstructorDespitePackagePrivateTestConstructor() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.registerBean(JavaMailSender.class, () -> mailSender);
+            context.registerBean(AlertRuntimePolicyProvider.class, () -> policies);
+            context.registerBean(AlertListener.class);
+
+            context.refresh();
+
+            assertNotNull(context.getBean(AlertListener.class));
+        }
     }
 
     @Test
