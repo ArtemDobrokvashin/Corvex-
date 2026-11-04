@@ -95,6 +95,9 @@ final class ApiMessageLocalizer {
             Map.entry("Пользователь не найден: ", "User not found: "),
             Map.entry("Укажите ", "Specify "),
             Map.entry("Некорректный email в поле: ", "Invalid email in field: "),
+            Map.entry("SMTP password: ", "SMTP password: "),
+            Map.entry("Telegram token: ", "Telegram token: "),
+            Map.entry("MAX token: ", "MAX token: "),
             Map.entry("Неизвестный статус пользователя: ", "Unknown user status: "));
 
     private static final List<LocalizedPattern> PATTERNS = List.of(

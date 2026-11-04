@@ -89,6 +89,7 @@ class AlertSettingsServiceTest {
         builder.telegramChatId = "-100123";
         builder.telegramBotToken = "telegram-secret";
         when(cipher.encrypt("telegram-secret")).thenReturn("encrypted-telegram");
+        when(cipher.decrypt("encrypted-telegram")).thenReturn("telegram-secret");
         when(repository.save(any(), any())).thenAnswer(invocation -> new Stored(
                 invocation.getArgument(0), 7L, Instant.parse("2026-11-04T10:00:00Z")));
 
@@ -125,6 +126,7 @@ class AlertSettingsServiceTest {
         initial.telegramChatId = "-100";
         initial.telegramBotToken = "ui-secret";
         when(cipher.encrypt("ui-secret")).thenReturn("encrypted-ui");
+        when(cipher.decrypt("encrypted-ui")).thenReturn("ui-secret");
         when(repository.save(any(), any())).thenAnswer(invocation -> new Stored(
                 invocation.getArgument(0), 1L, Instant.now()));
         service.replace(initial.build(), ACTOR);

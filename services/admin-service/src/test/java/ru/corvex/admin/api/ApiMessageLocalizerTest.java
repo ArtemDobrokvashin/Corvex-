@@ -90,6 +90,12 @@ class ApiMessageLocalizerTest {
         assertEquals("SMTP password: choose either replacement or clearing, not both",
                 ApiMessageLocalizer.localize(
                         "SMTP password: выберите замену или очистку, не обе операции", Locale.ENGLISH));
+        assertEquals("Telegram token: invalid length or a line break",
+                ApiMessageLocalizer.localize(
+                        "Telegram token: недопустимая длина или перевод строки", Locale.ENGLISH));
+        assertEquals("MAX token: invalid length or a line break",
+                ApiMessageLocalizer.localize(
+                        "MAX token: недопустимая длина или перевод строки", Locale.ENGLISH));
     }
 
     @Test
