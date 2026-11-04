@@ -1,6 +1,7 @@
 package ru.corvex.admin.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -103,7 +104,8 @@ class AlertSettingsServiceTest {
         assertEquals("DATABASE", view.source());
         assertEquals(new ru.corvex.admin.api.dto.AlertDtos.SecretState(true, "UI"),
                 view.telegramBotToken());
-        assertFalse(new ObjectMapper().writeValueAsString(view).contains("telegram-secret"));
+        assertFalse(new ObjectMapper().registerModule(new JavaTimeModule())
+                .writeValueAsString(view).contains("telegram-secret"));
         verify(audit).record(org.mockito.ArgumentMatchers.eq(ACTOR),
                 org.mockito.ArgumentMatchers.eq("ALERT_SETTINGS_CHANGED"),
                 org.mockito.ArgumentMatchers.eq("alert_runtime_config"),
