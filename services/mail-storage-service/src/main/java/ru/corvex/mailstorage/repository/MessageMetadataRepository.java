@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import ru.corvex.mailstorage.domain.MessageMetadata;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -50,4 +51,18 @@ public interface MessageMetadataRepository extends JpaRepository<MessageMetadata
     List<MessageMetadata> findAllByFolder_IdAndOwnerId(UUID folderId, UUID ownerId);
 
     long countByOwnerId(UUID ownerId);
+
+    @Query("""
+            select m.ownerId as ownerId, sum(m.sizeBytes) as usedBytes, count(m) as messageCount
+            from MessageMetadata m
+            where m.ownerId in :ownerIds
+            group by m.ownerId
+            """)
+    List<MailboxUsageProjection> summarizeByOwnerIds(@Param("ownerIds") Collection<UUID> ownerIds);
+
+    interface MailboxUsageProjection {
+        UUID getOwnerId();
+        long getUsedBytes();
+        long getMessageCount();
+    }
 }

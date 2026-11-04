@@ -59,7 +59,8 @@ class StorageControllersTest {
     void mailControllerDelegatesWithJwtOwnerAndPermissions() throws Exception {
         MailApiService mail = mock(MailApiService.class);
         MailSendService sender = mock(MailSendService.class);
-        MailController controller = new MailController(mail, sender);
+        ProtocolMailService protocol = mock(ProtocolMailService.class);
+        MailController controller = new MailController(mail, sender, protocol);
         UUID folderId = UUID.randomUUID();
         UUID messageId = UUID.randomUUID();
         MailDtos.FolderView folder = new MailDtos.FolderView(folderId, "INBOX", "INBOX", 2, 1);
@@ -70,7 +71,9 @@ class StorageControllersTest {
                 "<m@x>", null, List.of(), List.of("a@x"), "me@x", null);
         when(sender.send(userId, Set.of("MAIL_READ_OWN", "MAIL_EXTERNAL_ACCOUNTS", "ADMIN_MAIL_POLICY"), request))
                 .thenReturn(sent);
+        when(protocol.quota(userId)).thenReturn(new ProtocolDtos.QuotaView(3_435_973_837L, 4_611_686_018L, 12));
 
+        assertEquals(new MailDtos.QuotaView(3_435_973_837L, 4_611_686_018L, 12), controller.quota(jwt));
         assertEquals(List.of(folder), controller.folders(jwt));
         controller.messages(jwt, folderId, 50L, 25);
         controller.message(jwt, messageId);
@@ -81,18 +84,21 @@ class StorageControllersTest {
         verify(mail).listMessages(userId, folderId, 50L, 25);
         verify(mail).getMessage(userId, messageId);
         verify(mail).moveMessage(userId, messageId, folderId);
+        verify(protocol).quota(userId);
     }
 
     @Test
     void mailControllerRejectsJwtWithoutUuidSubject() throws Exception {
-        MailController controller = new MailController(mock(MailApiService.class), mock(MailSendService.class));
+        MailController controller = new MailController(
+                mock(MailApiService.class), mock(MailSendService.class), mock(ProtocolMailService.class));
         Jwt bad = jwt("not-a-uuid", null);
         assertEquals(HttpStatus.UNAUTHORIZED, assertThrows(ResponseStatusException.class,
                 () -> controller.folders(bad)).getStatusCode());
 
         Jwt noPermissions = jwt(userId.toString(), null);
         MailSendService sender = mock(MailSendService.class);
-        MailController local = new MailController(mock(MailApiService.class), sender);
+        MailController local = new MailController(
+                mock(MailApiService.class), sender, mock(ProtocolMailService.class));
         MailDtos.SendMessageRequest req = new MailDtos.SendMessageRequest(
                 List.of(), List.of(), List.of(), null, null, null, null, null, null);
         when(sender.send(userId, Set.of(), req)).thenReturn(null);
@@ -181,6 +187,23 @@ class StorageControllersTest {
 
         assertNull(controller.transportConfig("internal", accountId));
         verify(accounts).transportConfig(accountId);
+    }
+
+    @Test
+    void internalUsageRequiresTokenAndDelegatesBatch() {
+        ProtocolMailService service = mock(ProtocolMailService.class);
+        InternalMailboxUsageController controller = new InternalMailboxUsageController(
+                service, new InternalTokenGuard("internal"));
+        ProtocolDtos.UsageRequest request = new ProtocolDtos.UsageRequest(List.of(userId));
+        List<ProtocolDtos.MailboxUsageView> expected = List.of(
+                new ProtocolDtos.MailboxUsageView(userId, 123, 4));
+        when(service.usage(List.of(userId))).thenReturn(expected);
+
+        assertEquals(HttpStatus.UNAUTHORIZED, assertThrows(ResponseStatusException.class,
+                () -> controller.usage("wrong", request)).getStatusCode());
+        verify(service, never()).usage(List.of(userId));
+        assertEquals(expected, controller.usage("internal", request));
+        verify(service).usage(List.of(userId));
     }
 
     @Test

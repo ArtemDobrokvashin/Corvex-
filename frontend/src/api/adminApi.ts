@@ -20,7 +20,7 @@ export interface AdminUser {
   department: string | null;
   groups: string[];
   quotaBytes: number;
-  usedBytes: number;
+  usedBytes: number | null;
   mustChangePassword: boolean;
   totpEnabled: boolean;
   lastLoginAt: string | null;

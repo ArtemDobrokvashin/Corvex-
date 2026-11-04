@@ -21,7 +21,7 @@ public final class AdminDtos {
     public record AdminUserView(
             UUID id, String username, String email, String displayName,
             String source, String status, String department,
-            List<String> groups, long quotaBytes, long usedBytes,
+            List<String> groups, long quotaBytes, Long usedBytes,
             boolean mustChangePassword, boolean totpEnabled,
             Instant lastLoginAt, Instant createdAt) {
     }

@@ -23,6 +23,7 @@ describe('disk quota values', () => {
   });
 
   it('distinguishes unlimited quota and exposes over-100-percent usage', () => {
+    expect(quotaUsagePercent(null, 100)).toBeNull();
     expect(quotaUsagePercent(100, 0)).toBeNull();
     expect(quotaUsagePercent(0, 100)).toBe(0);
     expect(quotaUsagePercent(150, 100)).toBe(150);

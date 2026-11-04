@@ -1,5 +1,9 @@
 package ru.corvex.mailstorage.api.dto;
 
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -63,5 +67,12 @@ public final class ProtocolDtos {
 
     /** Квота ящика для IMAP QUOTA (RFC 2087): quotaBytes=0 означает «без лимита». */
     public record QuotaView(long usedBytes, long quotaBytes, long messageCount) {
+    }
+
+    /** Batch-запрос фактического usage для admin-service; не содержит содержимого писем. */
+    public record UsageRequest(@NotEmpty @Size(max = 200) List<@NotNull UUID> ownerIds) {
+    }
+
+    public record MailboxUsageView(UUID ownerId, long usedBytes, long messageCount) {
     }
 }

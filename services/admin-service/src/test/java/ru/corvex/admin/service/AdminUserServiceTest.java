@@ -11,6 +11,7 @@ import ru.corvex.admin.api.dto.AdminDtos.PatchUserRequest;
 import ru.corvex.admin.client.AuthServiceClient;
 import ru.corvex.admin.client.AuthServiceClient.RemotePage;
 import ru.corvex.admin.client.AuthServiceClient.RemoteUser;
+import ru.corvex.admin.client.MailStorageClient;
 import ru.corvex.admin.domain.UserGroup;
 import ru.corvex.admin.service.AuditService.Actor;
 
@@ -22,6 +23,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -42,6 +44,7 @@ class AdminUserServiceTest {
             UUID.fromString("22222222-2222-4222-8222-222222222222"), "admin", "192.0.2.9");
 
     private AuthServiceClient auth;
+    private MailStorageClient mailStorage;
     private AdminGroupService groupService;
     private AuditService audit;
     private AdminUserService service;
@@ -49,9 +52,10 @@ class AdminUserServiceTest {
     @BeforeEach
     void setUp() {
         auth = mock(AuthServiceClient.class);
+        mailStorage = mock(MailStorageClient.class);
         groupService = mock(AdminGroupService.class);
         audit = mock(AuditService.class);
-        service = new AdminUserService(auth, groupService, audit);
+        service = new AdminUserService(auth, mailStorage, groupService, audit);
     }
 
     @Test
@@ -136,6 +140,8 @@ class AdminUserServiceTest {
                 .thenReturn(new RemotePage(List.of(first, second), 2, 25, 12, 1));
         when(groupService.groupCodesByUserIds(List.of(first.id(), second.id())))
                 .thenReturn(Map.of(USER_ID, List.of("SALES")));
+        when(mailStorage.usedBytes(List.of(first.id(), second.id())))
+                .thenReturn(Map.of(first.id(), 250L, secondId, 3_435_973_837L));
 
         var result = service.list("an", "ACTIVE", "Sales", 2, 25);
 
@@ -144,6 +150,21 @@ class AdminUserServiceTest {
         assertEquals(List.of(), result.content().get(1).groups());
         assertEquals("ldap", result.content().get(1).source());
         assertEquals(10_000L, result.content().get(1).quotaBytes());
+        assertEquals(250L, result.content().get(0).usedBytes().longValue());
+        assertEquals(3_435_973_837L, result.content().get(1).usedBytes().longValue());
+    }
+
+    @Test
+    void listMarksUsageUnknownInsteadOfUsingLegacyAuthZero() {
+        RemoteUser remote = remoteUser("ACTIVE");
+        when(auth.listUsers(null, null, null, 0, 50))
+                .thenReturn(new RemotePage(List.of(remote), 0, 50, 1, 1));
+        when(groupService.groupCodesByUserIds(List.of(USER_ID))).thenReturn(Map.of());
+        when(mailStorage.usedBytes(List.of(USER_ID))).thenReturn(Map.of());
+
+        var result = service.list(null, null, null, 0, 50);
+
+        assertNull(result.content().get(0).usedBytes());
     }
 
     @Test
@@ -178,10 +199,12 @@ class AdminUserServiceTest {
         when(auth.getUser(USER_ID)).thenReturn(previous);
         when(auth.patchUser(eq(USER_ID), any())).thenReturn(updated);
         when(groupService.groupCodesOf(USER_ID)).thenReturn(List.of("USER"));
+        when(mailStorage.usedBytes(List.of(USER_ID))).thenReturn(Map.of(USER_ID, 3_435_973_837L));
 
         AdminUserView result = service.updateQuota(USER_ID, 5_368_709_120L, ACTOR);
 
         assertEquals(5_368_709_120L, result.quotaBytes());
+        assertEquals(3_435_973_837L, result.usedBytes().longValue());
         verify(auth).patchUser(USER_ID, Map.of("quotaBytes", 5_368_709_120L));
         verify(audit).record(ACTOR, "USER_QUOTA_CHANGED", "user", USER_ID.toString(), Map.of(
                 "previousQuotaBytes", previous.quotaBytes(), "quotaBytes", 5_368_709_120L));

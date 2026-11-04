@@ -9,6 +9,21 @@ info:
 servers:
   - url: https://mail.company.local/api/v1
 paths:
+  /mail/quota:
+    get:
+      summary: Фактические usedBytes/quotaBytes текущего ящика из JWT subject (MAIL_READ_OWN); 0 — без лимита
+      responses:
+        '200':
+          description: Агрегаты message_metadata и актуальный лимит auth-service
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  usedBytes: { type: integer, format: int64 }
+                  quotaBytes: { type: integer, format: int64 }
+                  messageCount: { type: integer, format: int64 }
+        '403': { description: Нет права MAIL_READ_OWN }
   /mail/folders:
     get:
       summary: Дерево папок текущего пользователя со счётчиками непрочитанных

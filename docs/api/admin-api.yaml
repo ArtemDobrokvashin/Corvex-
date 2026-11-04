@@ -9,6 +9,7 @@ paths:
   /admin/users:
     get:
       summary: Список пользователей (ADMIN_USERS_MANAGE или ADMIN_QUOTAS_MANAGE), фильтр по статусу/подразделению/источнику
+      description: usedBytes вычисляется batch-запросом в mail-storage; null означает временную недоступность хранилища, а не нулевой объём
       parameters:
         - { name: q, in: query, schema: { type: string } }
         - { name: status, in: query, schema: { type: string, enum: [ACTIVE, BLOCKED, DISABLED] } }

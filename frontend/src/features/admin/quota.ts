@@ -16,8 +16,8 @@ export function quotaBytesToGigabytes(bytes: number): string {
   return (bytes / BYTES_PER_GIB).toFixed(9).replace(/\.?0+$/, '');
 }
 
-export function quotaUsagePercent(usedBytes: number, quotaBytes: number): number | null {
-  if (quotaBytes <= 0) return null;
+export function quotaUsagePercent(usedBytes: number | null, quotaBytes: number): number | null {
+  if (usedBytes === null || quotaBytes <= 0) return null;
   if (usedBytes <= 0) return 0;
   return Math.round((usedBytes / quotaBytes) * 100);
 }

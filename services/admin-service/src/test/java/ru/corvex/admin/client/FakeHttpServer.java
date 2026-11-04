@@ -1,5 +1,7 @@
 package ru.corvex.admin.client;
 
+import java.io.ByteArrayOutputStream;
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -98,9 +100,53 @@ final class FakeHttpServer implements AutoCloseable {
                 }
             }
         }
-        byte[] body = input.readNBytes(contentLength);
+        boolean chunked = headers.getOrDefault("transfer-encoding", "")
+                .toLowerCase(Locale.ROOT).contains("chunked");
+        byte[] body = chunked ? readChunkedBody(input) : input.readNBytes(contentLength);
         return new Request(first[0], first[1], Map.copyOf(headers),
                 new String(body, StandardCharsets.UTF_8));
+    }
+
+    private byte[] readChunkedBody(InputStream input) throws IOException {
+        ByteArrayOutputStream result = new ByteArrayOutputStream();
+        while (true) {
+            String sizeLine = readLine(input);
+            final int size;
+            try {
+                size = Integer.parseInt(sizeLine.split(";", 2)[0].trim(), 16);
+            } catch (NumberFormatException e) {
+                throw new IOException("Invalid HTTP chunk size: " + sizeLine, e);
+            }
+            if (size == 0) {
+                while (!readLine(input).isEmpty()) {
+                    // Пропускаем optional trailer headers до пустой строки.
+                }
+                return result.toByteArray();
+            }
+            byte[] chunk = input.readNBytes(size);
+            if (chunk.length != size) {
+                throw new EOFException("Incomplete HTTP chunk");
+            }
+            result.writeBytes(chunk);
+            if (!readLine(input).isEmpty()) {
+                throw new IOException("HTTP chunk is not terminated by CRLF");
+            }
+        }
+    }
+
+    private String readLine(InputStream input) throws IOException {
+        StringBuilder result = new StringBuilder();
+        int b;
+        while ((b = input.read()) != -1) {
+            if (b == '\n') {
+                if (!result.isEmpty() && result.charAt(result.length() - 1) == '\r') {
+                    result.setLength(result.length() - 1);
+                }
+                return result.toString();
+            }
+            result.append((char) b);
+        }
+        throw new EOFException("Unexpected end of chunked HTTP request");
     }
 
     private String readUntilHeaderEnd(InputStream input) throws IOException {

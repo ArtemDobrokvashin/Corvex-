@@ -128,7 +128,8 @@ per caller или mTLS остаются усилением Stage 5, а не те
   чужая папка/письмо — `404`; системные папки нельзя удалить/переименовать (`409`);
   APPEND сверх квоты владельца — `507`;
 - `notification-service POST /internal/alerts/webhook` — вебхук Alertmanager;
-- `admin-service → auth-service /internal/users/**` — управление учётками из админки.
+- `admin-service → auth-service /internal/users/**` — управление учётками из админки;
+- `admin-service → mail-storage-service POST /internal/mail/usage` — batch `ownerIds` (до 200) → фактические `usedBytes/messageCount` для административных таблиц; при недоступности хранилища admin API возвращает `usedBytes=null`, а не фиктивный ноль.
 
 Отдельный `alert-relay` принимает `POST /alerts/webhook` и отдаёт `GET /healthz` только в
 сети `monitoring`; порт не публикуется и через gateway не маршрутизируется. Он вызывает

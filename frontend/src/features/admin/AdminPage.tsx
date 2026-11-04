@@ -26,6 +26,7 @@ import { countLabel, formatBytes, formatDateTime, systemGroupName, useI18n } fro
 import { useSession } from '../../store/sessionStore';
 import AnalyticsTab from './AnalyticsTab';
 import QuotasTab from './QuotasTab';
+import { quotaUsagePercent } from './quota';
 import ServerTab from './ServerTab';
 import { canManageQuotas, canViewAnalytics, canViewServer, canViewSystemHealth } from './adminAccess';
 
@@ -348,7 +349,7 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
           </thead>
           <tbody>
             {displayedUsers.map((u) => {
-              const used = u.quotaBytes > 0 ? Math.min(100, Math.round((u.usedBytes / u.quotaBytes) * 100)) : 0;
+              const used = quotaUsagePercent(u.usedBytes, u.quotaBytes);
               return (
                 <tr key={u.id} className="group border-t border-line align-top transition hover:bg-chrome/70">
                   <td className="px-5 py-4">
@@ -375,7 +376,13 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
                   <td className="px-4 py-4 text-muted">{u.department ?? '—'}</td>
                   <td className="max-w-[210px] px-4 py-4"><div className="flex flex-wrap gap-1">{u.groups.length ? u.groups.map((g) => <span key={g} className="chip px-2 py-0.5 text-[11px]">{systemGroupName(locale, g, groups.find((x) => x.code === g)?.name)}</span>) : <span className="text-faint">—</span>}</div></td>
                   <td className="px-4 py-4"><StatusPill status={u.status} /></td>
-                  <td className="min-w-[110px] px-4 py-4"><div className="text-[13px] text-ink-soft">{formatBytes(locale, u.quotaBytes)}</div><div className="mt-1.5 h-1 overflow-hidden rounded-full bg-black/[0.07]"><div className="h-full rounded-full bg-accent" style={{ width: `${used}%` }} /></div><div className="mt-1 text-[10px] text-faint">{t('{used}% занято', { used })}</div></td>
+                  <td className="min-w-[150px] px-4 py-4">
+                    <div className="text-[13px] text-ink-soft">{u.quotaBytes === 0 ? t('Без лимита') : formatBytes(locale, u.quotaBytes)}</div>
+                    {u.usedBytes === null ? <div className="mt-1 max-w-[170px] text-[10px] leading-4 text-faint">{t('Фактический объём временно недоступен')}</div> : used === null ? <div className="mt-1 text-[10px] text-faint">{formatBytes(locale, u.usedBytes)}</div> : <>
+                      <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-black/[0.07]"><div className={`h-full rounded-full ${used > 100 ? 'bg-danger' : 'bg-accent'}`} style={{ width: `${Math.min(100, used)}%` }} /></div>
+                      <div className={`mt-1 text-[10px] ${used > 100 ? 'font-medium text-danger' : 'text-faint'}`}>{t('{used}% занято', { used })}</div>
+                    </>}
+                  </td>
                   <td className="whitespace-nowrap px-4 py-4 text-muted">{fmtDate(u.lastLoginAt)}</td>
                   <td className="sticky right-0 bg-surface px-4 py-4 shadow-[-14px_0_18px_-18px_rgba(24,24,27,0.45)] transition group-hover:bg-chrome">
                     <div className="flex justify-end gap-1">

@@ -10,6 +10,7 @@ import ru.corvex.admin.api.dto.AdminDtos.PatchUserRequest;
 import ru.corvex.admin.client.AuthServiceClient;
 import ru.corvex.admin.client.AuthServiceClient.RemotePage;
 import ru.corvex.admin.client.AuthServiceClient.RemoteUser;
+import ru.corvex.admin.client.MailStorageClient;
 import ru.corvex.admin.domain.UserGroup;
 import ru.corvex.admin.service.AuditService.Actor;
 
@@ -30,11 +31,14 @@ public class AdminUserService {
     private static final Logger log = LoggerFactory.getLogger(AdminUserService.class);
 
     private final AuthServiceClient authClient;
+    private final MailStorageClient mailStorageClient;
     private final AdminGroupService groupService;
     private final AuditService audit;
 
-    public AdminUserService(AuthServiceClient authClient, AdminGroupService groupService, AuditService audit) {
+    public AdminUserService(AuthServiceClient authClient, MailStorageClient mailStorageClient,
+                            AdminGroupService groupService, AuditService audit) {
         this.authClient = authClient;
+        this.mailStorageClient = mailStorageClient;
         this.groupService = groupService;
         this.audit = audit;
     }
@@ -59,15 +63,16 @@ public class AdminUserService {
         audit.record(actor, "USER_CREATED", "user", created.id().toString(),
                 Map.of("username", created.username(), "email", created.email(),
                         "groups", groupsToAssign.stream().map(UserGroup::getCode).toList()));
-        return toView(created, groupsToAssign.stream().map(UserGroup::getCode).toList());
+        return toViewWithUsage(created, groupsToAssign.stream().map(UserGroup::getCode).toList());
     }
 
     public PageResult<AdminUserView> list(String q, String status, String department, int page, int size) {
         RemotePage remote = authClient.listUsers(q, status, department, page, size);
-        Map<UUID, List<String>> groupsByUser = groupService.groupCodesByUserIds(
-                remote.content().stream().map(RemoteUser::id).toList());
+        List<UUID> userIds = remote.content().stream().map(RemoteUser::id).toList();
+        Map<UUID, List<String>> groupsByUser = groupService.groupCodesByUserIds(userIds);
+        Map<UUID, Long> usedByUser = mailStorageClient.usedBytes(userIds);
         List<AdminUserView> content = remote.content().stream()
-                .map(u -> toView(u, groupsByUser.getOrDefault(u.id(), List.of())))
+                .map(u -> toView(u, groupsByUser.getOrDefault(u.id(), List.of()), usedByUser.get(u.id())))
                 .toList();
         return new PageResult<>(content, remote.page(), remote.size(), remote.totalElements(), remote.totalPages());
     }
@@ -88,7 +93,7 @@ public class AdminUserService {
         }
         RemoteUser updated = authClient.patchUser(userId, patch);
         audit.record(actor, "USER_UPDATED", "user", userId.toString(), Map.of("changedFields", changed));
-        return toView(updated, groupService.groupCodesOf(userId));
+        return toViewWithUsage(updated, groupService.groupCodesOf(userId));
     }
 
     /** Отдельный узкий контракт: quota-роль не получает возможности менять профиль или статус. */
@@ -97,7 +102,7 @@ public class AdminUserService {
         RemoteUser updated = authClient.patchUser(userId, Map.of("quotaBytes", quotaBytes));
         audit.record(actor, "USER_QUOTA_CHANGED", "user", userId.toString(), Map.of(
                 "previousQuotaBytes", previous.quotaBytes(), "quotaBytes", quotaBytes));
-        return toView(updated, groupService.groupCodesOf(userId));
+        return toViewWithUsage(updated, groupService.groupCodesOf(userId));
     }
 
     public void block(UUID userId, Actor actor) {
@@ -119,13 +124,18 @@ public class AdminUserService {
         groupService.replaceUserGroups(userId, resolved);
         List<String> codes = resolved.stream().map(UserGroup::getCode).toList();
         audit.record(actor, "USER_GROUPS_CHANGED", "user", userId.toString(), Map.of("groups", codes));
-        return toView(user, codes);
+        return toViewWithUsage(user, codes);
     }
 
-    private static AdminUserView toView(RemoteUser u, List<String> group) {
+    private AdminUserView toViewWithUsage(RemoteUser user, List<String> groups) {
+        Long usedBytes = mailStorageClient.usedBytes(List.of(user.id())).get(user.id());
+        return toView(user, groups, usedBytes);
+    }
+
+    private static AdminUserView toView(RemoteUser u, List<String> group, Long usedBytes) {
         return new AdminUserView(
                 u.id(), u.username(), u.email(), u.displayName(), u.source(), u.status(),
-                u.department(), group, u.quotaBytes(), u.usedBytes(),
+                u.department(), group, u.quotaBytes(), usedBytes,
                 u.mustChangePassword(), u.totpEnabled(), u.lastLoginAt(), u.createdAt());
     }
 }
