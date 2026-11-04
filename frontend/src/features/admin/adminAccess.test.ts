@@ -8,6 +8,7 @@ describe('admin section access', () => {
     'ADMIN_USERS_MANAGE',
     'ADMIN_GROUPS_MANAGE',
     'ADMIN_QUOTAS_MANAGE',
+    'ADMIN_MAIL_POLICY',
     'ADMIN_SERVER_CONFIG',
     'ADMIN_BACKUP',
     'ANALYTICS_VIEW_COMPANY',
@@ -17,8 +18,8 @@ describe('admin section access', () => {
     expect(canAccessAdmin(has(permission))).toBe(true);
   });
 
-  it('does not open an empty administration page for unused policy-only permissions', () => {
-    expect(canAccessAdmin(has('ADMIN_SECURITY_POLICY', 'ADMIN_MAIL_POLICY'))).toBe(false);
+  it('does not open an empty administration page without a real admin module', () => {
+    expect(canAccessAdmin(has('ADMIN_SECURITY_POLICY'))).toBe(false);
     expect(canAccessAdmin(has())).toBe(false);
   });
 

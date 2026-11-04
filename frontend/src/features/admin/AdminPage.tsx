@@ -8,29 +8,37 @@ import {
   HardDrive,
   KeyRound,
   Lock,
+  Mail,
+  Pencil,
   Plus,
   Power,
   Save,
   ScrollText,
   Search,
   Server,
+  Settings2,
   ShieldCheck,
   UserPlus,
   Users,
+  X,
 } from 'lucide-react';
-import { AdminGroup, AdminUser, AuditEntry, adminApi } from '../../api/adminApi';
+import { useNavigate, useParams } from 'react-router-dom';
+import { AdminGroup, AdminUser, adminApi } from '../../api/adminApi';
 import { errorText } from '../../api/authApi';
-import { DEMO_AUDIT, demoGroups, demoUsers, permissionLabels } from '../../api/demoData';
+import { demoGroups, demoUsers, permissionLabels } from '../../api/demoData';
 import { Avatar, EmptyState, Notice } from '../../components/ui';
 import { countLabel, formatBytes, formatDateTime, systemGroupName, useI18n } from '../../i18n';
 import { useSession } from '../../store/sessionStore';
 import AnalyticsTab from './AnalyticsTab';
+import AuditTab from './AuditTab';
+import MailPolicyTab from './MailPolicyTab';
 import QuotasTab from './QuotasTab';
-import { quotaUsagePercent } from './quota';
+import { quotaGigabytesToBytes, quotaUsagePercent } from './quota';
 import ServerTab from './ServerTab';
-import { canManageQuotas, canViewAnalytics, canViewServer, canViewSystemHealth } from './adminAccess';
+import SettingsTab from './SettingsTab';
+import { canManageExternalMail, canManageQuotas, canViewAnalytics, canViewServer, canViewSettings, canViewSystemHealth } from './adminAccess';
 
-type Tab = 'users' | 'quotas' | 'groups' | 'server' | 'analytics' | 'audit';
+type Tab = 'users' | 'quotas' | 'groups' | 'external-mail' | 'server' | 'settings' | 'analytics' | 'audit';
 
 
 const STATUS_META: Record<string, { label: string; dot: string; className: string }> = {
@@ -49,24 +57,36 @@ function StatusPill({ status }: { status: string }) {
 export default function AdminPage() {
   const { locale, t } = useI18n();
   const { has, demoMode } = useSession();
+  const navigate = useNavigate();
+  const { section } = useParams<{ section?: string }>();
   const canViewGroups = has('ADMIN_GROUPS_MANAGE') || has('ADMIN_USERS_MANAGE');
   const canHealth = canViewSystemHealth(has);
   const canBackup = has('ADMIN_BACKUP');
   const canServer = canViewServer(has);
+  const canSettings = canViewSettings(has);
+  const canExternalMail = canManageExternalMail(has);
   const canAnalytics = canViewAnalytics(has);
   const canQuotas = canManageQuotas(has);
   const availableTabs: Tab[] = [
     ...(has('ADMIN_USERS_MANAGE') ? ['users' as const] : []),
     ...(canQuotas ? ['quotas' as const] : []),
     ...(canViewGroups ? ['groups' as const] : []),
+    ...(canExternalMail ? ['external-mail' as const] : []),
     ...(canServer ? ['server' as const] : []),
+    ...(canSettings ? ['settings' as const] : []),
     ...(canAnalytics ? ['analytics' as const] : []),
     ...(has('AUDIT_VIEW') ? ['audit' as const] : []),
   ];
-  const [tab, setTab] = useState<Tab>('users');
-  const activeTab = availableTabs.includes(tab) ? tab : availableTabs[0];
+  const requestedTab = availableTabs.find((candidate) => candidate === section);
+  const activeTab = requestedTab ?? availableTabs[0];
   const [groups, setGroups] = useState<AdminGroup[]>(demoMode && canViewGroups ? demoGroups(locale) : []);
   const [groupsError, setGroupsError] = useState('');
+
+  useEffect(() => {
+    if (activeTab && section !== activeTab) {
+      navigate(`/admin/${activeTab}`, { replace: true });
+    }
+  }, [activeTab, navigate, section]);
 
   useEffect(() => {
     if (!canViewGroups) {
@@ -86,7 +106,7 @@ export default function AdminPage() {
   }, [canViewGroups, demoMode, locale]);
 
   const navBtn = (id: Tab, label: string, Icon: typeof Users, description: string) => (
-    <button key={id} type="button" onClick={() => setTab(id)} aria-current={activeTab === id ? 'page' : undefined} className={`nav-row shrink-0 lg:min-h-[52px] ${activeTab === id ? 'nav-row-active' : ''}`}>
+    <button key={id} type="button" onClick={() => navigate(`/admin/${id}`)} aria-current={activeTab === id ? 'page' : undefined} className={`nav-row shrink-0 lg:min-h-[52px] ${activeTab === id ? 'nav-row-active' : ''}`}>
       <Icon size={17} strokeWidth={1.8} />
       <span className="min-w-0">
         <span className="block truncate">{label}</span>
@@ -116,7 +136,9 @@ export default function AdminPage() {
                 {has('ADMIN_USERS_MANAGE') && navBtn('users', t('Пользователи'), Users, t('Учётные записи и статусы'))}
                 {canQuotas && navBtn('quotas', t('Квоты'), HardDrive, t('Лимиты и занятое место'))}
                 {canViewGroups && navBtn('groups', t('Группы и права'), ShieldCheck, t('Кто что может делать'))}
+                {canExternalMail && navBtn('external-mail', t('Внешняя почта'), Mail, t('Ящики сотрудников и миграция'))}
                 {canServer && navBtn('server', t('Сервер'), Server, t('Состояние и резервное копирование'))}
+                {canSettings && navBtn('settings', t('Настройки'), Settings2, t('Реестр параметров сервера'))}
                 {canAnalytics && navBtn('analytics', t('Аналитика'), BarChart3, t('Сотрудники и события входа'))}
                 {has('AUDIT_VIEW') && navBtn('audit', t('Аудит'), ScrollText, t('История административных действий'))}
               </nav>
@@ -131,7 +153,9 @@ export default function AdminPage() {
               {activeTab === 'users' && <UsersTab groups={groups} demoMode={demoMode} />}
               {activeTab === 'quotas' && <QuotasTab demoMode={demoMode} />}
               {activeTab === 'groups' && <GroupsTab groups={groups} setGroups={setGroups} demoMode={demoMode} canManage={has('ADMIN_GROUPS_MANAGE')} />}
+              {activeTab === 'external-mail' && <MailPolicyTab onOpenExternalMail={() => navigate('/mail?externalAccounts=1')} />}
               {activeTab === 'server' && <ServerTab canViewHealth={canHealth} canBackup={canBackup} />}
+              {activeTab === 'settings' && <SettingsTab demoMode={demoMode} />}
               {activeTab === 'analytics' && <AnalyticsTab />}
               {activeTab === 'audit' && <AuditTab demoMode={demoMode} />}
             </div>
@@ -156,17 +180,22 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
   const [totalPages, setTotalPages] = useState(1);
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [departmentFilter, setDepartmentFilter] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [createGroups, setCreateGroups] = useState<string[]>(['USER']);
+  const [createQuota, setCreateQuota] = useState('5');
   const [editingGroupsFor, setEditingGroupsFor] = useState<string | null>(null);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
+  const [profileUser, setProfileUser] = useState<AdminUser | null>(null);
+  const [profileError, setProfileError] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
 
   async function load(p = page) {
     if (demoMode) return;
     try {
-      const res = await adminApi.listUsers({ q, status: statusFilter || undefined, page: p, size: 20 });
+      const res = await adminApi.listUsers({ q, status: statusFilter || undefined, department: departmentFilter || undefined, page: p, size: 20 });
       setUsers(res.content);
       setTotal(res.totalElements);
       setTotalPages(res.totalPages);
@@ -193,8 +222,11 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
   const displayedUsers = useMemo(() => {
     if (!demoMode) return users;
     const query = q.trim().toLowerCase();
-    return users.filter((u) => (!statusFilter || u.status === statusFilter) && (!query || `${u.displayName} ${u.username} ${u.email} ${u.department ?? ''}`.toLowerCase().includes(query)));
-  }, [demoMode, q, statusFilter, users]);
+    const department = departmentFilter.trim().toLowerCase();
+    return users.filter((u) => (!statusFilter || u.status === statusFilter)
+      && (!department || (u.department ?? '').toLowerCase() === department)
+      && (!query || `${u.displayName} ${u.username} ${u.email} ${u.department ?? ''}`.toLowerCase().includes(query)));
+  }, [demoMode, departmentFilter, q, statusFilter, users]);
 
   const patchLocal = (u: AdminUser) => setUsers((prev) => prev.map((x) => (x.id === u.id ? u : x)));
   const toggleList = (setList: Dispatch<SetStateAction<string[]>>, code: string) => setList((prev) => prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]);
@@ -204,6 +236,11 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
     const d = new FormData(e.currentTarget);
     setError('');
     setNotice('');
+    const quotaBytes = quotaGigabytesToBytes(createQuota);
+    if (quotaBytes === null) {
+      setError(t('Введите начальную квоту в ГБ: неотрицательное число, например 5 или 2,5.'));
+      return;
+    }
     const body = {
       username: String(d.get('username') ?? ''),
       email: String(d.get('email') ?? ''),
@@ -211,13 +248,14 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
       tempPassword: String(d.get('tempPassword') ?? ''),
       department: String(d.get('department') ?? '') || undefined,
       groupCodes: createGroups,
+      quotaBytes,
     };
     try {
       if (demoMode) {
         const nu: AdminUser = {
           id: `demo-${Date.now()}`, username: body.username, email: body.email, displayName: body.displayName,
           source: 'LOCAL', status: 'ACTIVE', department: body.department ?? null, groups: createGroups.length ? createGroups : ['USER'],
-          quotaBytes: 5368709120, usedBytes: 0, mustChangePassword: true, totpEnabled: false,
+          quotaBytes: body.quotaBytes, usedBytes: 0, mustChangePassword: true, totpEnabled: false,
           lastLoginAt: null, createdAt: new Date().toISOString(),
         };
         setUsers((prev) => [nu, ...prev]);
@@ -230,6 +268,29 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
       setNotice(t('Пользователь создан. Временный пароль он сменит при первом входе.'));
     } catch (err) {
       setError(errorText(err, locale));
+    }
+  }
+
+  async function saveProfile(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!profileUser) return;
+    const data = new FormData(e.currentTarget);
+    const displayName = String(data.get('displayName') ?? '').trim();
+    const email = String(data.get('email') ?? '').trim();
+    const department = String(data.get('department') ?? '').trim();
+    setProfileSaving(true);
+    setProfileError('');
+    try {
+      const updated = demoMode
+        ? { ...profileUser, displayName, email, department: department || null }
+        : await adminApi.patchUser(profileUser.id, { displayName, email, department });
+      patchLocal(updated);
+      setNotice(t('Профиль пользователя {username} обновлён.', { username: profileUser.username }));
+      setProfileUser(null);
+    } catch (saveError) {
+      setProfileError(errorText(saveError, locale));
+    } finally {
+      setProfileSaving(false);
     }
   }
 
@@ -293,6 +354,7 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
   );
 
   return (
+    <>
     <section className="panel animate-rise-in overflow-hidden">
       <header className="flex flex-wrap items-center gap-3 border-b border-line px-5 py-4">
         <div className="mr-auto min-w-[180px]">
@@ -310,7 +372,8 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
             <option value="BLOCKED">{t('Заблокированные')}</option>
             <option value="DISABLED">{t('Отключённые')}</option>
           </select>
-          {!demoMode && <button className="btn-secondary h-10">{t('Найти')}</button>}
+          <input value={departmentFilter} onChange={(e) => setDepartmentFilter(e.target.value)} placeholder={t('Подразделение')} aria-label={t('Фильтр по подразделению')} className="field h-10 w-[180px] py-0" />
+          <button className="btn-secondary h-10">{t('Найти')}</button>
         </form>
         <button type="button" onClick={() => setShowCreate(!showCreate)} className="btn-primary h-10"><UserPlus size={16} /><span className="hidden sm:inline">{t('Новый пользователь')}</span></button>
       </header>
@@ -325,7 +388,8 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
             <div><label className="field-label" htmlFor="new-email">E-mail</label><input id="new-email" name="email" required type="email" placeholder="Ivanov@company.local" className="field" /></div>
             <div><label className="field-label" htmlFor="new-name">{t('Имя и фамилия')}</label><input id="new-name" name="displayName" required placeholder={t('Ivanov')} className="field" /></div>
             <div><label className="field-label" htmlFor="new-department">{t('Подразделение')}</label><input id="new-department" name="department" placeholder={t('Бухгалтерия')} className="field" /></div>
-            <div className="sm:col-span-2"><label className="field-label" htmlFor="new-password">{t('Временный пароль')}</label><input id="new-password" name="tempPassword" required type="password" autoComplete="off" placeholder={t('Не короче 10 символов, буквы и цифры')} className="field" /><p className="mt-1.5 text-xs text-faint">{t('Пользователь обязательно сменит его при первом входе.')}</p></div>
+            <div><label className="field-label" htmlFor="new-quota">{t('Начальная квота, ГБ')}</label><input id="new-quota" name="quotaGb" value={createQuota} onChange={(event) => setCreateQuota(event.target.value)} required inputMode="decimal" className="field" /><p className="mt-1.5 text-xs text-faint">{t('0 — без лимита. Можно использовать дробное значение.')}</p></div>
+            <div><label className="field-label" htmlFor="new-password">{t('Временный пароль')}</label><input id="new-password" name="tempPassword" required type="password" autoComplete="off" placeholder={t('Не короче 10 символов, буквы и цифры')} className="field" /><p className="mt-1.5 text-xs text-faint">{t('Пользователь обязательно сменит его при первом входе.')}</p></div>
             <div className="sm:col-span-2">
               <span className="field-label">{t('Группы доступа')}</span>
               {groupPicker(createGroups, (code) => toggleList(setCreateGroups, code))}
@@ -386,6 +450,7 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
                   <td className="whitespace-nowrap px-4 py-4 text-muted">{fmtDate(u.lastLoginAt)}</td>
                   <td className="sticky right-0 bg-surface px-4 py-4 shadow-[-14px_0_18px_-18px_rgba(24,24,27,0.45)] transition group-hover:bg-chrome">
                     <div className="flex justify-end gap-1">
+                      <button type="button" onClick={() => { setProfileUser(u); setProfileError(''); }} className="icon-btn" title={t('Редактировать профиль')} aria-label={`${t('Редактировать профиль')}: ${u.username}`}><Pencil size={16} /></button>
                       {canManageGroups && <button type="button" onClick={() => { setEditingGroupsFor(u.id); setSelectedGroups(u.groups); }} className="icon-btn" title={t('Назначить группы')} aria-label={t('Назначить группы')}><Users size={17} /></button>}
                       <button type="button" onClick={() => toggleBlock(u)} className="icon-btn" title={u.status === 'ACTIVE' ? t('Заблокировать') : t('Разблокировать')} aria-label={u.status === 'ACTIVE' ? t('Заблокировать') : t('Разблокировать')}>
                         {u.status === 'ACTIVE' ? <Ban size={17} /> : <Check size={17} />}
@@ -409,6 +474,32 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
         </footer>
       )}
     </section>
+
+    {profileUser && (
+      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-ink/35 p-4 backdrop-blur-[2px]">
+        <button type="button" aria-label={t('Закрыть')} className="absolute inset-0 cursor-default" onClick={() => setProfileUser(null)} disabled={profileSaving} />
+        <form onSubmit={saveProfile} className="relative z-10 w-full max-w-lg animate-scale-in rounded-2xl border border-line bg-surface p-5 shadow-pop sm:p-6" role="dialog" aria-modal="true" aria-labelledby="profile-edit-title">
+          <header className="mb-5 flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <h2 id="profile-edit-title" className="text-[20px] font-semibold tracking-[-0.025em]">{t('Редактировать профиль')}</h2>
+              <p className="mt-1 text-sm text-muted">{profileUser.username} · {t('ФИО, email и подразделение. Квота и группы изменяются отдельно.')}</p>
+            </div>
+            <button type="button" className="icon-btn shrink-0" onClick={() => setProfileUser(null)} disabled={profileSaving} aria-label={t('Закрыть')}><X size={18} /></button>
+          </header>
+          {profileError && <Notice tone="error" className="mb-4">{profileError}</Notice>}
+          <div className="space-y-4">
+            <label className="block"><span className="field-label">{t('Имя и фамилия')}</span><input name="displayName" defaultValue={profileUser.displayName} required maxLength={256} className="field" autoFocus /></label>
+            <label className="block"><span className="field-label">E-mail</span><input name="email" defaultValue={profileUser.email} required type="email" maxLength={320} className="field" /></label>
+            <label className="block"><span className="field-label">{t('Подразделение')}</span><input name="department" defaultValue={profileUser.department ?? ''} maxLength={256} className="field" /><span className="mt-1.5 block text-xs text-faint">{t('Оставьте пустым, чтобы очистить подразделение.')}</span></label>
+          </div>
+          <footer className="mt-6 flex justify-end gap-2 border-t border-line pt-4">
+            <button type="button" className="btn-ghost" onClick={() => setProfileUser(null)} disabled={profileSaving}>{t('Отмена')}</button>
+            <button type="submit" className="btn-primary" disabled={profileSaving}><Save size={15} />{profileSaving ? t('Сохраняем…') : t('Сохранить')}</button>
+          </footer>
+        </form>
+      </div>
+    )}
+    </>
   );
 }
 
@@ -578,55 +669,5 @@ function GroupsTab({ groups, setGroups, demoMode, canManage }: {
         </footer>
       </section>
     </div>
-  );
-}
-
-// ================= Аудит =================
-
-function AuditTab({ demoMode }: { demoMode: boolean }) {
-  const { locale, t } = useI18n();
-  const fmtDate = (value: string | null) => (value ? formatDateTime(locale, value) : '—');
-  const [entries, setEntries] = useState<AuditEntry[]>(demoMode ? DEMO_AUDIT : []);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    if (demoMode) {
-      setEntries(DEMO_AUDIT);
-      return;
-    }
-    adminApi.listAudit(0, 50).then((r) => setEntries(r.content)).catch((e) => setError(errorText(e, locale)));
-  }, [demoMode]);
-
-  return (
-    <section className="panel animate-rise-in overflow-hidden">
-      <header className="border-b border-line px-5 py-5">
-        <h2 className="text-[17px] font-semibold tracking-[-0.02em]">{t('Журнал аудита')}</h2>
-        <p className="mt-1 text-sm text-muted">{t('Последние административные события: кто, когда и что изменил.')}</p>
-      </header>
-      {error && <div className="px-5 pt-4"><Notice tone="error">{error}</Notice></div>}
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] border-collapse text-sm">
-          <thead>
-            <tr className="bg-chrome/80 text-left text-[11px] uppercase tracking-[0.07em] text-faint">
-              <th className="px-5 py-3 font-semibold">{t('Время')}</th><th className="px-4 py-3 font-semibold">{t('Инициатор')}</th><th className="px-4 py-3 font-semibold">{t('Действие')}</th>
-              <th className="px-4 py-3 font-semibold">{t('Объект')}</th><th className="px-4 py-3 font-semibold">{t('Детали')}</th><th className="px-4 py-3 font-semibold">IP</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map((en) => (
-              <tr key={en.id} className="border-t border-line align-top transition hover:bg-chrome/70">
-                <td className="whitespace-nowrap px-5 py-4 text-muted">{fmtDate(en.createdAt)}</td>
-                <td className="px-4 py-4"><div className="flex items-center gap-2.5"><Avatar name={en.actorName ?? 'system'} size={30} /><span className="font-medium text-ink-soft">{en.actorName ?? t('Система')}</span></div></td>
-                <td className="px-4 py-4"><span className="chip font-mono text-[10px]">{en.action}</span></td>
-                <td className="max-w-[180px] truncate px-4 py-4 text-muted" title={en.entityId ?? undefined}>{en.entity ?? '—'}{en.entityId ? <span className="block truncate text-[11px] text-faint">{en.entityId}</span> : null}</td>
-                <td className="max-w-[260px] truncate px-4 py-4 font-mono text-[11px] text-muted" title={JSON.stringify(en.details)}>{Object.keys(en.details ?? {}).length ? JSON.stringify(en.details) : '—'}</td>
-                <td className="px-4 py-4 text-muted">{en.ipAddress ?? '—'}</td>
-              </tr>
-            ))}
-            {entries.length === 0 && <tr><td colSpan={6}><EmptyState icon={ScrollText} title={t('Записей пока нет')} description={t('Здесь появятся создание пользователей, изменения прав и другие события.')} /></td></tr>}
-          </tbody>
-        </table>
-      </div>
-    </section>
   );
 }

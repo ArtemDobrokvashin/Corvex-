@@ -20,7 +20,7 @@
 
 ```
 src/
-├── main.tsx                  # роутер: /login и оболочка с /mail /chat /admin (lazy)
+├── main.tsx                  # роутер: /login и оболочка с /mail /chat /admin/:section? (lazy)
 ├── index.css                 # Tailwind + touch-цели для мобильных
 ├── app/AppShell.tsx          # единая оболочка: боковое меню, бейджи уведомлений, статус, плашка демо
 ├── store/sessionStore.ts     # Zustand: пользователь, permissions, helper has()
@@ -32,8 +32,13 @@ src/
     ├── auth/LoginPage.tsx    # вход + второй шаг TOTP
     ├── mail/MailPage.tsx     # папки → список → письмо, редактор, квота, AV-статус вложений
     ├── chat/ChatPage.tsx     # комнаты, сообщения (Markdown), реакции, треды, read-only каналы
-    └── admin/AdminPage.tsx   # группы и чекбоксы 25 прав, здоровье сервисов
+    └── admin/AdminPage.tsx   # RBAC-навигация; users/quotas/groups/external-mail/server/settings/analytics/audit
 ```
+
+Для каждого раздела админки существует прямой `/admin/<section>` route: выбранная вкладка
+сохраняется в URL после refresh, а неизвестный или запрещённый раздел заменяется первым
+доступным без запроса чужого API. Полная матрица endpoint → route → RBAC и намеренные
+границы неготовых модулей находятся в [`ADMIN-UI-AUDIT.md`](ADMIN-UI-AUDIT.md).
 
 При росте внутри feature-папок добавляются `components/`, `hooks/`, `api.ts` этой
 фичи; переиспользуемые контролы выносятся в `components/ui`.
