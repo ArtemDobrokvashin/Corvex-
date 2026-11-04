@@ -1,5 +1,7 @@
 package ru.corvex.admin.client;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import ru.corvex.admin.client.FakeHttpServer.Request;
@@ -41,7 +43,9 @@ class MailStorageClientTest {
         assertEquals("POST", request.method());
         assertEquals("/internal/mail/usage", request.target());
         assertEquals(TOKEN, request.header(InternalApiTokenFilter.HEADER));
-        assertTrue(request.body().contains("\"ownerIds\":[\"" + USER_ID + "\"]"));
+        JsonNode body = new ObjectMapper().readTree(request.body());
+        assertEquals(1, body.path("ownerIds").size());
+        assertEquals(USER_ID.toString(), body.path("ownerIds").get(0).asText());
     }
 
     @Test
