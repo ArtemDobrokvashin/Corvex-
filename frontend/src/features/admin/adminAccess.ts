@@ -8,6 +8,8 @@ export const canViewSystemHealth: AccessCheck = (has) =>
   has('ADMIN_SERVER_CONFIG') || has('ADMIN_USERS_MANAGE') || has('ADMIN_GROUPS_MANAGE');
 export const canManageQuotas: AccessCheck = (has) =>
   has('ADMIN_USERS_MANAGE') || has('ADMIN_QUOTAS_MANAGE');
+export const canManageExternalMail: AccessCheck = (has) => has('ADMIN_MAIL_POLICY');
+export const canViewSettings: AccessCheck = (has) => has('ADMIN_SERVER_CONFIG');
 
 export const canViewAnalytics: AccessCheck = (has) =>
   has('ANALYTICS_VIEW_COMPANY') || has('ANALYTICS_VIEW_OWN_UNIT');
@@ -16,4 +18,4 @@ export const canViewServer: AccessCheck = (has) => canViewSystemHealth(has) || h
 /** Не открываем пустую админку для прав, у которых пока нет самостоятельного runtime UI. */
 export const canAccessAdmin: AccessCheck = (has) =>
   canManageUsers(has) || canManageGroups(has) || canManageQuotas(has) ||
-  canViewServer(has) || canViewAnalytics(has) || canViewAudit(has);
+  canManageExternalMail(has) || canViewServer(has) || canViewAnalytics(has) || canViewAudit(has);

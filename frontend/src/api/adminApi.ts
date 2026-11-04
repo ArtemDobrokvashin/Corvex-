@@ -71,6 +71,17 @@ export interface BackupRequestResult {
   note: string;
 }
 
+export type AdminSettings = Record<string, string>;
+
+export interface AuditQuery extends Record<string, string | number | undefined> {
+  actorId?: string;
+  action?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  size?: number;
+}
+
 const qs = (params: Record<string, string | number | undefined | null>) => {
   const s = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
@@ -126,8 +137,13 @@ export const adminApi = {
       body: JSON.stringify({ permissions }),
     }),
 
-  listAudit: (page = 0, size = 50) =>
-    apiFetch<PageResult<AuditEntry>>(`/api/v1/admin/audit${qs({ page, size })}`),
+  listAudit: (params: AuditQuery = {}) =>
+    apiFetch<PageResult<AuditEntry>>(`/api/v1/admin/audit${qs(params)}`),
+
+  settings: () => apiFetch<AdminSettings>('/api/v1/admin/settings'),
+
+  patchSettings: (patch: AdminSettings) =>
+    apiFetch<AdminSettings>('/api/v1/admin/settings', { method: 'PATCH', body: JSON.stringify(patch) }),
 
   systemHealth: () => apiFetch<SystemHealth>('/api/v1/admin/system/health'),
 

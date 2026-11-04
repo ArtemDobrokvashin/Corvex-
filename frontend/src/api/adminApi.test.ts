@@ -40,4 +40,38 @@ describe('adminApi system endpoints', () => {
 
     expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/admin/backup/run', { method: 'POST' });
   });
+
+  it('passes department filtering to the existing users endpoint', async () => {
+    await adminApi.listUsers({ q: 'ivan', department: 'Sales / West', page: 2, size: 20 });
+
+    const url = String(apiFetchMock.mock.calls[0][0]);
+    expect(new URLSearchParams(url.split('?')[1]).get('department')).toBe('Sales / West');
+    expect(new URLSearchParams(url.split('?')[1]).get('page')).toBe('2');
+  });
+
+  it('loads and patches the server settings registry without inventing runtime options', async () => {
+    await adminApi.settings();
+    await adminApi.patchSettings({ 'mail.maxMessageSizeMb': '50' });
+
+    expect(apiFetchMock).toHaveBeenNthCalledWith(1, '/api/v1/admin/settings');
+    expect(apiFetchMock).toHaveBeenNthCalledWith(2, '/api/v1/admin/settings', {
+      method: 'PATCH',
+      body: JSON.stringify({ 'mail.maxMessageSizeMb': '50' }),
+    });
+  });
+
+  it('encodes every audit filter and pagination parameter', async () => {
+    await adminApi.listAudit({
+      actorId: 'user-7', action: 'USER_UPDATED', from: '2026-11-01T00:00:00.000Z',
+      to: '2026-11-04T00:00:00.000Z', page: 3, size: 50,
+    });
+
+    const url = String(apiFetchMock.mock.calls[0][0]);
+    const params = new URLSearchParams(url.split('?')[1]);
+    expect(url.startsWith('/api/v1/admin/audit?')).toBe(true);
+    expect(Object.fromEntries(params)).toEqual({
+      actorId: 'user-7', action: 'USER_UPDATED', from: '2026-11-01T00:00:00.000Z',
+      to: '2026-11-04T00:00:00.000Z', page: '3', size: '50',
+    });
+  });
 });

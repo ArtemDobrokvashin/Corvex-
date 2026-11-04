@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useLocaleStore } from '../../i18n';
 import { useSession, type SessionUser } from '../../store/sessionStore';
@@ -104,7 +105,7 @@ describe('admin server and analytics tabs', () => {
     useSession.getState().setSession(user(['ADMIN_QUOTAS_MANAGE']), false);
 
     await act(async () => {
-      root.render(<AdminPage />);
+      root.render(<MemoryRouter initialEntries={['/admin']}><Routes><Route path="/admin/:section?" element={<AdminPage />} /></Routes></MemoryRouter>);
       await Promise.resolve();
     });
 

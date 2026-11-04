@@ -385,11 +385,18 @@ export default function MailPage() {
   }, [activeRealId, loadedBodies]);
 
   useEffect(() => {
-    if (searchParams.get('compose') === '1') {
+    const openCompose = searchParams.get('compose') === '1';
+    const openExternalAccounts = searchParams.get('externalAccounts') === '1';
+    if (openCompose) {
       setComposeDraft({ to: '', subject: '', body: '' });
+    }
+    if (openExternalAccounts && canAdminExternalAccounts) {
+      setExternalOpen(true);
+    }
+    if (openCompose || openExternalAccounts) {
       setSearchParams({}, { replace: true });
     }
-  }, [searchParams, setSearchParams]);
+  }, [canAdminExternalAccounts, searchParams, setSearchParams]);
 
   const markSeen = (mail: DemoMail) => {
     if (mail.seen || seenPendingRef.current.has(mail.id)) return;
