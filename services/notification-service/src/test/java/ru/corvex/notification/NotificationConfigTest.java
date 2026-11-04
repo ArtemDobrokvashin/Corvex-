@@ -51,6 +51,7 @@ class NotificationConfigTest {
                 "annotations", Map.of(
                         "summary", "На диске осталось мало места",
                         "description", "Maildir volume is 91% full"),
+                "fingerprint", "abc123",
                 "status", "firing");
 
         controller.webhook(Map.of("alerts", List.of(alert)));
@@ -61,6 +62,8 @@ class NotificationConfigTest {
         assertEquals("mail-storage-service", event.service());
         assertEquals("На диске осталось мало места", event.summary());
         assertEquals("Maildir volume is 91% full", event.description());
+        assertEquals("abc123", event.fingerprint());
+        assertEquals("firing", event.status());
     }
 
     @Test

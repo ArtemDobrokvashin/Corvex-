@@ -56,7 +56,9 @@ public class NotificationConfig {
                                 text(labels, "severity", "warning"),
                                 text(labels, "application", text(labels, "instance", "corvex")),
                                 text(ann, "summary", ""),
-                                text(ann, "description", text(alert, "status", "firing")));
+                                text(ann, "description", text(alert, "status", "firing")),
+                                text(alert, "fingerprint", ""),
+                                text(alert, "status", text(payload, "status", "firing")));
                         rabbit.convertAndSend(ALERTS_QUEUE, event);
                     }
                 }

@@ -305,7 +305,9 @@ mkdir -p infra/secrets infra/certs
 while IFS= read -r line; do
   case "$line" in
     *=change-me-strong-password) echo "${line%%=*}=$(openssl rand -hex 24)" ;;
-    CORVEX_TOTP_ENC_KEY=*)       echo "CORVEX_TOTP_ENC_KEY=$(openssl rand -base64 32)" ;;
+    CORVEX_TOTP_ENC_KEY=*)          echo "CORVEX_TOTP_ENC_KEY=$(openssl rand -base64 32)" ;;
+    CORVEX_EXTERNAL_MAIL_ENC_KEY=*) echo "CORVEX_EXTERNAL_MAIL_ENC_KEY=$(openssl rand -base64 32)" ;;
+    CORVEX_ALERT_CONFIG_ENC_KEY=*)  echo "CORVEX_ALERT_CONFIG_ENC_KEY=$(openssl rand -base64 32)" ;;
     *) echo "$line" ;;
   esac
 done < .env.example > .env

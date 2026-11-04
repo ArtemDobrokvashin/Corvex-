@@ -1,7 +1,9 @@
 """Small, dependency-free Alertmanager relay for channels outside Corvex.
 
-It deliberately does not use RabbitMQ, PostgreSQL, Corvex SMTP, or any Java service.
-Alertmanager remains responsible for grouping, repeat intervals, and silences.
+External delivery deliberately does not use RabbitMQ, PostgreSQL, or Corvex SMTP.
+The last validated admin configuration is cached locally, so an admin/Java outage
+cannot disable external channels. Alertmanager remains responsible for grouping
+and silences; consumers apply the dynamic category and repeat policy.
 """
 
 from __future__ import annotations
@@ -17,10 +19,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from email.message import EmailMessage
 from http.client import HTTPException
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 
 MAX_REQUEST_BYTES = 2 * 1024 * 1024
@@ -62,6 +65,39 @@ def env_number(
     return value
 
 
+def duration_seconds(raw: str, name: str) -> int:
+    value = raw.strip()
+    if not value or not value[:-1].isdigit() or value[-1] not in "smhd":
+        raise ConfigurationError(f"{name} must be an integer followed by s, m, h, or d")
+    number = int(value[:-1])
+    multiplier = {"s": 1, "m": 60, "h": 3600, "d": 86400}[value[-1]]
+    seconds = number * multiplier
+    if not 1 <= seconds <= 2_592_000:
+        raise ConfigurationError(f"{name} is outside the supported range")
+    return seconds
+
+
+def runtime_string(payload: Mapping[str, Any], name: str) -> str:
+    value = payload.get(name, "")
+    if not isinstance(value, str):
+        raise ConfigurationError(f"{name} must be a string")
+    return value
+
+
+def runtime_bool(payload: Mapping[str, Any], name: str) -> bool:
+    value = payload.get(name)
+    if not isinstance(value, bool):
+        raise ConfigurationError(f"{name} must be a boolean")
+    return value
+
+
+def runtime_int(payload: Mapping[str, Any], name: str) -> int:
+    value = payload.get(name)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ConfigurationError(f"{name} must be an integer")
+    return value
+
+
 @dataclass(frozen=True)
 class Settings:
     email_enabled: bool
@@ -81,6 +117,9 @@ class Settings:
     max_user_id: str
     ca_file: str
     timeout_seconds: int
+    repeat_normal_seconds: int
+    repeat_critical_seconds: int
+    disabled_categories: frozenset[str]
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> Settings:
@@ -169,7 +208,55 @@ class Settings:
             timeout_seconds=env_number(
                 env, "CORVEX_ALERT_EXTERNAL_TIMEOUT_SECONDS", 10, 2, 60
             ),
+            repeat_normal_seconds=duration_seconds(
+                env.get("CORVEX_ALERT_REPEAT_INTERVAL", "4h"),
+                "CORVEX_ALERT_REPEAT_INTERVAL",
+            ),
+            repeat_critical_seconds=duration_seconds(
+                env.get("CORVEX_ALERT_CRITICAL_REPEAT_INTERVAL", "30m"),
+                "CORVEX_ALERT_CRITICAL_REPEAT_INTERVAL",
+            ),
+            disabled_categories=frozenset(),
         )
+
+    @classmethod
+    def from_runtime(
+        cls, payload: Mapping[str, Any], base_env: Mapping[str, str]
+    ) -> Settings:
+        """Validate an untrusted admin/cache document through the same channel rules as env."""
+        categories = payload.get("categories")
+        if not isinstance(categories, Mapping):
+            raise ConfigurationError("categories must be an object")
+        disabled: set[str] = set()
+        for name, enabled in categories.items():
+            if not isinstance(name, str) or not isinstance(enabled, bool):
+                raise ConfigurationError("categories must map alert names to booleans")
+            if not enabled:
+                disabled.add(name)
+        values: dict[str, str] = dict(base_env)
+        values.update(
+            {
+                "CORVEX_ALERT_EXTERNAL_EMAIL_ENABLED": str(runtime_bool(payload, "externalEmailEnabled")).lower(),
+                "CORVEX_ALERT_EXTERNAL_EMAIL_RECIPIENTS": runtime_string(payload, "externalEmailRecipients"),
+                "CORVEX_ALERT_EXTERNAL_SMTP_HOST": runtime_string(payload, "externalSmtpHost"),
+                "CORVEX_ALERT_EXTERNAL_SMTP_PORT": str(runtime_int(payload, "externalSmtpPort")),
+                "CORVEX_ALERT_EXTERNAL_SMTP_TLS_MODE": runtime_string(payload, "externalSmtpTlsMode"),
+                "CORVEX_ALERT_EXTERNAL_SMTP_USERNAME": runtime_string(payload, "externalSmtpUsername"),
+                "CORVEX_ALERT_EXTERNAL_SMTP_PASSWORD": runtime_string(payload, "externalSmtpPassword"),
+                "CORVEX_ALERT_EXTERNAL_SMTP_FROM": runtime_string(payload, "externalSmtpFrom"),
+                "CORVEX_ALERT_TELEGRAM_ENABLED": str(runtime_bool(payload, "telegramEnabled")).lower(),
+                "CORVEX_ALERT_TELEGRAM_CHAT_ID": runtime_string(payload, "telegramChatId"),
+                "CORVEX_ALERT_TELEGRAM_BOT_TOKEN": runtime_string(payload, "telegramBotToken"),
+                "CORVEX_ALERT_MAX_ENABLED": str(runtime_bool(payload, "maxEnabled")).lower(),
+                "CORVEX_ALERT_MAX_CHAT_ID": runtime_string(payload, "maxChatId"),
+                "CORVEX_ALERT_MAX_USER_ID": runtime_string(payload, "maxUserId"),
+                "CORVEX_ALERT_MAX_BOT_TOKEN": runtime_string(payload, "maxBotToken"),
+                "CORVEX_ALERT_REPEAT_INTERVAL": f"{runtime_int(payload, 'repeatNormalSeconds')}s",
+                "CORVEX_ALERT_CRITICAL_REPEAT_INTERVAL": f"{runtime_int(payload, 'repeatCriticalSeconds')}s",
+            }
+        )
+        parsed = cls.from_env(values)
+        return replace(parsed, disabled_categories=frozenset(disabled))
 
     def channels(self) -> tuple[str, ...]:
         return tuple(
@@ -193,6 +280,7 @@ class Notification:
 class DeliveryResult:
     delivered: tuple[str, ...]
     failed: tuple[str, ...]
+    state: str = "delivery"
 
 
 def delivery_response(result: DeliveryResult) -> tuple[int, dict[str, Any]]:
@@ -200,6 +288,8 @@ def delivery_response(result: DeliveryResult) -> tuple[int, dict[str, Any]]:
         "delivered": result.delivered,
         "failed": result.failed,
     }
+    if result.state != "delivery":
+        return 200, {"status": result.state, **body}
     if result.failed and not result.delivered:
         return 502, {"status": "delivery-failed", **body}
     if result.failed:
@@ -306,19 +396,104 @@ class Relay:
         urlopen: Callable[..., Any] | None = None,
         smtp_factory: Callable[..., Any] = smtplib.SMTP,
         smtp_ssl_factory: Callable[..., Any] = smtplib.SMTP_SSL,
+        clock: Callable[[], float] = time.time,
     ) -> None:
         self.settings = settings
         self.urlopen = urlopen or open_no_redirect
         self.smtp_factory = smtp_factory
         self.smtp_ssl_factory = smtp_ssl_factory
         self.context = tls_context(settings.ca_file)
+        self.clock = clock
         self.max_lock = threading.Lock()
         self.last_max_sent = 0.0
+        self.settings_lock = threading.Lock()
+        self.last_sent: dict[tuple[str, str], float] = {}
+        self.runtime_status: dict[str, Any] = {
+            "revision": 0,
+            "source": "ENVIRONMENT",
+            "refresh": "NOT_ATTEMPTED",
+            "updatedAt": None,
+            "repeatNormalSeconds": settings.repeat_normal_seconds,
+            "repeatCriticalSeconds": settings.repeat_critical_seconds,
+            "disabledCategories": sorted(settings.disabled_categories),
+        }
+
+    def update_settings(
+        self, settings: Settings, revision: int, source: str, updated_at: Any
+    ) -> None:
+        with self.settings_lock:
+            self.settings = settings
+            self.context = tls_context(settings.ca_file)
+            self.last_sent.clear()  # новая policy применяется к следующему webhook сразу
+            self.runtime_status = {
+                "revision": revision,
+                "source": source,
+                "refresh": "SUCCESS",
+                "updatedAt": updated_at if isinstance(updated_at, str) else None,
+                "repeatNormalSeconds": settings.repeat_normal_seconds,
+                "repeatCriticalSeconds": settings.repeat_critical_seconds,
+                "disabledCategories": sorted(settings.disabled_categories),
+            }
+
+    def mark_refresh_failed(self) -> None:
+        with self.settings_lock:
+            self.runtime_status = {**self.runtime_status, "refresh": "FAILED"}
 
     def deliver(self, payload: Mapping[str, Any]) -> DeliveryResult:
+        # Держим один snapshot настроек и throttle state на всю fanout-операцию.
+        with self.settings_lock:
+            return self._deliver_locked(payload)
+
+    def _deliver_locked(self, payload: Mapping[str, Any]) -> DeliveryResult:
+        raw_alerts = payload.get("alerts")
+        if isinstance(raw_alerts, list):
+            enabled_alerts = [
+                alert
+                for alert in raw_alerts
+                if not isinstance(alert, Mapping)
+                or text_value(mapping(alert.get("labels")), "alertname", "Corvex alert")
+                not in self.settings.disabled_categories
+            ]
+            if raw_alerts and not enabled_alerts:
+                return DeliveryResult((), (), "filtered")
+            payload = {**payload, "alerts": enabled_alerts}
         notification = build_notification(payload)
         if notification is None:
             return DeliveryResult((), ())
+        alerts = [item for item in payload.get("alerts", []) if isinstance(item, Mapping)]
+        status = text_value(
+            payload,
+            "status",
+            text_value(alerts[0], "status", "firing") if alerts else "firing",
+        ).lower()
+        resolved = status == "resolved"
+        severity_values = {
+            text_value(mapping(alert.get("labels")), "severity", "warning").lower()
+            for alert in alerts
+        }
+        repeat_seconds = (
+            self.settings.repeat_critical_seconds
+            if "critical" in severity_values
+            else self.settings.repeat_normal_seconds
+        )
+        fingerprints = [text_value(alert, "fingerprint") for alert in alerts]
+        group_key = text_value(payload, "groupKey")
+        if not group_key:
+            identities = [
+                "|".join(
+                    (
+                        text_value(mapping(alert.get("labels")), "alertname", "Corvex alert"),
+                        text_value(
+                            mapping(alert.get("labels")),
+                            "application",
+                            text_value(mapping(alert.get("labels")), "instance", "corvex"),
+                        ),
+                    )
+                )
+                for alert in alerts
+            ]
+            group_key = "|".join(filter(None, fingerprints)) or "|".join(identities)
+
         senders = {
             "external-email": self.send_email,
             "telegram": self.send_telegram,
@@ -326,10 +501,18 @@ class Relay:
         }
         delivered: list[str] = []
         failed: list[str] = []
+        attempted = 0
+        now = self.clock()
         for channel in self.settings.channels():
+            previous = self.last_sent.get((group_key, channel))
+            if not resolved and previous is not None and now - previous < repeat_seconds:
+                continue
+            attempted += 1
             try:
                 senders[channel](notification)
                 delivered.append(channel)
+                if not resolved:
+                    self.last_sent[(group_key, channel)] = now
                 LOG.warning("External alert delivered: channel=%s", channel)
             except Exception as exc:  # noqa: BLE001 — isolate independent channels
                 LOG.error(
@@ -338,6 +521,11 @@ class Relay:
                     safe_error(exc),
                 )
                 failed.append(channel)
+        if resolved:
+            for key in [key for key in self.last_sent if key[0] == group_key]:
+                self.last_sent.pop(key, None)
+        if attempted == 0 and self.settings.channels():
+            return DeliveryResult((), (), "suppressed")
         return DeliveryResult(tuple(delivered), tuple(failed))
 
     def send_email(self, notification: Notification) -> None:
@@ -447,6 +635,114 @@ def safe_error(exc: Exception) -> str:
     return type(exc).__name__
 
 
+def open_internal_no_redirect(request: urllib.request.Request, *, timeout: int):
+    return urllib.request.build_opener(NoRedirectHandler()).open(request, timeout=timeout)
+
+
+class RuntimeConfigProvider:
+    """Poll admin-service, validate the complete document, and keep a 0600 last-good cache."""
+
+    def __init__(
+        self,
+        relay: Relay,
+        env: Mapping[str, str],
+        *,
+        opener: Callable[..., Any] = open_internal_no_redirect,
+    ) -> None:
+        self.relay = relay
+        self.env = env
+        self.opener = opener
+        self.admin_url = env.get(
+            "CORVEX_ADMIN_SERVICE_URL", "http://admin-service:8090"
+        ).rstrip("/")
+        self.internal_token = env.get("CORVEX_INTERNAL_API_TOKEN", "").strip()
+        self.cache_path = Path(
+            env.get(
+                "CORVEX_ALERT_RUNTIME_CACHE",
+                "/var/lib/corvex-alert-relay/runtime-config.json",
+            )
+        )
+
+    def load_cache(self) -> None:
+        if not self.cache_path.is_file():
+            return
+        try:
+            raw = self.cache_path.read_bytes()
+            if not raw or len(raw) > MAX_REQUEST_BYTES:
+                raise ConfigurationError("Invalid runtime cache size")
+            payload = json.loads(raw)
+            if not isinstance(payload, Mapping):
+                raise ConfigurationError("Runtime cache must be an object")
+            self._apply(payload, "CACHE", write_cache=False)
+            LOG.info("Loaded cached alert runtime revision %s", self.relay.runtime_status["revision"])
+        except Exception as exc:  # noqa: BLE001 — keep env fallback on a broken cache
+            LOG.error("Cannot load alert runtime cache: %s", type(exc).__name__)
+
+    def refresh(self) -> None:
+        try:
+            if not self.internal_token:
+                raise ConfigurationError("CORVEX_INTERNAL_API_TOKEN is required")
+            request = urllib.request.Request(
+                f"{self.admin_url}/internal/alerts/relay-config",
+                headers={
+                    "Accept": "application/json",
+                    "X-Corvex-Internal-Token": self.internal_token,
+                },
+            )
+            with self.opener(request, timeout=3) as response:
+                status = getattr(response, "status", 200)
+                raw = response.read(MAX_REQUEST_BYTES + 1)
+                if not 200 <= status < 300:
+                    raise ConfigurationError(f"Admin config HTTP {status}")
+            if not raw or len(raw) > MAX_REQUEST_BYTES:
+                raise ConfigurationError("Invalid admin config size")
+            payload = json.loads(raw)
+            if not isinstance(payload, Mapping):
+                raise ConfigurationError("Admin config must be an object")
+            self._apply(payload, "ADMIN", write_cache=True)
+        except Exception as exc:  # noqa: BLE001 — sanitized polling failure boundary
+            self.relay.mark_refresh_failed()
+            LOG.warning("Alert runtime refresh failed: %s", type(exc).__name__)
+
+    def _apply(self, payload: Mapping[str, Any], source: str, *, write_cache: bool) -> None:
+        revision = runtime_int(payload, "revision")
+        if revision < 0:
+            raise ConfigurationError("revision must not be negative")
+        settings = Settings.from_runtime(payload, self.env)
+        if write_cache:
+            if revision == 0:
+                self.cache_path.unlink(missing_ok=True)
+            else:
+                self._write_cache(payload)
+        updated_at = payload.get("updatedAt")
+        self.relay.update_settings(settings, revision, source, updated_at)
+
+    def _write_cache(self, payload: Mapping[str, Any]) -> None:
+        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+        encoded = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        if len(encoded) > MAX_REQUEST_BYTES:
+            raise ConfigurationError("Runtime config is too large to cache")
+        temporary = self.cache_path.with_suffix(".tmp")
+        with open(temporary, "wb") as output:
+            os.chmod(temporary, 0o600)
+            output.write(encoded)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, self.cache_path)
+        os.chmod(self.cache_path, 0o600)
+
+    def start(self) -> None:
+        self.load_cache()
+        self.refresh()
+
+        def poll() -> None:
+            while True:
+                time.sleep(10)
+                self.refresh()
+
+        threading.Thread(target=poll, name="alert-runtime-config", daemon=True).start()
+
+
 class RelayHttpServer(ThreadingHTTPServer):
     daemon_threads = True
 
@@ -471,7 +767,12 @@ class AlertRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path == "/healthz":
             self.json_response(
-                200, {"status": "UP", "channels": self.server.relay.settings.channels()}
+                200,
+                {
+                    "status": "UP",
+                    "channels": self.server.relay.settings.channels(),
+                    "runtime": self.server.relay.runtime_status,
+                },
             )
         else:
             self.json_response(404, {"status": "not-found"})
@@ -508,6 +809,7 @@ def main() -> None:
     try:
         settings = Settings.from_env(os.environ)
         relay = Relay(settings)
+        RuntimeConfigProvider(relay, os.environ).start()
     except Exception as exc:  # noqa: BLE001 — sanitized startup failure boundary
         # ConfigurationError names the invalid key; CA/TLS errors do not contain a secret value.
         LOG.error(

@@ -34,6 +34,9 @@ $Volumes = @(
   @{ Volume = "${ProjectName}_attachment-data"; Archive = "attachments.tar.gz"; Marker = "attachment_data_match" },
   @{ Volume = "${ProjectName}_chat-file-data"; Archive = "chat-files.tar.gz"; Marker = "chat_file_data_match" }
 )
+if (Test-Path (Join-Path $BackupDir "alert-relay-data.tar.gz")) {
+  $Volumes += @{ Volume = "${ProjectName}_alert-relay-data"; Archive = "alert-relay-data.tar.gz"; Marker = "alert_relay_data_match" }
+}
 foreach ($Db in $Databases) {
   if (-not (Test-Path (Join-Path $BackupDir "$Db.dump"))) { throw "Missing database dump: $Db.dump" }
 }
@@ -89,5 +92,5 @@ foreach ($Db in $Databases) {
     "-v", "${BackupDir}:/backup:ro", "postgres:16-alpine", "sh", "-c", $Cmd)
 }
 
-Write-Host "Restore verification OK: 4 databases and 3 file volumes match the backup."
+Write-Host "Restore verification OK: $($Databases.Count) databases and $($Volumes.Count) file volumes match the backup."
 Write-Host "Application services were not started. Isolated PostgreSQL and volumes were kept."

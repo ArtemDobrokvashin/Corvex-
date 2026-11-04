@@ -4,6 +4,9 @@ import { adminApi, type AdminSettings } from '../../api/adminApi';
 import { errorText } from '../../api/authApi';
 import { Notice } from '../../components/ui';
 import { useI18n } from '../../i18n';
+import { quotaBytesToGigabytes, quotaGigabytesToBytes } from './quota';
+import { useSession } from '../../store/sessionStore';
+import AlertSettingsPanel from './AlertSettingsPanel';
 
 const DEFAULT_SETTINGS: AdminSettings = {
   'mail.maxMessageSizeMb': '25',
@@ -29,18 +32,27 @@ type SettingDefinition = {
 
 const DEFINITIONS: SettingDefinition[] = [
   { key: 'mail.maxMessageSizeMb', section: 'Почта', label: 'Максимальный размер письма', description: 'Значение реестра в MiB, от 1 до 1024.', kind: 'integer', min: 1, max: 1024, unit: 'MiB' },
-  { key: 'mail.defaultQuotaBytes', section: 'Почта', label: 'Квота нового ящика по умолчанию', description: 'Значение в bytes; 5368709120 = 5 ГиБ, 0 — без лимита.', kind: 'integer', min: 0, max: 1_000_000_000_000_000, unit: 'bytes' },
-  { key: 'mail.spamThreshold', section: 'Почта', label: 'Порог спам-оценки', description: 'Десятичное значение реестра от −100 до 100.', kind: 'decimal', min: -100, max: 100, step: '0.1' },
+  { key: 'mail.defaultQuotaBytes', section: 'Почта', label: 'Квота нового ящика по умолчанию', description: 'Обычное десятичное число в ГБ: например 5 или 2,5. Ноль означает без лимита. В API по-прежнему передаются bytes.', kind: 'decimal', min: 0, max: 1_000_000_000_000_000 / (1024 ** 3), step: 'any', unit: 'ГБ' },
+  { key: 'mail.spamThreshold', section: 'Почта', label: 'Порог спам-оценки', description: 'SpamAssassin складывает баллы активных правил: SPF/DKIM/DMARC, репутации адресов и ссылок, заголовки, текст и Bayesian-классификатор. Чем выше score, тем подозрительнее письмо. При ответе spamd Spam: True (score ≥ его required_score) Corvex помещает письмо в «Спам». Это поле НЕ передаётся в spamd: фактический runtime-порог задаётся конфигурацией SpamAssassin, а не реестром.', kind: 'decimal', min: -100, max: 100, step: '0.1' },
   { key: 'mail.pop3.enabled', section: 'Почта', label: 'POP3', description: 'Сохранённый признак доступности POP3.', kind: 'boolean' },
   { key: 'security.passwordMinLength', section: 'Безопасность', label: 'Минимальная длина пароля', description: 'Значение реестра от 8 до 128 символов.', kind: 'integer', min: 8, max: 128, unit: 'символов' },
   { key: 'security.requireTotp', section: 'Безопасность', label: 'Обязательная 2FA', description: 'Сохранённый признак политики TOTP.', kind: 'boolean' },
   { key: 'chat.maxFileSizeMb', section: 'Сообщения', label: 'Максимальный размер файла', description: 'Значение реестра в MiB, от 1 до 1024.', kind: 'integer', min: 1, max: 1024, unit: 'MiB' },
 ];
 
+function displaySettings(values: AdminSettings): AdminSettings {
+  const quotaBytes = Number(values['mail.defaultQuotaBytes'] ?? 0);
+  return {
+    ...values,
+    'mail.defaultQuotaBytes': quotaBytesToGigabytes(quotaBytes),
+  };
+}
+
 export default function SettingsTab({ demoMode }: { demoMode: boolean }) {
   const { locale, t } = useI18n();
+  const isSuperAdmin = useSession((state) => state.user?.groups.includes('SUPER_ADMIN') ?? false);
   const [settings, setSettings] = useState<AdminSettings | null>(demoMode ? DEFAULT_SETTINGS : null);
-  const [draft, setDraft] = useState<AdminSettings>(demoMode ? DEFAULT_SETTINGS : {});
+  const [draft, setDraft] = useState<AdminSettings>(demoMode ? displaySettings(DEFAULT_SETTINGS) : {});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -53,7 +65,7 @@ export default function SettingsTab({ demoMode }: { demoMode: boolean }) {
     try {
       const result = demoMode ? DEFAULT_SETTINGS : await adminApi.settings();
       setSettings(result);
-      setDraft(result);
+      setDraft(displaySettings(result));
     } catch (loadError) {
       setError(errorText(loadError, locale));
     } finally {
@@ -66,20 +78,36 @@ export default function SettingsTab({ demoMode }: { demoMode: boolean }) {
   }, [loadSettings]);
 
   const changedKeys = settings
-    ? DEFINITIONS.map((definition) => definition.key).filter((key) => draft[key] !== settings[key])
+    ? DEFINITIONS.map((definition) => definition.key).filter((key) => (
+      key === 'mail.defaultQuotaBytes'
+        ? draft[key] !== quotaBytesToGigabytes(Number(settings[key] ?? 0))
+        : draft[key] !== settings[key]
+    ))
     : [];
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!settings || changedKeys.length === 0) return;
-    setSaving(true);
     setError('');
     setSaved(false);
-    const patch = Object.fromEntries(changedKeys.map((key) => [key, (draft[key] ?? '').trim()]));
+    const patch: AdminSettings = {};
+    for (const key of changedKeys) {
+      if (key === 'mail.defaultQuotaBytes') {
+        const bytes = quotaGigabytesToBytes(draft[key] ?? '');
+        if (bytes === null || bytes > 1_000_000_000_000_000) {
+          setError(t('Введите квоту в ГБ: неотрицательное десятичное число, например 5 или 2,5.'));
+          return;
+        }
+        patch[key] = String(bytes);
+      } else {
+        patch[key] = (draft[key] ?? '').trim();
+      }
+    }
+    setSaving(true);
     try {
       const result = demoMode ? { ...settings, ...patch } : await adminApi.patchSettings(patch);
       setSettings(result);
-      setDraft(result);
+      setDraft(displaySettings(result));
       setSaved(true);
     } catch (saveError) {
       setError(errorText(saveError, locale));
@@ -89,6 +117,7 @@ export default function SettingsTab({ demoMode }: { demoMode: boolean }) {
   }
 
   return (
+    <>
     <section className="panel animate-rise-in overflow-hidden" aria-labelledby="settings-registry-title">
       <header className="flex flex-wrap items-start gap-3 border-b border-line px-5 py-5 sm:px-6">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-dark"><Settings2 size={19} strokeWidth={1.8} /></span>
@@ -137,7 +166,7 @@ export default function SettingsTab({ demoMode }: { demoMode: boolean }) {
                             </select>
                           ) : (
                             <input
-                              type="number"
+                              type={definition.key === 'mail.defaultQuotaBytes' ? 'text' : 'number'}
                               required
                               inputMode={definition.kind === 'decimal' ? 'decimal' : 'numeric'}
                               min={definition.min}
@@ -167,5 +196,7 @@ export default function SettingsTab({ demoMode }: { demoMode: boolean }) {
         )}
       </div>
     </section>
+    {(isSuperAdmin || demoMode) && <div className="mt-6"><AlertSettingsPanel demoMode={demoMode} /></div>}
+    </>
   );
 }

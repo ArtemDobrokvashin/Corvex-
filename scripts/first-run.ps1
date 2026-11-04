@@ -71,6 +71,11 @@ if (-not (Test-Path .env)) {
       [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($keyBytes)
       "CORVEX_EXTERNAL_MAIL_ENC_KEY=$([Convert]::ToBase64String($keyBytes))"
     }
+    elseif ($_ -match '^CORVEX_ALERT_CONFIG_ENC_KEY=') {
+      $keyBytes = New-Object byte[] 32
+      [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($keyBytes)
+      "CORVEX_ALERT_CONFIG_ENC_KEY=$([Convert]::ToBase64String($keyBytes))"
+    }
     else { $_ }
   }
   $lines | Set-Content .env -Encoding UTF8
@@ -101,6 +106,12 @@ if (-not (Test-Path .env)) {
     [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($keyBytes)
     Add-Content .env "`nCORVEX_EXTERNAL_MAIL_ENC_KEY=$([Convert]::ToBase64String($keyBytes))" -Encoding UTF8
     Write-Host "[OK] Added missing CORVEX_EXTERNAL_MAIL_ENC_KEY to existing .env."
+  }
+  if ($existingEnv -notmatch '(?m)^CORVEX_ALERT_CONFIG_ENC_KEY=') {
+    $keyBytes = New-Object byte[] 32
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($keyBytes)
+    Add-Content .env "`nCORVEX_ALERT_CONFIG_ENC_KEY=$([Convert]::ToBase64String($keyBytes))" -Encoding UTF8
+    Write-Host "[OK] Added missing CORVEX_ALERT_CONFIG_ENC_KEY to existing .env."
   }
 }
 

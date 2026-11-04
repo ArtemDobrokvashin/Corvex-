@@ -1,4 +1,4 @@
-# Уведомления мониторинга: частота, silence и внешние каналы
+# Уведомления мониторинга: получатели, частота, категории и внешние каналы
 
 ## 1. Архитектура и граница независимости
 
@@ -6,52 +6,107 @@ Alertmanager независимо рассылает каждую группу �
 
 ```text
 Prometheus → Alertmanager
-              ├─→ notification-service → RabbitMQ → SMTP Corvex → внутренние получатели
+              ├─→ notification-service → RabbitMQ → SMTP → внутренние получатели
               └─→ alert-relay → внешний SMTP / Telegram / MAX
+
+Control plane (не delivery path):
+admin UI → admin-service/admin_db → internal config API → оба consumer
 ```
 
-`alert-relay` — небольшой sidecar на Python стандартной библиотеки. Он не использует
-PostgreSQL, RabbitMQ, Java-сервисы или SMTP Corvex, не публикует порт на хост и доступен
-только в Docker-сети `monitoring`. Поэтому отказ `notification-service`, RabbitMQ или
-почтовых сервисов не блокирует внешний канал, пока работают Docker, Alertmanager и сам relay.
+`alert-relay` — sidecar на Python стандартной библиотеки. **Доставка** внешних сообщений не
+использует PostgreSQL, RabbitMQ, Java-сервисы или SMTP Corvex. Для получения настроек relay
+обращается к admin-service, но сохраняет последнюю валидную конфигурацию в
+`alert-relay-data` с правами `0600`. Поэтому после первой успешной загрузки отказ
+admin-service не отключает внешний канал: relay продолжает работать с cache. Если admin
+недоступен до первой конфигурации, используются значения `.env`.
+
+Порт relay на хост не публикуется. Сети `monitoring` и `app` нужны для двух webhook и
+внутреннего config API; это не открывает доступ из браузера или извне.
 
 **Это не внешний watchdog.** При отказе всего сервера, Docker, сети, Alertmanager или relay
-сообщение с того же сервера отправить некому. Для сценария «сервер полностью недоступен»
-нужна отдельная проверка HTTPS/heartbeat с другой площадки (внешний Uptime Kuma,
-hosted-monitoring или второй независимый watchdog). Такой внешний watchdog в Corvex пока
-не развёрнут и не принят.
+сообщение с того же сервера отправить некому. Для такого случая нужна проверка
+HTTPS/heartbeat с другой площадки. Внешний watchdog в Corvex пока не развёрнут и не принят.
 
-## 2. Частота повторов
+## 2. Настройка суперадминистратором (основной способ)
 
-В `.env` есть две настройки:
+Откройте **«Администрирование → Настройки → Алерты и доставка»**. Раздел виден только
+пользователю с группой `SUPER_ADMIN`; делегированного `ADMIN_SERVER_CONFIG` без этой группы
+недостаточно — backend возвращает 403.
+
+В панели настраивается именно runtime policy:
+
+- **Куда:** внутренние email-получатели и отправитель; независимый внешний SMTP;
+  Telegram; MAX. Внешние каналы по умолчанию выключены.
+- **Как часто:** отдельные интервалы повторов обычного и `critical` алерта, от 1 до
+  43200 минут. Новый инцидент и `resolved` не ждут repeat interval.
+- **При каких сбоях:** `ServiceDown`, `HighHttp5xxRate`, `MailQueueBacklog`,
+  `DiskSpaceLow`, `JvmMemoryPressure`. Выключенная категория фильтруется обоими consumers.
+  Будущие неизвестные категории по умолчанию не блокируются.
+
+Нажмите **«Применить настройки алертов»**. Сохранение атомарно создаёт новую `revision` в
+`admin_db.alert_runtime_config` и запись `ALERT_SETTINGS_CHANGED` в аудите. Ручное
+редактирование YAML и перезапуск контейнеров не требуются.
+
+Блок **«Фактическое применение»** опрашивает consumers:
+
+- `APPLIED` — consumer загрузил revision, совпадающую с сохранённой;
+- `PENDING` — consumer пока сообщает другую revision; обычно достаточно дождаться следующего
+  10-секундного опроса;
+- `UNAVAILABLE` — consumer или monitoring profile недоступен. Это не отображается как успех.
+
+`APPLIED` подтверждает загрузку policy, а не доставку конкретного внешнего сообщения.
+Фактическую доставку проверяйте отдельно по разделу 8.
+
+## 3. Секреты и fallback через .env
+
+SMTP password, Telegram token и MAX token — **write-only**. Public GET возвращает только
+`configured` и `source` (`UI`, `ENVIRONMENT`, `NONE`), но не значение. Пустое поле при
+сохранении означает «не менять секрет». Для UI-secret доступна операция «удалить и вернуться
+к `.env`»; выключение канала выполняется отдельным переключателем.
+
+Новые UI-секреты хранятся в `admin_db` только как AES-256-GCM ciphertext. Для них нужен
+отдельный ключ:
+
+```dotenv
+CORVEX_ALERT_CONFIG_ENC_KEY=<Base64 из 32 случайных байт>
+```
+
+`scripts/first-run.ps1` генерирует ключ при новой установке и добавляет отсутствующий ключ в
+существующий `.env`, не перезаписывая другие секреты. Не задавайте ключ в командной строке
+или чате. Его потеря требует повторного ввода UI-секретов алертов. `.env` и ключ должны
+входить в защищённый backup.
+
+Последний effective config также кэшируется relay в `alert-relay-data`; backup/restore
+сохраняет этот volume. Старые backup-наборы без него остаются совместимыми: после
+восстановления relay заново получит config из `admin_db`.
+
+Значения `.env` остаются поддерживаемым fallback и начальной конфигурацией до первого
+сохранения из UI. После появления database revision несекретные значения берутся из UI;
+секрет, не заменённый в UI, по-прежнему может использоваться из `.env`.
+
+## 4. Что означает repeat interval
+
+В `.env` задаются fallback-значения:
 
 ```dotenv
 CORVEX_ALERT_REPEAT_INTERVAL=4h
 CORVEX_ALERT_CRITICAL_REPEAT_INTERVAL=30m
 ```
 
-Первая управляет обычными алертами, вторая — `severity=critical`. Допустимы Prometheus
-duration, например `15m`, `1h`, `6h`, `1d`. Значения проверяются `amtool check-config` до
-запуска Alertmanager; ошибка не подменяется молча значением по умолчанию.
+Допустимы duration `15m`, `1h`, `6h`, `1d`. В UI те же интервалы задаются обычным числом
+минут. Alertmanager отправляет consumers минутный **delivery tick**; это не означает письмо
+каждую минуту. Notification-service и relay самостоятельно подавляют повторы согласно
+effective policy и делают это отдельно для каждого канала. При частичной ошибке следующий
+tick повторяет только неудачный канал, не дублируя успешные.
 
-`repeat_interval` — это **повторное напоминание, пока алерт активен**, а не интервал
-обнаружения сбоя. Первое уведомление определяется правилом `for` и `group_wait: 30s`;
-добавление алерта в существующую группу также зависит от `group_interval: 5m`.
+Первое уведомление определяется правилом Prometheus `for`, `group_wait: 30s` и, для обновления
+существующей группы, `group_interval: 5m`. `resolved` проходит без repeat-throttle и очищает
+состояние инцидента. Grouping и silences остаются в Alertmanager.
 
-После изменения интервалов пересоздайте только Alertmanager:
-
-```powershell
-docker compose --profile monitoring up -d --force-recreate alertmanager
-powershell -ExecutionPolicy Bypass -File scripts\alerts.ps1 status
-```
-
-Базы, почтовые volumes и остальные сервисы эта команда не пересоздаёт.
-
-## 3. Временное отключение уведомлений (silence)
+## 5. Временное отключение уведомлений (silence)
 
 Silence отключает **новые уведомления обоих каналов**, но не останавливает Prometheus,
-Alertmanager или Grafana и не скрывает сам сбой. Состояние silence хранится в
-`alertmanager-data` и переживает перезапуск контейнера.
+Alertmanager или Grafana и не скрывает сам сбой. Состояние хранится в `alertmanager-data`.
 
 ```powershell
 # Все Corvex-алерты на 60 минут.
@@ -60,21 +115,32 @@ powershell -ExecutionPolicy Bypass -File scripts\alerts.ps1 silence -Minutes 60
 # Только один Prometheus instance на 2 часа.
 powershell -ExecutionPolicy Bypass -File scripts\alerts.ps1 silence -Minutes 120 -Service chat-service:8088
 
-# Активные silence, их UUID и effective repeat intervals.
+# Effective revision/repeat/categories и активные silence.
 powershell -ExecutionPolicy Bypass -File scripts\alerts.ps1 status
 
 # Досрочно завершить конкретный silence.
 powershell -ExecutionPolicy Bypass -File scripts\alerts.ps1 unsilence -SilenceId <uuid>
 ```
 
-Длительность одной операции ограничена 30 сутками; после срока доставка возобновляется
-автоматически. Silence не отзывает уже отправленные письма и не удаляет события, которые
-уже попали во внутреннюю очередь до его создания.
+Длительность одной операции ограничена 30 сутками. Silence не отзывает уже отправленные
+сообщения и не удаляет события, которые попали во внутреннюю очередь до его создания.
 
-## 4. Внешняя почта напрямую из alert-relay
+## 6. Каналы
 
-Используйте SMTP независимого провайдера или отдельный почтовый сервер, а не
-`mail-smtp-service`. Незашифрованный SMTP для этого канала намеренно не поддерживается.
+### Внутренняя почта
+
+Путь: `notification-service → RabbitMQ → SMTP`. Получатели вводятся через запятую. Этот канал
+не является независимым от почтовой инфраструктуры, поэтому для сбоя самой почты нужен
+внешний relay.
+
+### Внешний SMTP
+
+Используйте SMTP независимого провайдера или отдельный сервер, а не `mail-smtp-service`.
+Незашифрованный SMTP намеренно не поддерживается: выберите `starttls` (обычно порт 587) или
+`ssl` (обычно порт 465). Username можно оставить пустым только если провайдер разрешает relay
+без логина; TLS обязателен в обоих случаях.
+
+Env fallback (значения также можно ввести через UI):
 
 ```dotenv
 CORVEX_ALERT_EXTERNAL_EMAIL_ENABLED=true
@@ -87,19 +153,10 @@ CORVEX_ALERT_EXTERNAL_SMTP_PASSWORD=<app-password>
 CORVEX_ALERT_EXTERNAL_SMTP_FROM=corvex-alert@example.net
 ```
 
-Для implicit TLS обычно используют порт `465` и `CORVEX_ALERT_EXTERNAL_SMTP_TLS_MODE=ssl`.
-Если провайдер разрешает аутентифицированный relay без логина, username/password можно
-оставить пустыми; TLS всё равно обязателен. Пароль приложения вводится только в защищённый
-`.env`, не в командную строку, тикет или чат.
+### Telegram
 
-Старые `CORVEX_ALERT_RECIPIENTS` и `ALERT_SMTP_HOST` относятся только к внутреннему каналу.
-Новые `CORVEX_ALERT_EXTERNAL_*` не изменяют их неявно.
-
-## 5. Telegram
-
-1. Создайте отдельного bot через официальный BotFather и добавьте его в нужный чат.
-2. Заполните token и chat/channel ID в `.env`; для групп ID может быть отрицательным.
-3. Не отправляйте token разработчику или в общий чат и не записывайте его в аргументы CLI.
+Создайте отдельного bot через BotFather и добавьте его в нужный чат. Укажите chat/channel ID
+(у групп он может быть отрицательным) и token через UI либо env fallback:
 
 ```dotenv
 CORVEX_ALERT_TELEGRAM_ENABLED=true
@@ -107,75 +164,75 @@ CORVEX_ALERT_TELEGRAM_BOT_TOKEN=<token>
 CORVEX_ALERT_TELEGRAM_CHAT_ID=<chat-id>
 ```
 
-Telegram Bot API требует token в пути URL. Relay никогда не пишет URL, тело ответа или
-сам token в лог; сетевые ошибки выводятся только в sanitised-форме. HTTP-redirect для
-Telegram/MAX не выполняется, чтобы credentials и текст не ушли на неожиданный адрес.
+Telegram Bot API требует token в пути URL. Relay не пишет URL, тело ответа или token в лог.
+HTTP-redirect для Telegram/MAX не выполняется, чтобы credentials и текст не ушли на другой адрес.
 
-## 6. MAX
+### MAX
 
-Используется актуальный официальный endpoint `https://platform-api2.max.ru/messages`.
-Token передаётся только в заголовке `Authorization`, а не в query `access_token`.
+Используется официальный endpoint `https://platform-api2.max.ru/messages`. Token передаётся
+только в `Authorization`, не в query. Заполните ровно один `chat ID` или `user ID`:
 
 ```dotenv
 CORVEX_ALERT_MAX_ENABLED=true
 CORVEX_ALERT_MAX_BOT_TOKEN=<token>
-# Заполните ровно один вариант:
 CORVEX_ALERT_MAX_CHAT_ID=<chat-or-channel-id>
 CORVEX_ALERT_MAX_USER_ID=
 ```
 
-Token выдаётся в кабинете MAX для бизнеса/настройках бота. Если для TLS требуется цепочка
-Минцифры, поместите публичный PEM в отдельный `infra/alert-ca` (или `CORVEX_ALERT_CA_DIR`) и укажите:
+Если для TLS требуется цепочка Минцифры, поместите публичный PEM в отдельный `infra/alert-ca`
+(или `CORVEX_ALERT_CA_DIR`) и укажите:
 
 ```dotenv
 CORVEX_ALERT_EXTERNAL_CA_FILE=/etc/corvex/alert-ca/mincifry-chain.pem
 ```
 
-Дополнительный CA добавляется к системным корням, а не заменяет их. Каталог монтируется
-read-only и не содержит приватные ключи из `infra/certs`. Один CA-bundle можно
-использовать и для частного внешнего SMTP. Relay ограничивает сообщение 3900 символами
-(официальный предел MAX — 4000) и сериализует MAX-отправки с интервалом не менее 0,55 с.
+Дополнительный CA добавляется к системным корням. Каталог монтируется read-only и не содержит
+приватные ключи Corvex. Сообщение ограничено 3900 символами; MAX-отправки сериализуются с
+интервалом не менее 0,55 с.
 
-## 7. Применение и проверка каналов
+## 7. Применение инфраструктурного обновления
 
-Все внешние каналы по умолчанию выключены. После заполнения `.env` пересоздайте только relay:
+После обновления кода Corvex пересоберите изменённые образы и поднимите monitoring profile:
 
 ```powershell
-docker compose --profile monitoring up -d --build --force-recreate alert-relay
-docker compose ps alert-relay alertmanager
-docker compose logs --tail 50 alert-relay
+docker compose up -d --build admin-service notification-service frontend
+docker compose --profile monitoring up -d --build alert-relay alertmanager
 ```
 
-Несколько алертов одного Alertmanager webhook объединяются в одно внешнее сообщение.
-Каналы обрабатываются независимо. Если хотя бы один внешний канал уже доставлен, relay не
-заставляет Alertmanager повторять весь webhook и не дублирует успешные каналы; неудачный
-канал получит следующее scheduled-уведомление. Если все включённые каналы не доставлены,
-HTTP 502 оставляет попытку retry Alertmanager.
+Это нужно для установки **новой версии кода**, а не для каждого изменения настроек из UI.
+Пароли, JWT и encryption keys в команды не передаются. Существующие volumes не удаляются.
 
-Для сквозной проверки можно использовать существующий controlled synthetic alert:
+## 8. Проверка каналов
+
+Несколько алертов одного Alertmanager webhook объединяются в одно внешнее сообщение. Если
+хотя бы один канал доставлен, relay не заставляет Alertmanager повторять весь webhook;
+неудачный канал получает следующий delivery tick. Если все включённые каналы не доставлены,
+HTTP 502 оставляет retry Alertmanager.
+
+Для сквозной проверки внутреннего канала используйте controlled synthetic alert:
 
 ```powershell
 py -3 scripts/alert_e2e.py --host mail.company.local --username admin@company.local --ca-file C:\corvex-pki\corvex-test-ca.crt --wait-seconds 180 --report artifacts\smoke\alert-e2e.json
 ```
 
-Он создаёт один ограниченный по времени `CorvexAlertSmoke` и затем завершает его, не
-останавливая сервисы. JSON PASS этого скрипта доказывает **внутреннюю IMAP-цепочку**;
-для внешнего канала отдельно подтвердите фактическое сообщение на внешней почте, в Telegram
-или MAX и отсутствие `delivery failed` в `alert-relay`. Не запускайте проверку лишний раз
-и не используйте реальную остановку production-сервиса как alert-test.
+Перед запуском он читает effective snapshot notification-service и проверяет, что внутренний
+канал включён и `--username` входит в `internalRecipients`; старый `.env` здесь не используется.
+Затем создаёт один ограниченный `CorvexAlertSmoke` и завершает его, не останавливая сервисы.
+JSON PASS доказывает **внутреннюю IMAP-цепочку**. Для внешнего канала отдельно подтвердите
+фактическое сообщение на внешней почте, в Telegram или MAX и отсутствие sanitised
+`delivery failed` в relay. Не останавливайте production-сервис ради alert-test.
 
-## 8. Диагностика без секретов
+## 9. Диагностика без секретов
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\alerts.ps1 status
-docker compose logs --tail 100 alertmanager alert-relay notification-service
+docker compose logs --tail 100 alertmanager alert-relay notification-service admin-service
 ```
 
-Если entrypoint сразу пишет `set: illegal option -`, проверьте CRLF в bind-mounted
-`alertmanager-entrypoint.sh`: Linux-shell воспринимает `\r` как часть опции. В репозитории
-`.gitattributes` принудительно задаёт `*.sh text eol=lf`; после обновления такой скрипт должен
-остаться LF даже при Windows `core.autocrlf=true`, ручная правка контейнера не требуется.
+`scripts/alerts.ps1 status` читает effective relay revision, repeat и disabled categories, а
+не устаревший `.env`. `refresh=FAILED` означает, что последний config refresh не удался;
+прежний валидный cache продолжает работать.
 
-Не публикуйте `.env`, Docker Compose config с environment, SMTP password, bot token или
-полные внешние HTTP-запросы. Для отчёта достаточно имени канала, HTTP-статуса и sanitised
-строки ошибки.
+Не публикуйте `.env`, `docker compose config` с environment, SMTP password, bot token или
+полные внешние HTTP-запросы. Для отчёта достаточно имени канала, revision, HTTP-статуса и
+sanitised ошибки.

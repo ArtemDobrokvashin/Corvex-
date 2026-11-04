@@ -115,6 +115,45 @@ paths:
     patch:
       summary: Сохранить и аудировать настройки; применение зависит от потребителей конкретного ключа
       responses: { '200': { description: Сохранено в server_settings; не подтверждает применение работающими сервисами } }
+  /admin/alerts/settings:
+    get:
+      summary: Runtime-настройки алертов; только JWT с группой SUPER_ADMIN и правом ADMIN_SERVER_CONFIG
+      responses:
+        '200':
+          description: Несекретные значения и secret configured/source; plaintext secrets никогда не возвращаются
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AlertSettingsView' }
+        '403': { description: Нет ADMIN_SERVER_CONFIG или членства SUPER_ADMIN }
+        '503': { description: Эффективная alert-конфигурация повреждена или содержит невалидный env fallback }
+    put:
+      summary: Атомарно заменить runtime-настройки алертов и увеличить revision
+      description: Blank secret сохраняет прежний ciphertext; clear* удаляет UI-secret и возвращает env fallback. Значения секретов не попадают в audit details.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AlertSettingsRequest' }
+      responses:
+        '200':
+          description: Сохранённая revision; фактическое применение проверяется отдельным /runtime endpoint
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AlertSettingsView' }
+        '403': { description: Не суперадминистратор }
+        '422': { description: Невалидные recipients, repeat, категории, TLS или channel target }
+        '503': { description: Не настроен ключ для нового UI-secret, не расшифровывается сохранённый секрет или невалиден effective config }
+  /admin/alerts/runtime:
+    get:
+      summary: Фактически загруженные revision у notification-service и alert-relay; только SUPER_ADMIN
+      responses:
+        '200':
+          description: APPLIED только при совпадении revision; UNAVAILABLE не маскируется под успех
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AlertRuntimeStatus' }
+        '403': { description: Не суперадминистратор }
+        '503': { description: Не удалось прочитать effective config; недоступность отдельного consumer возвращается как UNAVAILABLE в 200 }
   /admin/audit:
     get:
       summary: Журнал аудита (AUDIT_VIEW) — кто, что, когда, с какого IP
@@ -178,6 +217,76 @@ paths:
                   status: { type: string, enum: [REQUESTED] }
                   note: { type: string }
 components:
+  schemas:
+    AlertSecretState:
+      type: object
+      required: [configured, source]
+      properties:
+        configured: { type: boolean }
+        source: { type: string, enum: [UI, ENVIRONMENT, NONE] }
+    AlertSettingsBase:
+      type: object
+      required: [repeatNormalMinutes, repeatCriticalMinutes, categories, internalEmailEnabled, externalEmailEnabled, externalSmtpPort, externalSmtpTlsMode, telegramEnabled, maxEnabled]
+      properties:
+        repeatNormalMinutes: { type: integer, minimum: 1, maximum: 43200 }
+        repeatCriticalMinutes: { type: integer, minimum: 1, maximum: 43200 }
+        categories:
+          type: object
+          description: Пять ключей ServiceDown, HighHttp5xxRate, MailQueueBacklog, DiskSpaceLow, JvmMemoryPressure
+          additionalProperties: { type: boolean }
+        internalEmailEnabled: { type: boolean }
+        internalRecipients: { type: string, description: Comma-separated email addresses }
+        internalFrom: { type: string, format: email }
+        externalEmailEnabled: { type: boolean }
+        externalEmailRecipients: { type: string }
+        externalSmtpHost: { type: string }
+        externalSmtpPort: { type: integer, minimum: 1, maximum: 65535 }
+        externalSmtpTlsMode: { type: string, enum: [starttls, ssl] }
+        externalSmtpUsername: { type: string }
+        externalSmtpFrom: { type: string }
+        telegramEnabled: { type: boolean }
+        telegramChatId: { type: string }
+        maxEnabled: { type: boolean }
+        maxChatId: { type: string, description: Заполняется ровно один из maxChatId/maxUserId при включённом MAX }
+        maxUserId: { type: string }
+    AlertSettingsView:
+      allOf:
+        - $ref: '#/components/schemas/AlertSettingsBase'
+        - type: object
+          properties:
+            revision: { type: integer, format: int64, minimum: 0 }
+            updatedAt: { type: string, format: date-time, nullable: true }
+            source: { type: string, enum: [DATABASE, ENVIRONMENT] }
+            externalSmtpPassword: { $ref: '#/components/schemas/AlertSecretState' }
+            telegramBotToken: { $ref: '#/components/schemas/AlertSecretState' }
+            maxBotToken: { $ref: '#/components/schemas/AlertSecretState' }
+    AlertSettingsRequest:
+      allOf:
+        - $ref: '#/components/schemas/AlertSettingsBase'
+        - type: object
+          properties:
+            externalSmtpPassword: { type: string, format: password, writeOnly: true, maxLength: 4096 }
+            clearExternalSmtpPassword: { type: boolean, default: false }
+            telegramBotToken: { type: string, format: password, writeOnly: true, maxLength: 4096 }
+            clearTelegramBotToken: { type: boolean, default: false }
+            maxBotToken: { type: string, format: password, writeOnly: true, maxLength: 4096 }
+            clearMaxBotToken: { type: boolean, default: false }
+    AlertConsumerStatus:
+      type: object
+      properties:
+        consumer: { type: string, enum: [notification-service, alert-relay] }
+        status: { type: string, enum: [APPLIED, PENDING, UNAVAILABLE] }
+        revision: { type: integer, format: int64, nullable: true }
+        source: { type: string }
+        refresh: { type: string }
+        updatedAt: { type: string, format: date-time, nullable: true }
+    AlertRuntimeStatus:
+      type: object
+      properties:
+        revision: { type: integer, format: int64 }
+        consumers:
+          type: array
+          items: { $ref: '#/components/schemas/AlertConsumerStatus' }
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
 security:

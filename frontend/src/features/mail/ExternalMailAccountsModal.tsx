@@ -1,6 +1,7 @@
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
+  Check as CheckIcon,
   CheckCircle2,
   Download,
   KeyRound,
@@ -356,6 +357,9 @@ export default function ExternalMailAccountsModal({
   useEffect(() => {
     if (demoMode || !canAdmin) return undefined;
     let cancelled = false;
+    // Не оставляем прежнюю выдачу под новым запросом: пустой результат и
+    // HTTP-ошибка должны быть видимыми, а не выглядеть как «поиск не работает».
+    setOwners([]);
     setOwnersLoading(true);
     setOwnerError(null);
     const timer = window.setTimeout(() => {
@@ -364,7 +368,10 @@ export default function ExternalMailAccountsModal({
           if (!cancelled && mountedRef.current) setOwners(items);
         })
         .catch((searchError) => {
-          if (!cancelled && mountedRef.current) setOwnerError(errorMessage(searchError));
+          if (!cancelled && mountedRef.current) {
+            setOwners([]);
+            setOwnerError(errorMessage(searchError));
+          }
         })
         .finally(() => {
           if (!cancelled && mountedRef.current) setOwnersLoading(false);
@@ -641,27 +648,46 @@ export default function ExternalMailAccountsModal({
                       aria-label={t('Поиск сотрудника Corvex')}
                     />
                   </span>
-                  <select
-                    value={ownerFilter?.id ?? currentOwner?.id ?? ''}
-                    onChange={(event) => {
-                      const owner = uniqueOwners.find((candidate) => candidate.id === event.target.value) ?? null;
-                      changeOwnerFilter(owner);
-                    }}
-                    className={`${selectCls} mt-2`}
-                    disabled={ownersLoading && uniqueOwners.length === 0}
-                    aria-label={t('Владелец внешних ящиков')}
-                  >
-                    {uniqueOwners.length === 0 && <option value="">{t('Сотрудники не найдены')}</option>}
-                    {uniqueOwners.map((owner) => (
-                      <option key={owner.id} value={owner.id}>
-                        {ownerLabel(owner)}
-                        {owner.externalAccountCount ? ` · ${t('ящиков: {count}', { count: owner.externalAccountCount })}` : ''}
-                        {currentOwner?.id === owner.id ? ` · ${t('Вы')}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  {ownersLoading && <div className="mt-1.5 text-xs text-faint">{t('Ищем сотрудников…')}</div>}
-                  {ownerError && <div className="mt-1.5 text-xs leading-relaxed text-red-700">{ownerError}</div>}
+                  <div className="mt-2 rounded-xl border border-accent/20 bg-accent-soft/50 px-3 py-2 text-xs">
+                    <span className="block font-medium text-accent-dark">{t('Выбран владелец')}</span>
+                    <span className="mt-0.5 block truncate text-ink-soft">
+                      {ownerFilter ? ownerLabel(ownerFilter) : t('Не выбран')}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between gap-2 text-xs text-faint" aria-live="polite">
+                    <span>{ownersLoading ? t('Ищем сотрудников…') : t('Найдено сотрудников: {count}', { count: owners.length })}</span>
+                    {!ownersLoading && owners.length === 25 && <span>{t('максимум {count}', { count: 25 })}</span>}
+                  </div>
+                  {ownerError && <div role="alert" className="mt-1.5 text-xs leading-relaxed text-red-700">{ownerError}</div>}
+                  <div id="external-owner-results" className="mt-1.5 max-h-64 space-y-1.5 overflow-y-auto" aria-label={t('Результаты поиска сотрудников')}>
+                    {!ownersLoading && !ownerError && owners.length === 0 && (
+                      <div className="rounded-xl border border-dashed border-line px-3 py-3 text-xs leading-relaxed text-muted">
+                        {t('Сотрудники не найдены. Измените запрос: поддерживаются ФИО, email, логин и отдел.')}
+                      </div>
+                    )}
+                    {owners.map((owner) => {
+                      const active = ownerFilter?.id === owner.id;
+                      return (
+                        <button
+                          key={owner.id}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => changeOwnerFilter(owner)}
+                          className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${active ? 'border-accent/40 bg-accent-soft' : 'border-line bg-surface hover:border-accent/30'}`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink-soft">{owner.displayName || owner.username}</span>
+                            {active && <CheckIcon size={14} className="shrink-0 text-accent-dark" />}
+                            {currentOwner?.id === owner.id && <span className="chip px-1.5 py-0 text-[10px]">{t('Вы')}</span>}
+                          </span>
+                          <span className="mt-0.5 block truncate text-xs text-muted">{owner.email}</span>
+                          <span className="mt-1 block truncate text-[11px] text-faint">
+                            @{owner.username}{owner.department ? ` · ${owner.department}` : ''} · {t('ящиков: {count}', { count: owner.externalAccountCount })}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
               <button type="button" onClick={startNew} className="btn-primary w-full"><Plus size={16} />{t('Подключить ящик')}</button>

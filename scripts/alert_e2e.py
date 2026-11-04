@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import imaplib
+import json
 import os
 import ssl
 import subprocess
@@ -60,20 +61,47 @@ def compose_exec(service: str, arguments: list[str], timeout: int) -> str:
 
 
 def check_configured_recipient(username: str, timeout: int) -> dict[str, Any]:
-    value = compose_exec(
-        "notification-service",
-        ["printenv", "CORVEX_ALERT_RECIPIENTS"],
-        timeout,
-    )
-    recipients = {item.strip().lower() for item in value.split(",") if item.strip()}
+    # Читаем фактический snapshot notification-service, а не устаревший .env:
+    # status endpoint сначала обновляет policy из admin-service и затем возвращает
+    # только несекретные enabled/recipients для этого acceptance precheck.
+    probe = """
+import json
+import urllib.request
+with urllib.request.urlopen(
+    "http://notification-service:8091/internal/alerts/runtime-status", timeout=3
+) as response:
+    status = json.load(response)
+print(json.dumps({
+    "revision": status["revision"],
+    "internalEmailEnabled": status["internalEmailEnabled"],
+    "internalRecipients": status["internalRecipients"],
+}))
+"""
+    value = compose_exec("alert-relay", ["python", "-c", probe], timeout)
+    try:
+        status = json.loads(value)
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise SmokeError("notification-service вернул некорректный runtime status") from exc
+    if status.get("internalEmailEnabled") is not True:
+        raise SmokeError(
+            "Внутренний email-канал выключен в effective alert policy; "
+            "alert не создан. Включите его в /admin/settings"
+        )
+    raw_recipients = status.get("internalRecipients")
+    if not isinstance(raw_recipients, str):
+        raise SmokeError("В runtime status отсутствует список внутренних получателей")
+    recipients = {
+        item.strip().lower() for item in raw_recipients.split(",") if item.strip()
+    }
     if username.lower() not in recipients:
         raise SmokeError(
-            f"{username} не входит в CORVEX_ALERT_RECIPIENTS; "
-            "alert не создан. Укажите ящик из этой настройки или обновите её в .env"
+            f"{username} не входит в effective internalRecipients; alert не создан. "
+            "Укажите этот ящик в /admin/settings (или выберите уже настроенный)"
         )
     return {
         "mailbox_in_alert_recipients": True,
         "configured_recipients": len(recipients),
+        "runtime_revision": status.get("revision"),
     }
 
 

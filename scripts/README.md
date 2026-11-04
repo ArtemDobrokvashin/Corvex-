@@ -82,9 +82,11 @@ Resolve выполняется и после FAIL доставки; при `send
 
 ### 2B. Частота, silence и внешние Telegram/MAX/SMTP
 
-Настройки `CORVEX_ALERT_REPEAT_INTERVAL` и `CORVEX_ALERT_CRITICAL_REPEAT_INTERVAL`
-находятся в `.env`. Временная тишина не требует редактирования конфигурации или остановки
-мониторинга:
+Получатели, каналы, категории и repeat intervals настраиваются суперадмином в
+**«Администрирование → Настройки → Алерты и доставка»** и применяются без перезапуска.
+`CORVEX_ALERT_REPEAT_INTERVAL` и `CORVEX_ALERT_CRITICAL_REPEAT_INTERVAL` в `.env` остаются
+fallback до первой UI-конфигурации и на случай недоступного admin-service. Временная тишина
+не требует редактирования конфигурации или остановки мониторинга:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\alerts.ps1 silence -Minutes 60
@@ -93,9 +95,13 @@ powershell -ExecutionPolicy Bypass -File scripts\alerts.ps1 unsilence -SilenceId
 ```
 
 Независимый `alert-relay` отправляет внешний SMTP/Telegram/MAX без RabbitMQ и Corvex SMTP.
-Его каналы выключены по умолчанию. Настройка, границы отказоустойчивости и команды targeted
-recreate: [`docs/ALERTING.md`](../docs/ALERTING.md). PASS `alert_e2e.py` доказывает внутреннюю
-IMAP-цепочку, но сам по себе не подтверждает доставку во внешний мессенджер или ящик.
+Его каналы выключены по умолчанию. `scripts\alerts.ps1 status` показывает effective relay
+revision, интервалы и выключенные категории, а не только сырой `.env`. Настройка, границы
+отказоустойчивости и команды targeted recreate: [`docs/ALERTING.md`](../docs/ALERTING.md).
+Перед созданием controlled alert `alert_e2e.py` читает фактический runtime snapshot
+notification-service: проверяет, что внутренний канал включён и тестовый ящик входит в
+`internalRecipients`. PASS доказывает внутреннюю IMAP-цепочку, но сам по себе не
+подтверждает доставку во внешний мессенджер или ящик.
 
 Сервисы не останавливаются. INBOX открывается через `EXAMINE`, тело читается через
 `BODY.PEEK[]`; существующие письма не изменяются и не удаляются. Тестовое alert-письмо

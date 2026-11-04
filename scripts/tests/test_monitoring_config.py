@@ -30,17 +30,16 @@ class MonitoringConfigTest(unittest.TestCase):
         self.assertEqual(config.count("send_resolved: true"), 2)
         self.assertIn("group_by: [alertname, severity]", config)
 
-    def test_repeat_intervals_are_validated_before_alertmanager_starts(self):
+    def test_delivery_tick_is_static_and_dynamic_repeat_stays_out_of_alertmanager(self):
         template = (ROOT / "infra/prometheus/alertmanager.yml").read_text(
             encoding="utf-8"
         )
         entrypoint = (ROOT / "infra/prometheus/alertmanager-entrypoint.sh").read_text(
             encoding="utf-8"
         )
-        self.assertIn("repeat_interval: __CORVEX_ALERT_REPEAT_INTERVAL__", template)
-        self.assertIn(
-            "repeat_interval: __CORVEX_ALERT_CRITICAL_REPEAT_INTERVAL__", template
-        )
+        self.assertEqual(template.count("repeat_interval: 1m"), 2)
+        self.assertNotIn("__CORVEX_ALERT_REPEAT_INTERVAL__", template)
+        self.assertNotIn("__CORVEX_ALERT_CRITICAL_REPEAT_INTERVAL__", template)
         self.assertIn("/bin/amtool check-config", entrypoint)
         self.assertLess(
             entrypoint.index("/bin/amtool check-config"),
@@ -55,11 +54,25 @@ class MonitoringConfigTest(unittest.TestCase):
             0
         ]
         self.assertIn("profiles: [monitoring]", relay)
-        self.assertIn("networks: [monitoring]", relay)
+        self.assertIn("networks: [monitoring, app]", relay)
         self.assertNotIn("ports:", relay)
         self.assertIn("CORVEX_ALERT_EXTERNAL_EMAIL_ENABLED:-false", relay)
         self.assertIn("CORVEX_ALERT_TELEGRAM_ENABLED:-false", relay)
         self.assertIn("CORVEX_ALERT_MAX_ENABLED:-false", relay)
+
+    def test_runtime_alert_config_has_internal_distribution_and_last_good_cache(self):
+        compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+        relay = compose.split("  alert-relay:\n", 1)[1].split("\n  alertmanager:\n", 1)[0]
+        admin = compose.split("  admin-service:\n", 1)[1].split("\n  mail-storage-service:\n", 1)[0]
+        notification = compose.split("  notification-service:\n", 1)[1].split("\n  web-gateway:\n", 1)[0]
+        self.assertIn("CORVEX_ADMIN_SERVICE_URL: http://admin-service:8090", relay)
+        self.assertIn("CORVEX_INTERNAL_API_TOKEN", relay)
+        self.assertIn("alert-relay-data:/var/lib/corvex-alert-relay", relay)
+        self.assertIn("alert-relay-data: {}", compose)
+        self.assertIn("CORVEX_ALERT_CONFIG_ENC_KEY", admin)
+        self.assertIn("CORVEX_ADMIN_SERVICE_URL: http://admin-service:8090", notification)
+        self.assertIn("CORVEX_INTERNAL_API_TOKEN", notification)
+        self.assertNotIn("ports:", relay)
 
     def test_silences_persist_and_have_bounded_management_commands(self):
         compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")

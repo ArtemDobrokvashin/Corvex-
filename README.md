@@ -96,7 +96,7 @@ Corvex придумал и сейчас ведёт один разработчи
 
 - **Identity:** Argon2id, lockout после 5 неудач на 15 минут, JWT RS256 на 15 минут, вращающиеся refresh-сессии в HttpOnly `SameSite=Strict` cookie и детект повторного использования refresh-токена.
 - **2FA и клиенты:** TOTP setup/confirm/disable, MFA-шаг при входе и пароли приложений; SMTP submission, POP3 и IMAP в коде используют их для протокольных логинов.
-- **Администрирование:** пользователи и редактирование профилей, квоты, блокировка/отключение, 6 системных и пользовательские группы, 25 прав, фильтруемый аудит с pagination, настройки, health и базовая аналитика. У каждого раздела есть прямой `/admin/<section>` URL. Дисковая квота редактируется в **«Администрирование → Квоты»** (`ADMIN_USERS_MANAGE` или `ADMIN_QUOTAS_MANAGE`); `0` означает безлимит, изменение применяется к новым письмам без перезапуска. **«Настройки»** честно показывает реестр `server_settings`, а не неприменённую runtime-политику; **«Внешняя почта»** открывает существующее управление ящиками для `ADMIN_MAIL_POLICY`. Матрица покрытия — [`docs/ADMIN-UI-AUDIT.md`](docs/ADMIN-UI-AUDIT.md).
+- **Администрирование:** пользователи и редактирование профилей, квоты, блокировка/отключение, 6 системных и пользовательские группы, 25 прав, фильтруемый аудит с pagination, настройки, health и базовая аналитика. У каждого раздела есть прямой `/admin/<section>` URL. Дисковая квота редактируется в **«Администрирование → Квоты»** (`ADMIN_USERS_MANAGE` или `ADMIN_QUOTAS_MANAGE`); `0` означает безлимит, изменение применяется к новым письмам без перезапуска. **«Настройки»** честно отделяет реестр `server_settings` от реальной runtime-панели алертов для `SUPER_ADMIN` (получатели, каналы, категории и частота с подтверждением revision); **«Внешняя почта»** открывает существующее управление ящиками для `ADMIN_MAIL_POLICY`. Матрица покрытия — [`docs/ADMIN-UI-AUDIT.md`](docs/ADMIN-UI-AUDIT.md).
 - **Защита от самоблокировки:** последнего `SUPER_ADMIN` нельзя лишить группы, заблокировать или отключить через API.
 - **RU/EN до конца:** переключаются интерфейс, demo-данные, системные группы, формат дат/чисел/байт и `ProblemDetail` ошибки auth/admin по `Accept-Language`.
 - **Эмодзи без картинок и CDN:** нативный Unicode picker, вставка в курсор, реакции и графемно-безопасная обрезка сложного текста.
@@ -195,7 +195,7 @@ SMTP/IMAP/POP3 остаются выключенными по умолчанию
 
   Дополнительные non-destructive runtime, read-only protocol smoke, сквозной SMTP/IMAP e2e и guarded IMAP MOVE/flags/restart-persistence с JSON-отчётами описаны в [`scripts/README.md`](scripts/README.md). Полный persistence-режим требует `--allow-mutating` и `--allow-restart`; без них выполняется только precheck.
 
-- [x] **2. Зелёный frontend текущего `main`:** `npm ci`, **9/33** test files/tests, `npm run build` с modern+legacy и production audit 0. Каждый релизный кандидат повторяет G0 без сокращений.
+- [x] **2. Зелёный frontend текущего `main`:** `npm ci`, **27/96** test files/tests, `npm run build` с modern+legacy и production audit 0. Каждый релизный кандидат повторяет G0 без сокращений.
 - [ ] **3. Повторить базовый Compose-подъём на текущем `main`.** Для `b37db56` на ПК проверены config, 13 образов, Flyway и 20/20 основных контейнеров. После смены Boot повторить чистый запуск и проверить restart loops/DLQ; последующие точечные gateway/chat-фиксы не заменяют полный повтор.
 - [ ] **4. Полный identity/admin smoke.** Bootstrap-админ, смена пароля, второй пользователь, группы/права, lockout, TOTP, app-password, аудит и запрет действий над чужими данными.
 - [ ] **5. Собственный почтовый smoke на тестовом домене.** Внешнее письмо → INBOX; локальное webmail-письмо; внешнее письмо на контролируемый MX; вложение; Bcc не виден другим получателям; письмо переживает рестарт контейнеров.
@@ -249,9 +249,9 @@ docker compose logs auth-service | Select-String BOOTSTRAP
 - `mail-spam`, `mail-antivirus` — тонкие клиенты SpamAssassin и ClamAV;
 - `chat-service`, `chat-file-service` — STOMP и файлы;
 - `notification-service` превращает Alertmanager webhook в email администраторам;
-- `alert-relay` независимо отправляет внешний SMTP/Telegram/MAX без RabbitMQ и почты Corvex; частота и silence настраиваются по [`docs/ALERTING.md`](docs/ALERTING.md).
+- `alert-relay` независимо отправляет внешний SMTP/Telegram/MAX без RabbitMQ и почты Corvex; получатели, категории и частота настраиваются суперадмином в `/admin/settings`, последний рабочий config кэшируется, а silence управляется по [`docs/ALERTING.md`](docs/ALERTING.md).
 
-Данные: PostgreSQL 16 (database-per-service), Redis, RabbitMQ, Elasticsearch, Maildir + CAS. Наблюдаемость: Prometheus, Grafana, Loki. Один `docker-compose.yml`: 26 контейнеров, 4 сети, 13 томов.
+Данные: PostgreSQL 16 (database-per-service), Redis, RabbitMQ, Elasticsearch, Maildir + CAS. Наблюдаемость: Prometheus, Grafana, Loki. Один `docker-compose.yml`: 26 контейнеров, 4 сети, 14 томов.
 
 Диаграммы и ADR: [`docs/01-architecture.md`](docs/01-architecture.md).
 
@@ -261,7 +261,7 @@ docker compose logs auth-service | Select-String BOOTSTRAP
 - Внутренние auth/admin API не маршрутизируются наружу и требуют `X-Corvex-Internal-Token`; без секрета — fail-closed `503`.
 - nginx — единственный доверенный edge для клиентского IP; поддельный первый `X-Forwarded-For` не попадает в rate-limit и аудит.
 - Повторный TOTP setup не заменяет уже включённую 2FA без текущего кода.
-- Настройки валидируются на сервере и пишутся одной транзакцией.
+- Настройки валидируются на сервере и пишутся одной транзакцией; SMTP/Telegram/MAX alert-секреты из UI хранятся в AES-256-GCM и никогда не возвращаются public API.
 - Markdown санитизируется; внешние изображения в чате запрещены как tracking pixels.
 - **Нет скрытой телеметрии, рекламных трекеров и license phone-home.** Если когда-нибудь появится проверка обновлений, она должна быть явной, документированной и отключаемой.
 
@@ -359,7 +359,7 @@ Reproduce the captures with [`docs/screenshots/README.md`](docs/screenshots/READ
 
 - **Identity:** Argon2id, 15-minute lockout after 5 failures, 15-minute RS256 JWTs, rotating refresh sessions in an HttpOnly `SameSite=Strict` cookie, and refresh-token reuse detection.
 - **2FA and clients:** TOTP setup/confirm/disable, an MFA sign-in step, and app passwords; SMTP submission, POP3, and IMAP use them for protocol logins in code.
-- **Administration:** users and profile editing, quotas, block/disable, 6 system plus custom groups, 25 permissions, filterable paginated audit, settings, service health, and basic sign-in analytics. Every section has a direct `/admin/<section>` URL. Edit mailbox quotas under **Administration → Quotas** (`ADMIN_USERS_MANAGE` or `ADMIN_QUOTAS_MANAGE`); `0` means unlimited, and changes apply to new messages without a restart. **Settings** is explicitly presented as the `server_settings` registry rather than an applied runtime policy; **External mail** opens the existing mailbox management UI for `ADMIN_MAIL_POLICY`. See the [coverage matrix](docs/ADMIN-UI-AUDIT.md).
+- **Administration:** users and profile editing, quotas, block/disable, 6 system plus custom groups, 25 permissions, filterable paginated audit, settings, service health, and basic sign-in analytics. Every section has a direct `/admin/<section>` URL. Edit mailbox quotas under **Administration → Quotas** (`ADMIN_USERS_MANAGE` or `ADMIN_QUOTAS_MANAGE`); `0` means unlimited, and changes apply to new messages without a restart. **Settings** clearly separates the non-runtime `server_settings` registry from a real `SUPER_ADMIN` alert runtime panel (recipients, channels, categories, and frequency with revision confirmation); **External mail** opens the existing mailbox management UI for `ADMIN_MAIL_POLICY`. See the [coverage matrix](docs/ADMIN-UI-AUDIT.md).
 - **No accidental lock-out:** the last `SUPER_ADMIN` cannot lose membership, be blocked, or be disabled through the API.
 - **RU/EN end to end:** UI, demo data, system groups, dates/numbers/bytes, and auth/admin `ProblemDetail` errors localized by `Accept-Language`.
 - **Emoji without images or a CDN:** a native Unicode picker, cursor-aware insertion, reactions, and grapheme-safe text handling.
@@ -383,7 +383,7 @@ Reproduce the captures with [`docs/screenshots/README.md`](docs/screenshots/READ
 | 2 | Durable SMTP delivery, storage, spam/AV, search, outbound queue | 🟡 services built/started on `b37db56`, repeat on `main`; own end-to-end SMTP is not accepted yet |
 | 3 | Apache James IMAP/POP3, Outlook/Thunderbird | 🟡 G1/G2 passed only on `b37db56`, repeat on `main`; client smoke has not run, protocols remain disabled by default |
 | 4 | Persistent realtime chat, files, presence | 🟡 basic realtime confirmed; two-user chat/file/security smoke remains |
-| G0 | Frontend and static gates | ✅ current `main`: 9 files / 33 tests, modern+legacy build, production audit 0 |
+| G0 | Frontend and static gates | ✅ current `main`: 27 files / 96 tests, modern+legacy build, production audit 0 |
 | G1 | Maven for every service | ✅ baseline `b37db56` only: 12 services + parent, `BUILD SUCCESS`; 🔁 repeat on current `main` with Boot 3.5.16 |
 | G2 | Docker, Flyway, and first launch | ✅ baseline `b37db56` only: 13 images, 20/20 core containers; healthchecked services `healthy`, `nginx`/`frontend`/`spamd` `Up`; 🔁 repeat on current `main` |
 | G3 | Functional acceptance | 🚧 External Mail ongoing and basic chat verified; the rest is listed in [`docs/READINESS.md`](docs/READINESS.md) |
@@ -416,7 +416,7 @@ Corvex is currently **not** appropriate for:
 
 | Area | Actually proven | Not proven / remaining |
 |---|---|---|
-| Frontend | Current `main`: 9 files / 33 tests; TypeScript, modern+legacy build; production `npm audit` is 0 | real Windows 7 + Chrome 109 and the complete responsive/E2E matrix |
+| Frontend | Current `main`: 27 files / 96 tests; TypeScript, modern+legacy build; production `npm audit` is 0 | real Windows 7 + Chrome 109 and the complete responsive/E2E matrix |
 | Java | On PC baseline `b37db56`: 12 services + parent, tests and JaCoCo, `BUILD SUCCESS` | current `main` with Boot 3.5.16: full repeat; then end-to-end scenarios beyond unit/context tests |
 | Docker/infrastructure | On PC baseline `b37db56`: 13 images, Compose config, Flyway, 20/20 core containers; healthchecked services healthy | current `main`: repeat launch; then 72 hours, load, monitoring profile, restore, and rollback |
 | External mail | Ongoing IMAP for Mail.ru/Yandex test mailboxes; repeated runs without duplicates; a new message delivered by polling | archive, other providers, complete send-as/Sent smoke, distributed IDLE |
@@ -458,7 +458,7 @@ future commits. Repeat G0–G2 on every release SHA.
 
   Additional non-destructive runtime, read-only protocol smokes, an end-to-end SMTP/IMAP test, and guarded IMAP MOVE/flags/restart-persistence checks with JSON reports are documented in [`scripts/README.md`](scripts/README.md). Full persistence mode requires both `--allow-mutating` and `--allow-restart`; without them it performs only the precheck.
 
-- [x] **2. Make the current `main` frontend green:** `npm ci`, **9 files / 33 tests**, `npm run build` with modern+legacy output, and production audit 0. Every release candidate repeats G0 without shortcuts.
+- [x] **2. Make the current `main` frontend green:** `npm ci`, **27 files / 96 tests**, `npm run build` with modern+legacy output, and production audit 0. Every release candidate repeats G0 without shortcuts.
 - [ ] **3. Repeat the base Compose launch on current `main`.** For `b37db56`, a PC passed config validation, 13 images, Flyway, and 20/20 core containers. Repeat a clean launch after the Boot change and inspect restart loops/DLQs; later targeted gateway/chat fixes do not replace a full repeat.
 - [ ] **4. Pass full identity/admin smoke.** Bootstrap admin, password change, a second user, groups/permissions, lockout, TOTP, app passwords, audit, and cross-user data isolation.
 - [ ] **5. Pass own mail smoke on a test domain.** External mail reaches INBOX; local webmail works; external delivery reaches a controlled MX; attachments work; Bcc is not exposed; mail survives container restarts.
@@ -502,9 +502,9 @@ Complete guide: [`docs/INSTALL.en.md`](docs/INSTALL.en.md).
 
 ### Architecture
 
-Twelve Java 17 / Spring Boot services sit behind one gateway. Auth owns accounts, passwords, TOTP, and sessions; Admin owns groups, permissions, settings, and audit; Gateway verifies JWTs and rate limits. Mail protocols are separated from Maildir/SHA-256 storage, spam uses SpamAssassin, antivirus uses ClamAV, chat uses STOMP/RabbitMQ, and notifications turn Alertmanager webhooks into administrator email. An independent `alert-relay` adds external SMTP/Telegram/MAX without RabbitMQ or Corvex mail; repeat intervals and silences are documented in [`docs/ALERTING.en.md`](docs/ALERTING.en.md).
+Twelve Java 17 / Spring Boot services sit behind one gateway. Auth owns accounts, passwords, TOTP, and sessions; Admin owns groups, permissions, settings, and audit; Gateway verifies JWTs and rate limits. Mail protocols are separated from Maildir/SHA-256 storage, spam uses SpamAssassin, antivirus uses ClamAV, chat uses STOMP/RabbitMQ, and notifications turn Alertmanager webhooks into administrator email. An independent `alert-relay` adds external SMTP/Telegram/MAX without RabbitMQ or Corvex mail; super-admin recipients, categories, and frequency live in `/admin/settings`, the last-known-good config is cached, and repeat/silence operations are documented in [`docs/ALERTING.en.md`](docs/ALERTING.en.md).
 
-Data lives in PostgreSQL 16 (database-per-service), Redis, RabbitMQ, Elasticsearch, and Maildir + CAS. Observability uses Prometheus, Grafana, and Loki. One `docker-compose.yml` defines 26 containers, 4 networks, and 13 volumes.
+Data lives in PostgreSQL 16 (database-per-service), Redis, RabbitMQ, Elasticsearch, and Maildir + CAS. Observability uses Prometheus, Grafana, and Loki. One `docker-compose.yml` defines 26 containers, 4 networks, and 14 volumes.
 
 Diagrams and ADRs: [`docs/01-architecture.md`](docs/01-architecture.md).
 
@@ -514,7 +514,7 @@ Diagrams and ADRs: [`docs/01-architecture.md`](docs/01-architecture.md).
 - Internal auth/admin APIs are not routed by the gateway and require `X-Corvex-Internal-Token`; with no secret they fail closed with `503`.
 - nginx is the only trusted edge for client IP; a spoofed first `X-Forwarded-For` cannot poison rate limits or audit.
 - Re-running TOTP setup cannot replace already enabled 2FA without a current code.
-- Admin settings are validated on the server and written in one transaction.
+- Admin settings are validated on the server and written in one transaction; UI SMTP/Telegram/MAX alert secrets are stored with AES-256-GCM and never returned by the public API.
 - Chat Markdown is sanitized and external images are forbidden as tracking pixels.
 - **No hidden telemetry, advertising trackers, or license phone-home.** Any future update check must be explicit, documented, and disableable.
 

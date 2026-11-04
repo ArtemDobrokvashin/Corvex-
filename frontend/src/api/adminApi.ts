@@ -73,6 +73,62 @@ export interface BackupRequestResult {
 
 export type AdminSettings = Record<string, string>;
 
+export interface AlertSecretState {
+  configured: boolean;
+  source: 'UI' | 'ENVIRONMENT' | 'NONE';
+}
+
+export interface AlertSettings {
+  revision: number;
+  updatedAt: string | null;
+  source: 'DATABASE' | 'ENVIRONMENT';
+  repeatNormalMinutes: number;
+  repeatCriticalMinutes: number;
+  categories: Record<string, boolean>;
+  internalEmailEnabled: boolean;
+  internalRecipients: string;
+  internalFrom: string;
+  externalEmailEnabled: boolean;
+  externalEmailRecipients: string;
+  externalSmtpHost: string;
+  externalSmtpPort: number;
+  externalSmtpTlsMode: 'starttls' | 'ssl';
+  externalSmtpUsername: string;
+  externalSmtpPassword: AlertSecretState;
+  externalSmtpFrom: string;
+  telegramEnabled: boolean;
+  telegramChatId: string;
+  telegramBotToken: AlertSecretState;
+  maxEnabled: boolean;
+  maxChatId: string;
+  maxUserId: string;
+  maxBotToken: AlertSecretState;
+}
+
+export interface AlertSettingsRequest extends Omit<AlertSettings,
+  'revision' | 'updatedAt' | 'source' | 'externalSmtpPassword' | 'telegramBotToken' | 'maxBotToken'> {
+  externalSmtpPassword: string;
+  clearExternalSmtpPassword: boolean;
+  telegramBotToken: string;
+  clearTelegramBotToken: boolean;
+  maxBotToken: string;
+  clearMaxBotToken: boolean;
+}
+
+export interface AlertConsumerStatus {
+  consumer: 'notification-service' | 'alert-relay';
+  status: 'APPLIED' | 'PENDING' | 'UNAVAILABLE';
+  revision: number | null;
+  source: string;
+  refresh: string;
+  updatedAt: string | null;
+}
+
+export interface AlertRuntimeStatus {
+  revision: number;
+  consumers: AlertConsumerStatus[];
+}
+
 export interface AuditQuery extends Record<string, string | number | undefined> {
   actorId?: string;
   action?: string;
@@ -144,6 +200,13 @@ export const adminApi = {
 
   patchSettings: (patch: AdminSettings) =>
     apiFetch<AdminSettings>('/api/v1/admin/settings', { method: 'PATCH', body: JSON.stringify(patch) }),
+
+  alertSettings: () => apiFetch<AlertSettings>('/api/v1/admin/alerts/settings'),
+
+  saveAlertSettings: (body: AlertSettingsRequest) =>
+    apiFetch<AlertSettings>('/api/v1/admin/alerts/settings', { method: 'PUT', body: JSON.stringify(body) }),
+
+  alertRuntimeStatus: () => apiFetch<AlertRuntimeStatus>('/api/v1/admin/alerts/runtime'),
 
   systemHealth: () => apiFetch<SystemHealth>('/api/v1/admin/system/health'),
 
