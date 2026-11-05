@@ -66,15 +66,30 @@ class AlertE2eTest(unittest.TestCase):
         self.assertEqual("CorvexAlertSmoke", details["alertname"])
 
     def test_recipient_must_be_present_in_effective_configuration(self):
-        with patch.object(
-            alert_e2e,
-            "compose_exec",
-            return_value="other@company.local, admin@company.local",
-        ):
+        runtime = (
+            '{"revision": 4, "internalEmailEnabled": true, '
+            '"internalRecipients": "other@company.local, admin@company.local"}'
+        )
+        with patch.object(alert_e2e, "compose_exec", return_value=runtime) as execute:
             details = alert_e2e.check_configured_recipient("admin@company.local", 30)
             self.assertEqual(2, details["configured_recipients"])
+            self.assertEqual(4, details["runtime_revision"])
             with self.assertRaises(SmokeError):
                 alert_e2e.check_configured_recipient("missing@company.local", 30)
+        service, arguments, timeout = execute.call_args.args
+        self.assertEqual("alert-relay", service)
+        self.assertEqual(30, timeout)
+        self.assertIn("/internal/alerts/runtime-status", arguments[2])
+        self.assertNotIn("CORVEX_ALERT_RECIPIENTS", arguments[2])
+
+    def test_disabled_internal_channel_fails_before_alert_submission(self):
+        runtime = (
+            '{"revision": 4, "internalEmailEnabled": false, '
+            '"internalRecipients": "admin@company.local"}'
+        )
+        with patch.object(alert_e2e, "compose_exec", return_value=runtime):
+            with self.assertRaisesRegex(SmokeError, "канал выключен"):
+                alert_e2e.check_configured_recipient("admin@company.local", 30)
 
     def test_alert_message_is_readonly_and_subject_and_body_are_verified(self):
         raw = alert_raw(RUN_ID)

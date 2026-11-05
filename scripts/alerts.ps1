@@ -45,12 +45,15 @@ $AmTool = @("amtool", "--alertmanager.url=http://127.0.0.1:9093")
 
 switch ($Action) {
   "status" {
-    $Repeat = & docker compose -p $ProjectName exec -T alertmanager printenv CORVEX_ALERT_REPEAT_INTERVAL
-    if ($LASTEXITCODE -ne 0) { throw "Cannot read CORVEX_ALERT_REPEAT_INTERVAL" }
-    $CriticalRepeat = & docker compose -p $ProjectName exec -T alertmanager printenv CORVEX_ALERT_CRITICAL_REPEAT_INTERVAL
-    if ($LASTEXITCODE -ne 0) { throw "Cannot read CORVEX_ALERT_CRITICAL_REPEAT_INTERVAL" }
-    Write-Host "Repeat interval (normal): $Repeat"
-    Write-Host "Repeat interval (critical): $CriticalRepeat"
+    # Read the effective relay policy, not the .env fallback: the super-admin UI
+    # can install a newer revision without changing container environment.
+    $HealthJson = & docker compose -p $ProjectName exec -T alert-relay python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8092/healthz', timeout=2).read().decode())"
+    if ($LASTEXITCODE -ne 0) { throw "Cannot read alert-relay runtime status" }
+    $Health = $HealthJson | ConvertFrom-Json
+    Write-Host "Runtime revision: $($Health.runtime.revision) ($($Health.runtime.source), $($Health.runtime.refresh))"
+    Write-Host "Repeat interval (normal): $($Health.runtime.repeatNormalSeconds)s"
+    Write-Host "Repeat interval (critical): $($Health.runtime.repeatCriticalSeconds)s"
+    Write-Host "Disabled categories: $($Health.runtime.disabledCategories -join ', ')"
     Write-Host "Active and pending silences:"
     Invoke-Alertmanager ($AmTool + @("silence", "query"))
   }

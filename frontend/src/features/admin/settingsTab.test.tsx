@@ -71,4 +71,26 @@ describe('admin settings registry', () => {
     expect(container.textContent).toContain('This action did not change service runtime configuration.');
     expect(apiMocks.patchSettings.mock.calls[0][0]).not.toHaveProperty('security.requireTotp');
   });
+
+  it('accepts decimal gigabytes and converts them to bytes only at the API boundary', async () => {
+    await act(async () => {
+      root.render(<SettingsTab demoMode={false} />);
+      await Promise.resolve();
+    });
+
+    const quota = container.querySelector<HTMLInputElement>('input[aria-label="Default quota for a new mailbox"]')!;
+    expect(quota.value).toBe('5');
+    expect(quota.type).toBe('text');
+    await act(async () => setInput(quota, '2,5'));
+
+    const save = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Save to registry')!;
+    await act(async () => {
+      save.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(apiMocks.patchSettings).toHaveBeenCalledWith({ 'mail.defaultQuotaBytes': '2684354560' });
+    expect(container.textContent).toContain('SpamAssassin');
+    expect(container.textContent).toContain('NOT passed to spamd');
+  });
 });

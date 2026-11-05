@@ -22,6 +22,16 @@ class BackupScriptsTest(unittest.TestCase):
         self.assertIn(':/data:ro', BACKUP)
         self.assertIn('Set-Location (Join-Path $PSScriptRoot "..")', BACKUP)
 
+    def test_alert_relay_cache_is_backed_up_and_legacy_backups_remain_restorable(self):
+        archive = "alert-relay-data.tar.gz"
+        self.assertIn('${ProjectName}_alert-relay-data', BACKUP)
+        self.assertIn(archive, BACKUP)
+        for script in (RESTORE, VERIFY):
+            self.assertIn(f'if (Test-Path (Join-Path $BackupDir "{archive}"))', script)
+            self.assertIn('${ProjectName}_alert-relay-data', script)
+        self.assertIn("admin_db + .env key can distribute the configuration again", RESTORE)
+        self.assertIn("$($Volumes.Count) file volumes", VERIFY)
+
     def test_backup_manifest_covers_hashes_and_restore_verifies_before_mutation(self):
         self.assertIn("Get-FileHash -Algorithm SHA256", BACKUP)
         self.assertIn("manifest.json", BACKUP)

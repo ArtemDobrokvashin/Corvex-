@@ -78,6 +78,27 @@ class ApiMessageLocalizerTest {
     }
 
     @Test
+    void translatesAlertRuntimeValidation() {
+        assertEquals("Only a super administrator can configure alerts",
+                ApiMessageLocalizer.localize(
+                        "Настройка алертов доступна только суперадминистратору", Locale.ENGLISH));
+        assertEquals("Specify external email recipients",
+                ApiMessageLocalizer.localize("Укажите получатели внешней почты", Locale.ENGLISH));
+        assertEquals("Category ServiceDown must be true or false",
+                ApiMessageLocalizer.localize(
+                        "Категория ServiceDown должна быть true или false", Locale.ENGLISH));
+        assertEquals("SMTP password: choose either replacement or clearing, not both",
+                ApiMessageLocalizer.localize(
+                        "SMTP password: выберите замену или очистку, не обе операции", Locale.ENGLISH));
+        assertEquals("Telegram token: invalid length or a line break",
+                ApiMessageLocalizer.localize(
+                        "Telegram token: недопустимая длина или перевод строки", Locale.ENGLISH));
+        assertEquals("MAX token: invalid length or a line break",
+                ApiMessageLocalizer.localize(
+                        "MAX token: недопустимая длина или перевод строки", Locale.ENGLISH));
+    }
+
+    @Test
     void handlesMissingTextAndLocaleDetection() {
         assertNull(ApiMessageLocalizer.localize(null, Locale.ENGLISH));
         assertEquals(" ", ApiMessageLocalizer.localize(" ", Locale.ENGLISH));

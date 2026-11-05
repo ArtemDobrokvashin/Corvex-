@@ -54,7 +54,8 @@ foreach ($Db in $Databases) {
 $Volumes = @(
   @{ Volume = "${ProjectName}_mail-data"; Archive = "mail-data.tar.gz" },
   @{ Volume = "${ProjectName}_attachment-data"; Archive = "attachments.tar.gz" },
-  @{ Volume = "${ProjectName}_chat-file-data"; Archive = "chat-files.tar.gz" }
+  @{ Volume = "${ProjectName}_chat-file-data"; Archive = "chat-files.tar.gz" },
+  @{ Volume = "${ProjectName}_alert-relay-data"; Archive = "alert-relay-data.tar.gz" }
 )
 foreach ($V in $Volumes) {
   $Archive = Join-Path $Dir $V.Archive

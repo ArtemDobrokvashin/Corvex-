@@ -54,6 +54,7 @@ class GatewaySecurityConfigTest {
     @Test
     void healthAndLoginEndpointsArePublic() {
         assertEquals(HttpStatus.OK, execute(HttpMethod.GET, "/actuator/health/liveness", null));
+        assertEquals(HttpStatus.OK, execute(HttpMethod.GET, "/actuator/prometheus", null));
         assertEquals(HttpStatus.OK, execute(HttpMethod.POST, "/api/v1/auth/login", null));
         assertEquals(HttpStatus.OK, execute(HttpMethod.GET, "/.well-known/autoconfig/mail/config-v1.1.xml", null));
     }

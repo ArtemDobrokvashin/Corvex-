@@ -1,50 +1,111 @@
-# Monitoring notifications: repeat policy, silences, and external channels
+# Monitoring notifications: recipients, frequency, categories, and external channels
 
 ## Independent delivery paths
 
-Alertmanager fans every alert group out to two independent webhooks:
+Alertmanager fans every alert group out to two webhooks:
 
 ```text
 Prometheus → Alertmanager
-              ├─→ notification-service → RabbitMQ → Corvex SMTP → internal email
+              ├─→ notification-service → RabbitMQ → SMTP → internal email
               └─→ alert-relay → external SMTP / Telegram / MAX
+
+Control plane (not the delivery path):
+admin UI → admin-service/admin_db → internal config API → both consumers
 ```
 
-The dependency-free Python `alert-relay` does not use PostgreSQL, RabbitMQ, Java services,
-or Corvex SMTP. It publishes no host port and is reachable only on the `monitoring`
-Docker network. A failure of notification-service, RabbitMQ, or Corvex mail therefore does
-not block an external channel while Docker, Alertmanager, and the relay remain available.
+External delivery by the dependency-free Python `alert-relay` does not use PostgreSQL,
+RabbitMQ, Java services, or Corvex SMTP. The relay fetches configuration from admin-service
+but caches the last validated document in `alert-relay-data` with mode `0600`. Once loaded,
+an admin-service outage does not disable external delivery. Before the first successful
+configuration load, `.env` remains the fallback.
+
+The relay publishes no host port. Its `monitoring` and `app` networks carry the two webhooks
+and the internal config API; they do not expose the relay to browsers or external clients.
 
 This is **not an external watchdog**. A total host, Docker, network, Alertmanager, or relay
-failure requires monitoring from another location (hosted health checks or an independent
-Uptime Kuma/watchdog). Corvex does not claim that case is covered by this sidecar.
+failure still requires monitoring from another location. Corvex does not claim that case is
+covered by this sidecar.
 
-## Repeat intervals
+## Super-admin UI (primary method)
 
-Set normal and critical reminders separately in `.env`:
+Open **Administration → Settings → Alerts and delivery**. The panel requires the
+`SUPER_ADMIN` group in addition to `ADMIN_SERVER_CONFIG`; delegated server-config permission
+alone receives 403.
+
+The panel applies real runtime policy:
+
+- **Where:** internal recipients/sender, independent external SMTP, Telegram, and MAX.
+  External channels are opt-in.
+- **How often:** separate regular and `critical` repeat intervals, from 1 to 43200 minutes.
+  New incidents and `resolved` notifications do not wait for a repeat interval.
+- **Which failures:** `ServiceDown`, `HighHttp5xxRate`, `MailQueueBacklog`, `DiskSpaceLow`,
+  and `JvmMemoryPressure`. Disabled categories are filtered by both consumers. Unknown
+  future categories remain enabled by default.
+
+Click **Apply alert settings**. The service atomically increments `revision` in
+`admin_db.alert_runtime_config` and writes `ALERT_SETTINGS_CHANGED` to the audit log. No YAML
+edit or container restart is needed for a settings change.
+
+The **Actual runtime application** block reports each consumer:
+
+- `APPLIED`: the loaded revision equals the saved revision;
+- `PENDING`: the consumer still reports another revision, normally until the next 10-second
+  refresh;
+- `UNAVAILABLE`: the consumer or monitoring profile cannot be reached; this is never shown
+  as success.
+
+`APPLIED` proves policy loading, not delivery of a particular external message. Verify actual
+external delivery separately as described below.
+
+## Secrets and .env fallback
+
+SMTP passwords and Telegram/MAX tokens are **write-only**. Public GET returns only
+`configured` and `source` (`UI`, `ENVIRONMENT`, or `NONE`). A blank secret input keeps the
+current value. A saved UI secret can be cleared to fall back to `.env`; disabling the channel
+is a separate operation.
+
+New UI secrets are stored in `admin_db` only as AES-256-GCM ciphertext. They require a
+separate key:
+
+```dotenv
+CORVEX_ALERT_CONFIG_ENC_KEY=<Base64-encoded 32 random bytes>
+```
+
+`scripts/first-run.ps1` generates this key for new installations and adds only a missing key
+to an existing `.env`, without overwriting other secrets. Never put the key in CLI arguments
+or chat. Losing it requires re-entering UI alert secrets; protect it together with the `.env`
+backup.
+
+The relay's effective cache is included in backup/restore. Older backups without that archive
+remain usable: the relay can fetch the configuration again from `admin_db` after restoration.
+
+Existing `.env` values remain supported as the initial/fallback configuration. Once a database
+revision exists, non-secret values come from the UI; a secret not replaced in the UI can still
+come from `.env`.
+
+## Repeat semantics
+
+Environment fallback values are:
 
 ```dotenv
 CORVEX_ALERT_REPEAT_INTERVAL=4h
 CORVEX_ALERT_CRITICAL_REPEAT_INTERVAL=30m
 ```
 
-Prometheus durations such as `15m`, `1h`, `6h`, and `1d` are supported and validated with
-`amtool check-config` before startup. `repeat_interval` controls reminders while an alert
-stays active; it does not delay initial detection. Initial delivery still depends on the
-rule's `for`, `group_wait: 30s`, and `group_interval: 5m` for updates to an existing group.
+Durations such as `15m`, `1h`, `6h`, and `1d` are supported. The UI uses ordinary minutes.
+Alertmanager emits a one-minute **delivery tick**; this does not mean one email per minute.
+Notification-service and the relay apply the effective repeat policy independently per
+channel. After a partial failure, the next tick retries only the failed channel instead of
+duplicating successful channels.
 
-Apply an interval change to Alertmanager only:
-
-```powershell
-docker compose --profile monitoring up -d --force-recreate alertmanager
-powershell -ExecutionPolicy Bypass -File scripts\alerts.ps1 status
-```
+Initial delivery still depends on the Prometheus rule's `for`, `group_wait: 30s`, and
+`group_interval: 5m` for updates to an existing group. `Resolved` bypasses repeat throttling
+and clears incident state. Alertmanager retains grouping and silences.
 
 ## Temporary silence
 
-Silences suppress new notifications in **both** internal and external channels while
-leaving monitoring and dashboards active. They persist in `alertmanager-data` and expire
-automatically.
+Silences suppress new notifications in **both** channels while leaving monitoring and
+dashboards active. They persist in `alertmanager-data` and expire automatically.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\alerts.ps1 silence -Minutes 60
@@ -53,13 +114,23 @@ powershell -ExecutionPolicy Bypass -File scripts\alerts.ps1 status
 powershell -ExecutionPolicy Bypass -File scripts\alerts.ps1 unsilence -SilenceId <uuid>
 ```
 
-One silence is bounded to 30 days. It cannot recall email/events already sent or queued.
+One silence is bounded to 30 days. It cannot recall messages already sent or events already
+queued. `status` reads the effective relay revision, repeat intervals, and disabled categories,
+not just the `.env` fallback.
 
-## External SMTP
+## Channels
 
-Use an independent provider or mail server, not `mail-smtp-service`. Plain unencrypted
-SMTP is deliberately unsupported; use STARTTLS (normally port 587) or implicit TLS
-(normally port 465):
+### Internal email
+
+The path is `notification-service → RabbitMQ → SMTP`. Enter comma-separated recipients. This
+path depends on Corvex mail infrastructure, so configure an external channel for mail-outage
+alerts.
+
+### External SMTP
+
+Use an independent provider or server, not `mail-smtp-service`. Plain SMTP is deliberately
+unsupported: select `starttls` (normally port 587) or `ssl` (normally port 465). Username may
+be empty only if the provider permits unauthenticated relay; TLS is always required.
 
 ```dotenv
 CORVEX_ALERT_EXTERNAL_EMAIL_ENABLED=true
@@ -72,60 +143,117 @@ CORVEX_ALERT_EXTERNAL_SMTP_PASSWORD=<app-password>
 CORVEX_ALERT_EXTERNAL_SMTP_FROM=corvex-alert@example.net
 ```
 
-The legacy `CORVEX_ALERT_RECIPIENTS` and `ALERT_SMTP_HOST` configure only internal email.
-Keep app passwords in the protected `.env`, never in CLI arguments or chat.
+### Telegram
 
-## Telegram and MAX
+Create a dedicated bot with BotFather. Configure these three commands in BotFather (the new
+alert-relay starts their handlers after settings are applied):
+
+```text
+start - Start and show the chat ID
+id - Show the current numeric chat ID
+help - Show Corvex connection instructions
+```
+
+The main setup flow is the wizard under **Alerts and delivery → Telegram**:
+
+1. Paste a new token; an existing UI/env secret can be reused without entering it again.
+2. Press **Start** in a private chat with the bot, or add it to a group and send `/start`.
+3. Select **Find chats**. Corvex returns only chat ID/type/title, never the token or message
+   text. An empty list is not a successful connection.
+4. **Explicitly select the recipient** — the first chat is never selected automatically.
+5. Enable Telegram and apply the settings. The relay then answers commands and delivers
+   alerts to the selected chat ID.
+
+When using a saved secret, the wizard waits for `APPLIED` on the current alert-relay revision
+so discovery cannot use the previous token. Manual entry remains available as a fallback. For a personal recipient, use the **numeric
+user ID**, for example `123456789`, not a username or `@username`. For a group or channel,
+also use the numeric ID, for example `-1001234567890`. This version accepts numeric IDs only
+and rejects `@channelname`. The user must start the bot first. Placeholders show examples.
+
+For a dedicated bot, the relay uses outbound `getUpdates`: no inbound webhook or public port
+is required. Do not configure a webhook or a second `getUpdates` consumer for the same token.
+The command offset is stored separately in `alert-relay-data/telegram-state.json` with `0600`
+permissions; the token is not written there. Discovery does not acknowledge updates and works
+even while the Telegram channel is disabled.
 
 ```dotenv
 CORVEX_ALERT_TELEGRAM_ENABLED=true
 CORVEX_ALERT_TELEGRAM_BOT_TOKEN=<token>
 CORVEX_ALERT_TELEGRAM_CHAT_ID=<chat-id>
+```
 
+Telegram requires the token in the URL path. The relay never logs URLs, response bodies, or
+the token. Redirects are not followed, so credentials and alert text cannot be forwarded to
+an unexpected URL.
+
+The selected future extension is an **additional** official `@corvexmail_bot` mode through a
+separate managed serverless gateway with per-installation keys. It is not implemented or
+accepted yet. A shared official token must never be embedded in source code, the backend, or
+a Docker image: any installation owner could extract it and control the bot. The autonomous
+dedicated-bot mode remains the primary path and does not depend on the future gateway.
+
+### MAX
+
+MAX uses the official `https://platform-api2.max.ru/messages` endpoint and the
+`Authorization` header, never a query token. Set exactly one chat ID or user ID.
+Both are numeric IDs without `@` or a username; the UI placeholder shows `123456789`:
+
+```dotenv
 CORVEX_ALERT_MAX_ENABLED=true
 CORVEX_ALERT_MAX_BOT_TOKEN=<token>
 CORVEX_ALERT_MAX_CHAT_ID=<chat-or-channel-id>
 CORVEX_ALERT_MAX_USER_ID=
 ```
 
-Create a dedicated Telegram bot with BotFather and set its chat/channel ID. For MAX, set
-exactly one of `CHAT_ID` and `USER_ID`. MAX uses the official
-`https://platform-api2.max.ru/messages` endpoint and the `Authorization` header; the token
-is never placed in the URL. Telegram requires its bot token in the URL path, so the relay
-sanitizes all outgoing HTTP errors and never logs URLs or response bodies. Redirects are
-not followed, so credentials and alert text cannot be forwarded to an unexpected URL.
-
 If MAX requires the Russian Ministry of Digital Development CA chain, put the public PEM
-bundle in the separate `infra/alert-ca` (or `CORVEX_ALERT_CA_DIR`) and set, for example:
+bundle in `infra/alert-ca` (or `CORVEX_ALERT_CA_DIR`) and set, for example:
 
 ```dotenv
 CORVEX_ALERT_EXTERNAL_CA_FILE=/etc/corvex/alert-ca/mincifry-chain.pem
 ```
 
-The file is added to system trust roots rather than replacing them. This read-only
-directory does not expose private keys from `infra/certs`. Messenger text is
-bounded to 3900 characters; MAX calls are serialized to respect its two-messages/second
-per-chat limit.
+The bundle is added to system roots. The read-only directory contains no Corvex private keys.
+Messenger text is bounded to 3900 characters; MAX calls are serialized with at least 0.55
+seconds between sends.
 
-## Apply and verify
+## Deploying the code update
 
-All external channels are opt-in. Recreate only the relay after changing its settings:
+After pulling a new Corvex version, rebuild the changed images and start monitoring:
 
 ```powershell
-docker compose --profile monitoring up -d --build --force-recreate alert-relay
-docker compose ps alert-relay alertmanager
-docker compose logs --tail 50 alert-relay
+docker compose up -d --build admin-service notification-service frontend
+docker compose --profile monitoring up -d --build alert-relay alertmanager
 ```
 
-Alerts from one Alertmanager webhook are combined into one external message. Channels are
-attempted independently. Partial success does not make Alertmanager retry and duplicate an
-already delivered channel; total failure returns HTTP 502 for retry.
+This installs the **new code**; it is not required for every UI settings change. Do not pass
+passwords, JWTs, or encryption keys in commands. Existing volumes are preserved.
 
-If the entrypoint fails immediately with `set: illegal option -`, check the bind-mounted
-shell script for CRLF: Linux shells treat `\r` as part of the option. The repository's
-`.gitattributes` enforces `*.sh text eol=lf`, including on Windows checkouts.
+## Verifying delivery
 
-The existing `scripts/alert_e2e.py` creates one bounded synthetic alert without stopping
-services. Its JSON PASS proves the internal IMAP path only. Confirm external delivery in
-the actual external mailbox/Telegram/MAX separately, and check relay logs for sanitised
-delivery errors. Do not stop a production service merely to generate a test alert.
+Alerts from one webhook are combined into one external message. Partial success does not
+make Alertmanager retry and duplicate a delivered channel; the failed channel gets the next
+delivery tick. Total failure returns HTTP 502 for retry.
+
+Use the bounded synthetic alert for the internal path:
+
+```powershell
+py -3 scripts/alert_e2e.py --host mail.company.local --username admin@company.local --ca-file C:\corvex-pki\corvex-test-ca.crt --wait-seconds 180 --report artifacts\smoke\alert-e2e.json
+```
+
+Before creating the alert, it reads the notification-service effective snapshot and verifies
+that the internal channel is enabled and `--username` is in `internalRecipients` (not the stale
+`.env`). Its JSON PASS proves the **internal IMAP path only**. Confirm external delivery in the actual
+external mailbox, Telegram, or MAX and inspect sanitised relay errors. Do not stop a
+production service merely to generate a test alert.
+
+## Diagnostics without secrets
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\alerts.ps1 status
+docker compose logs --tail 100 alertmanager alert-relay notification-service admin-service
+```
+
+`refresh=FAILED` means the latest configuration refresh failed; the previous valid cache is
+still active. Never publish `.env`, rendered Compose environment, SMTP passwords, bot tokens,
+or complete external HTTP requests. Channel name, revision, HTTP status, and sanitised error
+are sufficient for a report.

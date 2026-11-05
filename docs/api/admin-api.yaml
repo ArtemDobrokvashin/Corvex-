@@ -115,6 +115,64 @@ paths:
     patch:
       summary: Сохранить и аудировать настройки; применение зависит от потребителей конкретного ключа
       responses: { '200': { description: Сохранено в server_settings; не подтверждает применение работающими сервисами } }
+  /admin/alerts/settings:
+    get:
+      summary: Runtime-настройки алертов; только JWT с группой SUPER_ADMIN и правом ADMIN_SERVER_CONFIG
+      responses:
+        '200':
+          description: Несекретные значения и secret configured/source; plaintext secrets никогда не возвращаются
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AlertSettingsView' }
+        '403': { description: Нет ADMIN_SERVER_CONFIG или членства SUPER_ADMIN }
+        '503': { description: Эффективная alert-конфигурация повреждена или содержит невалидный env fallback }
+    put:
+      summary: Атомарно заменить runtime-настройки алертов и увеличить revision
+      description: Blank secret сохраняет прежний ciphertext; clear* удаляет UI-secret и возвращает env fallback. Значения секретов не попадают в audit details.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AlertSettingsRequest' }
+      responses:
+        '200':
+          description: Сохранённая revision; фактическое применение проверяется отдельным /runtime endpoint
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AlertSettingsView' }
+        '403': { description: Не суперадминистратор }
+        '422': { description: Невалидные recipients, repeat, категории, TLS или channel target }
+        '503': { description: Не настроен ключ для нового UI-secret, не расшифровывается сохранённый секрет или невалиден effective config }
+  /admin/alerts/runtime:
+    get:
+      summary: Фактически загруженные revision у notification-service и alert-relay; только SUPER_ADMIN
+      responses:
+        '200':
+          description: APPLIED только при совпадении revision; UNAVAILABLE не маскируется под успех
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AlertRuntimeStatus' }
+        '403': { description: Не суперадминистратор }
+        '503': { description: Не удалось прочитать effective config; недоступность отдельного consumer возвращается как UNAVAILABLE в 200 }
+  /admin/alerts/telegram/discover:
+    post:
+      summary: Найти чаты по /start, /id или /help для явного выбора суперадминистратором
+      description: Blank botToken использует effective UI/env-secret в alert-relay. Ответ содержит только username бота и metadata чатов, но не token или тексты сообщений. Discovery не подтверждает updates и не выбирает получателя автоматически.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TelegramDiscoveryRequest' }
+      responses:
+        '200':
+          description: Найденные чаты; пустой список требует сначала отправить боту /start и не означает успешное подключение
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TelegramDiscoveryView' }
+        '403': { description: Не суперадминистратор }
+        '422': { description: Telegram token отсутствует, имеет неверный формат или отклонён }
+        '502': { description: Telegram API или alert-relay недоступен; sanitized error без token/response body }
+        '503': { description: Не настроен internal API token }
   /admin/audit:
     get:
       summary: Журнал аудита (AUDIT_VIEW) — кто, что, когда, с какого IP
@@ -178,6 +236,100 @@ paths:
                   status: { type: string, enum: [REQUESTED] }
                   note: { type: string }
 components:
+  schemas:
+    AlertSecretState:
+      type: object
+      required: [configured, source]
+      properties:
+        configured: { type: boolean }
+        source: { type: string, enum: [UI, ENVIRONMENT, NONE] }
+    AlertSettingsBase:
+      type: object
+      required: [repeatNormalMinutes, repeatCriticalMinutes, categories, internalEmailEnabled, externalEmailEnabled, externalSmtpPort, externalSmtpTlsMode, telegramEnabled, maxEnabled]
+      properties:
+        repeatNormalMinutes: { type: integer, minimum: 1, maximum: 43200 }
+        repeatCriticalMinutes: { type: integer, minimum: 1, maximum: 43200 }
+        categories:
+          type: object
+          description: Пять ключей ServiceDown, HighHttp5xxRate, MailQueueBacklog, DiskSpaceLow, JvmMemoryPressure
+          additionalProperties: { type: boolean }
+        internalEmailEnabled: { type: boolean }
+        internalRecipients: { type: string, description: Comma-separated email addresses }
+        internalFrom: { type: string, format: email }
+        externalEmailEnabled: { type: boolean }
+        externalEmailRecipients: { type: string }
+        externalSmtpHost: { type: string }
+        externalSmtpPort: { type: integer, minimum: 1, maximum: 65535 }
+        externalSmtpTlsMode: { type: string, enum: [starttls, ssl] }
+        externalSmtpUsername: { type: string }
+        externalSmtpFrom: { type: string }
+        telegramEnabled: { type: boolean }
+        telegramChatId: { type: string, pattern: '^-?[0-9]{1,32}$', description: 'Числовой ID пользователя/группы/канала, не username и не @username; примеры 123456789 или -1001234567890' }
+        maxEnabled: { type: boolean }
+        maxChatId: { type: string, pattern: '^-?[0-9]{1,32}$', description: 'Числовой ID без @/username; заполняется ровно один из maxChatId/maxUserId при включённом MAX' }
+        maxUserId: { type: string, pattern: '^-?[0-9]{1,32}$', description: 'Числовой ID пользователя без @/username' }
+    AlertSettingsView:
+      allOf:
+        - $ref: '#/components/schemas/AlertSettingsBase'
+        - type: object
+          properties:
+            revision: { type: integer, format: int64, minimum: 0 }
+            updatedAt: { type: string, format: date-time, nullable: true }
+            source: { type: string, enum: [DATABASE, ENVIRONMENT] }
+            externalSmtpPassword: { $ref: '#/components/schemas/AlertSecretState' }
+            telegramBotToken: { $ref: '#/components/schemas/AlertSecretState' }
+            maxBotToken: { $ref: '#/components/schemas/AlertSecretState' }
+    AlertSettingsRequest:
+      allOf:
+        - $ref: '#/components/schemas/AlertSettingsBase'
+        - type: object
+          properties:
+            externalSmtpPassword: { type: string, format: password, writeOnly: true, maxLength: 4096 }
+            clearExternalSmtpPassword: { type: boolean, default: false }
+            telegramBotToken: { type: string, format: password, writeOnly: true, maxLength: 4096 }
+            clearTelegramBotToken: { type: boolean, default: false }
+            maxBotToken: { type: string, format: password, writeOnly: true, maxLength: 4096 }
+            clearMaxBotToken: { type: boolean, default: false }
+    AlertConsumerStatus:
+      type: object
+      properties:
+        consumer: { type: string, enum: [notification-service, alert-relay] }
+        status: { type: string, enum: [APPLIED, PENDING, UNAVAILABLE] }
+        revision: { type: integer, format: int64, nullable: true }
+        source: { type: string }
+        refresh: { type: string }
+        updatedAt: { type: string, format: date-time, nullable: true }
+    AlertRuntimeStatus:
+      type: object
+      properties:
+        revision: { type: integer, format: int64 }
+        consumers:
+          type: array
+          items: { $ref: '#/components/schemas/AlertConsumerStatus' }
+    TelegramDiscoveryRequest:
+      type: object
+      properties:
+        botToken:
+          type: string
+          format: password
+          writeOnly: true
+          maxLength: 512
+          description: Новый token для discovery; пустая строка использует уже сохранённый effective secret
+    TelegramChatView:
+      type: object
+      required: [id, type, title]
+      properties:
+        id: { type: string, pattern: '^-?[0-9]{1,32}$' }
+        type: { type: string, description: private, group, supergroup или channel }
+        title: { type: string, description: Отображаемое имя без текста сообщения }
+    TelegramDiscoveryView:
+      type: object
+      required: [botUsername, chats]
+      properties:
+        botUsername: { type: string, description: Public username без token }
+        chats:
+          type: array
+          items: { $ref: '#/components/schemas/TelegramChatView' }
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
 security:

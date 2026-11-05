@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import http.client
 import importlib.util
 import json
 import ssl
+import stat
 import sys
+import tempfile
 import threading
 import unittest
 import urllib.error
@@ -12,6 +15,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "infra/alert-relay"))
 SPEC = importlib.util.spec_from_file_location(
     "corvex_alert_relay", ROOT / "infra/alert-relay/app.py"
 )
@@ -47,6 +51,35 @@ def settings(**overrides):
     return relay_module.Settings.from_env(values)
 
 
+def runtime_payload(**overrides):
+    payload = {
+        "revision": 5,
+        "updatedAt": "2026-11-04T10:00:00Z",
+        "repeatNormalSeconds": 14_400,
+        "repeatCriticalSeconds": 1_800,
+        "categories": {name: True for name in (
+            "ServiceDown", "HighHttp5xxRate", "MailQueueBacklog", "DiskSpaceLow", "JvmMemoryPressure"
+        )},
+        "externalEmailEnabled": False,
+        "externalEmailRecipients": "",
+        "externalSmtpHost": "",
+        "externalSmtpPort": 587,
+        "externalSmtpTlsMode": "starttls",
+        "externalSmtpUsername": "",
+        "externalSmtpPassword": "",
+        "externalSmtpFrom": "",
+        "telegramEnabled": True,
+        "telegramChatId": "-100123",
+        "telegramBotToken": "telegram-secret",
+        "maxEnabled": False,
+        "maxChatId": "",
+        "maxUserId": "",
+        "maxBotToken": "",
+    }
+    payload.update(overrides)
+    return payload
+
+
 class FakeResponse:
     status = 200
 
@@ -62,6 +95,22 @@ class FakeResponse:
     def read(self, _limit):
         self.body_read = True
         return b"{}"
+
+
+class StaticResponse:
+    status = 200
+
+    def __init__(self, payload):
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return None
+
+    def read(self, _limit):
+        return json.dumps(self.payload).encode("utf-8")
 
 
 class FakeSmtp:
@@ -263,6 +312,87 @@ class AlertDeliveryTest(unittest.TestCase):
         self.assertIn("ServiceDown", fake.message["Subject"])
         self.assertEqual(fake.events[-1], "quit")
 
+    def test_dynamic_repeat_resolved_and_disabled_categories_are_applied(self):
+        requests = []
+        now = [1_000.0]
+
+        def fake_urlopen(request, **_kwargs):
+            requests.append(request)
+            return FakeResponse()
+
+        configured = relay_module.Settings.from_runtime(runtime_payload(), {})
+        relay = relay_module.Relay(configured, urlopen=fake_urlopen, clock=lambda: now[0])
+        self.assertEqual(relay.deliver(PAYLOAD).delivered, ("telegram",))
+        self.assertEqual(relay.deliver(PAYLOAD).state, "suppressed")
+        self.assertEqual(len(requests), 1)
+
+        now[0] += 1_800
+        self.assertEqual(relay.deliver(PAYLOAD).delivered, ("telegram",))
+        resolved = {**PAYLOAD, "status": "resolved", "alerts": [{**PAYLOAD["alerts"][0], "status": "resolved"}]}
+        self.assertEqual(relay.deliver(resolved).delivered, ("telegram",))
+        self.assertEqual(relay.deliver(PAYLOAD).delivered, ("telegram",))
+        self.assertEqual(len(requests), 4)
+
+        disabled = runtime_payload(categories={**runtime_payload()["categories"], "ServiceDown": False})
+        filtered_relay = relay_module.Relay(
+            relay_module.Settings.from_runtime(disabled, {}), urlopen=fake_urlopen
+        )
+        self.assertEqual(filtered_relay.deliver(PAYLOAD).state, "filtered")
+        self.assertEqual(len(requests), 4)
+
+    def test_identical_runtime_refresh_preserves_repeat_throttle(self):
+        requests = []
+
+        def fake_urlopen(request, **_kwargs):
+            requests.append(request)
+            return FakeResponse()
+
+        relay = relay_module.Relay(
+            relay_module.Settings.from_runtime(runtime_payload(), {}), urlopen=fake_urlopen
+        )
+        self.assertEqual(relay.deliver(PAYLOAD).delivered, ("telegram",))
+
+        # RuntimeConfigProvider refreshes the same revision every ten seconds.
+        relay.update_settings(
+            relay_module.Settings.from_runtime(runtime_payload(), {}), 5, "ADMIN",
+            "2026-11-04T10:00:00Z",
+        )
+        self.assertEqual(relay.deliver(PAYLOAD).state, "suppressed")
+        self.assertEqual(len(requests), 1)
+
+        changed = runtime_payload(repeatCriticalSeconds=60)
+        relay.update_settings(
+            relay_module.Settings.from_runtime(changed, {}), 6, "ADMIN",
+            "2026-11-04T10:10:00Z",
+        )
+        self.assertEqual(relay.deliver(PAYLOAD).delivered, ("telegram",))
+        self.assertEqual(len(requests), 2)
+
+    def test_partial_failure_retries_only_the_failed_channel(self):
+        requests = []
+        now = [1_000.0]
+
+        def fake_urlopen(request, **_kwargs):
+            requests.append(request)
+            if "telegram" in request.full_url and len(requests) == 1:
+                raise urllib.error.URLError("offline")
+            return FakeResponse()
+
+        payload = runtime_payload(maxEnabled=True, maxChatId="200", maxBotToken="max-secret")
+        relay = relay_module.Relay(
+            relay_module.Settings.from_runtime(payload, {}),
+            urlopen=fake_urlopen,
+            clock=lambda: now[0],
+        )
+        with patch.object(relay_module, "LOG"):
+            first = relay.deliver(PAYLOAD)
+            second = relay.deliver(PAYLOAD)
+        self.assertEqual(first.delivered, ("max",))
+        self.assertEqual(first.failed, ("telegram",))
+        self.assertEqual(second.delivered, ("telegram",))
+        self.assertEqual(second.failed, ())
+        self.assertEqual(len(requests), 3)
+
     def test_no_enabled_channel_performs_no_network_request(self):
         def unexpected(*_args, **_kwargs):
             raise AssertionError("network request must not happen")
@@ -321,10 +451,60 @@ class AlertDeliveryTest(unittest.TestCase):
         self.assertEqual(result.delivered, ())
 
 
+class RuntimeConfigProviderTest(unittest.TestCase):
+    def test_validated_revision_is_cached_0600_and_survives_admin_outage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory) / "runtime.json"
+            env = {
+                "CORVEX_INTERNAL_API_TOKEN": "internal-secret",
+                "CORVEX_ALERT_RUNTIME_CACHE": str(cache),
+            }
+            first_relay = relay_module.Relay(settings())
+            provider = relay_module.RuntimeConfigProvider(
+                first_relay, env, opener=lambda *_args, **_kwargs: StaticResponse(runtime_payload())
+            )
+            provider.refresh()
+
+            self.assertEqual(first_relay.settings.channels(), ("telegram",))
+            self.assertEqual(first_relay.runtime_status["revision"], 5)
+            self.assertEqual(first_relay.runtime_status["source"], "ADMIN")
+            self.assertEqual(stat.S_IMODE(cache.stat().st_mode), 0o600)
+            self.assertIn("telegram-secret", cache.read_text(encoding="utf-8"))
+            self.assertNotIn("telegram-secret", str(first_relay.runtime_status))
+
+            restored = relay_module.Relay(settings())
+            restored_provider = relay_module.RuntimeConfigProvider(restored, env)
+            restored_provider.load_cache()
+            self.assertEqual(restored.settings.channels(), ("telegram",))
+            self.assertEqual(restored.runtime_status["source"], "CACHE")
+
+            def offline(*_args, **_kwargs):
+                raise urllib.error.URLError("admin offline")
+
+            restored_provider.opener = offline
+            restored_provider.refresh()
+            self.assertEqual(restored.settings.channels(), ("telegram",))
+            self.assertEqual(restored.runtime_status["refresh"], "FAILED")
+            self.assertEqual(restored.runtime_status["revision"], 5)
+
+    def test_invalid_runtime_document_does_not_replace_working_settings(self):
+        relay = relay_module.Relay(settings())
+        payload = runtime_payload(telegramBotToken={"not": "a string"})
+        provider = relay_module.RuntimeConfigProvider(
+            relay,
+            {"CORVEX_INTERNAL_API_TOKEN": "secret"},
+            opener=lambda *_args, **_kwargs: StaticResponse(payload),
+        )
+        with patch.object(relay_module, "LOG"):
+            provider.refresh()
+        self.assertEqual(relay.settings.channels(), ())
+        self.assertEqual(relay.runtime_status["refresh"], "FAILED")
+
+
 class AlertHttpTest(unittest.TestCase):
     def setUp(self):
         self.server = relay_module.RelayHttpServer(
-            ("127.0.0.1", 0), relay_module.Relay(settings())
+            ("127.0.0.1", 0), relay_module.Relay(settings()), "internal-secret"
         )
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -338,7 +518,10 @@ class AlertHttpTest(unittest.TestCase):
     def test_health_and_webhook_with_all_external_channels_disabled(self):
         with urllib.request.urlopen(f"{self.base_url}/healthz", timeout=2) as response:
             health = json.load(response)
-        self.assertEqual(health, {"status": "UP", "channels": []})
+        self.assertEqual(health["status"], "UP")
+        self.assertEqual(health["channels"], [])
+        self.assertEqual(health["runtime"]["revision"], 0)
+        self.assertNotIn("token", str(health).lower())
 
         request = urllib.request.Request(
             f"{self.base_url}/alerts/webhook",
@@ -351,6 +534,53 @@ class AlertHttpTest(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["delivered"], [])
         self.assertEqual(result["failed"], [])
+
+    def test_telegram_discovery_requires_internal_auth_and_does_not_return_token(self):
+        token = "123456:telegram-secret"
+        api_requests = []
+
+        def fake_telegram(request, **_kwargs):
+            api_requests.append(request)
+            if request.full_url.endswith("/getMe"):
+                return StaticResponse({"ok": True, "result": {"username": "corvexmail_bot"}})
+            return StaticResponse({"ok": True, "result": [{
+                "update_id": 1,
+                "message": {
+                    "text": "/start",
+                    "chat": {"id": 123456, "type": "private", "first_name": "Artem"},
+                },
+            }]})
+
+        self.server.relay.telegram.urlopen = fake_telegram
+        body = json.dumps({"botToken": token}).encode("utf-8")
+        request = urllib.request.Request(
+            f"{self.base_url}/internal/telegram/discover",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with self.assertRaises(urllib.error.HTTPError) as denied:
+            urllib.request.urlopen(request, timeout=2)
+        self.assertEqual(denied.exception.code, 403)
+        self.assertEqual(api_requests, [])
+
+        # Spring RestClient may use Transfer-Encoding: chunked for this JSON body.
+        connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=2)
+        connection.request(
+            "POST", "/internal/telegram/discover", body=iter([body[:7], body[7:]]),
+            headers={
+                "Content-Type": "application/json",
+                "X-Corvex-Internal-Token": "internal-secret",
+            },
+            encode_chunked=True,
+        )
+        response = connection.getresponse()
+        result = json.loads(response.read())
+        connection.close()
+        self.assertEqual(response.status, 200)
+        self.assertEqual(result["botUsername"], "corvexmail_bot")
+        self.assertEqual(result["chats"][0]["id"], "123456")
+        self.assertNotIn(token, str(result))
 
     def test_malformed_json_is_a_client_error(self):
         request = urllib.request.Request(

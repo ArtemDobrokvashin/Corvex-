@@ -34,6 +34,7 @@ public class ChatSecurityConfig {
                         .requestMatchers(
                                 "/actuator/health",
                                 "/actuator/health/**",
+                                "/actuator/prometheus",
                                 "/internal/**",
                                 "/ws/chat",
                                 "/ws/chat/**")

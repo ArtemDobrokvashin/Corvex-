@@ -37,7 +37,7 @@ public class AuthSecurityConfig {
                         .requestMatchers(HttpMethod.POST,
                                 "/api/v1/auth/login", "/api/v1/auth/mfa/verify",
                                 "/api/v1/auth/refresh", "/api/v1/auth/logout").permitAll()
-                        .requestMatchers("/internal/**", "/oauth2/jwks", "/actuator/health/**").permitAll()
+                        .requestMatchers("/internal/**", "/oauth2/jwks", "/actuator/health/**", "/actuator/prometheus").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()))
                 .build();

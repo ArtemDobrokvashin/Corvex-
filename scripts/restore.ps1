@@ -47,6 +47,11 @@ $Volumes = @(
   @{ Volume = "${ProjectName}_attachment-data"; Archive = "attachments.tar.gz" },
   @{ Volume = "${ProjectName}_chat-file-data"; Archive = "chat-files.tar.gz" }
 )
+# Backups created before runtime alert settings have no relay archive. It is safe
+# to skip that cache: admin_db + .env key can distribute the configuration again.
+if (Test-Path (Join-Path $BackupDir "alert-relay-data.tar.gz")) {
+  $Volumes += @{ Volume = "${ProjectName}_alert-relay-data"; Archive = "alert-relay-data.tar.gz" }
+}
 foreach ($Db in $Databases) {
   $Dump = Join-Path $BackupDir "$Db.dump"
   if (-not (Test-Path $Dump)) { throw "Missing database dump: $Dump" }
