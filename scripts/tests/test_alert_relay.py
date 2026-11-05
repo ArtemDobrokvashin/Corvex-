@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "infra/alert-relay"))
 SPEC = importlib.util.spec_from_file_location(
     "corvex_alert_relay", ROOT / "infra/alert-relay/app.py"
 )
@@ -338,6 +339,34 @@ class AlertDeliveryTest(unittest.TestCase):
         self.assertEqual(filtered_relay.deliver(PAYLOAD).state, "filtered")
         self.assertEqual(len(requests), 4)
 
+    def test_identical_runtime_refresh_preserves_repeat_throttle(self):
+        requests = []
+
+        def fake_urlopen(request, **_kwargs):
+            requests.append(request)
+            return FakeResponse()
+
+        relay = relay_module.Relay(
+            relay_module.Settings.from_runtime(runtime_payload(), {}), urlopen=fake_urlopen
+        )
+        self.assertEqual(relay.deliver(PAYLOAD).delivered, ("telegram",))
+
+        # RuntimeConfigProvider refreshes the same revision every ten seconds.
+        relay.update_settings(
+            relay_module.Settings.from_runtime(runtime_payload(), {}), 5, "ADMIN",
+            "2026-11-04T10:00:00Z",
+        )
+        self.assertEqual(relay.deliver(PAYLOAD).state, "suppressed")
+        self.assertEqual(len(requests), 1)
+
+        changed = runtime_payload(repeatCriticalSeconds=60)
+        relay.update_settings(
+            relay_module.Settings.from_runtime(changed, {}), 6, "ADMIN",
+            "2026-11-04T10:10:00Z",
+        )
+        self.assertEqual(relay.deliver(PAYLOAD).delivered, ("telegram",))
+        self.assertEqual(len(requests), 2)
+
     def test_partial_failure_retries_only_the_failed_channel(self):
         requests = []
         now = [1_000.0]
@@ -474,7 +503,7 @@ class RuntimeConfigProviderTest(unittest.TestCase):
 class AlertHttpTest(unittest.TestCase):
     def setUp(self):
         self.server = relay_module.RelayHttpServer(
-            ("127.0.0.1", 0), relay_module.Relay(settings())
+            ("127.0.0.1", 0), relay_module.Relay(settings()), "internal-secret"
         )
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -504,6 +533,42 @@ class AlertHttpTest(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["delivered"], [])
         self.assertEqual(result["failed"], [])
+
+    def test_telegram_discovery_requires_internal_auth_and_does_not_return_token(self):
+        token = "123456:telegram-secret"
+        api_requests = []
+
+        def fake_telegram(request, **_kwargs):
+            api_requests.append(request)
+            if request.full_url.endswith("/getMe"):
+                return StaticResponse({"ok": True, "result": {"username": "corvexmail_bot"}})
+            return StaticResponse({"ok": True, "result": [{
+                "update_id": 1,
+                "message": {
+                    "text": "/start",
+                    "chat": {"id": 123456, "type": "private", "first_name": "Artem"},
+                },
+            }]})
+
+        self.server.relay.telegram.urlopen = fake_telegram
+        body = json.dumps({"botToken": token}).encode("utf-8")
+        request = urllib.request.Request(
+            f"{self.base_url}/internal/telegram/discover",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with self.assertRaises(urllib.error.HTTPError) as denied:
+            urllib.request.urlopen(request, timeout=2)
+        self.assertEqual(denied.exception.code, 403)
+        self.assertEqual(api_requests, [])
+
+        request.add_header("X-Corvex-Internal-Token", "internal-secret")
+        with urllib.request.urlopen(request, timeout=2) as response:
+            result = json.load(response)
+        self.assertEqual(result["botUsername"], "corvexmail_bot")
+        self.assertEqual(result["chats"][0]["id"], "123456")
+        self.assertNotIn(token, str(result))
 
     def test_malformed_json_is_a_client_error(self):
         request = urllib.request.Request(

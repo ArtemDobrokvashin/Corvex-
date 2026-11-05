@@ -129,6 +129,17 @@ export interface AlertRuntimeStatus {
   consumers: AlertConsumerStatus[];
 }
 
+export interface TelegramChat {
+  id: string;
+  type: string;
+  title: string;
+}
+
+export interface TelegramDiscovery {
+  botUsername: string;
+  chats: TelegramChat[];
+}
+
 export interface AuditQuery extends Record<string, string | number | undefined> {
   actorId?: string;
   action?: string;
@@ -207,6 +218,11 @@ export const adminApi = {
     apiFetch<AlertSettings>('/api/v1/admin/alerts/settings', { method: 'PUT', body: JSON.stringify(body) }),
 
   alertRuntimeStatus: () => apiFetch<AlertRuntimeStatus>('/api/v1/admin/alerts/runtime'),
+
+  discoverTelegramChats: (botToken: string) =>
+    apiFetch<TelegramDiscovery>('/api/v1/admin/alerts/telegram/discover', {
+      method: 'POST', body: JSON.stringify({ botToken }),
+    }),
 
   systemHealth: () => apiFetch<SystemHealth>('/api/v1/admin/system/health'),
 

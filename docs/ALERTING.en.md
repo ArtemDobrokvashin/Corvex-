@@ -145,13 +145,36 @@ CORVEX_ALERT_EXTERNAL_SMTP_FROM=corvex-alert@example.net
 
 ### Telegram
 
-Create a dedicated bot with BotFather and set its chat/channel ID (group IDs may be negative)
-and token through the UI or the fallback.
+Create a dedicated bot with BotFather. Configure these three commands in BotFather (the new
+alert-relay starts their handlers after settings are applied):
 
-For a personal recipient, use the **numeric user ID**, for example `123456789`, not a username
-or `@username`. For a group or channel, also use the numeric ID, for example
-`-1001234567890`. This version accepts numeric IDs only and rejects `@channelname`. The user
-must start the bot first. The UI shows these examples directly in its field placeholders.
+```text
+start - Start and show the chat ID
+id - Show the current numeric chat ID
+help - Show Corvex connection instructions
+```
+
+The main setup flow is the wizard under **Alerts and delivery → Telegram**:
+
+1. Paste a new token; an existing UI/env secret can be reused without entering it again.
+2. Press **Start** in a private chat with the bot, or add it to a group and send `/start`.
+3. Select **Find chats**. Corvex returns only chat ID/type/title, never the token or message
+   text. An empty list is not a successful connection.
+4. **Explicitly select the recipient** — the first chat is never selected automatically.
+5. Enable Telegram and apply the settings. The relay then answers commands and delivers
+   alerts to the selected chat ID.
+
+When using a saved secret, the wizard waits for `APPLIED` on the current alert-relay revision
+so discovery cannot use the previous token. Manual entry remains available as a fallback. For a personal recipient, use the **numeric
+user ID**, for example `123456789`, not a username or `@username`. For a group or channel,
+also use the numeric ID, for example `-1001234567890`. This version accepts numeric IDs only
+and rejects `@channelname`. The user must start the bot first. Placeholders show examples.
+
+For a dedicated bot, the relay uses outbound `getUpdates`: no inbound webhook or public port
+is required. Do not configure a webhook or a second `getUpdates` consumer for the same token.
+The command offset is stored separately in `alert-relay-data/telegram-state.json` with `0600`
+permissions; the token is not written there. Discovery does not acknowledge updates and works
+even while the Telegram channel is disabled.
 
 ```dotenv
 CORVEX_ALERT_TELEGRAM_ENABLED=true
@@ -162,6 +185,12 @@ CORVEX_ALERT_TELEGRAM_CHAT_ID=<chat-id>
 Telegram requires the token in the URL path. The relay never logs URLs, response bodies, or
 the token. Redirects are not followed, so credentials and alert text cannot be forwarded to
 an unexpected URL.
+
+The selected future extension is an **additional** official `@corvexmail_bot` mode through a
+separate managed serverless gateway with per-installation keys. It is not implemented or
+accepted yet. A shared official token must never be embedded in source code, the backend, or
+a Docker image: any installation owner could extract it and control the bot. The autonomous
+dedicated-bot mode remains the primary path and does not depend on the future gateway.
 
 ### MAX
 

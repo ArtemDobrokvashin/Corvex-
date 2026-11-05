@@ -6,6 +6,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 import ru.corvex.admin.api.ApiException;
 import ru.corvex.admin.api.dto.AlertDtos.AlertConsumerStatus;
 import ru.corvex.admin.api.dto.AlertDtos.AlertRuntimeStatus;
@@ -14,6 +15,8 @@ import ru.corvex.admin.api.dto.AlertDtos.AlertSettingsView;
 import ru.corvex.admin.api.dto.AlertDtos.NotificationPolicy;
 import ru.corvex.admin.api.dto.AlertDtos.RelayConfig;
 import ru.corvex.admin.api.dto.AlertDtos.SecretState;
+import ru.corvex.admin.api.dto.AlertDtos.TelegramDiscoveryRequest;
+import ru.corvex.admin.api.dto.AlertDtos.TelegramDiscoveryView;
 import ru.corvex.admin.service.AlertConfigRepository.Config;
 import ru.corvex.admin.service.AlertConfigRepository.Stored;
 import ru.corvex.admin.service.AuditService.Actor;
@@ -40,6 +43,7 @@ public class AlertSettingsService {
     private final AlertSecretCipher cipher;
     private final Environment env;
     private final RestClient statusClient;
+    private final RestClient telegramDiscoveryClient;
 
     public AlertSettingsService(AlertConfigRepository repository, AuditService audit,
                                 AlertSecretCipher cipher, Environment env) {
@@ -51,6 +55,10 @@ public class AlertSettingsService {
         factory.setConnectTimeout(600);
         factory.setReadTimeout(900);
         this.statusClient = RestClient.builder().requestFactory(factory).build();
+        SimpleClientHttpRequestFactory discoveryFactory = new SimpleClientHttpRequestFactory();
+        discoveryFactory.setConnectTimeout(1_000);
+        discoveryFactory.setReadTimeout(25_000);
+        this.telegramDiscoveryClient = RestClient.builder().requestFactory(discoveryFactory).build();
     }
 
     private record Effective(Config config, long revision, Instant updatedAt, String source,
@@ -65,6 +73,41 @@ public class AlertSettingsService {
         long revision = current().revision();
         return new AlertRuntimeStatus(revision, List.of(
                 notificationStatus(revision), relayStatus(revision)));
+    }
+
+    public TelegramDiscoveryView discoverTelegram(TelegramDiscoveryRequest request) {
+        String botToken = request == null || request.botToken() == null ? "" : request.botToken();
+        if (botToken.length() > 512 || botToken.indexOf('\r') >= 0 || botToken.indexOf('\n') >= 0) {
+            throw ApiException.badRequest("Telegram token: недопустимая длина или перевод строки");
+        }
+        String internalToken = env("CORVEX_INTERNAL_API_TOKEN", "");
+        if (internalToken.isBlank()) {
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "CORVEX_INTERNAL_API_TOKEN is required for Telegram discovery");
+        }
+        try {
+            TelegramDiscoveryView result = telegramDiscoveryClient.post()
+                    .uri(env("CORVEX_ALERT_RELAY_URL", "http://alert-relay:8092")
+                            + "/internal/telegram/discover")
+                    .header("X-Corvex-Internal-Token", internalToken)
+                    .body(new TelegramDiscoveryRequest(botToken))
+                    .retrieve().body(TelegramDiscoveryView.class);
+            if (result == null || result.chats() == null || result.botUsername() == null) {
+                throw new IllegalStateException("Empty Telegram discovery response");
+            }
+            return result;
+        } catch (RestClientResponseException e) {
+            if (e.getStatusCode().value() == 422) {
+                throw ApiException.unprocessable("Telegram отклонил bot token или его формат");
+            }
+            throw new ApiException(HttpStatus.BAD_GATEWAY,
+                    "Не удалось получить чаты Telegram. Проверьте token и доступность Telegram API");
+        } catch (ApiException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY,
+                    "Не удалось получить чаты Telegram. Проверьте token и доступность Telegram API");
+        }
     }
 
     record NotificationStatusPayload(long revision, String source, Instant lastSuccessAt,

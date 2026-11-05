@@ -154,6 +154,25 @@ paths:
               schema: { $ref: '#/components/schemas/AlertRuntimeStatus' }
         '403': { description: Не суперадминистратор }
         '503': { description: Не удалось прочитать effective config; недоступность отдельного consumer возвращается как UNAVAILABLE в 200 }
+  /admin/alerts/telegram/discover:
+    post:
+      summary: Найти чаты по /start, /id или /help для явного выбора суперадминистратором
+      description: Blank botToken использует effective UI/env-secret в alert-relay. Ответ содержит только username бота и metadata чатов, но не token или тексты сообщений. Discovery не подтверждает updates и не выбирает получателя автоматически.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TelegramDiscoveryRequest' }
+      responses:
+        '200':
+          description: Найденные чаты; пустой список требует сначала отправить боту /start и не означает успешное подключение
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TelegramDiscoveryView' }
+        '403': { description: Не суперадминистратор }
+        '422': { description: Telegram token отсутствует, имеет неверный формат или отклонён }
+        '502': { description: Telegram API или alert-relay недоступен; sanitized error без token/response body }
+        '503': { description: Не настроен internal API token }
   /admin/audit:
     get:
       summary: Журнал аудита (AUDIT_VIEW) — кто, что, когда, с какого IP
@@ -287,6 +306,30 @@ components:
         consumers:
           type: array
           items: { $ref: '#/components/schemas/AlertConsumerStatus' }
+    TelegramDiscoveryRequest:
+      type: object
+      properties:
+        botToken:
+          type: string
+          format: password
+          writeOnly: true
+          maxLength: 512
+          description: Новый token для discovery; пустая строка использует уже сохранённый effective secret
+    TelegramChatView:
+      type: object
+      required: [id, type, title]
+      properties:
+        id: { type: string, pattern: '^-?[0-9]{1,32}$' }
+        type: { type: string, description: private, group, supergroup или channel }
+        title: { type: string, description: Отображаемое имя без текста сообщения }
+    TelegramDiscoveryView:
+      type: object
+      required: [botUsername, chats]
+      properties:
+        botUsername: { type: string, description: Public username без token }
+        chats:
+          type: array
+          items: { $ref: '#/components/schemas/TelegramChatView' }
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
 security:

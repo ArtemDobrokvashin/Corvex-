@@ -13,6 +13,8 @@ import ru.corvex.admin.api.dto.AlertDtos.AlertRuntimeStatus;
 import ru.corvex.admin.api.dto.AlertDtos.AlertSettingsRequest;
 import ru.corvex.admin.api.dto.AlertDtos.AlertSettingsView;
 import ru.corvex.admin.api.dto.AlertDtos.RelayConfig;
+import ru.corvex.admin.api.dto.AlertDtos.TelegramDiscoveryRequest;
+import ru.corvex.admin.api.dto.AlertDtos.TelegramDiscoveryView;
 import ru.corvex.admin.service.AlertConfigRepository.Config;
 import ru.corvex.admin.service.AlertConfigRepository.Stored;
 import ru.corvex.admin.service.AuditService.Actor;
@@ -25,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -230,6 +233,49 @@ class AlertSettingsServiceTest {
         } finally {
             notification.stop(0);
         }
+    }
+
+    @Test
+    void telegramDiscoveryUsesInternalAuthAndReturnsOnlyChatMetadata() throws Exception {
+        AtomicReference<String> internalToken = new AtomicReference<>();
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        HttpServer relay = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        relay.createContext("/internal/telegram/discover", exchange -> {
+            internalToken.set(exchange.getRequestHeaders().getFirst("X-Corvex-Internal-Token"));
+            requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            byte[] response = """
+                    {"botUsername":"corvexmail_bot","chats":[
+                      {"id":"-100123","type":"supergroup","title":"Corvex admins"}
+                    ]}
+                    """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        relay.start();
+        try {
+            env.setProperty("CORVEX_ALERT_RELAY_URL", baseUrl(relay));
+            env.setProperty("CORVEX_INTERNAL_API_TOKEN", "internal-secret");
+
+            TelegramDiscoveryView result = service.discoverTelegram(
+                    new TelegramDiscoveryRequest("123456:telegram-secret"));
+
+            assertEquals("corvexmail_bot", result.botUsername());
+            assertEquals("-100123", result.chats().get(0).id());
+            assertEquals("internal-secret", internalToken.get());
+            assertTrue(requestBody.get().contains("123456:telegram-secret"));
+            assertFalse(new ObjectMapper().writeValueAsString(result).contains("telegram-secret"));
+        } finally {
+            relay.stop(0);
+        }
+    }
+
+    @Test
+    void telegramDiscoveryRejectsInvalidTokenBeforeInternalRequest() {
+        ApiException error = assertThrows(ApiException.class,
+                () -> service.discoverTelegram(new TelegramDiscoveryRequest("bad\ntoken")));
+        assertEquals(HttpStatus.BAD_REQUEST, error.status());
     }
 
     @Test

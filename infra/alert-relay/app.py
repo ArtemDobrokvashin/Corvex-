@@ -8,6 +8,7 @@ and silences; consumers apply the dynamic category and repeat policy.
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import os
@@ -25,6 +26,8 @@ from http.client import HTTPException
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+
+from telegram_bot import TelegramBotClient, TelegramBotError
 
 MAX_REQUEST_BYTES = 2 * 1024 * 1024
 MESSENGER_TEXT_LIMIT = 3900  # MAX allows 4000; Telegram allows 4096.
@@ -397,6 +400,7 @@ class Relay:
         smtp_factory: Callable[..., Any] = smtplib.SMTP,
         smtp_ssl_factory: Callable[..., Any] = smtplib.SMTP_SSL,
         clock: Callable[[], float] = time.time,
+        telegram_state_path: str | Path | None = None,
     ) -> None:
         self.settings = settings
         self.urlopen = urlopen or open_no_redirect
@@ -404,6 +408,12 @@ class Relay:
         self.smtp_ssl_factory = smtp_ssl_factory
         self.context = tls_context(settings.ca_file)
         self.clock = clock
+        self.telegram = TelegramBotClient(
+            urlopen=self.urlopen,
+            context=lambda: self.context,
+            timeout=lambda: self.settings.timeout_seconds,
+            state_path=telegram_state_path,
+        )
         self.max_lock = threading.Lock()
         self.last_max_sent = 0.0
         self.settings_lock = threading.Lock()
@@ -422,9 +432,11 @@ class Relay:
         self, settings: Settings, revision: int, source: str, updated_at: Any
     ) -> None:
         with self.settings_lock:
+            configuration_changed = settings != self.settings
             self.settings = settings
             self.context = tls_context(settings.ca_file)
-            self.last_sent.clear()  # новая policy применяется к следующему webhook сразу
+            if configuration_changed:
+                self.last_sent.clear()  # только новая policy сбрасывает repeat-throttle
             self.runtime_status = {
                 "revision": revision,
                 "source": source,
@@ -438,6 +450,21 @@ class Relay:
     def mark_refresh_failed(self) -> None:
         with self.settings_lock:
             self.runtime_status = {**self.runtime_status, "refresh": "FAILED"}
+
+    def discover_telegram(self, supplied_token: str) -> dict[str, Any]:
+        if not isinstance(supplied_token, str):
+            raise TelegramBotError("Telegram bot token must be a string")
+        with self.settings_lock:
+            effective_token = self.settings.telegram_token
+        return self.telegram.discover(supplied_token, effective_token)
+
+    def poll_telegram(self) -> int:
+        with self.settings_lock:
+            enabled = self.settings.telegram_enabled
+            token = self.settings.telegram_token
+        if not enabled or not token:
+            return 0
+        return self.telegram.poll_once(token)
 
     def deliver(self, payload: Mapping[str, Any]) -> DeliveryResult:
         # Держим один snapshot настроек и throttle state на всю fanout-операцию.
@@ -743,11 +770,31 @@ class RuntimeConfigProvider:
         threading.Thread(target=poll, name="alert-runtime-config", daemon=True).start()
 
 
+class TelegramCommandPoller:
+    """Independent outbound command worker; failure never restarts or blocks alert delivery."""
+
+    def __init__(self, relay: Relay, interval_seconds: float = 5.0) -> None:
+        self.relay = relay
+        self.interval_seconds = interval_seconds
+
+    def start(self) -> None:
+        def poll() -> None:
+            while True:
+                try:
+                    self.relay.poll_telegram()
+                except Exception as exc:  # noqa: BLE001 — sanitized isolated worker boundary
+                    LOG.warning("Telegram command polling failed: %s", safe_error(exc))
+                time.sleep(self.interval_seconds)
+
+        threading.Thread(target=poll, name="telegram-commands", daemon=True).start()
+
+
 class RelayHttpServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address: tuple[str, int], relay: Relay) -> None:
+    def __init__(self, address: tuple[str, int], relay: Relay, internal_token: str = "") -> None:
         self.relay = relay
+        self.internal_token = internal_token
         super().__init__(address, AlertRequestHandler)
 
 
@@ -778,6 +825,41 @@ class AlertRequestHandler(BaseHTTPRequestHandler):
             self.json_response(404, {"status": "not-found"})
 
     def do_POST(self) -> None:
+        if self.path == "/internal/telegram/discover":
+            expected = self.server.internal_token
+            supplied = self.headers.get("X-Corvex-Internal-Token", "")
+            if not expected or not supplied or not hmac.compare_digest(
+                expected.encode("utf-8"), supplied.encode("utf-8")
+            ):
+                self.json_response(403, {"status": "forbidden"})
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > 16_384:
+                    self.json_response(413, {"status": "invalid-content-length"})
+                    return
+                payload = json.loads(self.rfile.read(length))
+                if not isinstance(payload, Mapping):
+                    raise TypeError("JSON object required")
+                token = payload.get("botToken", "")
+                result = self.server.relay.discover_telegram(token)
+                self.json_response(200, result)
+            except TelegramBotError as exc:
+                invalid = str(exc) in {
+                    "Invalid Telegram bot token format",
+                    "Telegram bot token must be a string",
+                    "Telegram HTTP 401",
+                }
+                self.json_response(
+                    422 if invalid else 502,
+                    {"status": "invalid-telegram-token" if invalid else "telegram-discovery-failed"},
+                )
+            except (TypeError, ValueError, UnicodeDecodeError):
+                self.json_response(400, {"status": "invalid-discovery-payload"})
+            except Exception as exc:  # noqa: BLE001 — sanitized HTTP failure boundary
+                LOG.error("Telegram discovery failed: %s", safe_error(exc))
+                self.json_response(502, {"status": "telegram-discovery-failed"})
+            return
         if self.path != "/alerts/webhook":
             self.json_response(404, {"status": "not-found"})
             return
@@ -808,8 +890,15 @@ def main() -> None:
     )
     try:
         settings = Settings.from_env(os.environ)
-        relay = Relay(settings)
+        relay = Relay(
+            settings,
+            telegram_state_path=os.environ.get(
+                "CORVEX_ALERT_TELEGRAM_STATE",
+                "/var/lib/corvex-alert-relay/telegram-state.json",
+            ),
+        )
         RuntimeConfigProvider(relay, os.environ).start()
+        TelegramCommandPoller(relay).start()
     except Exception as exc:  # noqa: BLE001 — sanitized startup failure boundary
         # ConfigurationError names the invalid key; CA/TLS errors do not contain a secret value.
         LOG.error(
@@ -822,7 +911,9 @@ def main() -> None:
         ",".join(settings.channels()) or "none",
     )
     try:
-        RelayHttpServer(("0.0.0.0", 8092), relay).serve_forever()
+        RelayHttpServer(
+            ("0.0.0.0", 8092), relay, os.environ.get("CORVEX_INTERNAL_API_TOKEN", "")
+        ).serve_forever()
     except KeyboardInterrupt:
         pass
 

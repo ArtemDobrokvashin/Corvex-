@@ -83,6 +83,17 @@ public final class AlertDtos {
     public record AlertRuntimeStatus(long revision, List<AlertConsumerStatus> consumers) {
     }
 
+    /** Blank botToken означает использовать уже сохранённый UI/env-secret в relay. */
+    public record TelegramDiscoveryRequest(String botToken) {
+    }
+
+    public record TelegramChatView(String id, String type, String title) {
+    }
+
+    /** Только несекретные идентификаторы чатов; token и тексты сообщений не возвращаются. */
+    public record TelegramDiscoveryView(String botUsername, List<TelegramChatView> chats) {
+    }
+
     /** Несекретная policy для внутренней почты notification-service. */
     public record NotificationPolicy(
             long revision,

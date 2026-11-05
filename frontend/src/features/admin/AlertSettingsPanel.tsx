@@ -1,11 +1,12 @@
 import { FormEvent, ReactNode, useCallback, useEffect, useState } from 'react';
-import { BellRing, RefreshCw, Save, Send, ShieldCheck } from 'lucide-react';
+import { BellRing, RefreshCw, Save, Search, Send, ShieldCheck } from 'lucide-react';
 import {
   adminApi,
   type AlertRuntimeStatus,
   type AlertSecretState,
   type AlertSettings,
   type AlertSettingsRequest,
+  type TelegramChat,
 } from '../../api/adminApi';
 import { errorText } from '../../api/authApi';
 import { Notice } from '../../components/ui';
@@ -128,6 +129,11 @@ export default function AlertSettingsPanel({ demoMode }: { demoMode: boolean }) 
   const [error, setError] = useState('');
   const [runtimeError, setRuntimeError] = useState('');
   const [notice, setNotice] = useState('');
+  const [discovering, setDiscovering] = useState(false);
+  const [telegramChats, setTelegramChats] = useState<TelegramChat[]>([]);
+  const [telegramBotUsername, setTelegramBotUsername] = useState('');
+  const [telegramDiscoveryError, setTelegramDiscoveryError] = useState('');
+  const [telegramDiscoveryNotice, setTelegramDiscoveryNotice] = useState('');
 
   const loadRuntime = useCallback(async () => {
     if (demoMode) return;
@@ -168,11 +174,41 @@ export default function AlertSettingsPanel({ demoMode }: { demoMode: boolean }) 
   function patch(next: Partial<AlertSettingsRequest>) {
     setForm((current) => current ? { ...current, ...next } : current);
     setNotice('');
+    if (next.telegramBotToken !== undefined) {
+      setTelegramChats([]);
+      setTelegramBotUsername('');
+      setTelegramDiscoveryError('');
+      setTelegramDiscoveryNotice('');
+    }
+  }
+
+  async function discoverTelegram() {
+    if (!form || !settings || discovering || telegramDiscoveryBlocked) return;
+    setDiscovering(true);
+    setTelegramDiscoveryError('');
+    setTelegramDiscoveryNotice('');
+    setTelegramChats([]);
+    setTelegramBotUsername('');
+    try {
+      const result = demoMode ? {
+        botUsername: 'corvexmail_bot',
+        chats: [{ id: '123456789', type: 'private', title: 'Corvex administrator' }],
+      } : await adminApi.discoverTelegramChats(form.telegramBotToken);
+      setTelegramChats(result.chats);
+      setTelegramBotUsername(result.botUsername);
+      if (result.chats.length === 0) {
+        setTelegramDiscoveryNotice(t('Чаты не найдены. Нажмите Start в личном чате с ботом или отправьте /start в нужной группе, затем повторите поиск.'));
+      }
+    } catch (discoveryError) {
+      setTelegramDiscoveryError(errorText(discoveryError, locale));
+    } finally {
+      setDiscovering(false);
+    }
   }
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!form || !settings) return;
+    if (!form || !settings || discovering) return;
     setSaving(true);
     setError('');
     setNotice('');
@@ -189,6 +225,9 @@ export default function AlertSettingsPanel({ demoMode }: { demoMode: boolean }) 
       } : await adminApi.saveAlertSettings(form);
       setSettings(result);
       setForm(formFromSettings(result));
+      setTelegramChats([]);
+      setTelegramBotUsername('');
+      setTelegramDiscoveryNotice('');
       setNotice(t('Настройки алертов сохранены: revision {revision}. Проверяем применение потребителями.', { revision: result.revision }));
       if (demoMode) setRuntime(demoRuntime(result.revision));
       else await loadRuntime();
@@ -212,6 +251,11 @@ export default function AlertSettingsPanel({ demoMode }: { demoMode: boolean }) 
       <span>{label}</span>
     </span>
   );
+
+  const telegramUsesSavedSecret = Boolean(form && settings && !form.telegramBotToken && settings.telegramBotToken.configured);
+  const telegramRelayApplied = Boolean(settings && runtime?.consumers.some((consumer) =>
+    consumer.consumer === 'alert-relay' && consumer.status === 'APPLIED' && consumer.revision === settings.revision));
+  const telegramDiscoveryBlocked = telegramUsesSavedSecret && !telegramRelayApplied;
 
   return (
     <section className="panel animate-rise-in overflow-hidden" aria-labelledby="alert-settings-title">
@@ -304,18 +348,37 @@ export default function AlertSettingsPanel({ demoMode }: { demoMode: boolean }) 
 
             <details className="rounded-xl border border-line p-4" open={form.telegramEnabled}>
               <summary className="cursor-pointer text-sm font-semibold text-ink">Telegram</summary>
-              <div className="mt-4">
+              <fieldset disabled={saving || loading || discovering} className="mt-4">
                 <Toggle checked={form.telegramEnabled} onChange={(telegramEnabled) => patch({ telegramEnabled })} label={t('Включить Telegram')} description={t('Токен передаётся только в Telegram API URL и не выводится в логи или public API.') as string} />
-                {form.telegramEnabled && <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  <Field label={t('Telegram chat ID')} hint={t('Для пользователя — только числовой ID, не username и не @username. Для группы/канала — числовой ID, обычно начинается с -100. Пользователь должен сначала запустить бота.')}>
-                    <input type="text" name="telegramChatId" required value={form.telegramChatId} onChange={(event) => patch({ telegramChatId: event.target.value })} placeholder={t('123456789 или -1001234567890')} pattern="-?[0-9]{1,32}" autoComplete="off" spellCheck={false} className="field h-10" />
-                  </Field>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <Field label="Telegram bot token" hint={secretHint(settings.telegramBotToken)}>
                     <input type="password" value={form.telegramBotToken} onChange={(event) => patch({ telegramBotToken: event.target.value, clearTelegramBotToken: false })} className="field h-10" autoComplete="new-password" aria-label="Telegram bot token" />
                     {settings.telegramBotToken.source === 'UI' && clearSecret(t('Удалить UI-секрет и вернуться к .env'), form.clearTelegramBotToken, (clearTelegramBotToken) => patch({ clearTelegramBotToken, telegramBotToken: '' }))}
                   </Field>
-                </div>}
-              </div>
+                  <Field label={t('Telegram chat ID')} hint={t('Можно найти автоматически после /start либо ввести вручную: numeric ID, не username и не @username. Для группы/канала ID часто начинается с -100.')}>
+                    <input type="text" name="telegramChatId" required={form.telegramEnabled} value={form.telegramChatId} onChange={(event) => patch({ telegramChatId: event.target.value })} placeholder={t('123456789 или -1001234567890')} pattern="-?[0-9]{1,32}" autoComplete="off" spellCheck={false} className="field h-10" />
+                  </Field>
+                </div>
+                <div className="mt-4 rounded-xl border border-line bg-chrome p-4">
+                  <p className="text-xs leading-relaxed text-muted">{t('Мастер: 1. Вставьте новый token или используйте сохранённый. 2. Нажмите Start в личном чате с ботом либо добавьте бота в группу и отправьте /start. 3. Нажмите «Найти чаты» и явно выберите получателя.')}</p>
+                  {telegramDiscoveryBlocked && <Notice tone="warning" className="mt-3">{t('Дождитесь APPLIED для alert-relay текущей revision: иначе discovery может использовать прежний сохранённый token.')}</Notice>}
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <button type="button" className="btn-secondary" onClick={() => void discoverTelegram()} disabled={discovering || saving || loading || telegramDiscoveryBlocked || (!demoMode && !form.telegramBotToken && !settings.telegramBotToken.configured)}>
+                      <Search size={15} className={discovering ? 'animate-pulse' : ''} />{discovering ? t('Ищем чаты…') : t('Найти чаты')}
+                    </button>
+                    {telegramBotUsername && <span className="chip">@{telegramBotUsername}</span>}
+                  </div>
+                  {telegramDiscoveryError && <Notice tone="error" className="mt-3">{telegramDiscoveryError}</Notice>}
+                  {telegramDiscoveryNotice && <Notice tone="warning" className="mt-3">{telegramDiscoveryNotice}</Notice>}
+                  {telegramChats.length > 0 && <div className="mt-3 space-y-2" aria-label={t('Найденные Telegram-чаты')}>
+                    <p className="text-xs text-muted">{t('Выберите получателя вручную: первый чат не подставляется автоматически.')}</p>
+                    {telegramChats.map((chat) => <button key={chat.id} type="button" aria-pressed={form.telegramChatId === chat.id} onClick={() => patch({ telegramChatId: chat.id })} className={`block w-full rounded-lg border px-3 py-2 text-left text-xs transition ${form.telegramChatId === chat.id ? 'border-accent bg-accent-soft' : 'border-line bg-surface hover:border-accent'}`}>
+                      <span className="block font-medium text-ink-soft">{chat.title}</span>
+                      <span className="mt-0.5 block font-mono text-muted">{chat.id} · {chat.type}</span>
+                    </button>)}
+                  </div>}
+                </div>
+              </fieldset>
             </details>
 
             <details className="rounded-xl border border-line p-4" open={form.maxEnabled}>
@@ -339,7 +402,7 @@ export default function AlertSettingsPanel({ demoMode }: { demoMode: boolean }) 
 
             <footer className="flex flex-wrap items-center gap-3 border-t border-line pt-5">
               <span className="mr-auto flex items-center gap-2 text-xs text-faint"><Send size={14} />{t('Сохранение меняет runtime policy; секреты в ответ не возвращаются.')}</span>
-              <button type="submit" className="btn-primary" disabled={saving || loading}><Save size={15} />{saving ? t('Сохраняем…') : t('Применить настройки алертов')}</button>
+              <button type="submit" className="btn-primary" disabled={saving || loading || discovering}><Save size={15} />{saving ? t('Сохраняем…') : t('Применить настройки алертов')}</button>
             </footer>
           </form>
         )}

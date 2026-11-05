@@ -6,6 +6,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -13,6 +14,8 @@ import org.springframework.web.bind.annotation.RestController;
 import ru.corvex.admin.api.dto.AlertDtos.AlertRuntimeStatus;
 import ru.corvex.admin.api.dto.AlertDtos.AlertSettingsRequest;
 import ru.corvex.admin.api.dto.AlertDtos.AlertSettingsView;
+import ru.corvex.admin.api.dto.AlertDtos.TelegramDiscoveryRequest;
+import ru.corvex.admin.api.dto.AlertDtos.TelegramDiscoveryView;
 import ru.corvex.admin.service.AlertSettingsService;
 
 import java.util.List;
@@ -40,6 +43,14 @@ public class AlertSettingsController {
     AlertRuntimeStatus runtime(@AuthenticationPrincipal Jwt jwt) {
         requireSuperAdmin(jwt);
         return alerts.runtimeStatus();
+    }
+
+    @PostMapping("/telegram/discover")
+    @PreAuthorize("hasAuthority('ADMIN_SERVER_CONFIG')")
+    TelegramDiscoveryView discoverTelegram(@RequestBody TelegramDiscoveryRequest request,
+                                           @AuthenticationPrincipal Jwt jwt) {
+        requireSuperAdmin(jwt);
+        return alerts.discoverTelegram(request);
     }
 
     @PutMapping("/settings")

@@ -9,6 +9,7 @@ const apiMocks = vi.hoisted(() => ({
   alertSettings: vi.fn(),
   saveAlertSettings: vi.fn(),
   alertRuntimeStatus: vi.fn(),
+  discoverTelegramChats: vi.fn(),
 }));
 
 vi.mock('../../api/adminApi', () => ({
@@ -16,6 +17,7 @@ vi.mock('../../api/adminApi', () => ({
     alertSettings: apiMocks.alertSettings,
     saveAlertSettings: apiMocks.saveAlertSettings,
     alertRuntimeStatus: apiMocks.alertRuntimeStatus,
+    discoverTelegramChats: apiMocks.discoverTelegramChats,
   },
 }));
 
@@ -89,6 +91,13 @@ describe('super-admin runtime alert settings', () => {
         consumer, status: 'APPLIED', revision, source: 'ADMIN', refresh: 'SUCCESS', updatedAt: null,
       })),
     }));
+    apiMocks.discoverTelegramChats.mockReset().mockResolvedValue({
+      botUsername: 'corvexmail_bot',
+      chats: [
+        { id: '123456789', type: 'private', title: 'Artem' },
+        { id: '-1001234567890', type: 'supergroup', title: 'Corvex admins' },
+      ],
+    });
   });
 
   afterEach(async () => {
@@ -154,5 +163,58 @@ describe('super-admin runtime alert settings', () => {
     expect(maxChat.pattern).toBe('-?[0-9]{1,32}');
     expect(container.textContent).toContain('not a username or @username');
     expect(container.textContent).toContain('Fill in exactly one of the two fields');
+  });
+
+  it('discovers Telegram chats with a saved secret but never auto-selects a recipient', async () => {
+    await act(async () => {
+      root.render(<AlertSettingsPanel demoMode={false} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const discover = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent === 'Find chats')!;
+    await act(async () => {
+      discover.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(apiMocks.discoverTelegramChats).toHaveBeenCalledWith('');
+    const chatId = container.querySelector<HTMLInputElement>('input[name="telegramChatId"]')!;
+    expect(chatId.value).toBe('-100123');
+    expect(container.textContent).toContain('@corvexmail_bot');
+    expect(container.textContent).toContain('Artem');
+    expect(container.textContent).toContain('Corvex admins');
+
+    const group = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('Corvex admins'))!;
+    await act(async () => {
+      group.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(chatId.value).toBe('-1001234567890');
+    expect(group.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('waits for the current relay revision before discovering with a saved secret', async () => {
+    apiMocks.alertRuntimeStatus.mockResolvedValue({
+      revision: 3,
+      consumers: [
+        { consumer: 'notification-service', status: 'APPLIED', revision: 3, source: 'ADMIN', refresh: 'SUCCESS', updatedAt: null },
+        { consumer: 'alert-relay', status: 'PENDING', revision: 2, source: 'ADMIN', refresh: 'SUCCESS', updatedAt: null },
+      ],
+    });
+    await act(async () => {
+      root.render(<AlertSettingsPanel demoMode={false} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const discover = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent === 'Find chats')!;
+    expect(discover.disabled).toBe(true);
+    expect(container.textContent).toContain('Wait for alert-relay to reach APPLIED');
+    discover.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(apiMocks.discoverTelegramChats).not.toHaveBeenCalled();
   });
 });
