@@ -789,6 +789,59 @@ class TelegramCommandPoller:
         threading.Thread(target=poll, name="telegram-commands", daemon=True).start()
 
 
+class RequestBodyTooLarge(ValueError):
+    """The declared or decoded request body exceeds its endpoint-specific bound."""
+
+
+def read_request_body(handler: BaseHTTPRequestHandler, maximum: int) -> bytes:
+    """Read a bounded JSON body, including Spring's chunked requests, without TE/CL ambiguity."""
+    transfer_encoding = handler.headers.get("Transfer-Encoding")
+    content_length = handler.headers.get("Content-Length")
+    if transfer_encoding:
+        if content_length is not None or transfer_encoding.strip().lower() != "chunked":
+            raise ValueError("Unsupported transfer encoding")
+        body = bytearray()
+        trailer_bytes = 0
+        while True:
+            line = handler.rfile.readline(1026)
+            if len(line) > 1024 or not line.endswith(b"\r\n"):
+                raise ValueError("Invalid chunk header")
+            raw_size = line[:-2].split(b";", 1)[0].strip()
+            if not raw_size or len(raw_size) > 8 or any(
+                byte not in b"0123456789abcdefABCDEF" for byte in raw_size
+            ):
+                raise ValueError("Invalid chunk size")
+            size = int(raw_size, 16)
+            if size == 0:
+                for _ in range(100):
+                    trailer = handler.rfile.readline(1026)
+                    trailer_bytes += len(trailer)
+                    if len(trailer) > 1024 or trailer_bytes > 16_384 or not trailer.endswith(b"\r\n"):
+                        raise ValueError("Invalid chunk trailer")
+                    if trailer == b"\r\n":
+                        if not body:
+                            raise ValueError("Empty request body")
+                        return bytes(body)
+                raise ValueError("Too many chunk trailers")
+            if len(body) + size > maximum:
+                raise RequestBodyTooLarge("Chunked request body is too large")
+            chunk = handler.rfile.read(size)
+            if len(chunk) != size or handler.rfile.read(2) != b"\r\n":
+                raise ValueError("Truncated chunk")
+            body.extend(chunk)
+    if content_length is None:
+        raise ValueError("Content-Length is required")
+    length = int(content_length)
+    if length > maximum:
+        raise RequestBodyTooLarge("Request body is too large")
+    if length <= 0:
+        raise ValueError("Empty request body")
+    body = handler.rfile.read(length)
+    if len(body) != length:
+        raise ValueError("Truncated request body")
+    return body
+
+
 class RelayHttpServer(ThreadingHTTPServer):
     daemon_threads = True
 
@@ -834,16 +887,14 @@ class AlertRequestHandler(BaseHTTPRequestHandler):
                 self.json_response(403, {"status": "forbidden"})
                 return
             try:
-                length = int(self.headers.get("Content-Length", "0"))
-                if length <= 0 or length > 16_384:
-                    self.json_response(413, {"status": "invalid-content-length"})
-                    return
-                payload = json.loads(self.rfile.read(length))
+                payload = json.loads(read_request_body(self, 16_384))
                 if not isinstance(payload, Mapping):
                     raise TypeError("JSON object required")
                 token = payload.get("botToken", "")
                 result = self.server.relay.discover_telegram(token)
                 self.json_response(200, result)
+            except RequestBodyTooLarge:
+                self.json_response(413, {"status": "request-body-too-large"})
             except TelegramBotError as exc:
                 invalid = str(exc) in {
                     "Invalid Telegram bot token format",
@@ -864,16 +915,14 @@ class AlertRequestHandler(BaseHTTPRequestHandler):
             self.json_response(404, {"status": "not-found"})
             return
         try:
-            length = int(self.headers.get("Content-Length", "0"))
-            if length <= 0 or length > MAX_REQUEST_BYTES:
-                self.json_response(413, {"status": "invalid-content-length"})
-                return
-            payload = json.loads(self.rfile.read(length))
+            payload = json.loads(read_request_body(self, MAX_REQUEST_BYTES))
             if not isinstance(payload, Mapping):
                 raise TypeError("JSON object required")
             result = self.server.relay.deliver(payload)
             status, body = delivery_response(result)
             self.json_response(status, body)
+        except RequestBodyTooLarge:
+            self.json_response(413, {"status": "request-body-too-large"})
         except (TypeError, ValueError, UnicodeDecodeError):
             self.json_response(400, {"status": "invalid-alertmanager-payload"})
         except Exception as exc:  # noqa: BLE001 — sanitized HTTP failure boundary

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import importlib.util
 import json
 import ssl
@@ -563,9 +564,20 @@ class AlertHttpTest(unittest.TestCase):
         self.assertEqual(denied.exception.code, 403)
         self.assertEqual(api_requests, [])
 
-        request.add_header("X-Corvex-Internal-Token", "internal-secret")
-        with urllib.request.urlopen(request, timeout=2) as response:
-            result = json.load(response)
+        # Spring RestClient may use Transfer-Encoding: chunked for this JSON body.
+        connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=2)
+        connection.request(
+            "POST", "/internal/telegram/discover", body=iter([body[:7], body[7:]]),
+            headers={
+                "Content-Type": "application/json",
+                "X-Corvex-Internal-Token": "internal-secret",
+            },
+            encode_chunked=True,
+        )
+        response = connection.getresponse()
+        result = json.loads(response.read())
+        connection.close()
+        self.assertEqual(response.status, 200)
         self.assertEqual(result["botUsername"], "corvexmail_bot")
         self.assertEqual(result["chats"][0]["id"], "123456")
         self.assertNotIn(token, str(result))
