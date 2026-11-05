@@ -96,6 +96,22 @@ class MonitoringConfigTest(unittest.TestCase):
         self.assertIn(":/etc/corvex/alert-ca:ro", relay)
         self.assertNotIn("CORVEX_CERTS_DIR", relay)
 
+    def test_secured_services_allow_only_the_internal_prometheus_scrape_endpoint(self):
+        configs = [
+            "services/admin-service/src/main/java/ru/corvex/admin/security/AdminSecurityConfig.java",
+            "services/auth-service/src/main/java/ru/corvex/auth/security/AuthSecurityConfig.java",
+            "services/mail-storage-service/src/main/java/ru/corvex/mailstorage/security/StorageSecurityConfig.java",
+            "services/chat-service/src/main/java/ru/corvex/chat/security/ChatSecurityConfig.java",
+            "services/chat-file-service/src/main/java/ru/corvex/chatfile/security/ChatFileSecurityConfig.java",
+            "services/web-gateway/src/main/java/ru/corvex/gateway/security/GatewaySecurityConfig.java",
+        ]
+        for relative in configs:
+            source = (ROOT / relative).read_text(encoding="utf-8")
+            self.assertIn('"/actuator/prometheus"', source, relative)
+            self.assertNotIn('"/actuator/**"', source, relative)
+        nginx = (ROOT / "infra/nginx/conf.d/corvex.conf").read_text(encoding="utf-8")
+        self.assertNotIn("location /actuator", nginx)
+
     def test_standard_verify_gates_include_alert_relay_tests(self):
         windows = (ROOT / "scripts/verify.ps1").read_text(encoding="utf-8")
         linux = (ROOT / "scripts/verify.sh").read_text(encoding="utf-8")

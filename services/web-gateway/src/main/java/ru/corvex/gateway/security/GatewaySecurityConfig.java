@@ -28,7 +28,7 @@ public class GatewaySecurityConfig {
                 .csrf(ServerHttpSecurity.CsrfSpec::disable) // API на Bearer-токенах; cookie-refresh защищён SameSite=Strict
                 .authorizeExchange(ex -> ex
                         .pathMatchers("/api/v1/auth/login", "/api/v1/auth/refresh",
-                                "/api/v1/auth/mfa/verify", "/api/v1/auth/logout", "/actuator/health/**",
+                                "/api/v1/auth/mfa/verify", "/api/v1/auth/logout", "/actuator/health/**", "/actuator/prometheus",
                                 "/.well-known/autoconfig/**", "/autodiscover/**",
                                 // Только handshake: STOMP CONNECT ниже всё равно требует Bearer JWT.
                                 "/ws/chat", "/ws/chat/**").permitAll()
