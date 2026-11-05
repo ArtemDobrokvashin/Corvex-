@@ -195,7 +195,7 @@ SMTP/IMAP/POP3 остаются выключенными по умолчанию
 
   Дополнительные non-destructive runtime, read-only protocol smoke, сквозной SMTP/IMAP e2e и guarded IMAP MOVE/flags/restart-persistence с JSON-отчётами описаны в [`scripts/README.md`](scripts/README.md). Полный persistence-режим требует `--allow-mutating` и `--allow-restart`; без них выполняется только precheck.
 
-- [x] **2. Зелёный frontend текущего `main`:** `npm ci`, **27/96** test files/tests, `npm run build` с modern+legacy и production audit 0. Каждый релизный кандидат повторяет G0 без сокращений.
+- [x] **2. Зелёный frontend текущего `main`:** `npm ci`, **27/97** test files/tests, `npm run build` с modern+legacy и production audit 0. Каждый релизный кандидат повторяет G0 без сокращений.
 - [ ] **3. Повторить базовый Compose-подъём на текущем `main`.** Для `b37db56` на ПК проверены config, 13 образов, Flyway и 20/20 основных контейнеров. После смены Boot повторить чистый запуск и проверить restart loops/DLQ; последующие точечные gateway/chat-фиксы не заменяют полный повтор.
 - [ ] **4. Полный identity/admin smoke.** Bootstrap-админ, смена пароля, второй пользователь, группы/права, lockout, TOTP, app-password, аудит и запрет действий над чужими данными.
 - [ ] **5. Собственный почтовый smoke на тестовом домене.** Внешнее письмо → INBOX; локальное webmail-письмо; внешнее письмо на контролируемый MX; вложение; Bcc не виден другим получателям; письмо переживает рестарт контейнеров.
@@ -383,7 +383,7 @@ Reproduce the captures with [`docs/screenshots/README.md`](docs/screenshots/READ
 | 2 | Durable SMTP delivery, storage, spam/AV, search, outbound queue | 🟡 services built/started on `b37db56`, repeat on `main`; own end-to-end SMTP is not accepted yet |
 | 3 | Apache James IMAP/POP3, Outlook/Thunderbird | 🟡 G1/G2 passed only on `b37db56`, repeat on `main`; client smoke has not run, protocols remain disabled by default |
 | 4 | Persistent realtime chat, files, presence | 🟡 basic realtime confirmed; two-user chat/file/security smoke remains |
-| G0 | Frontend and static gates | ✅ current `main`: 27 files / 96 tests, modern+legacy build, production audit 0 |
+| G0 | Frontend and static gates | ✅ current `main`: 27 files / 97 tests, modern+legacy build, production audit 0 |
 | G1 | Maven for every service | ✅ baseline `b37db56` only: 12 services + parent, `BUILD SUCCESS`; 🔁 repeat on current `main` with Boot 3.5.16 |
 | G2 | Docker, Flyway, and first launch | ✅ baseline `b37db56` only: 13 images, 20/20 core containers; healthchecked services `healthy`, `nginx`/`frontend`/`spamd` `Up`; 🔁 repeat on current `main` |
 | G3 | Functional acceptance | 🚧 External Mail ongoing and basic chat verified; the rest is listed in [`docs/READINESS.md`](docs/READINESS.md) |
@@ -416,7 +416,7 @@ Corvex is currently **not** appropriate for:
 
 | Area | Actually proven | Not proven / remaining |
 |---|---|---|
-| Frontend | Current `main`: 27 files / 96 tests; TypeScript, modern+legacy build; production `npm audit` is 0 | real Windows 7 + Chrome 109 and the complete responsive/E2E matrix |
+| Frontend | Current `main`: 27 files / 97 tests; TypeScript, modern+legacy build; production `npm audit` is 0 | real Windows 7 + Chrome 109 and the complete responsive/E2E matrix |
 | Java | On PC baseline `b37db56`: 12 services + parent, tests and JaCoCo, `BUILD SUCCESS` | current `main` with Boot 3.5.16: full repeat; then end-to-end scenarios beyond unit/context tests |
 | Docker/infrastructure | On PC baseline `b37db56`: 13 images, Compose config, Flyway, 20/20 core containers; healthchecked services healthy | current `main`: repeat launch; then 72 hours, load, monitoring profile, restore, and rollback |
 | External mail | Ongoing IMAP for Mail.ru/Yandex test mailboxes; repeated runs without duplicates; a new message delivered by polling | archive, other providers, complete send-as/Sent smoke, distributed IDLE |
@@ -458,7 +458,7 @@ future commits. Repeat G0–G2 on every release SHA.
 
   Additional non-destructive runtime, read-only protocol smokes, an end-to-end SMTP/IMAP test, and guarded IMAP MOVE/flags/restart-persistence checks with JSON reports are documented in [`scripts/README.md`](scripts/README.md). Full persistence mode requires both `--allow-mutating` and `--allow-restart`; without them it performs only the precheck.
 
-- [x] **2. Make the current `main` frontend green:** `npm ci`, **27 files / 96 tests**, `npm run build` with modern+legacy output, and production audit 0. Every release candidate repeats G0 without shortcuts.
+- [x] **2. Make the current `main` frontend green:** `npm ci`, **27 files / 97 tests**, `npm run build` with modern+legacy output, and production audit 0. Every release candidate repeats G0 without shortcuts.
 - [ ] **3. Repeat the base Compose launch on current `main`.** For `b37db56`, a PC passed config validation, 13 images, Flyway, and 20/20 core containers. Repeat a clean launch after the Boot change and inspect restart loops/DLQs; later targeted gateway/chat fixes do not replace a full repeat.
 - [ ] **4. Pass full identity/admin smoke.** Bootstrap admin, password change, a second user, groups/permissions, lockout, TOTP, app passwords, audit, and cross-user data isolation.
 - [ ] **5. Pass own mail smoke on a test domain.** External mail reaches INBOX; local webmail works; external delivery reaches a controlled MX; attachments work; Bcc is not exposed; mail survives container restarts.

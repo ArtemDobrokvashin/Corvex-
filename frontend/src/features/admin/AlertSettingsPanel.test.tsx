@@ -135,4 +135,24 @@ describe('super-admin runtime alert settings', () => {
     expect(container.textContent).toContain('revision 4');
     expect(apiMocks.alertRuntimeStatus.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
+
+  it('shows numeric Telegram and MAX ID examples instead of ambiguous usernames', async () => {
+    apiMocks.alertSettings.mockResolvedValue({ ...settings, maxEnabled: true });
+    await act(async () => {
+      root.render(<AlertSettingsPanel demoMode={false} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const telegram = container.querySelector<HTMLInputElement>('input[name="telegramChatId"]')!;
+    const maxChat = container.querySelector<HTMLInputElement>('input[name="maxChatId"]')!;
+    const maxUser = container.querySelector<HTMLInputElement>('input[name="maxUserId"]')!;
+    expect(telegram.placeholder).toBe('123456789 or -1001234567890');
+    expect(telegram.pattern).toBe('-?[0-9]{1,32}');
+    expect(maxChat.placeholder).toBe('123456789');
+    expect(maxUser.placeholder).toBe('123456789');
+    expect(maxChat.pattern).toBe('-?[0-9]{1,32}');
+    expect(container.textContent).toContain('not a username or @username');
+    expect(container.textContent).toContain('Fill in exactly one of the two fields');
+  });
 });

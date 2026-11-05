@@ -156,7 +156,12 @@ CORVEX_ALERT_EXTERNAL_SMTP_FROM=corvex-alert@example.net
 ### Telegram
 
 Создайте отдельного bot через BotFather и добавьте его в нужный чат. Укажите chat/channel ID
-(у групп он может быть отрицательным) и token через UI либо env fallback:
+(у групп он может быть отрицательным) и token через UI либо env fallback.
+
+Для личного получателя нужен **числовой user ID**, например `123456789`: username и
+`@username` не подходят. Для группы/канала также укажите числовой ID, например
+`-1001234567890`. Текущая версия принимает только числовые ID и отклоняет `@channelname`.
+Пользователь должен сначала запустить бота. Эти примеры показаны прямо в placeholder полей UI.
 
 ```dotenv
 CORVEX_ALERT_TELEGRAM_ENABLED=true
@@ -170,7 +175,8 @@ HTTP-redirect для Telegram/MAX не выполняется, чтобы creden
 ### MAX
 
 Используется официальный endpoint `https://platform-api2.max.ru/messages`. Token передаётся
-только в `Authorization`, не в query. Заполните ровно один `chat ID` или `user ID`:
+только в `Authorization`, не в query. Заполните ровно один `chat ID` или `user ID`.
+Оба значения — числовые ID без `@` и username; placeholder в UI показывает пример `123456789`:
 
 ```dotenv
 CORVEX_ALERT_MAX_ENABLED=true

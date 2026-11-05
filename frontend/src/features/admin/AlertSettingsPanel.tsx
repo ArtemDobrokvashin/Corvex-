@@ -307,7 +307,9 @@ export default function AlertSettingsPanel({ demoMode }: { demoMode: boolean }) 
               <div className="mt-4">
                 <Toggle checked={form.telegramEnabled} onChange={(telegramEnabled) => patch({ telegramEnabled })} label={t('Включить Telegram')} description={t('Токен передаётся только в Telegram API URL и не выводится в логи или public API.') as string} />
                 {form.telegramEnabled && <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  <Field label={t('Telegram chat ID')} hint={t('ID группы, канала или пользователя в строковом формате.')}><input type="text" required value={form.telegramChatId} onChange={(event) => patch({ telegramChatId: event.target.value })} className="field h-10" /></Field>
+                  <Field label={t('Telegram chat ID')} hint={t('Для пользователя — только числовой ID, не username и не @username. Для группы/канала — числовой ID, обычно начинается с -100. Пользователь должен сначала запустить бота.')}>
+                    <input type="text" name="telegramChatId" required value={form.telegramChatId} onChange={(event) => patch({ telegramChatId: event.target.value })} placeholder={t('123456789 или -1001234567890')} pattern="-?[0-9]{1,32}" autoComplete="off" spellCheck={false} className="field h-10" />
+                  </Field>
                   <Field label="Telegram bot token" hint={secretHint(settings.telegramBotToken)}>
                     <input type="password" value={form.telegramBotToken} onChange={(event) => patch({ telegramBotToken: event.target.value, clearTelegramBotToken: false })} className="field h-10" autoComplete="new-password" aria-label="Telegram bot token" />
                     {settings.telegramBotToken.source === 'UI' && clearSecret(t('Удалить UI-секрет и вернуться к .env'), form.clearTelegramBotToken, (clearTelegramBotToken) => patch({ clearTelegramBotToken, telegramBotToken: '' }))}
@@ -321,8 +323,12 @@ export default function AlertSettingsPanel({ demoMode }: { demoMode: boolean }) 
               <div className="mt-4">
                 <Toggle checked={form.maxEnabled} onChange={(maxEnabled) => patch({ maxEnabled })} label={t('Включить MAX')} description={t('Укажите ровно один chat ID или user ID. Токен отправляется только в Authorization header.') as string} />
                 {form.maxEnabled && <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  <Field label={t('MAX chat ID')}><input type="text" value={form.maxChatId} onChange={(event) => patch({ maxChatId: event.target.value })} className="field h-10" /></Field>
-                  <Field label={t('MAX user ID')}><input type="text" value={form.maxUserId} onChange={(event) => patch({ maxUserId: event.target.value })} className="field h-10" /></Field>
+                  <Field label={t('MAX chat ID')} hint={t('Числовой ID чата/канала, без @ и username.')}>
+                    <input type="text" name="maxChatId" value={form.maxChatId} onChange={(event) => patch({ maxChatId: event.target.value })} placeholder="123456789" pattern="-?[0-9]{1,32}" autoComplete="off" spellCheck={false} className="field h-10" />
+                  </Field>
+                  <Field label={t('MAX user ID')} hint={t('Числовой ID пользователя, без @ и username. Заполните ровно одно из двух полей.')}>
+                    <input type="text" name="maxUserId" value={form.maxUserId} onChange={(event) => patch({ maxUserId: event.target.value })} placeholder="123456789" pattern="-?[0-9]{1,32}" autoComplete="off" spellCheck={false} className="field h-10" />
+                  </Field>
                   <Field label="MAX bot token" hint={secretHint(settings.maxBotToken)}>
                     <input type="password" value={form.maxBotToken} onChange={(event) => patch({ maxBotToken: event.target.value, clearMaxBotToken: false })} className="field h-10" autoComplete="new-password" aria-label="MAX bot token" />
                     {settings.maxBotToken.source === 'UI' && clearSecret(t('Удалить UI-секрет и вернуться к .env'), form.clearMaxBotToken, (clearMaxBotToken) => patch({ clearMaxBotToken, maxBotToken: '' }))}

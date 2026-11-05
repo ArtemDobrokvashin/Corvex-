@@ -146,7 +146,12 @@ CORVEX_ALERT_EXTERNAL_SMTP_FROM=corvex-alert@example.net
 ### Telegram
 
 Create a dedicated bot with BotFather and set its chat/channel ID (group IDs may be negative)
-and token through the UI or the fallback:
+and token through the UI or the fallback.
+
+For a personal recipient, use the **numeric user ID**, for example `123456789`, not a username
+or `@username`. For a group or channel, also use the numeric ID, for example
+`-1001234567890`. This version accepts numeric IDs only and rejects `@channelname`. The user
+must start the bot first. The UI shows these examples directly in its field placeholders.
 
 ```dotenv
 CORVEX_ALERT_TELEGRAM_ENABLED=true
@@ -161,7 +166,8 @@ an unexpected URL.
 ### MAX
 
 MAX uses the official `https://platform-api2.max.ru/messages` endpoint and the
-`Authorization` header, never a query token. Set exactly one chat ID or user ID:
+`Authorization` header, never a query token. Set exactly one chat ID or user ID.
+Both are numeric IDs without `@` or a username; the UI placeholder shows `123456789`:
 
 ```dotenv
 CORVEX_ALERT_MAX_ENABLED=true

@@ -245,10 +245,10 @@ components:
         externalSmtpUsername: { type: string }
         externalSmtpFrom: { type: string }
         telegramEnabled: { type: boolean }
-        telegramChatId: { type: string }
+        telegramChatId: { type: string, pattern: '^-?[0-9]{1,32}$', description: 'Числовой ID пользователя/группы/канала, не username и не @username; примеры 123456789 или -1001234567890' }
         maxEnabled: { type: boolean }
-        maxChatId: { type: string, description: Заполняется ровно один из maxChatId/maxUserId при включённом MAX }
-        maxUserId: { type: string }
+        maxChatId: { type: string, pattern: '^-?[0-9]{1,32}$', description: 'Числовой ID без @/username; заполняется ровно один из maxChatId/maxUserId при включённом MAX' }
+        maxUserId: { type: string, pattern: '^-?[0-9]{1,32}$', description: 'Числовой ID пользователя без @/username' }
     AlertSettingsView:
       allOf:
         - $ref: '#/components/schemas/AlertSettingsBase'
