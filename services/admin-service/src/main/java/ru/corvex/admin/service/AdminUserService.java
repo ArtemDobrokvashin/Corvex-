@@ -111,6 +111,12 @@ public class AdminUserService {
         audit.record(actor, "USER_BLOCKED", "user", userId.toString(), Map.of());
     }
 
+    public void resetPassword(UUID userId, String newPassword, Actor actor) {
+        authClient.resetPassword(userId, newPassword);
+        // Секрет не попадает ни в details, ни в логи: действие и target достаточны для аудита.
+        audit.record(actor, "USER_PASSWORD_RESET", "user", userId.toString(), Map.of());
+    }
+
     public void disable(UUID userId, Actor actor) {
         groupService.assertNotSoleSuperAdmin(userId);
         authClient.disableUser(userId);

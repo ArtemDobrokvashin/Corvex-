@@ -37,6 +37,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class InternalUserServiceTest {
@@ -241,6 +242,42 @@ class InternalUserServiceTest {
         service.setStatus(USER_ID, User.Status.DISABLED);
         assertEquals(User.Status.DISABLED, user.getStatus());
         verify(sessionRevoker).revokeAll(USER_ID);
+    }
+
+    @Test
+    void resetPasswordEncodesRequiresChangeRevokesSessionsAndPreservesOtherCredentials() {
+        User user = user();
+        user.setTotpEnabled(true);
+        user.setStatus(User.Status.BLOCKED);
+        when(users.findById(USER_ID)).thenReturn(Optional.of(user));
+
+        service.resetPassword(USER_ID, "NewPassword2");
+
+        assertEquals("enc(NewPassword2)", user.getPasswordHash());
+        assertTrue(user.isMustChangePassword());
+        assertTrue(user.isTotpEnabled());
+        assertEquals(User.Status.BLOCKED, user.getStatus());
+        verify(users).save(user);
+        verify(sessionRevoker).revokeAll(USER_ID);
+        verifyNoInteractions(appPasswords);
+    }
+
+    @Test
+    void resetPasswordRejectsWeakSameAndExternallyManagedPasswords() {
+        User user = user();
+        when(users.findById(USER_ID)).thenReturn(Optional.of(user));
+
+        assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, assertThrows(ApiException.class,
+                () -> service.resetPassword(USER_ID, "short1")).status());
+        when(passwordEncoder.matches("Password123", "hash")).thenReturn(true);
+        assertEquals(HttpStatus.BAD_REQUEST, assertThrows(ApiException.class,
+                () -> service.resetPassword(USER_ID, "Password123")).status());
+
+        user.setSource(User.Source.AD_LDAP);
+        assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, assertThrows(ApiException.class,
+                () -> service.resetPassword(USER_ID, "NewPassword2")).status());
+        verify(users, never()).save(any());
+        verify(sessionRevoker, never()).revokeAll(any());
     }
 
     @Test

@@ -21,10 +21,12 @@ import ru.corvex.admin.api.dto.AdminDtos.AdminUserView;
 import ru.corvex.admin.api.dto.AdminDtos.CreateUserRequest;
 import ru.corvex.admin.api.dto.AdminDtos.PageResult;
 import ru.corvex.admin.api.dto.AdminDtos.PatchUserRequest;
+import ru.corvex.admin.api.dto.AdminDtos.ResetPasswordRequest;
 import ru.corvex.admin.api.dto.AdminDtos.SetGroupsRequest;
 import ru.corvex.admin.api.dto.AdminDtos.UpdateQuotaRequest;
 import ru.corvex.admin.service.AdminUserService;
 
+import java.util.List;
 import java.util.UUID;
 
 /** Пользователи в админке — зеркало docs/api/admin-api.yaml. */
@@ -84,10 +86,27 @@ public class AdminUserController {
         users.block(userId, Actors.from(jwt, http));
     }
 
+    @PostMapping("/{userId}/password-reset")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAuthority('ADMIN_USERS_MANAGE')")
+    void resetPassword(@PathVariable UUID userId, @Valid @RequestBody ResetPasswordRequest req,
+                       @AuthenticationPrincipal Jwt jwt, HttpServletRequest http) {
+        requireSuperAdmin(jwt);
+        users.resetPassword(userId, req.newPassword(), Actors.from(jwt, http));
+    }
+
     @PutMapping("/{userId}/groups")
     @PreAuthorize("hasAnyAuthority('ADMIN_GROUPS_MANAGE','ADMIN_USERS_MANAGE')")
     AdminUserView setGroups(@PathVariable UUID userId, @Valid @RequestBody SetGroupsRequest req,
                             @AuthenticationPrincipal Jwt jwt, HttpServletRequest http) {
         return users.setGroups(userId, req.groupCodes(), Actors.from(jwt, http));
+    }
+
+    private static void requireSuperAdmin(Jwt jwt) {
+        List<String> groups = jwt == null ? null : jwt.getClaimAsStringList("groups");
+        if (groups == null || !groups.contains("SUPER_ADMIN")) {
+            throw new ApiException(HttpStatus.FORBIDDEN,
+                    "Сброс пароля пользователя доступен только суперадминистратору");
+        }
     }
 }

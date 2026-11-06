@@ -20,6 +20,7 @@ import ru.corvex.admin.api.dto.AdminDtos.GroupView;
 import ru.corvex.admin.api.dto.AdminDtos.HealthResponse;
 import ru.corvex.admin.api.dto.AdminDtos.PageResult;
 import ru.corvex.admin.api.dto.AdminDtos.PatchUserRequest;
+import ru.corvex.admin.api.dto.AdminDtos.ResetPasswordRequest;
 import ru.corvex.admin.api.dto.AdminDtos.SetGroupsRequest;
 import ru.corvex.admin.api.dto.AdminDtos.SetPermissionsRequest;
 import ru.corvex.admin.api.dto.AdminDtos.UpdateQuotaRequest;
@@ -40,6 +41,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -113,6 +115,33 @@ class AdminControllersTest {
         assertEquals("hasAnyAuthority('ADMIN_USERS_MANAGE','ADMIN_QUOTAS_MANAGE')", preAuthorize("list"));
         assertEquals("hasAnyAuthority('ADMIN_USERS_MANAGE','ADMIN_QUOTAS_MANAGE')", preAuthorize("updateQuota"));
         assertEquals("hasAuthority('ADMIN_USERS_MANAGE')", preAuthorize("patch"));
+    }
+
+    @Test
+    void passwordResetRequiresSuperAdminMembershipAndDelegatesWithActor() {
+        ResetPasswordRequest reset = new ResetPasswordRequest("NewPassword2");
+        Jwt delegatedAdmin = Jwt.withTokenValue("token")
+                .header("alg", "none")
+                .subject(ACTOR_ID.toString())
+                .claim("preferred_username", "root")
+                .claim("groups", List.of("ADMIN"))
+                .build();
+
+        ApiException denied = assertThrows(ApiException.class,
+                () -> userController.resetPassword(USER_ID, reset, delegatedAdmin, request));
+        assertEquals(HttpStatus.FORBIDDEN, denied.status());
+        verify(users, never()).resetPassword(USER_ID, "NewPassword2", ACTOR);
+
+        Jwt superAdmin = Jwt.withTokenValue("token")
+                .header("alg", "none")
+                .subject(ACTOR_ID.toString())
+                .claim("preferred_username", "root")
+                .claim("groups", List.of("SUPER_ADMIN"))
+                .build();
+        userController.resetPassword(USER_ID, reset, superAdmin, request);
+
+        verify(users).resetPassword(USER_ID, "NewPassword2", ACTOR);
+        assertEquals("hasAuthority('ADMIN_USERS_MANAGE')", preAuthorize("resetPassword"));
     }
 
     @Test

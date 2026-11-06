@@ -67,6 +67,26 @@ paths:
       summary: Заблокировать и отозвать все сессии
       parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
       responses: { '204': { description: Заблокирован } }
+  /admin/users/{userId}/password-reset:
+    post:
+      summary: Сбросить пароль локального пользователя; только JWT с группой SUPER_ADMIN и правом ADMIN_USERS_MANAGE
+      description: Устанавливает временный пароль и mustChangePassword=true, отзывает все refresh-сессии. Статус, группы, TOTP и app passwords не изменяются. Старый и новый пароли не возвращаются и не попадают в аудит; записывается только USER_PASSWORD_RESET с actor/target.
+      parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newPassword]
+              properties:
+                newPassword: { type: string, format: password, minLength: 10, maxLength: 128 }
+      responses:
+        '204': { description: Временный пароль установлен; при следующем входе пользователь обязан его сменить }
+        '400': { description: Новый пароль совпадает с текущим }
+        '403': { description: Нет ADMIN_USERS_MANAGE или членства SUPER_ADMIN }
+        '404': { description: Пользователь не найден }
+        '422': { description: Слабый пароль или учётная запись AD/LDAP }
   /admin/users/{userId}/groups:
     put:
       summary: Назначить группы пользователя (полная замена)

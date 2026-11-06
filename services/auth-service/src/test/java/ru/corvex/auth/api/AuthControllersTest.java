@@ -16,6 +16,7 @@ import ru.corvex.auth.api.dto.AuthDtos.LoginRequest;
 import ru.corvex.auth.api.dto.AuthDtos.MfaRequiredResponse;
 import ru.corvex.auth.api.dto.AuthDtos.MfaVerifyRequest;
 import ru.corvex.auth.api.dto.AuthDtos.PatchUserRequest;
+import ru.corvex.auth.api.dto.AuthDtos.ResetPasswordRequest;
 import ru.corvex.auth.api.dto.AuthDtos.StatsResponse;
 import ru.corvex.auth.api.dto.AuthDtos.TokenResponse;
 import ru.corvex.auth.api.dto.AuthDtos.TotpCodeRequest;
@@ -243,11 +244,13 @@ class AuthControllersTest {
         assertSame(view, internalController.patch(USER_ID, patch));
         internalController.block(USER_ID);
         internalController.disable(USER_ID);
+        internalController.resetPassword(USER_ID, new ResetPasswordRequest("NewPassword2"));
         assertSame(verify, internalController.verifyPassword(
                 new VerifyPasswordRequest("ivan", "Password123")));
         assertSame(stats, internalController.stats("Sales"));
         verify(internalUsers).setStatus(USER_ID, User.Status.BLOCKED);
         verify(internalUsers).setStatus(USER_ID, User.Status.DISABLED);
+        verify(internalUsers).resetPassword(USER_ID, "NewPassword2");
     }
 
     private MockHttpServletRequest request(String remote, String realIp, String forwarded, String userAgent) {

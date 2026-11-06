@@ -238,6 +238,14 @@ class AdminUserServiceTest {
     }
 
     @Test
+    void resetPasswordDelegatesAndAuditsOnlyActorAndTarget() {
+        service.resetPassword(USER_ID, "NewPassword2", ACTOR);
+
+        verify(auth).resetPassword(USER_ID, "NewPassword2");
+        verify(audit).record(ACTOR, "USER_PASSWORD_RESET", "user", USER_ID.toString(), Map.of());
+    }
+
+    @Test
     void disableDoesNotCallAuthWhenSoleSuperAdminGuardRejects() {
         ApiException failure = ApiException.unprocessable("sole superadmin");
         doThrow(failure).when(groupService).assertNotSoleSuperAdmin(USER_ID);

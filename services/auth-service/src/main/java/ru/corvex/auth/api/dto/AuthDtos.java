@@ -113,6 +113,9 @@ public final class AuthDtos {
             String status) {
     }
 
+    public record ResetPasswordRequest(@NotBlank String newPassword) {
+    }
+
     public record UserPage(List<UserView> content, int page, int size, long totalElements, int totalPages) {
     }
 

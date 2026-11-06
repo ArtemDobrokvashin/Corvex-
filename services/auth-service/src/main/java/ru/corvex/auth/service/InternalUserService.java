@@ -157,6 +157,30 @@ public class InternalUserService {
     }
 
     /**
+     * Административный сброс локального пароля. Роли, статус, TOTP и пароли приложений
+     * намеренно не меняются; временный пароль пользователь обязан сменить после входа.
+     */
+    @Transactional
+    public void resetPassword(UUID id, String newPassword) {
+        User u = load(id);
+        if (u.getSource() != User.Source.LOCAL || u.getPasswordHash() == null) {
+            throw ApiException.unprocessable(
+                    "Пароль учётной записи AD/LDAP управляется во внешнем каталоге");
+        }
+        String policyError = PasswordPolicy.validate(newPassword);
+        if (policyError != null) {
+            throw ApiException.unprocessable(policyError);
+        }
+        if (passwordEncoder.matches(newPassword, u.getPasswordHash())) {
+            throw ApiException.badRequest("Новый пароль должен отличаться от текущего");
+        }
+        u.setPasswordHash(passwordEncoder.encode(newPassword));
+        u.setMustChangePassword(true);
+        users.save(u);
+        sessionRevoker.revokeAll(id);
+    }
+
+    /**
      * Проверка пароля для почтовых протоколов (IMAP/SMTP, этап 3).
      * Семантика: сначала пароли приложений; основной пароль принимается, только
      * если у пользователя НЕ включён TOTP (иначе смысл 2FA теряется — нужен app-password).
