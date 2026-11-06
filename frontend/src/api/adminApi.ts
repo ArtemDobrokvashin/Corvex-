@@ -185,6 +185,12 @@ export const adminApi = {
 
   blockUser: (userId: string) => apiFetch<void>(`/api/v1/admin/users/${userId}/block`, { method: 'POST' }),
 
+  resetUserPassword: (userId: string, newPassword: string) =>
+    apiFetch<void>(`/api/v1/admin/users/${userId}/password-reset`, {
+      method: 'POST',
+      body: JSON.stringify({ newPassword }),
+    }),
+
   disableUser: (userId: string) => apiFetch<void>(`/api/v1/admin/users/${userId}`, { method: 'DELETE' }),
 
   setUserGroups: (userId: string, groupCodes: string[]) =>

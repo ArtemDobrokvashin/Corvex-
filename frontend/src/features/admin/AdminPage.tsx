@@ -33,6 +33,7 @@ import AnalyticsTab from './AnalyticsTab';
 import AuditTab from './AuditTab';
 import MailPolicyTab from './MailPolicyTab';
 import QuotasTab from './QuotasTab';
+import ResetUserPasswordModal from './ResetUserPasswordModal';
 import { quotaGigabytesToBytes, quotaUsagePercent } from './quota';
 import ServerTab from './ServerTab';
 import SettingsTab from './SettingsTab';
@@ -170,7 +171,8 @@ export default function AdminPage() {
 
 function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolean }) {
   const { locale, t } = useI18n();
-  const { has } = useSession();
+  const { has, user } = useSession();
+  const isSuperAdmin = user?.groups.includes('SUPER_ADMIN') ?? false;
   const fmtDate = (value: string | null) => (value ? formatDateTime(locale, value) : '—');
   const groupName = (group: AdminGroup) => systemGroupName(locale, group.code, group.name);
   const canManageGroups = has('ADMIN_GROUPS_MANAGE') || has('ADMIN_USERS_MANAGE');
@@ -189,6 +191,7 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
   const [editingGroupsFor, setEditingGroupsFor] = useState<string | null>(null);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [profileUser, setProfileUser] = useState<AdminUser | null>(null);
+  const [passwordUser, setPasswordUser] = useState<AdminUser | null>(null);
   const [profileError, setProfileError] = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
 
@@ -292,6 +295,14 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
     } finally {
       setProfileSaving(false);
     }
+  }
+
+  async function resetPassword(target: AdminUser, newPassword: string) {
+    if (!demoMode) {
+      await adminApi.resetUserPassword(target.id, newPassword);
+    }
+    patchLocal({ ...target, mustChangePassword: true });
+    setNotice(t('Пароль пользователя {username} сброшен. При следующем входе потребуется новый постоянный пароль.', { username: target.username }));
   }
 
   async function toggleBlock(u: AdminUser) {
@@ -451,6 +462,15 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
                   <td className="sticky right-0 bg-surface px-4 py-4 shadow-[-14px_0_18px_-18px_rgba(24,24,27,0.45)] transition group-hover:bg-chrome">
                     <div className="flex justify-end gap-1">
                       <button type="button" onClick={() => { setProfileUser(u); setProfileError(''); }} className="icon-btn" title={t('Редактировать профиль')} aria-label={`${t('Редактировать профиль')}: ${u.username}`}><Pencil size={16} /></button>
+                      {isSuperAdmin && u.source.toUpperCase() === 'LOCAL' && (
+                        <button
+                          type="button"
+                          onClick={() => { setPasswordUser(u); setError(''); setNotice(''); }}
+                          className="icon-btn"
+                          title={t('Сбросить пароль')}
+                          aria-label={`${t('Сбросить пароль')}: ${u.username}`}
+                        ><KeyRound size={16} /></button>
+                      )}
                       {canManageGroups && <button type="button" onClick={() => { setEditingGroupsFor(u.id); setSelectedGroups(u.groups); }} className="icon-btn" title={t('Назначить группы')} aria-label={t('Назначить группы')}><Users size={17} /></button>}
                       <button type="button" onClick={() => toggleBlock(u)} className="icon-btn" title={u.status === 'ACTIVE' ? t('Заблокировать') : t('Разблокировать')} aria-label={u.status === 'ACTIVE' ? t('Заблокировать') : t('Разблокировать')}>
                         {u.status === 'ACTIVE' ? <Ban size={17} /> : <Check size={17} />}
@@ -474,6 +494,14 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
         </footer>
       )}
     </section>
+
+    {passwordUser && (
+      <ResetUserPasswordModal
+        user={passwordUser}
+        onClose={() => setPasswordUser(null)}
+        onReset={(newPassword) => resetPassword(passwordUser, newPassword)}
+      />
+    )}
 
     {profileUser && (
       <div className="fixed inset-0 z-[70] flex items-center justify-center bg-ink/35 p-4 backdrop-blur-[2px]">

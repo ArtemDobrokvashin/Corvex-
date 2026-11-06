@@ -48,6 +48,9 @@ public final class AdminDtos {
             @NotNull(message = "quotaBytes обязателен") @PositiveOrZero Long quotaBytes) {
     }
 
+    public record ResetPasswordRequest(@NotBlank String newPassword) {
+    }
+
     public record SetGroupsRequest(@NotNull(message = "groupCodes обязателен (может быть пустым)") List<String> groupCodes) {
     }
 

@@ -139,6 +139,14 @@ public class AuthServiceClient {
         });
     }
 
+    public void resetPassword(UUID id, String newPassword) {
+        call(() -> {
+            client.post().uri("/internal/users/{id}/password-reset", id)
+                    .body(Map.of("newPassword", newPassword)).retrieve().toBodilessEntity();
+            return null;
+        });
+    }
+
     public RemoteStats stats(String department) {
         UriComponentsBuilder b = UriComponentsBuilder.fromPath("/internal/stats");
         if (department != null && !department.isBlank()) b.queryParam("department", department);

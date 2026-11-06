@@ -8,7 +8,9 @@ import { useLocaleStore } from '../../i18n';
 import { useSession, type SessionUser } from '../../store/sessionStore';
 import { quotaGigabytesToBytes } from './quota';
 
-const apiMocks = vi.hoisted(() => ({ createUser: vi.fn(), listGroups: vi.fn(), listUsers: vi.fn(), patchUser: vi.fn() }));
+const apiMocks = vi.hoisted(() => ({
+  createUser: vi.fn(), listGroups: vi.fn(), listUsers: vi.fn(), patchUser: vi.fn(), resetUserPassword: vi.fn(),
+}));
 
 vi.mock('../../api/adminApi', () => ({
   adminApi: {
@@ -16,6 +18,7 @@ vi.mock('../../api/adminApi', () => ({
     listGroups: apiMocks.listGroups,
     listUsers: apiMocks.listUsers,
     patchUser: apiMocks.patchUser,
+    resetUserPassword: apiMocks.resetUserPassword,
   },
 }));
 
@@ -52,6 +55,7 @@ describe('admin user routes and actions', () => {
     apiMocks.listGroups.mockReset().mockResolvedValue([]);
     apiMocks.listUsers.mockReset().mockResolvedValue({ content: [existing], page: 0, size: 20, totalElements: 1, totalPages: 1 });
     apiMocks.patchUser.mockReset().mockImplementation(async (id, patch) => ({ ...existing, ...patch, id }));
+    apiMocks.resetUserPassword.mockReset().mockResolvedValue(undefined);
     apiMocks.createUser.mockReset().mockImplementation(async (body) => ({
       ...existing, ...body, id: 'new-user', usedBytes: 0, groups: body.groupCodes,
     }));
@@ -102,6 +106,36 @@ describe('admin user routes and actions', () => {
       displayName: 'Ivan Sidorov', email: 'ivan.sidorov@company.local', department: 'Support',
     });
     expect(container.textContent).toContain('Ivan Sidorov');
+  });
+
+  it('hides password reset from a delegated administrator', async () => {
+    await renderUsers();
+
+    expect(container.querySelector('button[aria-label="Reset password: ivan"]')).toBeNull();
+  });
+
+  it('lets a superadmin set a temporary password and marks the required change', async () => {
+    useSession.getState().setSession({ ...sessionUser, groups: ['SUPER_ADMIN'] }, false);
+    await renderUsers();
+
+    const action = container.querySelector<HTMLButtonElement>('button[aria-label="Reset password: ivan"]')!;
+    await act(async () => action.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    const dialog = container.querySelector<HTMLElement>('[role="dialog"]')!;
+    await act(async () => {
+      setInput(dialog.querySelector<HTMLInputElement>('input[name="newPassword"]')!, 'NewPassword2');
+      setInput(dialog.querySelector<HTMLInputElement>('input[name="confirmPassword"]')!, 'NewPassword2');
+    });
+    const submit = Array.from(dialog.querySelectorAll('button'))
+      .find((button) => button.textContent === 'Reset password')!;
+    await act(async () => {
+      submit.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(apiMocks.resetUserPassword).toHaveBeenCalledWith(existing.id, 'NewPassword2');
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(container.textContent).toContain('Password change pending');
+    expect(container.textContent).toContain('The password for ivan has been reset.');
   });
 
   it('sends the initial quota through the existing create-user contract', async () => {

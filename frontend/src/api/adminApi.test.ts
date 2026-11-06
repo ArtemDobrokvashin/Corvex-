@@ -35,6 +35,15 @@ describe('adminApi system endpoints', () => {
     });
   });
 
+  it('uses the dedicated superadmin password-reset endpoint with a write-only body', async () => {
+    await adminApi.resetUserPassword('user-7', 'NewPassword2');
+
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/admin/users/user-7/password-reset', {
+      method: 'POST',
+      body: JSON.stringify({ newPassword: 'NewPassword2' }),
+    });
+  });
+
   it('uses the explicit audit-request backup endpoint without claiming a physical backup', async () => {
     await adminApi.requestBackup();
 

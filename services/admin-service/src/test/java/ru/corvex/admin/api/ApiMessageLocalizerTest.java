@@ -19,6 +19,12 @@ class ApiMessageLocalizerTest {
                 ApiMessageLocalizer.localize("Логин уже занят: i.ivanov", Locale.ENGLISH));
         assertEquals("groupCodes: groupCodes is required (it may be empty)",
                 ApiMessageLocalizer.localize("groupCodes: groupCodes обязателен (может быть пустым)", Locale.ENGLISH));
+        assertEquals("Only a super administrator can reset a user's password",
+                ApiMessageLocalizer.localize(
+                        "Сброс пароля пользователя доступен только суперадминистратору", Locale.ENGLISH));
+        assertEquals("The password of an AD/LDAP account is managed in the external directory",
+                ApiMessageLocalizer.localize(
+                        "Пароль учётной записи AD/LDAP управляется во внешнем каталоге", Locale.ENGLISH));
     }
 
     @Test

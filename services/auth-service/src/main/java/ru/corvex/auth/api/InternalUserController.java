@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import ru.corvex.auth.api.dto.AuthDtos.CreateUserRequest;
 import ru.corvex.auth.api.dto.AuthDtos.PatchUserRequest;
+import ru.corvex.auth.api.dto.AuthDtos.ResetPasswordRequest;
 import ru.corvex.auth.api.dto.AuthDtos.StatsResponse;
 import ru.corvex.auth.api.dto.AuthDtos.UserPage;
 import ru.corvex.auth.api.dto.AuthDtos.UserView;
@@ -83,6 +84,12 @@ public class InternalUserController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void disable(@PathVariable UUID id) {
         users.setStatus(id, User.Status.DISABLED);
+    }
+
+    @PostMapping("/users/{id}/password-reset")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void resetPassword(@PathVariable UUID id, @Valid @RequestBody ResetPasswordRequest req) {
+        users.resetPassword(id, req.newPassword());
     }
 
     @PostMapping("/verify-password")

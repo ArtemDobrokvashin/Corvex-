@@ -85,6 +85,19 @@ class AuthServiceClientTest {
     }
 
     @Test
+    void resetPasswordUsesDedicatedInternalRouteAndJsonBody() throws Exception {
+        server = new FakeHttpServer(request -> new Response(204, "text/plain", ""));
+
+        client().resetPassword(USER_ID, "NewPassword2");
+
+        Request request = server.lastRequest();
+        assertEquals("POST", request.method());
+        assertEquals("/internal/users/" + USER_ID + "/password-reset", request.target());
+        assertEquals(TOKEN, request.header(InternalApiTokenFilter.HEADER));
+        assertTrue(request.body().contains("\"newPassword\":\"NewPassword2\""));
+    }
+
+    @Test
     void findByUsernameConvertsOnly404ToEmpty() throws Exception {
         server = new FakeHttpServer(request -> request.target().endsWith("/missing")
                 ? Response.json(404, problem("Пользователь не существует"))
