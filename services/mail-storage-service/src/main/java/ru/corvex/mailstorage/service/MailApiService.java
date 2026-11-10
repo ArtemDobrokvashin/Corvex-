@@ -88,14 +88,14 @@ public class MailApiService {
             throw new IOException("Не удалось разобрать письмо", e);
         }
         List<MailDtos.AttachmentView> attachments = jdbc.query("""
-                        select ma.sha256, ma.file_name, a.size_bytes, a.content_type, a.av_status
+                        select ma.sha256, ma.file_name, a.size_bytes, a.content_type, ma.part_index
                         from message_attachments ma
                         join attachments a on a.sha256 = ma.sha256
                         where ma.message_id = ?
                         order by ma.part_index
                         """,
                 (rs, row) -> new MailDtos.AttachmentView(
-                        rs.getString(1), rs.getString(2), rs.getLong(3), rs.getString(4), rs.getString(5)),
+                        rs.getInt(5), rs.getString(1), rs.getString(2), rs.getLong(3), rs.getString(4), effectiveAvStatus(m)),
                 m.getId());
         return new MailDtos.MessageDetail(
                 toListItem(m, !attachments.isEmpty()),
@@ -164,6 +164,29 @@ public class MailApiService {
     private MessageMetadata loadOwned(UUID ownerId, UUID messageId) {
         return messages.findByIdAndOwnerId(messageId, ownerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Письмо не найдено"));
+    }
+
+    private static String effectiveAvStatus(MessageMetadata message) {
+        return message.isAvScanVerified() ? message.getAvStatus().name() : "UNVERIFIED";
+    }
+
+    public record AttachmentDownload(InputStream stream, String fileName, long sizeBytes) { }
+
+    @Transactional(readOnly = true)
+    public AttachmentDownload downloadAttachment(UUID ownerId, UUID messageId, int partIndex) throws IOException {
+        MessageMetadata message = loadOwned(ownerId, messageId);
+        if (partIndex < 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Вложение не найдено");
+        var rows = jdbc.query("""
+                select ma.sha256, ma.file_name, a.size_bytes
+                from message_attachments ma join attachments a on a.sha256 = ma.sha256
+                where ma.message_id = ? and ma.part_index = ?
+                """, (rs, row) -> new Object[]{rs.getString(1), rs.getString(2), rs.getLong(3)}, messageId, partIndex);
+        if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Вложение не найдено");
+        if (!"CLEAN".equals(effectiveAvStatus(message))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Вложение недоступно: нет подтверждённой чистой AV-проверки");
+        }
+        Object[] row = rows.get(0);
+        return new AttachmentDownload(maildir.openAttachment((String) row[0]), (String) row[1], (Long) row[2]);
     }
 
     private MailDtos.MessageListItem toListItem(MessageMetadata m, boolean hasAttachments) {

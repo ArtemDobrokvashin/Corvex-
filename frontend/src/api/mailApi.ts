@@ -1,4 +1,4 @@
-import { apiFetch } from './httpClient';
+import { apiBlob, apiFetch } from './httpClient';
 
 /** Контракты mail-storage-service (gateway: /api/v1/mail/**). */
 export interface MailboxQuota {
@@ -33,6 +33,7 @@ export interface MailMessageListItem {
 }
 
 export interface MailAttachmentView {
+  partIndex: number;
   sha256: string;
   fileName: string;
   sizeBytes: number;
@@ -85,6 +86,7 @@ export const mailApi = {
     return apiFetch<MailMessageListItem[]>(`/api/v1/mail/folders/${folderId}/messages?${params.toString()}`);
   },
   message: (id: string) => apiFetch<MailMessageDetail>(`/api/v1/mail/messages/${id}`),
+  downloadAttachment: (id: string, partIndex: number) => apiBlob(`/api/v1/mail/messages/${encodeURIComponent(id)}/attachments/${partIndex}`),
   flags: (id: string, flags: Partial<{ seen: boolean; flagged: boolean; answered: boolean; deleted: boolean }>) =>
     apiFetch<MailMessageListItem>(`/api/v1/mail/messages/${id}/flags`, {
       method: 'PATCH',

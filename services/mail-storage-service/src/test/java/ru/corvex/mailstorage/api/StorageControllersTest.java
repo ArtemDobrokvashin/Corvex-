@@ -88,6 +88,27 @@ class StorageControllersTest {
     }
 
     @Test
+    void attachmentResponseUsesJwtOwnerAndSafeDownloadHeaders() throws Exception {
+        MailApiService mail = mock(MailApiService.class);
+        MailController controller = new MailController(mail, mock(MailSendService.class), mock(ProtocolMailService.class));
+        UUID messageId = UUID.randomUUID();
+        byte[] content = "hello".getBytes(StandardCharsets.UTF_8);
+        when(mail.downloadAttachment(userId, messageId, 3)).thenReturn(
+                new MailApiService.AttachmentDownload(new ByteArrayInputStream(content), "тест.txt", content.length));
+        var response = controller.attachment(jwt, messageId, 3);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals("application/octet-stream", response.getHeaders().getContentType().toString());
+        assertEquals("nosniff", response.getHeaders().getFirst("X-Content-Type-Options"));
+        assertTrue(response.getHeaders().getContentDisposition().isAttachment());
+        assertEquals("тест.txt", response.getHeaders().getContentDisposition().getFilename());
+        assertEquals("hello", new String(response.getBody().getInputStream().readAllBytes(), StandardCharsets.UTF_8));
+        verify(mail).downloadAttachment(userId, messageId, 3);
+        assertEquals("hasAuthority('MAIL_READ_OWN')", MailController.class
+                .getDeclaredMethod("attachment", Jwt.class, UUID.class, int.class)
+                .getAnnotation(PreAuthorize.class).value());
+    }
+
+    @Test
     void mailControllerRejectsJwtWithoutUuidSubject() throws Exception {
         MailController controller = new MailController(
                 mock(MailApiService.class), mock(MailSendService.class), mock(ProtocolMailService.class));

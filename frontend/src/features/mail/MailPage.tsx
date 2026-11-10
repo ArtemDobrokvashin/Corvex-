@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  FileCheck2,
   FilePenLine,
   Folder,
   Forward,
@@ -30,9 +29,10 @@ import {
 } from 'lucide-react';
 import { demoFolders, demoMails, DemoMail } from '../../api/demoData';
 import { externalMailApi, ExternalMailAccount } from '../../api/externalMailApi';
-import { mailApi, MailboxQuota, MailFolderView, MailMessageListItem, SendAttachment } from '../../api/mailApi';
+import { mailApi, MailboxQuota, MailFolderView, MailMessageListItem, MailAttachmentView, SendAttachment } from '../../api/mailApi';
 import ExternalMailAccountsModal from './ExternalMailAccountsModal';
 import MailboxUsage from './MailboxUsage';
+import MailAttachments from './MailAttachments';
 import MailSidebarActions from './MailSidebarActions';
 import { canAdministerExternalMail, canUseExternalMail } from './externalMailAccess';
 import {
@@ -45,7 +45,7 @@ import { formatMailRecipients } from './mailRecipients';
 import { activeMailAfterRefresh, replaceFolderMessages } from './mailRefresh';
 import { EmojiPickerButton } from '../../components/EmojiPicker';
 import { Avatar, EmptyState, IconButton, cleanPersonName, emailFromHeader } from '../../components/ui';
-import { countLabel, formatBytes, formatDateTime, useI18n } from '../../i18n';
+import { countLabel, formatDateTime, useI18n } from '../../i18n';
 import { insertTextAtSelection, truncateGraphemes } from '../../lib/text';
 import { useSession } from '../../store/sessionStore';
 
@@ -143,6 +143,8 @@ export default function MailPage() {
   const folderCounts = demoMode ? demoFolderCounts : serverFolderCounts;
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadedBodies, setLoadedBodies] = useState<Record<string, string>>({});
+  const [loadedAttachments, setLoadedAttachments] = useState<Record<string, MailAttachmentView[]>>({});
+  const [downloadBusy, setDownloadBusy] = useState<string | null>(null);
   const [loadedRecipients, setLoadedRecipients] = useState<Record<string, { to: string[]; cc: string[] }>>({});
   const searchRef = useRef<HTMLInputElement>(null);
   const sortPanelRef = useRef<HTMLDivElement>(null);
@@ -192,6 +194,27 @@ export default function MailPage() {
 
   const active = mails.find((m) => m.id === activeId && m.folder === folder) ?? visible[0] ?? null;
   const activeBody = active ? (loadedBodies[active.id] ?? active.body) : '';
+  const downloadAttachment = async (messageId: string, attachment: MailAttachmentView) => {
+    const key = `${messageId}:${attachment.partIndex}`;
+    if (downloadBusy) return;
+    setDownloadBusy(key);
+    let url = '';
+    try {
+      const blob = await mailApi.downloadAttachment(messageId, attachment.partIndex);
+      url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = attachment.fileName || 'attachment';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      setLoadError(`${t('Не удалось скачать вложение.')}: ${errorMessage(error)}`);
+    } finally {
+      if (url) window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setDownloadBusy(null);
+    }
+  };
   const activeIndex = active ? visible.findIndex((m) => m.id === active.id) : -1;
   const currentFolder = folders.find((f) => f.id === folder);
   const activeRecipientData = active ? loadedRecipients[active.id] : undefined;
@@ -374,6 +397,7 @@ export default function MailPage() {
     mailApi.message(activeRealId)
       .then((detail) => {
         if (cancelled) return;
+        setLoadedAttachments((prev) => ({ ...prev, [activeRealId]: detail.attachments ?? [] }));
         setLoadedBodies((prev) => ({ ...prev, [activeRealId]: detail.bodyText ?? '' }));
         setLoadedRecipients((prev) => ({
           ...prev,
@@ -810,16 +834,12 @@ export default function MailPage() {
                     <time className="shrink-0 text-[13px] text-faint">{active.date}</time>
                   </div>
 
-                  {active.hasAttachments && (
-                    <div className="mt-6 flex items-center gap-3 rounded-xl border border-line bg-chrome px-4 py-3">
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-dark"><FileCheck2 size={19} /></span>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium">{t('Файл во вложении')}</div>
-                        <div className="text-xs text-muted">{t('Проверено антивирусом · безопасно открыть')}</div>
-                      </div>
-                      <button type="button" className="btn-secondary h-9 px-3 text-[13px]">{t('Скачать')}</button>
-                    </div>
-                  )}
+                  {active.hasAttachments && <MailAttachments
+                    demoMode={demoMode}
+                    attachments={loadedAttachments[active.id]}
+                    busy={downloadBusy !== null}
+                    onDownload={(attachment) => void downloadAttachment(active.id, attachment)}
+                  />}
 
                   <div className="mt-7 text-[15.5px] leading-[1.75] text-ink-soft">
                     {activeBody.split('\n').map((paragraph, i) => paragraph.trim() ? <p key={i} className="mb-4 whitespace-pre-wrap">{paragraph}</p> : null)}

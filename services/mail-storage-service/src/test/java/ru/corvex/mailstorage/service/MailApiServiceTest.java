@@ -168,7 +168,56 @@ class MailApiServiceTest {
         assertTrue(detail.bodyText().contains("Detail body"));
         assertEquals(1, detail.attachments().size());
         assertEquals("file.txt", detail.attachments().get(0).fileName());
+        assertEquals("UNVERIFIED", detail.attachments().get(0).avStatus());
         assertTrue(detail.summary().hasAttachments());
+    }
+
+    @Test
+    void downloadRequiresOwnedMessageAndConfirmedCleanStatus() throws Exception {
+        MailFolder inbox = folder("INBOX", "INBOX");
+        MessageMetadata message = message(inbox, 1);
+        var stored = maildir.storeAttachment(bytes("attachment content"));
+        when(messages.findByIdAndOwnerId(message.getId(), ownerId)).thenReturn(Optional.of(message));
+        when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<Object[]>>any(), any(Object[].class)))
+                .thenAnswer(inv -> {
+                    RowMapper<Object[]> mapper = inv.getArgument(1);
+                    ResultSet rs = mock(ResultSet.class);
+                    when(rs.getString(1)).thenReturn(stored.sha256());
+                    when(rs.getString(2)).thenReturn("тест.txt");
+                    when(rs.getLong(3)).thenReturn(stored.sizeBytes());
+                    return List.<Object[]>of(mapper.mapRow(rs, 0));
+                });
+
+        // Historical CLEAN is not proof that a scan actually ran.
+        message.setAvStatus(MessageMetadata.AvStatus.CLEAN);
+        assertEquals(HttpStatus.FORBIDDEN, assertThrows(ResponseStatusException.class,
+                () -> service.downloadAttachment(ownerId, message.getId(), 0)).getStatusCode());
+        message.setAvScanVerified(true);
+        for (var status : List.of(MessageMetadata.AvStatus.PENDING, MessageMetadata.AvStatus.ERROR,
+                MessageMetadata.AvStatus.INFECTED)) {
+            message.setAvStatus(status);
+            assertEquals(HttpStatus.FORBIDDEN, assertThrows(ResponseStatusException.class,
+                    () -> service.downloadAttachment(ownerId, message.getId(), 0)).getStatusCode());
+        }
+        message.setAvStatus(MessageMetadata.AvStatus.CLEAN);
+        try (var stream = service.downloadAttachment(ownerId, message.getId(), 0).stream()) {
+            assertEquals("attachment content", new String(stream.readAllBytes(), StandardCharsets.UTF_8));
+        }
+        UUID stranger = UUID.randomUUID();
+        assertEquals(HttpStatus.NOT_FOUND, assertThrows(ResponseStatusException.class,
+                () -> service.downloadAttachment(stranger, message.getId(), 0)).getStatusCode());
+        assertEquals(HttpStatus.NOT_FOUND, assertThrows(ResponseStatusException.class,
+                () -> service.downloadAttachment(ownerId, message.getId(), -1)).getStatusCode());
+    }
+
+    @Test
+    void downloadRejectsMissingAttachment() {
+        MessageMetadata message = message(folder("INBOX", "INBOX"), 1);
+        when(messages.findByIdAndOwnerId(message.getId(), ownerId)).thenReturn(Optional.of(message));
+        when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<Object[]>>any(), any(Object[].class)))
+                .thenReturn(List.of());
+        assertEquals(HttpStatus.NOT_FOUND, assertThrows(ResponseStatusException.class,
+                () -> service.downloadAttachment(ownerId, message.getId(), 99)).getStatusCode());
     }
 
     @Test

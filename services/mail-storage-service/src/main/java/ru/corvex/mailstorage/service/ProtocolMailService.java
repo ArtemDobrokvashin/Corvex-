@@ -329,7 +329,7 @@ public class ProtocolMailService {
             m.setDraft(flagSet.contains("\\draft"));
             m.setDeleted(flagSet.contains("\\deleted"));
             m.setSpamScore(null);
-            m.setAvStatus(MessageMetadata.AvStatus.CLEAN); // письмо кладёт сам владелец, как Sent-копию
+            m.setAvStatus(MessageMetadata.AvStatus.PENDING); // APPEND не подтверждает AV-проверку
             m = messages.saveAndFlush(m);
             return new ProtocolDtos.AppendResponse(m.getId(), uid, modseq);
         } finally {
@@ -382,6 +382,7 @@ public class ProtocolMailService {
                 copy.setDeleted(false); // копия не должна родиться невидимой под \Deleted
                 copy.setSpamScore(src.getSpamScore());
                 copy.setAvStatus(src.getAvStatus());
+                copy.setAvScanVerified(src.isAvScanVerified());
                 messages.saveAndFlush(copy);
             }
             sourceUids.add(uid);

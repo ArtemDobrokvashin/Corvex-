@@ -321,7 +321,7 @@ class MailDeliveryServiceTest {
     }
 
     @Test
-    void storesSentCopyAsSeenCleanMessage() throws Exception {
+    void storesSentCopyAsSeenUnscannedMessage() throws Exception {
         RawMessageSpool.StoredRawMessage raw = store("""
                 From: user@company.local\r
                 To: dest@partner.test\r
@@ -339,7 +339,8 @@ class MailDeliveryServiceTest {
         assertEquals(13, result.get().uid());
         MessageMetadata saved = savedMessage.get();
         assertTrue(saved.isSeen());
-        assertEquals(MessageMetadata.AvStatus.CLEAN, saved.getAvStatus());
+        assertEquals(MessageMetadata.AvStatus.PENDING, saved.getAvStatus());
+        assertFalse(saved.isAvScanVerified());
         assertEquals(raw.rawRef(), saved.getRawRef());
         assertTrue(Files.exists(tmp.resolve("mail").resolve(saved.getMaildirPath())));
     }

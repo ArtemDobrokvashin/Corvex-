@@ -1,6 +1,12 @@
 package ru.corvex.mailstorage.api;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.ContentDisposition;
+import org.springframework.core.io.InputStreamResource;
+import java.nio.charset.StandardCharsets;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -68,6 +74,21 @@ public class MailController {
     @PreAuthorize("hasAuthority('MAIL_READ_OWN')")
     MailDtos.MessageDetail message(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) throws IOException {
         return mail.getMessage(userId(jwt), id);
+    }
+
+    @GetMapping("/messages/{id}/attachments/{partIndex}")
+    @PreAuthorize("hasAuthority('MAIL_READ_OWN')")
+    ResponseEntity<InputStreamResource> attachment(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+                                                  @PathVariable int partIndex) throws IOException {
+        var file = mail.downloadAttachment(userId(jwt), id, partIndex);
+        String name = file.fileName().replaceAll("[\\\\/\\p{Cntrl}]", "_");
+        return ResponseEntity.ok().contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .contentLength(file.sizeBytes())
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
+                        .filename(name, StandardCharsets.UTF_8).build().toString())
+                .header("X-Content-Type-Options", "nosniff")
+                .header(HttpHeaders.CACHE_CONTROL, "private, no-store")
+                .body(new InputStreamResource(file.stream()));
     }
 
     @PatchMapping("/messages/{id}/flags")

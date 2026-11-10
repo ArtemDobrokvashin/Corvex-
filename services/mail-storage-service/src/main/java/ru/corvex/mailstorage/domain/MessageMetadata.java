@@ -91,5 +91,9 @@ public class MessageMetadata {
     @Column(name = "av_status", nullable = false, length = 16)
     private AvStatus avStatus = AvStatus.PENDING;
 
+    /** Достоверность происхождения AV-статуса: только результат сканирующего конвейера. */
+    @Column(name = "av_scan_verified", nullable = false)
+    private boolean avScanVerified = false;
+
     public enum AvStatus {PENDING, CLEAN, INFECTED, ERROR}
 }
