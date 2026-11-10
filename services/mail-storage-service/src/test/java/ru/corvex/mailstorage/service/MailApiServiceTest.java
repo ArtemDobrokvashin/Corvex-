@@ -12,6 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.web.server.ResponseStatusException;
 import ru.corvex.mailstorage.api.dto.MailDtos;
+import ru.corvex.mailstorage.av.ClamAvClient;
 import ru.corvex.mailstorage.domain.MailFolder;
 import ru.corvex.mailstorage.domain.MessageMetadata;
 import ru.corvex.mailstorage.mime.MimeMailParser;
@@ -56,6 +57,7 @@ class MailApiServiceTest {
     private MailDeliveryService delivery;
     private MaildirStorage maildir;
     private JdbcTemplate jdbc;
+    private ClamAvClient clam;
     private MailApiService service;
 
     @BeforeEach
@@ -65,7 +67,8 @@ class MailApiServiceTest {
         delivery = mock(MailDeliveryService.class);
         maildir = new MaildirStorage(tmp.resolve("mail"), tmp.resolve("attachments"));
         jdbc = mock(JdbcTemplate.class);
-        service = new MailApiService(folders, messages, delivery, maildir, new MimeMailParser(maildir), jdbc);
+        clam = mock(ClamAvClient.class);
+        service = new MailApiService(folders, messages, delivery, maildir, new MimeMailParser(maildir), jdbc, clam);
         when(folders.save(any(MailFolder.class))).thenAnswer(inv -> inv.getArgument(0));
         when(messages.save(any(MessageMetadata.class))).thenAnswer(inv -> inv.getArgument(0));
     }
@@ -188,17 +191,23 @@ class MailApiServiceTest {
                     return List.<Object[]>of(mapper.mapRow(rs, 0));
                 });
 
-        // Historical CLEAN is not proof that a scan actually ran.
+        // Historical CLEAN is not proof: it requires an on-demand scan.
         message.setAvStatus(MessageMetadata.AvStatus.CLEAN);
+        when(clam.scan(any(InputStream.class))).thenReturn(new ClamAvClient.ScanResult(ClamAvClient.Result.CLEAN, null));
+        try (var stream = service.downloadAttachment(ownerId, message.getId(), 0).stream()) {
+            assertEquals("attachment content", new String(stream.readAllBytes(), StandardCharsets.UTF_8));
+        }
+        verify(clam).scan(any(InputStream.class));
+        when(clam.scan(any(InputStream.class))).thenReturn(new ClamAvClient.ScanResult(ClamAvClient.Result.ERROR, null));
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, assertThrows(ResponseStatusException.class,
+                () -> service.downloadAttachment(ownerId, message.getId(), 0)).getStatusCode());
+        when(clam.scan(any(InputStream.class))).thenReturn(new ClamAvClient.ScanResult(ClamAvClient.Result.INFECTED, "test"));
         assertEquals(HttpStatus.FORBIDDEN, assertThrows(ResponseStatusException.class,
                 () -> service.downloadAttachment(ownerId, message.getId(), 0)).getStatusCode());
         message.setAvScanVerified(true);
-        for (var status : List.of(MessageMetadata.AvStatus.PENDING, MessageMetadata.AvStatus.ERROR,
-                MessageMetadata.AvStatus.INFECTED)) {
-            message.setAvStatus(status);
-            assertEquals(HttpStatus.FORBIDDEN, assertThrows(ResponseStatusException.class,
-                    () -> service.downloadAttachment(ownerId, message.getId(), 0)).getStatusCode());
-        }
+        message.setAvStatus(MessageMetadata.AvStatus.INFECTED);
+        assertEquals(HttpStatus.FORBIDDEN, assertThrows(ResponseStatusException.class,
+                () -> service.downloadAttachment(ownerId, message.getId(), 0)).getStatusCode());
         message.setAvStatus(MessageMetadata.AvStatus.CLEAN);
         try (var stream = service.downloadAttachment(ownerId, message.getId(), 0).stream()) {
             assertEquals("attachment content", new String(stream.readAllBytes(), StandardCharsets.UTF_8));
@@ -229,7 +238,7 @@ class MailApiServiceTest {
         when(messages.findByIdAndOwnerId(message.getId(), ownerId)).thenReturn(Optional.of(message));
         MimeMailParser parser = mock(MimeMailParser.class);
         when(parser.parse(any(InputStream.class), eq(false))).thenThrow(new MessagingException("broken mime"));
-        MailApiService local = new MailApiService(folders, messages, delivery, maildir, parser, jdbc);
+        MailApiService local = new MailApiService(folders, messages, delivery, maildir, parser, jdbc, clam);
 
         IOException error = assertThrows(IOException.class, () -> local.getMessage(ownerId, message.getId()));
         assertTrue(error.getCause() instanceof MessagingException);

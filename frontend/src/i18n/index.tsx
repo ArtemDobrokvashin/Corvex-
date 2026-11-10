@@ -248,6 +248,7 @@ const EN: Record<string, string> = {
   'внутренний отправитель': 'internal sender',
   'получатели загружаются': 'loading recipients…',
   'получатель не указан': 'recipient not specified',
+  'Проверить и скачать': 'Scan and download',
   'Вложение недоступно в демонстрационном режиме': 'Attachments are unavailable in demo mode',
   'Загрузка вложений…': 'Loading attachments…',
   'Вложения не найдены': 'No attachments found',

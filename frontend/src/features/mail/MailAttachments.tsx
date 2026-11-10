@@ -30,8 +30,8 @@ export default function MailAttachments({ demoMode, attachments, busy, onDownloa
           : 'Антивирусная проверка не подтверждена')}</div>
       </div>
       <button type="button" className="btn-secondary h-9 px-3 text-[13px]"
-        disabled={attachment.avStatus !== 'CLEAN' || busy}
-        onClick={() => onDownload(attachment)}>{t('Скачать')}</button>
+        disabled={attachment.avStatus === 'INFECTED' || busy}
+        onClick={() => onDownload(attachment)}>{t(attachment.avStatus === 'CLEAN' ? 'Скачать' : 'Проверить и скачать')}</button>
     </div>
   ))}</div>;
 }
