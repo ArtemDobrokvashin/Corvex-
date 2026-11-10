@@ -163,13 +163,16 @@ paths:
               schema: { type: object, properties: { sha256: { type: string }, sizeBytes: { type: integer, format: int64 }, avStatus: { type: string, enum: [PENDING, CLEAN, INFECTED, ERROR] } } }
   /mail/messages/{messageId}/attachments/{partIndex}:
     get:
-      summary: Скачать вложение (403 при avStatus=INFECTED/ERROR)
+      summary: Скачать вложение своего письма с проверкой антивирусом
+      description: Исторические, исходящие и другие непроверенные вложения повторно сканируются перед выдачей; при угрозе или недоступности ClamAV файл не выдаётся.
       parameters:
         - { name: messageId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: partIndex, in: path, required: true, schema: { type: integer } }
       responses:
         '200': { description: Файл, content: { application/octet-stream: { schema: { type: string, format: binary } } } }
         '403': { description: Вложение заблокировано антивирусом }
+        '503': { description: Проверка недоступна }
+        '404': { description: Письмо или вложение не найдено либо принадлежит другому пользователю }
   /mail/search:
     get:
       summary: Полнотекстовый поиск (Elasticsearch — тема, отправитель, получатель, тело, имена/текст вложений)

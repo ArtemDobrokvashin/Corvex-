@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import ru.corvex.mailstorage.api.dto.MailDtos;
+import ru.corvex.mailstorage.av.ClamAvClient;
 import ru.corvex.mailstorage.domain.MailFolder;
 import ru.corvex.mailstorage.domain.MessageMetadata;
 import ru.corvex.mailstorage.mime.MimeMailParser;
@@ -41,19 +42,21 @@ public class MailApiService {
     private final MaildirStorage maildir;
     private final MimeMailParser parser;
     private final JdbcTemplate jdbc;
+    private final ClamAvClient clam;
 
     public MailApiService(MailFolderRepository folders,
                           MessageMetadataRepository messages,
                           MailDeliveryService delivery,
                           MaildirStorage maildir,
                           MimeMailParser parser,
-                          JdbcTemplate jdbc) {
+                          JdbcTemplate jdbc, ClamAvClient clam) {
         this.folders = folders;
         this.messages = messages;
         this.delivery = delivery;
         this.maildir = maildir;
         this.parser = parser;
         this.jdbc = jdbc;
+        this.clam = clam;
     }
 
     @Transactional
@@ -88,14 +91,14 @@ public class MailApiService {
             throw new IOException("Не удалось разобрать письмо", e);
         }
         List<MailDtos.AttachmentView> attachments = jdbc.query("""
-                        select ma.sha256, ma.file_name, a.size_bytes, a.content_type, a.av_status
+                        select ma.sha256, ma.file_name, a.size_bytes, a.content_type, ma.part_index
                         from message_attachments ma
                         join attachments a on a.sha256 = ma.sha256
                         where ma.message_id = ?
                         order by ma.part_index
                         """,
                 (rs, row) -> new MailDtos.AttachmentView(
-                        rs.getString(1), rs.getString(2), rs.getLong(3), rs.getString(4), rs.getString(5)),
+                        rs.getInt(5), rs.getString(1), rs.getString(2), rs.getLong(3), rs.getString(4), effectiveAvStatus(m)),
                 m.getId());
         return new MailDtos.MessageDetail(
                 toListItem(m, !attachments.isEmpty()),
@@ -164,6 +167,43 @@ public class MailApiService {
     private MessageMetadata loadOwned(UUID ownerId, UUID messageId) {
         return messages.findByIdAndOwnerId(messageId, ownerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Письмо не найдено"));
+    }
+
+    private static String effectiveAvStatus(MessageMetadata message) {
+        return message.isAvScanVerified() ? message.getAvStatus().name() : "UNVERIFIED";
+    }
+
+    public record AttachmentDownload(InputStream stream, String fileName, long sizeBytes) { }
+
+    @Transactional(readOnly = true)
+    public AttachmentDownload downloadAttachment(UUID ownerId, UUID messageId, int partIndex) throws IOException {
+        MessageMetadata message = loadOwned(ownerId, messageId);
+        if (partIndex < 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Вложение не найдено");
+        var rows = jdbc.query("""
+                select ma.sha256, ma.file_name, a.size_bytes
+                from message_attachments ma join attachments a on a.sha256 = ma.sha256
+                where ma.message_id = ? and ma.part_index = ?
+                """, (rs, row) -> new Object[]{rs.getString(1), rs.getString(2), rs.getLong(3)}, messageId, partIndex);
+        if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Вложение не найдено");
+        Object[] row = rows.get(0);
+        if (message.isAvScanVerified() && message.getAvStatus() == MessageMetadata.AvStatus.INFECTED) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Вложение заблокировано антивирусом");
+        }
+        if (!"CLEAN".equals(effectiveAvStatus(message))) {
+            // Исторический/исходящий статус недостоверен: проверяем именно CAS-файл,
+            // но не присваиваем CLEAN всему письму с потенциально другими вложениями.
+            ClamAvClient.ScanResult scan;
+            try (InputStream input = maildir.openAttachment((String) row[0])) {
+                scan = clam.scan(input);
+            }
+            if (scan.result() == ClamAvClient.Result.INFECTED) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Вложение заблокировано антивирусом");
+            }
+            if (scan.result() != ClamAvClient.Result.CLEAN) {
+                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Антивирус временно недоступен");
+            }
+        }
+        return new AttachmentDownload(maildir.openAttachment((String) row[0]), (String) row[1], (Long) row[2]);
     }
 
     private MailDtos.MessageListItem toListItem(MessageMetadata m, boolean hasAttachments) {

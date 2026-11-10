@@ -105,6 +105,15 @@ public class MaildirStorage {
         }
     }
 
+    /** CAS-ключ должен быть строго SHA-256; права проверяет вызывающий сервис. */
+    public InputStream openAttachment(String hash) throws IOException {
+        if (hash == null || !hash.matches("[0-9a-f]{64}")) {
+            throw new IllegalArgumentException("Некорректный ключ вложения");
+        }
+        return Files.newInputStream(attachmentRoot.resolve(hash.substring(0, 2))
+                .resolve(hash.substring(2, 4)).resolve(hash));
+    }
+
     /** Открывает .eml по относительному пути из БД, не позволяя выйти за пределы mailRoot. */
     public InputStream openMessage(String relativePath) throws IOException {
         Path resolved = resolveMessagePath(relativePath);

@@ -160,6 +160,7 @@ public class MailDeliveryService {
         m.setDeleted(external != null && external.isDeleted());
         m.setSpamScore(event.spamChecked() ? event.spamScore() : null);
         m.setAvStatus(parseAvStatus(event.avStatus()));
+        m.setAvScanVerified(true);
         m = messages.saveAndFlush(m);
 
         insertRecipients(m.getId(), parsed, recipient, true);
@@ -229,11 +230,11 @@ public class MailDeliveryService {
         m.setDraft(false);
         m.setDeleted(false);
         m.setSpamScore(null);
-        m.setAvStatus(MessageMetadata.AvStatus.CLEAN);
+        m.setAvStatus(MessageMetadata.AvStatus.PENDING);
         m = messages.saveAndFlush(m);
 
         insertRecipients(m.getId(), parsed, owner.email(), false);
-        insertAttachments(m.getId(), parsed, MessageMetadata.AvStatus.CLEAN.name());
+        insertAttachments(m.getId(), parsed, MessageMetadata.AvStatus.PENDING.name());
         return Optional.of(new DeliveryResult(m.getId(), owner.id(), folder.getId(), uid, owner.email(), parsed));
     }
 

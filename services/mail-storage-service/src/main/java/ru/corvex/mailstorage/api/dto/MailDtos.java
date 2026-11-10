@@ -33,7 +33,7 @@ public final class MailDtos {
             Double spamScore) {
     }
 
-    public record AttachmentView(String sha256, String fileName, long sizeBytes, String contentType, String avStatus) {
+    public record AttachmentView(int partIndex, String sha256, String fileName, long sizeBytes, String contentType, String avStatus) {
     }
 
     public record MessageDetail(
