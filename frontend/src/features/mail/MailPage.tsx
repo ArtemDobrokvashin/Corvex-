@@ -42,6 +42,7 @@ import {
   type MailSortOrder,
 } from './mailListControls';
 import { formatMailRecipients } from './mailRecipients';
+import { mailHtmlDocument } from './mailHtml';
 import { activeMailAfterRefresh, replaceFolderMessages } from './mailRefresh';
 import { EmojiPickerButton } from '../../components/EmojiPicker';
 import { Avatar, EmptyState, IconButton, cleanPersonName, emailFromHeader } from '../../components/ui';
@@ -142,6 +143,8 @@ export default function MailPage() {
   }, [mails]);
   const folderCounts = demoMode ? demoFolderCounts : serverFolderCounts;
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadedHtml, setLoadedHtml] = useState<Record<string, string | null>>({});
+  const [showPlainText, setShowPlainText] = useState(false);
   const [loadedBodies, setLoadedBodies] = useState<Record<string, string>>({});
   const [loadedAttachments, setLoadedAttachments] = useState<Record<string, MailAttachmentView[]>>({});
   const [downloadBusy, setDownloadBusy] = useState<string | null>(null);
@@ -194,6 +197,8 @@ export default function MailPage() {
 
   const active = mails.find((m) => m.id === activeId && m.folder === folder) ?? visible[0] ?? null;
   const activeBody = active ? (loadedBodies[active.id] ?? active.body) : '';
+  const activeHtml = active ? loadedHtml[active.id] : null;
+  useEffect(() => { setShowPlainText(false); }, [active?.id]);
   const downloadAttachment = async (messageId: string, attachment: MailAttachmentView) => {
     const key = `${messageId}:${attachment.partIndex}`;
     if (downloadBusy) return;
@@ -397,6 +402,7 @@ export default function MailPage() {
     mailApi.message(activeRealId)
       .then((detail) => {
         if (cancelled) return;
+        setLoadedHtml((prev) => ({ ...prev, [activeRealId]: detail.bodyHtml ?? null }));
         setLoadedAttachments((prev) => ({ ...prev, [activeRealId]: detail.attachments ?? [] }));
         setLoadedBodies((prev) => ({ ...prev, [activeRealId]: detail.bodyText ?? '' }));
         setLoadedRecipients((prev) => ({
@@ -841,9 +847,14 @@ export default function MailPage() {
                     onDownload={(attachment) => void downloadAttachment(active.id, attachment)}
                   />}
 
-                  <div className="mt-7 text-[15.5px] leading-[1.75] text-ink-soft">
-                    {activeBody.split('\n').map((paragraph, i) => paragraph.trim() ? <p key={i} className="mb-4 whitespace-pre-wrap">{paragraph}</p> : null)}
-                  </div>
+                  {activeHtml && <div className="mt-5 flex flex-wrap items-center gap-3 text-xs text-muted">
+                    <span>{t('Внешние изображения и ссылки отключены для безопасности.')}</span>
+                    <button type="button" className="font-medium text-accent-dark underline" onClick={() => setShowPlainText(!showPlainText)}>{t(showPlainText ? 'Показать HTML' : 'Показать обычный текст')}</button>
+                  </div>}
+                  {activeHtml && !showPlainText ? <iframe title={t('Содержимое HTML-письма')} sandbox="" referrerPolicy="no-referrer" srcDoc={mailHtmlDocument(activeHtml)} className="mt-4 h-[420px] w-full rounded-xl border border-line bg-white" />
+                    : <div className="mt-7 text-[15.5px] leading-[1.75] text-ink-soft">
+                      {activeBody.split('\n').map((paragraph, i) => paragraph.trim() ? <p key={i} className="mb-4 whitespace-pre-wrap">{paragraph}</p> : null)}
+                    </div>}
 
                   <div className="mt-9 flex flex-wrap gap-2 border-t border-line pt-5">
                     <button type="button" className="btn-primary" onClick={() => setComposeDraft({ to: emailFromHeader(active.from), subject: `Re: ${active.subject}`, body: '' })}>
@@ -904,7 +915,7 @@ export default function MailPage() {
   );
 }
 
-function ComposePanel({ initial, currentEmail, externalAccounts, onClose, onSend }: {
+export function ComposePanel({ initial, currentEmail, externalAccounts, onClose, onSend }: {
   initial: ComposeDraft;
   currentEmail: string;
   externalAccounts: ExternalMailAccount[];
@@ -915,6 +926,7 @@ function ComposePanel({ initial, currentEmail, externalAccounts, onClose, onSend
   const [draft, setDraft] = useState(initial);
   const [showCc, setShowCc] = useState(Boolean(initial.cc));
   const [files, setFiles] = useState<File[]>([]);
+  const [draggingFiles, setDraggingFiles] = useState(false);
   const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -964,7 +976,11 @@ function ComposePanel({ initial, currentEmail, externalAccounts, onClose, onSend
           <p className="mt-1 text-sm text-muted">{t('Копия сохранена в папке «Отправленные».')}</p>
         </div>
       ) : (
-        <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
+        <form onSubmit={submit} className={`flex min-h-0 flex-1 flex-col ${draggingFiles ? 'ring-2 ring-inset ring-accent' : ''}`}
+          onDragOver={(event) => { if (Array.from(event.dataTransfer.types).includes('Files')) { event.preventDefault(); setDraggingFiles(true); } }}
+          onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDraggingFiles(false); }}
+          onDrop={(event) => { event.preventDefault(); setDraggingFiles(false); const dropped = Array.from(event.dataTransfer.files); if (dropped.length) setFiles((previous) => [...previous, ...dropped]); }}>
+          {draggingFiles && <div className="bg-accent-soft px-4 py-2 text-sm text-accent-dark">{t('Отпустите файлы, чтобы прикрепить')}</div>}
           {sendAsAccounts.length > 0 && (
             <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
               <label htmlFor="compose-from" className="w-12 shrink-0 text-[13px] text-faint">{t('От кого')}</label>
@@ -1006,7 +1022,7 @@ function ComposePanel({ initial, currentEmail, externalAccounts, onClose, onSend
           />
           {files.length > 0 && (
             <div className="flex shrink-0 flex-wrap gap-2 px-4 pb-3">
-              {files.map((file, index) => <span key={`${file.name}-${index}`} className="chip"><Paperclip size={12} />{file.name}</span>)}
+              {files.map((file, index) => <span key={`${file.name}-${index}`} className="chip"><Paperclip size={12} />{file.name}<button type="button" className="ml-1 rounded p-0.5 hover:text-danger" aria-label={`${t('Удалить вложение')}: ${file.name}`} onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}><X size={13} /></button></span>)}
             </div>
           )}
           {sendError && (
@@ -1014,7 +1030,7 @@ function ComposePanel({ initial, currentEmail, externalAccounts, onClose, onSend
           )}
           <footer className="flex shrink-0 items-center gap-2 border-t border-line px-3 py-3">
             <button className="btn-accent" disabled={sending}><Send size={15} /> {t('Отправить')}</button>
-            <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => setFiles(Array.from(e.target.files ?? []))} />
+            <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => { const picked = Array.from(e.target.files ?? []); setFiles((previous) => [...previous, ...picked]); e.target.value = ''; }} />
             <IconButton icon={Paperclip} label={t('Прикрепить файлы')} onClick={() => fileRef.current?.click()} />
             <EmojiPickerButton onPick={insertEmoji} />
             <span className="ml-1 hidden text-[11px] text-faint sm:inline">{t('Подпись добавится автоматически')}</span>

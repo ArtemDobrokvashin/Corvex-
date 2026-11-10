@@ -29,6 +29,7 @@ import { demoGroups, demoUsers, permissionLabels } from '../../api/demoData';
 import { Avatar, EmptyState, Notice } from '../../components/ui';
 import { countLabel, formatBytes, formatDateTime, systemGroupName, useI18n } from '../../i18n';
 import { useSession } from '../../store/sessionStore';
+import GroupPickerPopover from './GroupPickerPopover';
 import AnalyticsTab from './AnalyticsTab';
 import AuditTab from './AuditTab';
 import MailPolicyTab from './MailPolicyTab';
@@ -189,6 +190,7 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
   const [createGroups, setCreateGroups] = useState<string[]>(['USER']);
   const [createQuota, setCreateQuota] = useState('5');
   const [editingGroupsFor, setEditingGroupsFor] = useState<string | null>(null);
+  const [groupAnchor, setGroupAnchor] = useState<DOMRect | null>(null);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [profileUser, setProfileUser] = useState<AdminUser | null>(null);
   const [passwordUser, setPasswordUser] = useState<AdminUser | null>(null);
@@ -437,16 +439,7 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
                         {u.mustChangePassword && <div className="mt-1 flex items-center gap-1 text-[11px] font-medium text-amber-700"><KeyRound size={11} />{t('Ожидает смену пароля')}</div>}
                       </div>
                     </div>
-                    {editingGroupsFor === u.id && (
-                      <div className="mt-3 max-w-[420px] animate-rise-in rounded-xl border border-line bg-surface p-3 shadow-soft">
-                        <p className="mb-2 text-xs font-medium text-muted">{t('Группы пользователя')}</p>
-                        {groupPicker(selectedGroups, (code) => toggleList(setSelectedGroups, code))}
-                        <div className="mt-3 flex gap-1.5">
-                          <button type="button" onClick={() => saveUserGroups(u)} className="btn-primary h-8 px-3 text-xs">{t('Сохранить')}</button>
-                          <button type="button" onClick={() => setEditingGroupsFor(null)} className="btn-ghost h-8 px-3 text-xs">{t('Отмена')}</button>
-                        </div>
-                      </div>
-                    )}
+
                   </td>
                   <td className="px-4 py-4 text-muted">{u.department ?? '—'}</td>
                   <td className="max-w-[210px] px-4 py-4"><div className="flex flex-wrap gap-1">{u.groups.length ? u.groups.map((g) => <span key={g} className="chip px-2 py-0.5 text-[11px]">{systemGroupName(locale, g, groups.find((x) => x.code === g)?.name)}</span>) : <span className="text-faint">—</span>}</div></td>
@@ -471,7 +464,7 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
                           aria-label={`${t('Сбросить пароль')}: ${u.username}`}
                         ><KeyRound size={16} /></button>
                       )}
-                      {canManageGroups && <button type="button" onClick={() => { setEditingGroupsFor(u.id); setSelectedGroups(u.groups); }} className="icon-btn" title={t('Назначить группы')} aria-label={t('Назначить группы')}><Users size={17} /></button>}
+                      {canManageGroups && <button type="button" onClick={(event) => { setGroupAnchor(event.currentTarget.getBoundingClientRect()); setEditingGroupsFor(u.id); setSelectedGroups(u.groups); }} className="icon-btn" title={t('Назначить группы')} aria-label={t('Назначить группы')}><Users size={17} /></button>}
                       <button type="button" onClick={() => toggleBlock(u)} className="icon-btn" title={u.status === 'ACTIVE' ? t('Заблокировать') : t('Разблокировать')} aria-label={u.status === 'ACTIVE' ? t('Заблокировать') : t('Разблокировать')}>
                         {u.status === 'ACTIVE' ? <Ban size={17} /> : <Check size={17} />}
                       </button>
@@ -494,6 +487,12 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
         </footer>
       )}
     </section>
+
+    {editingGroupsFor && groupAnchor && users.find((u) => u.id === editingGroupsFor) && <GroupPickerPopover
+      anchor={groupAnchor} onClose={() => setEditingGroupsFor(null)}
+      onSave={() => { const selected = users.find((u) => u.id === editingGroupsFor); if (selected) void saveUserGroups(selected); }}>
+      {groupPicker(selectedGroups, (code) => toggleList(setSelectedGroups, code))}
+    </GroupPickerPopover>}
 
     {passwordUser && (
       <ResetUserPasswordModal

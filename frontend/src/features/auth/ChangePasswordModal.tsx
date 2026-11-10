@@ -2,6 +2,7 @@ import { FormEvent, useMemo, useState } from 'react';
 import { Check, KeyRound, Loader2 } from 'lucide-react';
 import { changePassword, errorText } from '../../api/authApi';
 import { Notice } from '../../components/ui';
+import PasswordInput from '../../components/PasswordInput';
 import { useI18n } from '../../i18n';
 
 /**
@@ -55,15 +56,15 @@ export default function ChangePasswordModal({ onChanged }: { onChanged: () => vo
         <div className="space-y-4">
           <div>
             <label className="field-label" htmlFor="change-current">{t('Временный пароль')}</label>
-            <input id="change-current" name="current" required type="password" autoComplete="current-password" className="field" />
+            <PasswordInput id="change-current" name="current" required autoComplete="current-password" className="field" />
           </div>
           <div>
             <label className="field-label" htmlFor="change-next">{t('Новый пароль')}</label>
-            <input id="change-next" name="next" required type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} className="field" />
+            <PasswordInput id="change-next" name="next" required autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} className="field" />
           </div>
           <div>
             <label className="field-label" htmlFor="change-repeat">{t('Повторите пароль')}</label>
-            <input id="change-repeat" name="repeat" required type="password" autoComplete="new-password" value={repeat} onChange={(e) => setRepeat(e.target.value)} className="field" />
+            <PasswordInput id="change-repeat" name="repeat" required autoComplete="new-password" value={repeat} onChange={(e) => setRepeat(e.target.value)} className="field" />
           </div>
         </div>
 

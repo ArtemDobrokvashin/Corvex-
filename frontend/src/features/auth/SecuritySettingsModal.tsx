@@ -1,4 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
+import PasswordInput from '../../components/PasswordInput';
 import { AppWindow, Check, Copy, KeyRound, ShieldCheck, X } from 'lucide-react';
 import {
   AppPassword,
@@ -154,8 +156,8 @@ export default function SecuritySettingsModal({ onClose }: { onClose: () => void
           <section>
             {sectionTitle(KeyRound, t('Пароль'), t('После смены пароля все остальные устройства выйдут из Corvex.'))}
             <form onSubmit={onPasswordSubmit} className="space-y-3">
-              <div><label className="field-label" htmlFor="security-current">{t('Текущий пароль')}</label><input id="security-current" name="current" required type="password" autoComplete="current-password" className="field" /></div>
-              <div><label className="field-label" htmlFor="security-next">{t('Новый пароль')}</label><input id="security-next" name="next" required type="password" autoComplete="new-password" placeholder={t('Минимум 10 символов, буквы и цифры')} className="field" /></div>
+              <div><label className="field-label" htmlFor="security-current">{t('Текущий пароль')}</label><PasswordInput id="security-current" name="current" required autoComplete="current-password" className="field" /></div>
+              <div><label className="field-label" htmlFor="security-next">{t('Новый пароль')}</label><PasswordInput id="security-next" name="next" required autoComplete="new-password" placeholder={t('Минимум 10 символов, буквы и цифры')} className="field" /></div>
               <button className="btn-primary">{t('Сменить пароль')}</button>
             </form>
           </section>
@@ -172,6 +174,10 @@ export default function SecuritySettingsModal({ onClose }: { onClose: () => void
             {!user?.totpEnabled && setup && (
               <form onSubmit={onConfirmTotp} className="space-y-3">
                 <p className="text-sm leading-relaxed text-muted">{t('Добавьте секрет в приложение-аутентификатор, затем введите первый код для подтверждения.')}</p>
+                <div className="flex justify-center rounded-xl border border-line bg-white p-4" aria-label={t('QR-код для настройки 2FA')}>
+                  <QRCodeSVG value={setup.otpauthUri} size={192} level="M" marginSize={2} />
+                </div>
+                <p className="text-xs text-muted">{t('Не передавайте QR-код и секрет другим людям.')}</p>
                 <div className="flex items-start gap-2 rounded-xl border border-line bg-chrome px-3.5 py-3">
                   <code className="min-w-0 flex-1 break-all font-mono text-[13px] leading-relaxed">{setup.secret}</code>
                   <button type="button" onClick={() => copyText(setup.secret, 'secret')} className="icon-btn-sm shrink-0" aria-label={t('Копировать секрет')}>{copied === 'secret' ? <Check size={15} /> : <Copy size={15} />}</button>

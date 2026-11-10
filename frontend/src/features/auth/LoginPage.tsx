@@ -163,7 +163,7 @@ export default function LoginPage() {
                   <label htmlFor="username" className="field-label">{t('Логин или e-mail')}</label>
                   <div className="relative">
                     <UserRound size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-faint" />
-                    <input id="username" name="username" required autoComplete="username" autoFocus placeholder="i.ivanov" className="field pl-10" />
+                    <input id="username" name="username" required autoComplete="username" autoFocus placeholder={t('Логин или e-mail')} className="field pl-10" />
                   </div>
                 </div>
                 <div>

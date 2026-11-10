@@ -3,6 +3,7 @@ import { Check, KeyRound, Loader2, X } from 'lucide-react';
 import type { AdminUser } from '../../api/adminApi';
 import { errorText } from '../../api/authApi';
 import { Notice } from '../../components/ui';
+import PasswordInput from '../../components/PasswordInput';
 import { useI18n } from '../../i18n';
 
 interface ResetUserPasswordModalProps {
@@ -73,35 +74,35 @@ export default function ResetUserPasswordModal({ user, onClose, onReset }: Reset
         </p>
 
         <div className="space-y-4">
-          <label className="block">
-            <span className="field-label">{t('Новый временный пароль')}</span>
-            <input
+          <div className="block">
+            <label className="field-label" htmlFor="reset-new-password">{t('Новый временный пароль')}</label>
+            <PasswordInput
+              id="reset-new-password"
               name="newPassword"
               required
               minLength={10}
               maxLength={128}
-              type="password"
               autoComplete="new-password"
               value={next}
               onChange={(event) => setNext(event.target.value)}
               className="field"
               autoFocus
             />
-          </label>
-          <label className="block">
-            <span className="field-label">{t('Повторите временный пароль')}</span>
-            <input
+          </div>
+          <div className="block">
+            <label className="field-label" htmlFor="reset-confirm-password">{t('Повторите временный пароль')}</label>
+            <PasswordInput
+              id="reset-confirm-password"
               name="confirmPassword"
               required
               minLength={10}
               maxLength={128}
-              type="password"
               autoComplete="new-password"
               value={repeat}
               onChange={(event) => setRepeat(event.target.value)}
               className="field"
             />
-          </label>
+          </div>
         </div>
 
         <ul className="mt-4 space-y-1.5" aria-label={t('Требования к паролю')}>
