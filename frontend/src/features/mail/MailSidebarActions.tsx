@@ -4,11 +4,13 @@ import { useI18n } from '../../i18n';
 export default function MailSidebarActions({
   canAdminExternalAccounts,
   externalAccountCount,
+  composeOpen = false,
   onCompose,
   onOpenExternal,
 }: {
   canAdminExternalAccounts: boolean;
   externalAccountCount: number;
+  composeOpen?: boolean;
   onCompose: () => void;
   onOpenExternal: () => void;
 }) {
@@ -16,7 +18,7 @@ export default function MailSidebarActions({
 
   return (
     <>
-      <button type="button" onClick={onCompose} className="btn-primary h-10 w-full shrink-0">
+      <button type="button" onClick={onCompose} disabled={composeOpen} className="btn-primary h-10 w-full shrink-0">
         <PenSquare size={16} className="shrink-0" />
         <span className="min-w-0 flex-1 truncate text-center">{t('Написать')}</span>
         <span className="flex w-6 shrink-0 justify-end"><span className="kbd border-white/20 bg-white/10 text-white/70 shadow-none">C</span></span>

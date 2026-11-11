@@ -158,6 +158,8 @@ class AdminControllersTest {
         assertSame(view, groupController.create(create, jwt, request));
         assertSame(view, groupController.setPermissions(
                 "SALES", new SetPermissionsRequest(List.of("CHAT_READ")), jwt, request));
+        groupController.delete("SALES", jwt, request);
+        verify(groups).deleteGroup("SALES", ACTOR);
     }
 
     @Test

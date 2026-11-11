@@ -1334,9 +1334,9 @@ export default function RealChatPage() {
         : `${roomSubtitle(selectedRoom)}${socketConnected ? '' : ` · ${t('Нет realtime-соединения')}`}`;
 
   return (
-    <div className="h-full lg:p-3 xl:p-4">
-      <div className="flex h-full min-h-0 overflow-hidden bg-surface lg:rounded-[18px] lg:border lg:border-line lg:shadow-soft">
-        <aside className={`${mobileConversation ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-line bg-chrome md:w-[320px] xl:w-[344px]`}>
+    <div className="mail-workspace h-full md:p-3 xl:p-4">
+      <div className="flex h-full min-h-0 overflow-hidden bg-surface md:gap-2 md:bg-transparent">
+        <aside className={`${mobileConversation ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-line bg-surface md:w-[320px] md:rounded-2xl md:border xl:w-[344px]`}>
           <header className="shrink-0 px-4 pb-3 pt-5">
             <div className="flex items-center">
               <h1 className="flex-1 text-[19px] font-semibold tracking-[-0.025em]">{t('Сообщения')}</h1>
@@ -1480,7 +1480,7 @@ export default function RealChatPage() {
           </div>
         </aside>
 
-        <section className={`${mobileConversation ? 'flex' : 'hidden md:flex'} min-w-0 flex-1 flex-col bg-surface`}>
+        <section className={`${mobileConversation ? 'flex' : 'hidden md:flex'} min-w-0 flex-1 flex-col bg-surface md:overflow-hidden md:rounded-2xl md:border md:border-line`}>
           {!selectedRoom ? (
             <EmptyState
               icon={Hash}

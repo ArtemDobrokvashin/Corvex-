@@ -88,6 +88,20 @@ class StorageControllersTest {
     }
 
     @Test
+    void createFolderUsesJwtOwnerAndRequiresFolderPermission() throws Exception {
+        var protocol = mock(ProtocolMailService.class);
+        var controller = new MailController(mock(MailApiService.class), mock(MailSendService.class), protocol);
+        var id = UUID.randomUUID();
+        var request = new ProtocolDtos.CreateFolderRequest("Projects", null);
+        when(protocol.createFolder(userId, request)).thenReturn(new ProtocolDtos.FolderInfo(id, null, "Projects", null, 1, 1, 1, 0, 0));
+        var response = controller.createFolder(jwt, request);
+        assertEquals(HttpStatus.CREATED, response.getStatusCode());
+        assertEquals(id, response.getBody().id());
+        verify(protocol).createFolder(userId, request);
+        assertEquals("hasAuthority('MAIL_MANAGE_FOLDERS')", MailController.class.getDeclaredMethod("createFolder", Jwt.class, ProtocolDtos.CreateFolderRequest.class).getAnnotation(PreAuthorize.class).value());
+    }
+
+    @Test
     void attachmentResponseUsesJwtOwnerAndSafeDownloadHeaders() throws Exception {
         MailApiService mail = mock(MailApiService.class);
         MailController controller = new MailController(mail, mock(MailSendService.class), mock(ProtocolMailService.class));

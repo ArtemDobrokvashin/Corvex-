@@ -17,6 +17,7 @@ import { setAccessToken } from '../api/httpClient';
 import { LanguageSwitcher, systemGroupName, useI18n } from '../i18n';
 import { Avatar, LoadingScreen, LogoMark } from '../components/ui';
 import ChangePasswordModal from '../features/auth/ChangePasswordModal';
+import PersonalSettings, { readWorkspaceBackground, saveWorkspaceBackground, type WorkspaceBackground } from './PersonalSettings';
 import SecuritySettingsModal from '../features/auth/SecuritySettingsModal';
 import { canAccessAdmin } from '../features/admin/adminAccess';
 import { useSession } from '../store/sessionStore';
@@ -41,6 +42,13 @@ export default function AppShell() {
   const location = useLocation();
   const restoreStarted = useRef(false);
   const [securityOpen, setSecurityOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [background, setBackground] = useState<WorkspaceBackground>(readWorkspaceBackground);
+
+  useEffect(() => {
+    document.documentElement.dataset.workspaceBackground = background;
+    return () => { delete document.documentElement.dataset.workspaceBackground; };
+  }, [background]);
   const [profileOpen, setProfileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
@@ -116,6 +124,7 @@ export default function AppShell() {
       actions.push({ id: 'admin', label: t('Администрирование'), description: t('Пользователи, сервер, аналитика и аудит'), icon: Settings2, run: () => navigate('/admin') });
     }
     actions.push(
+      { id: 'settings', label: t('Личные настройки'), description: t('Язык и внешний вид'), icon: Settings2, run: () => setSettingsOpen(true) },
       { id: 'security', label: t('Безопасность'), description: t('Пароль, 2FA и пароли приложений'), icon: ShieldCheck, run: () => setSecurityOpen(true) },
       { id: 'logout', label: demoMode ? t('Выйти из демо') : t('Выйти'), description: t('Завершить текущую сессию'), icon: LogOut, run: onLogout },
     );
@@ -190,8 +199,12 @@ export default function AppShell() {
         <nav className="mt-8 flex w-full flex-col gap-1.5" aria-label={t('Основная навигация')}>
           {navItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
           {navItem('/chat', t('Чат'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
-          {canAdmin && navItem('/admin', t('Админ'), Settings2)}
+          {canAdmin && navItem('/admin', t('Админ'), ShieldCheck)}
         </nav>
+
+        <button type="button" onClick={() => setSettingsOpen(true)} className="mt-1.5 flex min-h-[58px] w-full flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium text-muted transition hover:bg-black/[0.04] hover:text-ink" aria-label={t('Личные настройки')}>
+          <Settings2 size={20} strokeWidth={1.75} />{t('Настройки')}
+        </button>
 
         <button
           type="button"
@@ -238,7 +251,8 @@ export default function AppShell() {
       <nav className="flex shrink-0 border-t border-line bg-surface px-2 pb-[env(safe-area-inset-bottom)] md:hidden" aria-label={t('Основная навигация')}>
         {mobileNavItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
         {mobileNavItem('/chat', t('Сообщения'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
-        {canAdmin && mobileNavItem('/admin', t('Админ'), Settings2)}
+        {canAdmin && mobileNavItem('/admin', t('Админ'), ShieldCheck)}
+        <button type="button" onClick={() => setSettingsOpen(true)} className="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-muted" aria-label={t('Личные настройки')}><Settings2 size={21} strokeWidth={1.75} />{t('Настройки')}</button>
       </nav>
 
       {/* Меню профиля */}
@@ -260,6 +274,7 @@ export default function AppShell() {
                 <span className="min-w-0 flex-1">{t('Язык интерфейса')}</span>
                 <LanguageSwitcher />
               </div>
+              <button type="button" onClick={() => { setProfileOpen(false); setSettingsOpen(true); }} className="nav-row"><Settings2 size={17} strokeWidth={1.8} /> {t('Личные настройки')}</button>
               <button type="button" onClick={() => { setProfileOpen(false); setSecurityOpen(true); }} className="nav-row">
                 <ShieldCheck size={17} strokeWidth={1.8} /> {t('Безопасность')}
               </button>
@@ -318,6 +333,7 @@ export default function AppShell() {
       {user.mustChangePassword && !demoMode && (
         <ChangePasswordModal onChanged={() => updateUser({ mustChangePassword: false })} />
       )}
+      {settingsOpen && <PersonalSettings background={background} onBackground={(value) => { setBackground(value); return saveWorkspaceBackground(value); }} onClose={() => setSettingsOpen(false)} onSecurity={() => { setSettingsOpen(false); setSecurityOpen(true); }} />}
       {securityOpen && <SecuritySettingsModal onClose={() => setSecurityOpen(false)} />}
     </div>
   );

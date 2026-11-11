@@ -582,6 +582,23 @@ function GroupsTab({ groups, setGroups, demoMode, canManage }: {
     }
   }
 
+  async function deleteGroup() {
+    if (!active || !canManage || active.isSystem || active.memberCount !== 0) return;
+    if (!window.confirm(t('Удалить группу «{name}»? Это действие нельзя отменить.', { name: groupName(active) }))) return;
+    setError('');
+    setSaving(true);
+    try {
+      if (!demoMode) await adminApi.deleteGroup(active.code);
+      setGroups((prev) => prev.filter((g) => g.code !== active.code));
+      setActiveCode('USER');
+      setSaved(false);
+    } catch (err) {
+      setError(errorText(err, locale));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function createGroup(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const d = new FormData(e.currentTarget);
@@ -644,6 +661,10 @@ function GroupsTab({ groups, setGroups, demoMode, canManage }: {
             {saved && <span className="inline-flex items-center gap-1 text-sm font-medium text-emerald-700"><Check size={15} />{t('Сохранено')}</span>}
           </div>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">{t('Выберите возможности этой группы. Доступ сотрудника складывается из всех групп, в которые он входит.')}</p>
+          {!active.isSystem && canManage && <div className="mt-3">
+            <button type="button" className="btn-danger-ghost border border-red-200" disabled={saving || active.memberCount !== 0} onClick={() => void deleteGroup()}>{t('Удалить группу')}</button>
+            {active.memberCount !== 0 && <p className="mt-1 text-xs text-muted">{t('Удалить можно только группу без участников')}</p>}
+          </div>}
           {active.code === 'SUPER_ADMIN' && <p className="mt-3 flex items-center gap-2 text-[13px] text-muted"><Lock size={14} />{t('Права суперадминистратора защищены от редактирования — это страховка от самоблокировки системы.')}</p>}
         </header>
 

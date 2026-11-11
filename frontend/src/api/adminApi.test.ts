@@ -26,6 +26,11 @@ describe('adminApi system endpoints', () => {
     expect(new URLSearchParams(url.split('?')[1]).get('department')).toBe('Отдел продаж / Центр');
   });
 
+  it('deletes a group through its dedicated API', async () => {
+    await adminApi.deleteGroup('RBAC_TEST');
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/admin/groups/RBAC_TEST', { method: 'DELETE' });
+  });
+
   it('uses the narrow quota endpoint with an integer byte value', async () => {
     await adminApi.updateQuota('user-7', 2684354560);
 

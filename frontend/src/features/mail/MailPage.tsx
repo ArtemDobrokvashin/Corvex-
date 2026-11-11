@@ -1,24 +1,15 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Archive,
-  ArrowLeft,
   ArrowUpDown,
   Check,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  FilePenLine,
-  Folder,
-  Forward,
   Inbox,
   MailOpen,
-  Minus,
-  MoreHorizontal,
-  OctagonAlert,
+  Maximize2,
+  Minimize2,
   Paperclip,
   PenSquare,
-  Reply,
   Search,
   Send,
   Settings2,
@@ -34,6 +25,9 @@ import ExternalMailAccountsModal from './ExternalMailAccountsModal';
 import MailboxUsage from './MailboxUsage';
 import MailAttachments from './MailAttachments';
 import MailSidebarActions from './MailSidebarActions';
+import CreateFolder from './CreateFolder';
+import FolderList from './FolderList';
+import MailToolbar from './MailToolbar';
 import { canAdministerExternalMail, canUseExternalMail } from './externalMailAccess';
 import {
   applyMailListControls,
@@ -42,12 +36,13 @@ import {
   type MailSortOrder,
 } from './mailListControls';
 import { formatMailRecipients } from './mailRecipients';
-import { mailHtmlDocument } from './mailHtml';
+import MailHtmlFrame from './MailHtmlFrame';
 import { activeMailAfterRefresh, replaceFolderMessages } from './mailRefresh';
 import { EmojiPickerButton } from '../../components/EmojiPicker';
 import { Avatar, EmptyState, IconButton, cleanPersonName, emailFromHeader } from '../../components/ui';
 import { countLabel, formatDateTime, useI18n } from '../../i18n';
-import { insertTextAtSelection, truncateGraphemes } from '../../lib/text';
+import { truncateGraphemes } from '../../lib/text';
+import ComposeEditor, { type ComposeEditorHandle } from './ComposeEditor';
 import { useSession } from '../../store/sessionStore';
 
 interface ComposeDraft {
@@ -55,6 +50,7 @@ interface ComposeDraft {
   cc?: string;
   subject: string;
   body: string;
+  bodyHtml?: string;
   externalAccountId?: string | null;
 }
 
@@ -82,15 +78,6 @@ async function fileToAttachment(file: File): Promise<SendAttachment> {
   };
 }
 
-const FOLDER_ICONS: Record<string, typeof Inbox> = {
-  INBOX: Inbox,
-  SENT: Send,
-  DRAFTS: FilePenLine,
-  ARCHIVE: Archive,
-  SPAM: OctagonAlert,
-  TRASH: Trash2,
-};
-
 const MAIL_REFRESH_INTERVAL_MS = 15_000;
 
 /** Почта Quiet Work: папки → сканируемый список → письмо как документ, composer поверх контекста. */
@@ -101,16 +88,18 @@ export default function MailPage() {
   const demoReadMailIds = useSession((s) => s.demoReadMailIds);
   const markDemoMailRead = useSession((s) => s.markDemoMailRead);
   const [realFolders, setRealFolders] = useState<MailFolderView[]>([]);
+  const [demoCustomFolders, setDemoCustomFolders] = useState<FolderTab[]>([]);
+  const canManageFolders = sessionUser?.permissions.includes('MAIL_MANAGE_FOLDERS') ?? false;
   const [mailboxQuota, setMailboxQuota] = useState<MailboxQuota | null>(null);
   const [mailboxQuotaUnavailable, setMailboxQuotaUnavailable] = useState(false);
   const folders = useMemo<FolderTab[]>(() => {
     const localized = demoFolders(locale);
-    if (demoMode) return localized;
+    if (demoMode) return [...localized, ...demoCustomFolders];
     return realFolders.map((f) => {
       const key = f.specialUse ?? f.id;
       return { id: key, name: localized.find((d) => d.id === key)?.name ?? f.name, unread: f.unread };
     });
-  }, [demoMode, locale, realFolders]);
+  }, [demoMode, locale, realFolders, demoCustomFolders]);
   const [searchParams, setSearchParams] = useSearchParams();
   const [folder, setFolder] = useState('INBOX');
   const [search, setSearch] = useState('');
@@ -473,6 +462,20 @@ export default function MailPage() {
     if (first) setActiveId(first.id);
   };
 
+  const createFolder = async (name: string) => {
+    if (!canManageFolders) throw new Error(t('Недостаточно прав для создания папок'));
+    if (demoMode) {
+      if (!name || name.length > 256 || /[\\/%*\x00-\x1f]/.test(name) || name.includes('..') || folders.some((f) => f.name.toLocaleLowerCase() === name.toLocaleLowerCase())) throw new Error(t('Недопустимое или уже занятое имя папки'));
+      const id = `demo-folder-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      setDemoCustomFolders((prev) => [...prev, { id, name, unread: 0 }]);
+      setFolder(id); setMobileReading(false);
+    } else {
+      const created = await mailApi.createFolder(name);
+      setRealFolders((prev) => [...prev, created]);
+      setFolder(created.id); setMobileReading(false);
+    }
+  };
+
   const moveActive = (targetFolder: string) => {
     if (!active) return;
     const next = visible[activeIndex + 1] ?? visible[activeIndex - 1];
@@ -514,10 +517,6 @@ export default function MailPage() {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const typing = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT' || target?.isContentEditable;
-      if (e.key === 'Escape' && composeDraft) {
-        setComposeDraft(null);
-        return;
-      }
       if (externalOpen) return;
       if (typing || composeDraft || e.ctrlKey || e.metaKey || e.altKey) return;
       const key = e.key.toLowerCase();
@@ -563,6 +562,7 @@ export default function MailPage() {
       cc: splitAddresses(draft.cc),
       subject: draft.subject,
       bodyText: draft.body,
+      bodyHtml: draft.bodyHtml ?? null,
       attachments,
       saveToSent: true,
       externalAccountId: draft.externalAccountId ?? null,
@@ -579,45 +579,38 @@ export default function MailPage() {
   };
 
   return (
-    <div className="h-full lg:p-3 xl:p-4">
-      <div className="flex h-full min-h-0 overflow-hidden bg-surface lg:rounded-[18px] lg:border lg:border-line lg:shadow-soft">
+    <div className="mail-workspace h-full md:p-3 xl:p-4">
+      <div className="flex h-full min-h-0 gap-0 overflow-hidden bg-surface md:gap-2 md:bg-transparent">
         {/* Папки */}
-        <aside className="hidden w-[238px] shrink-0 flex-col border-r border-line bg-chrome p-3 xl:flex">
+        <aside className="hidden w-[238px] shrink-0 flex-col border border-line bg-surface p-3 xl:flex xl:rounded-2xl">
           <div className="flex shrink-0 items-center justify-between px-2 pb-3 pt-1">
             <h1 className="text-[17px] font-semibold tracking-[-0.02em]">{t('Почта')}</h1>
             <span className="text-xs text-faint">{countLabel(locale, folderCounts.INBOX ?? 0, ['новое', 'новых', 'новых'], ['new', 'new'])}</span>
           </div>
           <MailSidebarActions
             canAdminExternalAccounts={canAdminExternalAccounts}
+            composeOpen={Boolean(composeDraft)}
             externalAccountCount={externalAccounts.length}
             onCompose={() => setComposeDraft({ to: '', subject: '', body: '' })}
             onOpenExternal={() => setExternalOpen(true)}
           />
 
           <p className="section-label mb-1.5 mt-6 shrink-0">{t('Папки')}</p>
-          <nav className="scroll-area min-h-0 space-y-0.5 pr-1" aria-label={t('Папки почты')}>
-            {folders.map((f) => {
-              const Icon = FOLDER_ICONS[f.id] ?? Folder;
-              const count = folderCounts[f.id] ?? 0;
-              return (
-                <button key={f.id} type="button" onClick={() => selectFolder(f.id)} className={`nav-row shrink-0 ${folder === f.id ? 'nav-row-active' : ''}`}>
-                  <Icon size={16} strokeWidth={1.8} />
-                  <span className="min-w-0 flex-1 truncate">{f.name}</span>
-                  {count > 0 && <span className={`text-xs ${folder === f.id ? 'font-semibold text-accent' : 'font-medium text-faint'}`}>{count}</span>}
-                </button>
-              );
-            })}
-          </nav>
+          <FolderList folders={folders} selected={folder} counts={folderCounts} onSelect={selectFolder} />
 
+          {canManageFolders && <div className="mt-3"><CreateFolder onCreate={createFolder} /></div>}
           <MailboxUsage quota={mailboxQuota} unavailable={mailboxQuotaUnavailable} />
         </aside>
 
         {/* Список писем */}
-        <section className={`${mobileReading ? 'hidden md:flex' : 'flex'} relative min-w-0 flex-1 flex-col border-r border-line bg-surface md:w-[322px] md:flex-none lg:w-[356px] xl:w-[392px]`}>
+        <section className={`${mobileReading ? 'hidden md:flex' : 'flex'} relative min-w-0 flex-1 flex-col border-r border-line bg-surface md:overflow-hidden md:rounded-2xl md:border md:w-[322px] md:flex-none lg:w-[356px] xl:w-[392px]`}>
           <header className="shrink-0 border-b border-line px-4 pb-3 pt-4">
             <div className="flex items-center gap-2">
               <h2 className="min-w-0 flex-1 truncate text-[17px] font-semibold tracking-[-0.02em]">{currentFolder?.name ?? t('Почта')}</h2>
               <span className="text-xs text-faint">{visible.length}</span>
+              <button type="button" onClick={() => setComposeDraft({ to: '', subject: '', body: '' })} disabled={Boolean(composeDraft)} className="btn-primary h-8 px-2.5 text-xs xl:hidden" aria-label={t('Написать письмо')}>
+                <PenSquare size={15} /><span className="hidden sm:inline">{t('Написать')}</span>
+              </button>
               <div ref={sortPanelRef} className="relative">
                 <IconButton
                   icon={ArrowUpDown}
@@ -714,9 +707,9 @@ export default function MailPage() {
               <input ref={searchRef} value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('Поиск по теме, отправителю, тексту')} aria-label={t('Поиск по теме, отправителю, тексту')} className="search-field" />
               <span className="kbd absolute right-3 top-1/2 hidden -translate-y-1/2 sm:inline-flex">/</span>
             </div>
-            <div className="mt-3 flex rounded-full bg-black/[0.04] p-1" role="tablist" aria-label={t('Фильтр писем')}>
+            <div className="mt-3 flex gap-4 border-b border-line" role="tablist" aria-label={t('Фильтр писем')}>
               {(['all', 'unread', 'read'] as const).map((value) => (
-                <button key={value} type="button" role="tab" aria-selected={filter === value} onClick={() => setFilter(value)} className={`h-8 min-w-0 flex-1 truncate rounded-full px-1 text-xs font-medium transition sm:text-[13px] ${filter === value ? 'bg-surface text-ink shadow-soft' : 'text-muted hover:text-ink'}`}>
+                <button key={value} type="button" role="tab" aria-selected={filter === value} onClick={() => setFilter(value)} className={`-mb-px h-9 min-w-0 flex-1 truncate border-b-2 px-1 text-xs font-medium transition sm:text-[13px] ${filter === value ? 'border-accent text-ink' : 'border-transparent text-muted hover:text-ink'}`}>
                   {value === 'all' ? t('Все') : value === 'unread' ? t('Непрочитанные') : t('Прочитанные')}
                 </button>
               ))}
@@ -740,11 +733,8 @@ export default function MailPage() {
                 )}
               </div>
             )}
-            <div className="-mb-1 mt-3 flex gap-1.5 overflow-x-auto pb-1 xl:hidden">
-              {folders.map((f) => (
-                <button key={f.id} type="button" onClick={() => selectFolder(f.id)} className={`chip shrink-0 ${folder === f.id ? 'chip-accent' : ''}`}>{f.name}{(folderCounts[f.id] ?? 0) > 0 && ` · ${folderCounts[f.id]}`}</button>
-              ))}
-            </div>
+            {canManageFolders && <div className="mt-2 xl:hidden"><CreateFolder onCreate={createFolder} /></div>}
+            <FolderList compact folders={folders} selected={folder} counts={folderCounts} onSelect={selectFolder} />
           </header>
 
           <div className="scroll-area min-h-0 flex-1">
@@ -778,7 +768,7 @@ export default function MailPage() {
                         title={m.flagged ? t('Убрать из важных') : t('Отметить важным')}
                         aria-label={m.flagged ? t('Убрать из важных') : t('Отметить важным')}
                         onClick={(e) => { e.stopPropagation(); toggleFlag(m); }}
-                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition ${m.flagged ? 'text-amber-500' : 'text-faint opacity-0 hover:bg-black/[0.05] hover:text-ink group-hover:opacity-100'}`}
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition ${m.flagged ? 'text-amber-500' : 'text-faint hover:bg-black/[0.05] hover:text-ink'}`}
                       >
                         <Star size={14} fill={m.flagged ? 'currentColor' : 'none'} />
                       </button>
@@ -793,39 +783,24 @@ export default function MailPage() {
             )}
           </div>
 
-          <button type="button" onClick={() => setComposeDraft({ to: '', subject: '', body: '' })} className="btn-primary absolute bottom-4 right-4 z-30 rounded-full shadow-pop md:hidden">
-            <PenSquare size={16} /> {t('Написать')}
-          </button>
         </section>
 
         {/* Чтение */}
-        <main className={`${mobileReading ? 'flex' : 'hidden md:flex'} min-w-0 flex-1 flex-col bg-surface`}>
+        <main className={`${mobileReading ? 'flex' : 'hidden md:flex'} min-w-0 flex-1 flex-col bg-surface md:overflow-hidden md:rounded-2xl md:border md:border-line`}>
           {active ? (
             <>
-              <header className="flex h-14 shrink-0 items-center gap-1 border-b border-line px-3 sm:px-4">
-                <button type="button" onClick={() => setMobileReading(false)} className="btn-ghost px-2 md:hidden"><ArrowLeft size={16} /> {t('К списку')}</button>
-                <IconButton icon={Archive} label={t('В архив')} onClick={() => moveActive('ARCHIVE')} />
-                <IconButton icon={Trash2} label={t('Удалить')} onClick={() => moveActive('TRASH')} />
-                <button type="button" onClick={() => toggleFlag(active)} className={`icon-btn ${active.flagged ? 'text-amber-500 hover:text-amber-600' : ''}`} aria-label={t('Важное')}>
-                  <Star size={18} fill={active.flagged ? 'currentColor' : 'none'} />
-                </button>
-                <IconButton icon={MoreHorizontal} label={t('Ещё действия')} />
-                <div className="ml-auto hidden items-center gap-1 sm:flex">
-                  <span className="mr-1 hidden text-xs text-faint xl:inline">{t('{current} из {total}', { current: Math.max(activeIndex + 1, 1), total: visible.length })}</span>
-                  <IconButton icon={ChevronUp} label={t('Предыдущее письмо')} onClick={() => step(-1)} disabled={activeIndex <= 0} />
-                  <IconButton icon={ChevronDown} label={t('Следующее письмо')} onClick={() => step(1)} disabled={activeIndex < 0 || activeIndex >= visible.length - 1} />
-                </div>
-              </header>
+              <MailToolbar flagged={active.flagged} composing={Boolean(composeDraft)} index={activeIndex} total={visible.length}
+                onBack={() => setMobileReading(false)} onArchive={() => moveActive('ARCHIVE')} onDelete={() => moveActive('TRASH')}
+                onFlag={() => toggleFlag(active)} onStep={step}
+                onReply={() => setComposeDraft({ to: emailFromHeader(active.from), subject: `Re: ${active.subject}`, body: '' })}
+                onForward={() => setComposeDraft({ to: '', subject: `Fwd: ${active.subject}`, body: `\n\n--- ${t('Пересылаемое письмо')} ---\n${activeBody}` })} />
 
               <div className="scroll-area min-h-0 flex-1">
-                <article className="mx-auto w-full max-w-[760px] animate-fade-in px-5 py-7 sm:px-8 sm:py-9">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="chip chip-accent">{currentFolder?.name ?? active.folder}</span>
-                    {active.flagged && <span className="chip border-amber-200 bg-amber-50 text-amber-800">{t('Важное')}</span>}
-                  </div>
-                  <h2 className="mt-4 text-[27px] font-semibold leading-tight tracking-[-0.025em] text-ink sm:text-[31px]">{active.subject}</h2>
+                <article className="mx-auto w-full max-w-[760px] animate-fade-in px-5 py-5 sm:px-8 sm:py-6">
+                  {active.flagged && <span className="chip border-amber-200 bg-amber-50 text-amber-800">{t('Важное')}</span>}
+                  <h2 className="mt-3 break-words text-[15px] font-semibold leading-snug tracking-[-0.015em] text-ink sm:text-[17px]">{active.subject}</h2>
 
-                  <div className="mt-7 flex items-start gap-3 border-b border-line pb-6">
+                  <div className="mt-4 flex items-start gap-3 border-b border-line pb-4">
                     <Avatar name={active.from} size={44} />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[15px] font-semibold">{cleanPersonName(active.from)}</div>
@@ -851,21 +826,19 @@ export default function MailPage() {
                     <span>{t('Внешние изображения и ссылки отключены для безопасности.')}</span>
                     <button type="button" className="font-medium text-accent-dark underline" onClick={() => setShowPlainText(!showPlainText)}>{t(showPlainText ? 'Показать HTML' : 'Показать обычный текст')}</button>
                   </div>}
-                  {activeHtml && !showPlainText ? <iframe title={t('Содержимое HTML-письма')} sandbox="" referrerPolicy="no-referrer" srcDoc={mailHtmlDocument(activeHtml)} className="mt-4 h-[420px] w-full rounded-xl border border-line bg-white" />
+                  {activeHtml && !showPlainText ? <MailHtmlFrame html={activeHtml} />
                     : <div className="mt-7 text-[15.5px] leading-[1.75] text-ink-soft">
                       {activeBody.split('\n').map((paragraph, i) => paragraph.trim() ? <p key={i} className="mb-4 whitespace-pre-wrap">{paragraph}</p> : null)}
                     </div>}
 
                   <div className="mt-9 flex flex-wrap gap-2 border-t border-line pt-5">
-                    <button type="button" className="btn-primary" onClick={() => setComposeDraft({ to: emailFromHeader(active.from), subject: `Re: ${active.subject}`, body: '' })}>
-                      <Reply size={16} /> {t('Ответить')}
-                    </button>
-                    <button type="button" className="btn-secondary" onClick={() => setComposeDraft({ to: '', subject: `Fwd: ${active.subject}`, body: `\n\n--- ${t('Пересылаемое письмо')} ---\n${activeBody}` })}>
-                      <Forward size={16} /> {t('Переслать')}
-                    </button>
-                    <button type="button" className="btn-ghost ml-auto" onClick={() => moveActive('ARCHIVE')}>
-                      <Archive size={16} /> {t('В архив')}
-                    </button>
+                    <label className="flex items-center gap-2 text-xs text-muted">{t('Переместить в')}
+                      <select aria-label={t('Переместить письмо в папку')} className="field field-sm max-w-[220px]" value="" onChange={(e) => { if (e.target.value) moveActive(e.target.value); }}>
+                        <option value="">{t('Выберите папку')}</option>
+                        {folders.filter((f) => f.id !== folder).map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                      </select>
+                    </label>
+
                   </div>
                 </article>
               </div>
@@ -927,25 +900,37 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
   const [showCc, setShowCc] = useState(Boolean(initial.cc));
   const [files, setFiles] = useState<File[]>([]);
   const [draggingFiles, setDraggingFiles] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const bodyRef = useRef<ComposeEditorHandle>(null);
   const sendAsAccounts = externalAccounts.filter((account) => account.enabled && account.sendEnabled && account.smtpEnabled);
+  useEffect(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!sent && (draft.to || draft.cc || draft.subject || draft.body || files.length)) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [draft, files, sent]);
 
-  const insertEmoji = (emoji: string) => {
-    const element = bodyRef.current;
-    const next = insertTextAtSelection(draft.body, emoji, element?.selectionStart ?? null, element?.selectionEnd ?? null);
-    setDraft({ ...draft, body: next.value });
-    requestAnimationFrame(() => {
-      element?.focus();
-      element?.setSelectionRange(next.cursor, next.cursor);
-    });
+
+  const insertEmoji = (emoji: string) => bodyRef.current?.insertText(emoji);
+
+  const closeComposer = () => {
+    if (sending) return;
+    if (!sent && (draft.to || draft.cc || draft.subject || draft.body || files.length) &&
+        !window.confirm(t('Закрыть письмо? Несохранённый текст и вложения будут потеряны.'))) return;
+    onClose();
   };
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!draft.body.trim()) { setSendError(t('Введите текст письма.')); return; }
     void (async () => {
       setSending(true);
       setSendError(null);
@@ -962,11 +947,11 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
   };
 
   return (
-    <section className="fixed inset-x-0 bottom-0 z-50 flex max-h-[94dvh] animate-rise-in flex-col overflow-hidden border border-line bg-surface shadow-composer sm:inset-x-auto sm:bottom-4 sm:right-4 sm:h-[min(640px,92dvh)] sm:w-[min(590px,calc(100vw-2rem))] sm:rounded-2xl" aria-label={t('Новое письмо')}>
+    <section className={`fixed z-50 flex animate-rise-in flex-col overflow-hidden border border-line bg-surface shadow-composer ${expanded ? 'inset-0 sm:inset-4 sm:rounded-2xl' : 'inset-x-0 bottom-0 max-h-[94dvh] sm:inset-x-auto sm:bottom-4 sm:right-4 sm:h-[min(640px,92dvh)] sm:w-[min(590px,calc(100vw-2rem))] sm:rounded-2xl'}`} aria-label={t('Новое письмо')}>
       <header className="flex h-11 shrink-0 items-center bg-ink px-4 text-white">
         <h3 className="flex-1 text-sm font-medium">{initial.subject ? t('Ответ / пересылка') : t('Новое письмо')}</h3>
-        <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white" aria-label={t('Свернуть черновик')}><Minus size={16} /></button>
-        <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white" aria-label={t('Закрыть черновик')}><X size={16} /></button>
+        <button type="button" onClick={() => setExpanded((value) => !value)} aria-pressed={expanded} className="flex h-8 w-8 items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white" aria-label={expanded ? t('Уменьшить окно письма') : t('Развернуть окно письма')}>{expanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
+        <button type="button" onClick={closeComposer} disabled={sending} className="flex h-8 w-8 items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-50" aria-label={t('Закрыть черновик')}><X size={16} /></button>
       </header>
 
       {sent ? (
@@ -1012,14 +997,7 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
             <label htmlFor="compose-subject" className="w-12 shrink-0 text-[13px] text-faint">{t('Тема')}</label>
             <input id="compose-subject" required value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder={t('О чём письмо?')} className="min-w-0 flex-1 border-0 bg-transparent text-sm font-medium outline-none placeholder:font-normal placeholder:text-faint focus:ring-0" />
           </div>
-          <textarea
-            ref={bodyRef}
-            required
-            value={draft.body}
-            onChange={(e) => setDraft({ ...draft, body: e.target.value })}
-            placeholder={t('Напишите сообщение…')}
-            className="min-h-[180px] flex-1 resize-none border-0 bg-transparent px-4 py-4 text-[15px] leading-relaxed outline-none placeholder:text-faint focus:ring-0"
-          />
+          <ComposeEditor ref={bodyRef} initialText={initial.body} onChange={(body, bodyHtml) => setDraft((current) => ({ ...current, body, bodyHtml }))} />
           {files.length > 0 && (
             <div className="flex shrink-0 flex-wrap gap-2 px-4 pb-3">
               {files.map((file, index) => <span key={`${file.name}-${index}`} className="chip"><Paperclip size={12} />{file.name}<button type="button" className="ml-1 rounded p-0.5 hover:text-danger" aria-label={`${t('Удалить вложение')}: ${file.name}`} onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}><X size={13} /></button></span>)}
@@ -1034,7 +1012,7 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
             <IconButton icon={Paperclip} label={t('Прикрепить файлы')} onClick={() => fileRef.current?.click()} />
             <EmojiPickerButton onPick={insertEmoji} />
             <span className="ml-1 hidden text-[11px] text-faint sm:inline">{t('Подпись добавится автоматически')}</span>
-            <IconButton icon={Trash2} label={t('Удалить черновик')} className="ml-auto" onClick={onClose} />
+            <IconButton icon={Trash2} label={t('Удалить черновик')} className="ml-auto" onClick={closeComposer} />
           </footer>
         </form>
       )}

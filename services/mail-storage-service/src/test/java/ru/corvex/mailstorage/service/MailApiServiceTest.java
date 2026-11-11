@@ -220,6 +220,28 @@ class MailApiServiceTest {
     }
 
     @Test
+    void inlineImageRequiresOwnerAndCleanAntivirusResult() throws Exception {
+        String raw = "MIME-Version: 1.0\r\nContent-Type: multipart/related; boundary=b\r\n\r\n"
+                + "--b\r\nContent-Type: image/png\r\nContent-ID: <logo>\r\nContent-Transfer-Encoding: base64\r\n\r\n"
+                + "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/aS0AAAAASUVORK5CYII=\r\n--b--\r\n";
+        MessageMetadata message = message(folder("INBOX", "INBOX"), 1);
+        message.setMaildirPath(maildir.storeMessage("user@company.local", "INBOX", bytes(raw)).toString());
+        when(messages.findByIdAndOwnerId(message.getId(), ownerId)).thenReturn(Optional.of(message));
+        UUID stranger = UUID.randomUUID();
+        assertEquals(HttpStatus.NOT_FOUND, assertThrows(ResponseStatusException.class,
+                () -> service.inlineImage(stranger, message.getId(), "logo")).getStatusCode());
+        verify(clam, never()).scan(any());
+        when(clam.scan(any(InputStream.class))).thenReturn(new ClamAvClient.ScanResult(ClamAvClient.Result.CLEAN, null));
+        assertEquals("image/png", service.inlineImage(ownerId, message.getId(), "logo").contentType());
+        when(clam.scan(any(InputStream.class))).thenReturn(new ClamAvClient.ScanResult(ClamAvClient.Result.INFECTED, "test"));
+        assertEquals(HttpStatus.FORBIDDEN, assertThrows(ResponseStatusException.class,
+                () -> service.inlineImage(ownerId, message.getId(), "logo")).getStatusCode());
+        when(clam.scan(any(InputStream.class))).thenReturn(new ClamAvClient.ScanResult(ClamAvClient.Result.ERROR, null));
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, assertThrows(ResponseStatusException.class,
+                () -> service.inlineImage(ownerId, message.getId(), "logo")).getStatusCode());
+    }
+
+    @Test
     void downloadRejectsMissingAttachment() {
         MessageMetadata message = message(folder("INBOX", "INBOX"), 1);
         when(messages.findByIdAndOwnerId(message.getId(), ownerId)).thenReturn(Optional.of(message));

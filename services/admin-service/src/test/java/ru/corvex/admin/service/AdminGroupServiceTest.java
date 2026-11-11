@@ -64,6 +64,32 @@ class AdminGroupServiceTest {
     }
 
     @Test
+    void deletesOnlyEmptyCustomGroupsAndAudits() {
+        UserGroup sales = group(SALES_ID, "SALES", false, true, Permission.MAIL_READ_OWN);
+        when(groups.findByCode("SALES")).thenReturn(Optional.of(sales));
+        when(jdbc.queryForObject(contains("FOR UPDATE"), eq(UUID.class), eq(SALES_ID))).thenReturn(SALES_ID);
+        when(jdbc.queryForObject(contains("count(*)"), eq(Long.class), eq(SALES_ID))).thenReturn(0L);
+        service.deleteGroup("sales", ACTOR);
+        verify(groups).delete(sales);
+        verify(groups).flush();
+        verify(audit).record(eq(ACTOR), eq("GROUP_DELETED"), eq("group"), eq("SALES"), any());
+    }
+
+    @Test
+    void rejectsSystemGroupsAndGroupsWithMembers() {
+        UserGroup sales = group(SALES_ID, "SALES", false, true);
+        UserGroup system = group(SUPER_ID, "SUPER_ADMIN", true, true);
+        when(groups.findByCode("SALES")).thenReturn(Optional.of(sales));
+        when(groups.findByCode("SUPER_ADMIN")).thenReturn(Optional.of(system));
+        when(jdbc.queryForObject(contains("FOR UPDATE"), eq(UUID.class), any())).thenReturn(SALES_ID);
+        when(jdbc.queryForObject(contains("count(*)"), eq(Long.class), eq(SALES_ID))).thenReturn(1L);
+        assertEquals(HttpStatus.CONFLICT, assertThrows(ApiException.class, () -> service.deleteGroup("sales", ACTOR)).status());
+        assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, assertThrows(ApiException.class, () -> service.deleteGroup("SUPER_ADMIN", ACTOR)).status());
+        verify(groups, never()).delete(any());
+        verify(audit, never()).record(any(), any(), any(), any(), any());
+    }
+
+    @Test
     void listGroupsIncludesMemberCountsAndAllPermissionsForSuperAdmin() throws Exception {
         UserGroup sales = group(SALES_ID, "SALES", false, true, Permission.MAIL_READ_OWN);
         UserGroup superAdmin = group(SUPER_ID, UserGroup.SUPER_ADMIN_CODE, true, true);

@@ -45,6 +45,8 @@ public final class MailDtos {
             List<AttachmentView> attachments) {
     }
 
+    public record InlineImageRequest(String cid) { }
+
     public record UpdateFlagsRequest(Boolean seen, Boolean flagged, Boolean answered, Boolean deleted) {
     }
 

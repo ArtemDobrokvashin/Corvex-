@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import ru.corvex.mailstorage.api.dto.MailDtos;
+import ru.corvex.mailstorage.api.dto.ProtocolDtos;
 import ru.corvex.mailstorage.service.MailApiService;
 import ru.corvex.mailstorage.service.MailSendService;
 import ru.corvex.mailstorage.service.ProtocolMailService;
@@ -61,6 +62,15 @@ public class MailController {
         return mail.listFolders(userId(jwt));
     }
 
+    @PostMapping("/folders")
+    @PreAuthorize("hasAuthority('MAIL_MANAGE_FOLDERS')")
+    ResponseEntity<MailDtos.FolderView> createFolder(@AuthenticationPrincipal Jwt jwt,
+                                                      @RequestBody ProtocolDtos.CreateFolderRequest request) {
+        var folder = protocol.createFolder(userId(jwt), request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(new MailDtos.FolderView(
+                folder.id(), folder.name(), folder.specialUse(), folder.messageCount(), folder.unseenCount()));
+    }
+
     @GetMapping("/folders/{folderId}/messages")
     @PreAuthorize("hasAuthority('MAIL_READ_OWN')")
     List<MailDtos.MessageListItem> messages(@AuthenticationPrincipal Jwt jwt,
@@ -89,6 +99,17 @@ public class MailController {
                 .header("X-Content-Type-Options", "nosniff")
                 .header(HttpHeaders.CACHE_CONTROL, "private, no-store")
                 .body(new InputStreamResource(file.stream()));
+    }
+
+    @PostMapping("/messages/{id}/inline-image")
+    @PreAuthorize("hasAuthority('MAIL_READ_OWN')")
+    ResponseEntity<byte[]> inlineImage(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+                                       @RequestBody MailDtos.InlineImageRequest request) throws IOException {
+        var image = mail.inlineImage(userId(jwt), id, request.cid());
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType(image.contentType()))
+                .header("X-Content-Type-Options", "nosniff")
+                .header(HttpHeaders.CACHE_CONTROL, "private, no-store")
+                .body(image.bytes());
     }
 
     @PatchMapping("/messages/{id}/flags")
