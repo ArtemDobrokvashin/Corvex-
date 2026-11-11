@@ -31,6 +31,8 @@ import MailSidebarActions from './MailSidebarActions';
 import CreateFolder from './CreateFolder';
 import FolderList from './FolderList';
 import MailToolbar from './MailToolbar';
+import { SelectMessage, SelectVisibleMessages } from './BulkSelection';
+import { moveSequentially } from './bulkMail';
 import { canAdministerExternalMail, canUseExternalMail } from './externalMailAccess';
 import {
   applyMailListControls,
@@ -106,6 +108,11 @@ export default function MailPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [folder, setFolder] = useState('INBOX');
   const [deletingFolder, setDeletingFolder] = useState(false);
+  const [bulkSelection, setBulkSelection] = useState<Array<{ id: string; uid?: number }>>([]);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkNotice, setBulkNotice] = useState('');
+  const bulkBusyRef = useRef(false);
+  const refreshEpochRef = useRef(0);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<MailReadFilter>('all');
   const [onlyFlagged, setOnlyFlagged] = useState(false);
@@ -155,6 +162,11 @@ export default function MailPage() {
     onlyAttachments,
     sortOrder,
   }, locale), [mails, folder, search, filter, onlyFlagged, onlyAttachments, sortOrder, locale]);
+
+  useEffect(() => { setBulkSelection([]); setBulkNotice(''); }, [folder, search, filter, onlyFlagged, onlyAttachments]);
+  useEffect(() => {
+    setBulkSelection((prev) => prev.filter((item) => visible.some((mail) => mail.id === item.id && mail.uid === item.uid)));
+  }, [visible]);
 
   const filtersActive = hasActiveMailFilters({
     readFilter: filter,
@@ -240,6 +252,7 @@ export default function MailPage() {
     const timestamp = Date.parse(item.date);
     return {
       id: item.id,
+      uid: item.uid,
       folder: folderKey,
       from: item.sender,
       subject: item.subject,
@@ -356,14 +369,15 @@ export default function MailPage() {
     let refreshing = false;
 
     const refresh = async () => {
-      if (cancelled || refreshing || document.visibilityState === 'hidden') return;
+      if (cancelled || refreshing || bulkBusyRef.current || document.visibilityState === 'hidden') return;
       refreshing = true;
+      const epoch = refreshEpochRef.current;
       try {
         const [folderItems, messageItems] = await Promise.all([
           mailApi.folders(),
           mailApi.messages(selectedRealFolderId),
         ]);
-        if (cancelled) return;
+        if (cancelled || epoch !== refreshEpochRef.current) return;
         const mapped = messageItems.map((item) => toMailView(item, folder));
         setRealFolders(folderItems);
         setServerFolderCounts(Object.fromEntries(folderItems.map((f) => [f.specialUse ?? f.id, f.unread])));
@@ -371,7 +385,7 @@ export default function MailPage() {
         setActiveId((current) => activeMailAfterRefresh(current, mapped));
         setLoadError(null);
       } catch (error) {
-        if (!cancelled) setLoadError(errorMessage(error));
+        if (!cancelled && epoch === refreshEpochRef.current) setLoadError(errorMessage(error));
       } finally {
         refreshing = false;
       }
@@ -534,6 +548,60 @@ export default function MailPage() {
     setMails((prev) => prev.map((m) => (m.id === active.id ? { ...m, folder: targetFolder } : m)));
     if (next && next.id !== active.id) setActiveId(next.id);
     setMobileReading(false);
+  };
+
+  const toggleBulkMail = (mail: DemoMail) => {
+    setBulkSelection((prev) => prev.some((entry) => entry.id === mail.id)
+      ? prev.filter((entry) => entry.id !== mail.id) : [...prev, { id: mail.id, uid: mail.uid }]);
+  };
+
+  const toggleAllVisible = () => {
+    setBulkSelection((prev) => visible.length && visible.every((mail) => prev.some((entry) => entry.id === mail.id))
+      ? [] : visible.map((mail) => ({ id: mail.id, uid: mail.uid })));
+  };
+
+  const moveSelected = async (targetKey: string) => {
+    if (bulkBusyRef.current || !bulkSelection.length || targetKey === folder) return;
+    const target = folders.find((f) => f.id === targetKey);
+    const sourceId = selectedRealFolderId;
+    const targetId = demoMode ? targetKey : realFolders.find((f) => (f.specialUse ?? f.id) === targetKey)?.id;
+    const snapshot = [...bulkSelection];
+    if (!target || !targetId || (!demoMode && (!sourceId || snapshot.some((entry) => entry.uid == null)))) {
+      setBulkNotice(t('Не удалось определить исходную или целевую папку. Обновите список.'));
+      return;
+    }
+    if (!window.confirm(t('Переместить выбранные письма: {count} в папку «{folder}»?', { count: snapshot.length, folder: target.name }))) return;
+    bulkBusyRef.current = true;
+    refreshEpochRef.current += 1;
+    setBulkBusy(true); setBulkNotice('');
+    const sourceKey = folder;
+    const result = await moveSequentially(snapshot.map((entry) => entry.id), async (id) => {
+      const item = snapshot.find((entry) => entry.id === id)!;
+      if (demoMode) {
+        setMails((prev) => prev.map((mail) => mail.id === id && mail.folder === sourceKey ? { ...mail, folder: targetKey } : mail));
+      } else {
+        const moved = await mailApi.move(id, targetId, { folderId: sourceId!, uid: item.uid! });
+        setMails((prev) => prev.map((mail) => mail.id === id ? { ...toMailView(moved, targetKey), body: loadedBodies[id] ?? mail.body } : mail));
+      }
+    });
+    setBulkSelection([]);
+    if (result.uncertain) {
+      setBulkNotice(t('Перенесено: {done}. Результат одного письма неизвестен или операция отклонена; не обработано: {remaining}. Проверьте папки перед повтором.', { done: result.succeeded.length, remaining: result.notAttempted.length }));
+    } else {
+      setBulkNotice(t('Перенесено писем: {count}', { count: result.succeeded.length }));
+    }
+    if (!demoMode && sourceId) {
+      try {
+        const [newFolders, newMessages] = await Promise.all([mailApi.folders(), mailApi.messages(sourceId)]);
+        setRealFolders(newFolders);
+        setServerFolderCounts(Object.fromEntries(newFolders.map((f) => [f.specialUse ?? f.id, f.unread])));
+        setMails((prev) => replaceFolderMessages(prev, sourceKey, newMessages.map((item) => toMailView(item, sourceKey))));
+      } catch {
+        setBulkNotice(t('Не удалось обновить список после операции. Обновите страницу и проверьте папки перед повтором.'));
+      }
+    }
+    bulkBusyRef.current = false;
+    setBulkBusy(false);
   };
 
   const toggleFlag = (mail: DemoMail) => {
@@ -770,6 +838,19 @@ export default function MailPage() {
                 )}
               </div>
             )}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <SelectVisibleMessages visibleCount={visible.length} selectedCount={bulkSelection.length} disabled={bulkBusy} onChange={toggleAllVisible} />
+              {bulkSelection.length > 0 && <span className="text-xs text-muted">{t('Выбрано: {count}', { count: bulkSelection.length })}</span>}
+            </div>
+            {bulkSelection.length > 0 && <div className="mt-2 flex flex-wrap items-center gap-2">
+              {folder !== 'ARCHIVE' && <button type="button" disabled={bulkBusy} className="btn-secondary h-9 px-2 text-xs" onClick={() => void moveSelected('ARCHIVE')}>{t('В архив')}</button>}
+              {folder !== 'TRASH' && <button type="button" disabled={bulkBusy} className="btn-secondary h-9 px-2 text-xs" onClick={() => void moveSelected('TRASH')}>{t('В корзину')}</button>}
+              <select aria-label={t('Переместить выбранные письма')} disabled={bulkBusy} value="" className="field field-sm min-w-0 max-w-full flex-1" onChange={(e) => { if (e.target.value) void moveSelected(e.target.value); }}>
+                <option value="">{t('Переместить в папку')}</option>
+                {folders.filter((f) => f.id !== folder).map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+              </select>
+            </div>}
+            {bulkNotice && <p role="status" className="mt-2 text-xs leading-5 text-muted">{bulkNotice}</p>}
             {canManageFolders && <div className="mt-2 xl:hidden"><CreateFolder onCreate={createFolder} /></div>}
             <FolderList compact folders={folders} selected={folder} counts={folderCounts} onSelect={selectFolder} />
           </header>
@@ -790,6 +871,9 @@ export default function MailPage() {
                   className={`group relative flex cursor-pointer gap-3 border-b border-line/70 px-4 py-3.5 transition duration-150 ${selected ? 'bg-accent-soft/70' : 'hover:bg-chrome'}`}
                 >
                   {selected && <span className="absolute inset-y-3 left-0 w-[3px] rounded-full bg-accent" />}
+                  <div className="flex shrink-0 items-start pt-3" onClick={(event) => event.stopPropagation()}>
+                    <SelectMessage subject={m.subject} checked={bulkSelection.some((entry) => entry.id === m.id)} disabled={bulkBusy} onChange={() => toggleBulkMail(m)} />
+                  </div>
                   <Avatar name={m.from} size={38} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">

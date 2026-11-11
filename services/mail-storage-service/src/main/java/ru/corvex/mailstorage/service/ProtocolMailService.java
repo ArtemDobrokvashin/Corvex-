@@ -16,6 +16,7 @@ import ru.corvex.mailstorage.mime.MimeMailParser;
 import ru.corvex.mailstorage.repository.MailFolderRepository;
 import ru.corvex.mailstorage.repository.MessageMetadataRepository;
 import ru.corvex.mailstorage.storage.MaildirStorage;
+import ru.corvex.mailstorage.storage.TransactionalMailMove;
 import ru.corvex.mailstorage.storage.RawMessageSpool;
 
 import java.io.IOException;
@@ -365,7 +366,7 @@ public class ProtocolMailService {
         }
     }
 
-    @Transactional
+    @Transactional(rollbackFor = IOException.class)
     public ProtocolDtos.CopyResponse copyMessages(UUID ownerId, UUID folderId, ProtocolDtos.CopyRequest req)
             throws IOException {
         loadFolder(ownerId, folderId);
@@ -373,13 +374,15 @@ public class ProtocolMailService {
         List<Long> sourceUids = new ArrayList<>();
         List<Long> targetUids = new ArrayList<>();
         for (Long uid : req.uids() == null ? List.<Long>of() : req.uids()) {
-            MessageMetadata src = messages.findByFolder_IdAndUidAndOwnerId(folderId, uid, ownerId)
+            MessageMetadata src = (req.move()
+                    ? messages.lockFolderUid(folderId, uid, ownerId)
+                    : messages.findByFolder_IdAndUidAndOwnerId(folderId, uid, ownerId))
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Письмо не найдено: uid=" + uid));
             long newUid = target.getUidNext();
             target.setUidNext(newUid + 1);
             long newModseq = nextModSeq(target);
             if (req.move()) {
-                Path newPath = maildir.moveMessageToFolder(src.getMaildirPath(), target.getName(), src.isSeen());
+                Path newPath = TransactionalMailMove.stage(maildir, src.getMaildirPath(), target.getName(), src.isSeen());
                 src.setFolder(target);
                 src.setUid(newUid);
                 src.setModseq(newModseq);

@@ -83,7 +83,7 @@ class StorageControllersTest {
 
         verify(mail).listMessages(userId, folderId, 50L, 25);
         verify(mail).getMessage(userId, messageId);
-        verify(mail).moveMessage(userId, messageId, folderId);
+        verify(mail).moveMessage(userId, messageId, folderId, null, null);
         verify(protocol).quota(userId);
     }
 

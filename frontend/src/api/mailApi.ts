@@ -94,10 +94,10 @@ export const mailApi = {
       method: 'PATCH',
       body: JSON.stringify(flags),
     }),
-  move: (id: string, targetFolderId: string) =>
-    apiFetch<MailMessageListItem>(`/api/v1/mail/messages/${id}/move`, {
+  move: (id: string, targetFolderId: string, expected?: { folderId: string; uid: number }) =>
+    apiFetch<MailMessageListItem>(`/api/v1/mail/messages/${encodeURIComponent(id)}/move`, {
       method: 'POST',
-      body: JSON.stringify({ targetFolderId }),
+      body: JSON.stringify({ targetFolderId, ...(expected ? { expectedFolderId: expected.folderId, expectedUid: expected.uid } : {}) }),
     }),
   send: (request: SendMessageRequest) =>
     apiFetch<SendMessageResult>('/api/v1/mail/messages/send', {

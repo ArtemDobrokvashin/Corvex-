@@ -20,7 +20,7 @@ export const DEMO_USER = {
 };
 
 export interface DemoMail {
-  id: string; from: string; subject: string; snippet: string; body: string;
+  id: string; uid?: number; from: string; subject: string; snippet: string; body: string;
   date: string; timestamp: number; seen: boolean; flagged: boolean; hasAttachments: boolean; folder: string;
 }
 

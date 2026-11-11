@@ -133,7 +133,7 @@ public class MailController {
     MailDtos.MessageListItem move(@AuthenticationPrincipal Jwt jwt,
                                   @PathVariable UUID id,
                                   @RequestBody MailDtos.MoveMessageRequest req) throws IOException {
-        return mail.moveMessage(userId(jwt), id, req.targetFolderId());
+        return mail.moveMessage(userId(jwt), id, req.targetFolderId(), req.expectedFolderId(), req.expectedUid());
     }
 
     @PostMapping("/messages/send")

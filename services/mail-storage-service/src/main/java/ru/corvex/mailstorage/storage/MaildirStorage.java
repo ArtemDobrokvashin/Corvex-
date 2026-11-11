@@ -159,6 +159,16 @@ public class MaildirStorage {
         return mailRoot.relativize(target);
     }
 
+    /** Durable staged copy for webmail MOVE: keep the source until the DB transaction commits. */
+    public Path stageMessageForMove(String relativePath, String targetFolder, boolean seen) throws IOException {
+        Path source = resolveMessagePath(relativePath);
+        Path relative = mailRoot.toAbsolutePath().normalize().relativize(source);
+        if (relative.getNameCount() < 4) throw new IllegalArgumentException("Некорректный путь письма");
+        try (InputStream in = Files.newInputStream(source)) {
+            return storeMessage(relative.getName(0).toString(), targetFolder, in, seen);
+        }
+    }
+
     /** Копия .eml в другую папку того же ящика (IMAP COPY): новое имя файла, исходник не тронут. */
     public Path copyMessageToFolder(String relativePath, String targetFolder, boolean seen) throws IOException {
         Path source = resolveMessagePath(relativePath);

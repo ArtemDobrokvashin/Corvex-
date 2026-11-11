@@ -4,6 +4,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.http.HttpStatus;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 import ru.corvex.mailstorage.api.dto.ProtocolDtos;
 import ru.corvex.mailstorage.client.AuthUserClient;
@@ -247,6 +249,51 @@ class ProtocolMailServiceTest {
         assertEquals(List.of(100L), res.targetUids());
         assertEquals(21L, archive.getHighestModseq(), "копия получает свежий MODSEQ целевой папки");
         assertTrue(Files.exists(tmp.resolve("mail").resolve(rel)), "COPY не трогает исходный файл");
+    }
+
+    @Test
+    void imapMoveRollbackPreservesOriginalAndDeletesStagedCopy() throws Exception {
+        MailFolder inbox = folder("INBOX", "INBOX", 5);
+        MailFolder archive = folder("Archive", "ARCHIVE", 100);
+        String original = maildir.storeMessage("ivanov@corp.local", "INBOX",
+                new ByteArrayInputStream("hello".getBytes(StandardCharsets.UTF_8))).toString();
+        MessageMetadata src = message(inbox, 2, original);
+        when(folders.findByIdAndOwnerId(inbox.getId(), ownerId)).thenReturn(Optional.of(inbox));
+        when(folders.findByIdAndOwnerId(archive.getId(), ownerId)).thenReturn(Optional.of(archive));
+        when(folders.lockById(archive.getId())).thenReturn(Optional.of(archive));
+        when(messages.lockFolderUid(inbox.getId(), 2L, ownerId)).thenReturn(Optional.of(src));
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.copyMessages(ownerId, inbox.getId(), new ProtocolDtos.CopyRequest(List.of(2L), archive.getId(), true));
+            String staged = src.getMaildirPath();
+            assertTrue(Files.exists(tmp.resolve("mail").resolve(original)));
+            assertTrue(Files.exists(tmp.resolve("mail").resolve(staged)));
+            TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
+            assertTrue(Files.exists(tmp.resolve("mail").resolve(original)));
+            assertFalse(Files.exists(tmp.resolve("mail").resolve(staged)));
+        } finally { TransactionSynchronizationManager.clearSynchronization(); }
+    }
+
+    @Test
+    void imapMovePartialFailureRetainsOriginalOnRollback() throws Exception {
+        MailFolder inbox = folder("INBOX", "INBOX", 5);
+        MailFolder archive = folder("Archive", "ARCHIVE", 100);
+        String original = maildir.storeMessage("ivanov@corp.local", "INBOX",
+                new ByteArrayInputStream("hello".getBytes(StandardCharsets.UTF_8))).toString();
+        MessageMetadata src = message(inbox, 2, original);
+        when(folders.findByIdAndOwnerId(inbox.getId(), ownerId)).thenReturn(Optional.of(inbox));
+        when(folders.findByIdAndOwnerId(archive.getId(), ownerId)).thenReturn(Optional.of(archive));
+        when(folders.lockById(archive.getId())).thenReturn(Optional.of(archive));
+        when(messages.lockFolderUid(inbox.getId(), 2L, ownerId)).thenReturn(Optional.of(src));
+        when(messages.lockFolderUid(inbox.getId(), 3L, ownerId)).thenReturn(Optional.empty());
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            assertThrows(ResponseStatusException.class, () -> service.copyMessages(ownerId, inbox.getId(), new ProtocolDtos.CopyRequest(List.of(2L, 3L), archive.getId(), true)));
+            String staged = src.getMaildirPath();
+            TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
+            assertTrue(Files.exists(tmp.resolve("mail").resolve(original)));
+            assertFalse(Files.exists(tmp.resolve("mail").resolve(staged)));
+        } finally { TransactionSynchronizationManager.clearSynchronization(); }
     }
 
     @Test

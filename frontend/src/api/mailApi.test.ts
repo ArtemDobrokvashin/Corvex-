@@ -19,6 +19,13 @@ describe('mailApi quota', () => {
     expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/mail/folders/id', { method: 'DELETE' });
   });
 
+  it('passes an expected source folder and UID for a guarded move', async () => {
+    await mailApi.move('message', 'target', { folderId: 'source', uid: 8 });
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/mail/messages/message/move', {
+      method: 'POST', body: JSON.stringify({ targetFolderId: 'target', expectedFolderId: 'source', expectedUid: 8 }),
+    });
+  });
+
   it('downloads an attachment through the authenticated binary client', async () => {
     await mailApi.downloadAttachment('message-id', 2);
     expect(apiBlobMock).toHaveBeenCalledWith('/api/v1/mail/messages/message-id/attachments/2');

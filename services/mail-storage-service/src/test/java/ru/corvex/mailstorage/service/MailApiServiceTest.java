@@ -8,6 +8,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.web.server.ResponseStatusException;
@@ -307,18 +309,32 @@ class MailApiServiceTest {
     void moveWithinSameFolderReturnsCurrentMessage() {
         MailFolder inbox = folder("INBOX", "INBOX");
         MessageMetadata message = message(inbox, 8);
-        when(messages.findByIdAndOwnerId(message.getId(), ownerId)).thenReturn(Optional.of(message));
+        when(messages.lockOwned(message.getId(), ownerId)).thenReturn(Optional.of(message));
         when(folders.findByIdAndOwnerId(inbox.getId(), ownerId)).thenReturn(Optional.of(inbox));
+        when(folders.lockById(inbox.getId())).thenReturn(Optional.of(inbox));
 
         var result = assertNoIo(() -> service.moveMessage(ownerId, message.getId(), inbox.getId()));
 
         assertEquals(8, result.uid());
-        verify(folders, never()).lockById(any());
         verify(messages, never()).save(any());
     }
 
     @Test
-    void moveAllocatesTargetUidAndMovesFile() throws Exception {
+    void moveKeepsOriginalUntilCommitAndCleansItAfterCommit() throws Exception {
+        checkMoveCompletion(TransactionSynchronization.STATUS_COMMITTED);
+    }
+
+    @Test
+    void moveRollbackKeepsOriginalAndDeletesStagedCopy() throws Exception {
+        checkMoveCompletion(TransactionSynchronization.STATUS_ROLLED_BACK);
+    }
+
+    @Test
+    void moveUnknownOutcomeKeepsBothCopiesForRecovery() throws Exception {
+        checkMoveCompletion(TransactionSynchronization.STATUS_UNKNOWN);
+    }
+
+    private void checkMoveCompletion(int status) throws Exception {
         MailFolder inbox = folder("INBOX", "INBOX");
         MailFolder archive = folder("Archive", "ARCHIVE");
         archive.setUidNext(41);
@@ -327,20 +343,25 @@ class MailApiServiceTest {
         MessageMetadata message = message(inbox, 8);
         message.setSeen(true);
         message.setMaildirPath(rel);
-        when(messages.findByIdAndOwnerId(message.getId(), ownerId)).thenReturn(Optional.of(message));
+        when(messages.lockOwned(message.getId(), ownerId)).thenReturn(Optional.of(message));
         when(folders.findByIdAndOwnerId(archive.getId(), ownerId)).thenReturn(Optional.of(archive));
         when(folders.lockById(archive.getId())).thenReturn(Optional.of(archive));
         when(jdbc.queryForObject(anyString(), eq(Integer.class), any(Object[].class))).thenReturn(null);
-
-        var result = service.moveMessage(ownerId, message.getId(), archive.getId());
-
-        assertEquals(archive.getId(), result.folderId());
-        assertEquals(41, result.uid());
-        assertEquals(42, archive.getUidNext());
-        assertEquals(2, message.getModseq());
-        assertFalse(result.hasAttachments(), "null count из JDBC означает отсутствие вложений");
-        assertFalse(Files.exists(tmp.resolve("mail").resolve(rel)));
-        assertTrue(Files.exists(tmp.resolve("mail").resolve(message.getMaildirPath())));
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            var result = service.moveMessage(ownerId, message.getId(), archive.getId());
+            assertEquals(archive.getId(), result.folderId());
+            assertEquals(41, result.uid());
+            assertEquals(42, archive.getUidNext());
+            assertEquals(2, message.getModseq());
+            assertTrue(Files.exists(tmp.resolve("mail").resolve(rel)));
+            assertTrue(Files.exists(tmp.resolve("mail").resolve(message.getMaildirPath())));
+            TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCompletion(status));
+            assertEquals(status != TransactionSynchronization.STATUS_COMMITTED, Files.exists(tmp.resolve("mail").resolve(rel)));
+            assertEquals(status != TransactionSynchronization.STATUS_ROLLED_BACK, Files.exists(tmp.resolve("mail").resolve(message.getMaildirPath())));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     @Test
@@ -348,7 +369,7 @@ class MailApiServiceTest {
         MailFolder inbox = folder("INBOX", "INBOX");
         MessageMetadata message = message(inbox, 1);
         UUID missingTarget = UUID.randomUUID();
-        when(messages.findByIdAndOwnerId(message.getId(), ownerId)).thenReturn(Optional.of(message));
+        when(messages.lockOwned(message.getId(), ownerId)).thenReturn(Optional.of(message));
         when(folders.findByIdAndOwnerId(missingTarget, ownerId)).thenReturn(Optional.empty());
 
         assertEquals(HttpStatus.NOT_FOUND, assertThrows(ResponseStatusException.class,
@@ -358,6 +379,23 @@ class MailApiServiceTest {
         when(messages.findByIdAndOwnerId(missingMessage, ownerId)).thenReturn(Optional.empty());
         assertEquals(HttpStatus.NOT_FOUND, assertThrows(ResponseStatusException.class,
                 () -> service.getMessage(ownerId, missingMessage)).getStatusCode());
+    }
+
+    @Test
+    void guardedMoveRejectsStaleFolderOrUidBeforeWriting() {
+        MailFolder inbox = folder("INBOX", "INBOX");
+        MailFolder archive = folder("Archive", "ARCHIVE");
+        MessageMetadata message = message(inbox, 8);
+        when(folders.findByIdAndOwnerId(archive.getId(), ownerId)).thenReturn(Optional.of(archive));
+        when(folders.lockById(archive.getId())).thenReturn(Optional.of(archive));
+        when(messages.lockOwned(message.getId(), ownerId)).thenReturn(Optional.of(message));
+        assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
+                () -> service.moveMessage(ownerId, message.getId(), archive.getId(), inbox.getId(), 7L)).getStatusCode());
+        assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
+                () -> service.moveMessage(ownerId, message.getId(), archive.getId(), UUID.randomUUID(), 8L)).getStatusCode());
+        assertEquals(HttpStatus.BAD_REQUEST, assertThrows(ResponseStatusException.class,
+                () -> service.moveMessage(ownerId, message.getId(), archive.getId(), inbox.getId(), null)).getStatusCode());
+        verify(messages, never()).save(any());
     }
 
     private interface IoCall<T> {

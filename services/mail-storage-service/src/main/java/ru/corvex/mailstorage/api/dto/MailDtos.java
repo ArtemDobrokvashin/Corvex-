@@ -50,7 +50,8 @@ public final class MailDtos {
     public record UpdateFlagsRequest(Boolean seen, Boolean flagged, Boolean answered, Boolean deleted) {
     }
 
-    public record MoveMessageRequest(UUID targetFolderId) {
+    public record MoveMessageRequest(UUID targetFolderId, UUID expectedFolderId, Long expectedUid) {
+        public MoveMessageRequest(UUID targetFolderId) { this(targetFolderId, null, null); }
     }
 
     public record SendAttachment(String fileName, String contentType, String contentBase64) {
