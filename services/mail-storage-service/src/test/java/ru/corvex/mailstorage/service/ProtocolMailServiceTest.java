@@ -93,6 +93,46 @@ class ProtocolMailServiceTest {
     }
 
     @Test
+    void webDeleteRejectsNonEmptyAndSystemFoldersWithoutDeletingMessages() {
+        MailFolder custom = folder("Projects", null, 1);
+        when(folders.findByIdAndOwnerId(custom.getId(), ownerId)).thenReturn(Optional.of(custom));
+        when(folders.lockById(custom.getId())).thenReturn(Optional.of(custom));
+        when(messages.countByFolder_Id(custom.getId())).thenReturn(1L);
+        assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
+                () -> service.deleteEmptyWebFolder(ownerId, custom.getId())).getStatusCode());
+        verify(folders, never()).delete(custom);
+        MailFolder inbox = folder("INBOX", "INBOX", 1);
+        when(folders.findByIdAndOwnerId(inbox.getId(), ownerId)).thenReturn(Optional.of(inbox));
+        when(folders.lockById(inbox.getId())).thenReturn(Optional.of(inbox));
+        assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
+                () -> service.deleteEmptyWebFolder(ownerId, inbox.getId())).getStatusCode());
+        verify(folders, never()).delete(inbox);
+    }
+
+    @Test
+    void webDeleteAllowsOnlyOwnedEmptyLeafFolder() {
+        MailFolder custom = folder("Projects", null, 1);
+        when(folders.findByIdAndOwnerId(custom.getId(), ownerId)).thenReturn(Optional.of(custom));
+        when(folders.lockById(custom.getId())).thenReturn(Optional.of(custom));
+        service.deleteEmptyWebFolder(ownerId, custom.getId());
+        verify(folders).delete(custom);
+        UUID stranger = UUID.randomUUID();
+        assertEquals(HttpStatus.NOT_FOUND, assertThrows(ResponseStatusException.class,
+                () -> service.deleteEmptyWebFolder(stranger, custom.getId())).getStatusCode());
+    }
+
+    @Test
+    void webDeleteRejectsNestedFolders() {
+        MailFolder custom = folder("Projects", null, 1);
+        when(folders.findByIdAndOwnerId(custom.getId(), ownerId)).thenReturn(Optional.of(custom));
+        when(folders.lockById(custom.getId())).thenReturn(Optional.of(custom));
+        when(folders.existsByParent_Id(custom.getId())).thenReturn(true);
+        assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
+                () -> service.deleteEmptyWebFolder(ownerId, custom.getId())).getStatusCode());
+        verify(folders, never()).delete(custom);
+    }
+
+    @Test
     void updateFlagsTouchesOnlyNonNullFields() {
         MailFolder inbox = folder("INBOX", "INBOX", 5);
         MessageMetadata m = message(inbox, 3, "x/y.eml");

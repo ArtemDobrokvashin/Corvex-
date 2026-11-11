@@ -102,6 +102,16 @@ class StorageControllersTest {
     }
 
     @Test
+    void deleteFolderUsesJwtOwnerAndRequiresFolderPermission() throws Exception {
+        var protocol = mock(ProtocolMailService.class);
+        var controller = new MailController(mock(MailApiService.class), mock(MailSendService.class), protocol);
+        var id = UUID.randomUUID();
+        assertEquals(HttpStatus.NO_CONTENT, controller.deleteFolder(jwt, id).getStatusCode());
+        verify(protocol).deleteEmptyWebFolder(userId, id);
+        assertEquals("hasAuthority('MAIL_MANAGE_FOLDERS')", MailController.class.getDeclaredMethod("deleteFolder", Jwt.class, UUID.class).getAnnotation(PreAuthorize.class).value());
+    }
+
+    @Test
     void attachmentResponseUsesJwtOwnerAndSafeDownloadHeaders() throws Exception {
         MailApiService mail = mock(MailApiService.class);
         MailController controller = new MailController(mail, mock(MailSendService.class), mock(ProtocolMailService.class));

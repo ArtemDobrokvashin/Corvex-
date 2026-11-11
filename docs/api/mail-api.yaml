@@ -60,9 +60,9 @@ paths:
       parameters: [{ name: folderId, in: path, required: true, schema: { type: string, format: uuid } }]
       responses: { '200': { description: Обновлена } }
     delete:
-      summary: Удалить папку (письма — в Корзину)
+      summary: Удалить пустую личную папку (MAIL_MANAGE_FOLDERS); системные и непустые папки не удаляются
       parameters: [{ name: folderId, in: path, required: true, schema: { type: string, format: uuid } }]
-      responses: { '204': { description: Удалена } }
+      responses: { '204': { description: Удалена }, '404': { description: Не найдена }, '409': { description: Системная папка, есть письма или вложенные папки } }
   /mail/folders/{folderId}/messages:
     get:
       summary: Список писем папки (курсор по internalDate+id, только метаданные и сниппет)

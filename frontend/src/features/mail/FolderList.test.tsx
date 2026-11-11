@@ -26,4 +26,15 @@ describe('folder navigation', () => {
     expect(select).toHaveBeenCalledWith('custom');
     await act(async () => root.unmount()); host.remove(); useLocaleStore.setState({ locale: 'ru' });
   });
+  it('offers deletion only for custom folders, separately from selecting them', async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    useLocaleStore.setState({ locale: 'en' });
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
+    const select = vi.fn(), remove = vi.fn();
+    await act(async () => root.render(<FolderList folders={[{ id: 'INBOX', name: 'Inbox' }, { id: 'custom', name: 'Work' }]} selected="INBOX" counts={{}} onSelect={select} onDelete={remove} />));
+    expect(host.querySelector('[aria-label="Delete folder Inbox"]')).toBeNull();
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Delete folder Work"]')!.click());
+    expect(remove).toHaveBeenCalledWith({ id: 'custom', name: 'Work' }); expect(select).not.toHaveBeenCalled();
+    await act(async () => root.unmount()); host.remove(); useLocaleStore.setState({ locale: 'ru' });
+  });
 });

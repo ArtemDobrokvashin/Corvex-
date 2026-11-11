@@ -187,6 +187,30 @@ public class ProtocolMailService {
         });
     }
 
+    /** Webmail removes only empty personal folders; unlike IMAP DELETE this never deletes messages. */
+    @Transactional
+    public void deleteEmptyWebFolder(UUID ownerId, UUID folderId) {
+        MailFolder owned = loadFolder(ownerId, folderId);
+        MailFolder folder = folders.lockById(owned.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Папка не найдена"));
+        if (!ownerId.equals(folder.getOwnerId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Папка не найдена");
+        }
+        if (folder.getSpecialUse() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Системную папку удалить нельзя");
+        }
+        if (folders.existsByParent_Id(folderId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Сначала удалите вложенные папки");
+        }
+        if (messages.countByFolder_Id(folderId) != 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Сначала переместите письма из папки");
+        }
+        // Never reuse IMAP DELETE here: it removes message files. Keep the Maildir directory
+        // as a harmless leftover; recursive filesystem deletion is unsafe if the database
+        // transaction rolls back or an untracked file is present.
+        folders.delete(folder);
+    }
+
     // ------------------------------------------------------------------ messages
 
     @Transactional(readOnly = true)

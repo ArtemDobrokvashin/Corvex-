@@ -10,6 +10,8 @@ import {
   Minimize2,
   Paperclip,
   PenSquare,
+  Reply,
+  Forward,
   Search,
   Send,
   Settings2,
@@ -102,6 +104,7 @@ export default function MailPage() {
   }, [demoMode, locale, realFolders, demoCustomFolders]);
   const [searchParams, setSearchParams] = useSearchParams();
   const [folder, setFolder] = useState('INBOX');
+  const [deletingFolder, setDeletingFolder] = useState(false);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<MailReadFilter>('all');
   const [onlyFlagged, setOnlyFlagged] = useState(false);
@@ -476,6 +479,25 @@ export default function MailPage() {
     }
   };
 
+  const deleteFolder = async (item: { id: string; name: string }) => {
+    if (!canManageFolders || deletingFolder) return;
+    if (!window.confirm(t('Удалить пустую папку «{name}»? Письма не удаляются.', { name: item.name }))) return;
+    setDeletingFolder(true);
+    setLoadError(null);
+    try {
+      if (demoMode) {
+        if (mails.some((mail) => mail.folder === item.id)) throw new Error(t('Сначала переместите письма из папки'));
+        setDemoCustomFolders((prev) => prev.filter((f) => f.id !== item.id));
+      } else {
+        await mailApi.deleteFolder(item.id);
+        setRealFolders((prev) => prev.filter((f) => f.id !== item.id));
+      }
+      if (folder === item.id) { setFolder('INBOX'); setActiveId(''); setMobileReading(false); }
+    } catch (error) {
+      setLoadError(errorMessage(error));
+    } finally { setDeletingFolder(false); }
+  };
+
   const moveActive = (targetFolder: string) => {
     if (!active) return;
     const next = visible[activeIndex + 1] ?? visible[activeIndex - 1];
@@ -596,7 +618,7 @@ export default function MailPage() {
           />
 
           <p className="section-label mb-1.5 mt-6 shrink-0">{t('Папки')}</p>
-          <FolderList folders={folders} selected={folder} counts={folderCounts} onSelect={selectFolder} />
+          <FolderList folders={folders} selected={folder} counts={folderCounts} onSelect={selectFolder} onDelete={canManageFolders ? (item) => void deleteFolder(item) : undefined} deleting={deletingFolder} />
 
           {canManageFolders && <div className="mt-3"><CreateFolder onCreate={createFolder} /></div>}
           <MailboxUsage quota={mailboxQuota} unavailable={mailboxQuotaUnavailable} />
@@ -734,7 +756,7 @@ export default function MailPage() {
               </div>
             )}
             {canManageFolders && <div className="mt-2 xl:hidden"><CreateFolder onCreate={createFolder} /></div>}
-            <FolderList compact folders={folders} selected={folder} counts={folderCounts} onSelect={selectFolder} />
+            <FolderList compact folders={folders} selected={folder} counts={folderCounts} onSelect={selectFolder} onDelete={canManageFolders ? (item) => void deleteFolder(item) : undefined} deleting={deletingFolder} />
           </header>
 
           <div className="scroll-area min-h-0 flex-1">
@@ -832,13 +854,20 @@ export default function MailPage() {
                     </div>}
 
                   <div className="mt-9 flex flex-wrap gap-2 border-t border-line pt-5">
-                    <label className="flex items-center gap-2 text-xs text-muted">{t('Переместить в')}
+                    <label className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted"><span className="whitespace-nowrap">{t('Переместить в')}</span>
                       <select aria-label={t('Переместить письмо в папку')} className="field field-sm max-w-[220px]" value="" onChange={(e) => { if (e.target.value) moveActive(e.target.value); }}>
                         <option value="">{t('Выберите папку')}</option>
                         {folders.filter((f) => f.id !== folder).map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
                       </select>
                     </label>
-
+                    <div className="flex flex-wrap gap-2 sm:ml-auto">
+                      <button type="button" className="btn-primary" disabled={Boolean(composeDraft)} onClick={() => setComposeDraft({ to: emailFromHeader(active.from), subject: `Re: ${active.subject}`, body: '' })}>
+                        <Reply size={16} /> {t('Ответить')}
+                      </button>
+                      <button type="button" className="btn-secondary" disabled={Boolean(composeDraft)} onClick={() => setComposeDraft({ to: '', subject: `Fwd: ${active.subject}`, body: `\n\n--- ${t('Пересылаемое письмо')} ---\n${activeBody}` })}>
+                        <Forward size={16} /> {t('Переслать')}
+                      </button>
+                    </div>
                   </div>
                 </article>
               </div>
