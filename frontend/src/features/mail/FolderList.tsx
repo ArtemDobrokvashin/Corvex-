@@ -7,13 +7,11 @@ const ICONS: Record<string, typeof Inbox> = {
 };
 
 /** A bounded vertical folder navigation at every viewport size. */
-export default function FolderList({ folders, selected, counts, onSelect, onDelete, deleting, compact = false }: {
+export default function FolderList({ folders, selected, counts, onSelect, compact = false }: {
   folders: FolderListItem[];
   selected: string;
   counts: Record<string, number>;
   onSelect: (id: string) => void;
-  onDelete?: (folder: FolderListItem) => void;
-  deleting?: boolean;
   compact?: boolean;
 }) {
   const { t } = useI18n();
@@ -34,9 +32,6 @@ export default function FolderList({ folders, selected, counts, onSelect, onDele
             <span className="min-w-0 flex-1 truncate">{folder.name}</span>
             {count > 0 && <span className={`shrink-0 text-xs ${active ? 'font-semibold text-accent' : 'font-medium text-faint'}`}>{count}</span>}
           </button>
-          {onDelete && !ICONS[folder.id] && <button type="button" className="icon-btn shrink-0" disabled={deleting}
-            aria-label={t('Удалить папку {name}', { name: folder.name })} title={t('Удалить папку {name}', { name: folder.name })}
-            onClick={() => onDelete(folder)}><Trash2 size={16} aria-hidden="true" /></button>}
           </div>
         );
       })}

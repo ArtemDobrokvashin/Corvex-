@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { demoFolders, demoMails, DemoMail } from '../../api/demoData';
 import { externalMailApi, ExternalMailAccount } from '../../api/externalMailApi';
+import { ApiError } from '../../api/httpClient';
 import { mailApi, MailboxQuota, MailFolderView, MailMessageListItem, MailAttachmentView, SendAttachment } from '../../api/mailApi';
 import ExternalMailAccountsModal from './ExternalMailAccountsModal';
 import MailboxUsage from './MailboxUsage';
@@ -214,6 +215,9 @@ export default function MailPage() {
   };
   const activeIndex = active ? visible.findIndex((m) => m.id === active.id) : -1;
   const currentFolder = folders.find((f) => f.id === folder);
+  const canDeleteCurrentFolder = canManageFolders && Boolean(currentFolder) && (demoMode
+    ? demoCustomFolders.some((f) => f.id === folder)
+    : realFolders.some((f) => f.id === folder && f.specialUse == null));
   const activeRecipientData = active ? loadedRecipients[active.id] : undefined;
   const recipientIdentity = {
     email: sessionUser?.email,
@@ -481,20 +485,30 @@ export default function MailPage() {
 
   const deleteFolder = async (item: { id: string; name: string }) => {
     if (!canManageFolders || deletingFolder) return;
-    if (!window.confirm(t('Удалить пустую папку «{name}»? Письма не удаляются.', { name: item.name }))) return;
     setDeletingFolder(true);
     setLoadError(null);
     try {
+      const freshFolder = demoMode ? undefined : (await mailApi.folders()).find((f) => f.id === item.id);
+      if (!demoMode && !freshFolder) throw new Error(t('Папка не найдена. Обновите список папок.'));
+      const nonEmpty = demoMode ? mails.some((mail) => mail.folder === item.id) : (freshFolder?.total ?? 0) > 0;
+      if (nonEmpty) {
+        window.alert(t('Непустую папку удалить нельзя. Сначала переместите письма из папки.'));
+        return;
+      }
+      if (!window.confirm(t('Удалить пустую папку «{name}»? Письма не удаляются.', { name: item.name }))) return;
       if (demoMode) {
-        if (mails.some((mail) => mail.folder === item.id)) throw new Error(t('Сначала переместите письма из папки'));
         setDemoCustomFolders((prev) => prev.filter((f) => f.id !== item.id));
       } else {
         await mailApi.deleteFolder(item.id);
         setRealFolders((prev) => prev.filter((f) => f.id !== item.id));
       }
-      if (folder === item.id) { setFolder('INBOX'); setActiveId(''); setMobileReading(false); }
+      setFolder((current) => current === item.id ? 'INBOX' : current);
     } catch (error) {
-      setLoadError(errorMessage(error));
+      if (error instanceof ApiError && error.status === 409) {
+        window.alert(t('Не удалось удалить папку: она содержит письма или вложенные папки, либо является системной.'));
+      } else {
+        setLoadError(errorMessage(error));
+      }
     } finally { setDeletingFolder(false); }
   };
 
@@ -618,7 +632,7 @@ export default function MailPage() {
           />
 
           <p className="section-label mb-1.5 mt-6 shrink-0">{t('Папки')}</p>
-          <FolderList folders={folders} selected={folder} counts={folderCounts} onSelect={selectFolder} onDelete={canManageFolders ? (item) => void deleteFolder(item) : undefined} deleting={deletingFolder} />
+          <FolderList folders={folders} selected={folder} counts={folderCounts} onSelect={selectFolder} />
 
           {canManageFolders && <div className="mt-3"><CreateFolder onCreate={createFolder} /></div>}
           <MailboxUsage quota={mailboxQuota} unavailable={mailboxQuotaUnavailable} />
@@ -630,6 +644,7 @@ export default function MailPage() {
             <div className="flex items-center gap-2">
               <h2 className="min-w-0 flex-1 truncate text-[17px] font-semibold tracking-[-0.02em]">{currentFolder?.name ?? t('Почта')}</h2>
               <span className="text-xs text-faint">{visible.length}</span>
+              {canDeleteCurrentFolder && currentFolder && <IconButton icon={Trash2} label={t('Удалить папку {name}', { name: currentFolder.name })} className="h-8 w-8" size={16} disabled={deletingFolder} onClick={() => void deleteFolder(currentFolder)} />}
               <button type="button" onClick={() => setComposeDraft({ to: '', subject: '', body: '' })} disabled={Boolean(composeDraft)} className="btn-primary h-8 px-2.5 text-xs xl:hidden" aria-label={t('Написать письмо')}>
                 <PenSquare size={15} /><span className="hidden sm:inline">{t('Написать')}</span>
               </button>
@@ -756,7 +771,7 @@ export default function MailPage() {
               </div>
             )}
             {canManageFolders && <div className="mt-2 xl:hidden"><CreateFolder onCreate={createFolder} /></div>}
-            <FolderList compact folders={folders} selected={folder} counts={folderCounts} onSelect={selectFolder} onDelete={canManageFolders ? (item) => void deleteFolder(item) : undefined} deleting={deletingFolder} />
+            <FolderList compact folders={folders} selected={folder} counts={folderCounts} onSelect={selectFolder} />
           </header>
 
           <div className="scroll-area min-h-0 flex-1">
