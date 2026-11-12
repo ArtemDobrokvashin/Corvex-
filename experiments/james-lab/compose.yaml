@@ -1,0 +1,17 @@
+# Isolated synthetic-data laboratory, never overlay with Corvex compose.
+services:
+  james:
+    image: apache/james:demo-3.9.1
+    networks: [lab]
+  probe:
+    image: python:3.12-alpine
+    working_dir: /probe
+    volumes:
+      - ./probe.py:/probe/probe.py:ro
+    entrypoint: ["python", "/probe/probe.py"]
+    networks: [lab]
+    depends_on:
+      - james
+networks:
+  lab:
+    internal: true

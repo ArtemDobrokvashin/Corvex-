@@ -1,0 +1,96 @@
+"""Disposable James demo protocol probe. Synthetic messages only; not production."""
+import email.policy
+from email.message import EmailMessage
+import imaplib
+import os
+import secrets
+import time
+
+HOST = 'james'
+USER = 'user01@james.local'
+OTHER = 'user02@james.local'
+PASSWORD = '1234'  # Public upstream demo account, safe only on the isolated network.
+
+
+def ok(response, operation):
+    status, data = response
+    if status != 'OK':
+        raise RuntimeError(f'{operation}: {status} {data!r}')
+    return data
+
+
+def connect(user, deadline):
+    while True:
+        client = None
+        try:
+            client = imaplib.IMAP4(HOST, 143, timeout=5)
+            ok(client.login(user, PASSWORD), 'login')
+            return client
+        except (OSError, imaplib.IMAP4.error):
+            if client is not None:
+                try:
+                    client.shutdown()
+                except OSError:
+                    pass
+            if time.monotonic() >= deadline:
+                raise RuntimeError('James IMAP/demo accounts did not become ready') from None
+            time.sleep(1)
+
+
+def uid_search(client, marker):
+    data = ok(client.uid('SEARCH', None, 'HEADER', 'X-Corvex-Lab', marker), 'search')
+    return data[0].split() if data and data[0] else []
+
+
+def body(client, uid):
+    data = ok(client.uid('FETCH', uid, '(BODY.PEEK[])'), 'fetch')
+    literals = [part[1] for part in data if isinstance(part, tuple) and isinstance(part[1], bytes)]
+    if len(literals) != 1:
+        raise RuntimeError('Expected exactly one message body in FETCH')
+    return literals[0]
+
+
+def main():
+    # This intentionally refuses an arbitrary host or accounts. It is not a migration tool.
+    if os.environ.get('JAMES_LAB_CONFIRM') != 'synthetic-only':
+        raise RuntimeError('Set JAMES_LAB_CONFIRM=synthetic-only in the isolated lab')
+    marker = secrets.token_hex(16)
+    msg = EmailMessage(policy=email.policy.SMTP)
+    msg['From'] = USER
+    msg['To'] = USER
+    msg['Subject'] = 'Corvex synthetic James lab'
+    msg['X-Corvex-Lab'] = marker
+    msg.set_content('Synthetic test only. No real email.')
+    msg.add_attachment(b'corvex-lab-attachment\x00\xff', maintype='application',
+                       subtype='octet-stream', filename='synthetic.bin')
+    raw = msg.as_bytes()
+    client = connect(USER, time.monotonic() + 120)
+    other = None
+    folder = 'corvex-lab-' + marker
+    try:
+        ok(client.select('INBOX'), 'select inbox')
+        ok(client.append('INBOX', None, None, raw), 'append')
+        ids = uid_search(client, marker)
+        if len(ids) != 1 or body(client, ids[0]) != raw:
+            raise RuntimeError('APPEND round-trip mismatch')
+        ok(client.create(folder), 'create folder')
+        ok(client.uid('COPY', ids[0], folder), 'copy')
+        ok(client.select(folder), 'select copy')
+        copies = uid_search(client, marker)
+        if len(copies) != 1 or body(client, copies[0]) != raw:
+            raise RuntimeError('COPY round-trip mismatch')
+        other = connect(OTHER, time.monotonic() + 120)
+        ok(other.select('INBOX', readonly=True), 'select other inbox')
+        if uid_search(other, marker):
+            raise RuntimeError('Synthetic message visible in other inbox')
+        print('PASS: APPEND, MIME bytes, COPY and other-user inbox isolation')
+        print('Not tested: SMTP, POP3, MOVE, rollback, restart, durability, Corvex integration')
+    finally:
+        if other:
+            other.logout()
+        client.logout()
+    # Leave synthetic data intact for diagnostics; the isolated lab is disposable.
+
+
+if __name__ == '__main__':
+    main()
