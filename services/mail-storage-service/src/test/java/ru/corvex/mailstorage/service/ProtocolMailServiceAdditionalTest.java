@@ -273,9 +273,15 @@ class ProtocolMailServiceAdditionalTest {
         deleted.setDeleted(true);
         when(folders.findByIdAndOwnerId(inbox.getId(), ownerId)).thenReturn(Optional.of(inbox));
         when(folders.lockById(inbox.getId())).thenReturn(Optional.of(inbox));
-        when(messages.findAllByFolder_IdAndOwnerIdAndDeletedTrue(inbox.getId(), ownerId)).thenReturn(List.of(deleted));
-
-        assertEquals(List.of(6L), service.expunge(ownerId, inbox.getId(), null).expungedUids());
+        when(messages.findDeletedUids(inbox.getId(), ownerId)).thenReturn(List.of(6L));
+        when(messages.lockFolderUid(inbox.getId(), 6L, ownerId)).thenReturn(Optional.of(deleted));
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            assertEquals(List.of(6L), service.expunge(ownerId, inbox.getId(), null).expungedUids());
+            TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
         verify(messages).delete(deleted);
     }
 
@@ -283,16 +289,28 @@ class ProtocolMailServiceAdditionalTest {
     void hardDeleteAdvancesFolderModseqAndHandlesFolderlessRow() {
         MailFolder inbox = folder("INBOX", "INBOX");
         MessageMetadata withFolder = message(inbox, 2, "user@company.local/INBOX/new/missing.eml");
-        when(messages.findByIdAndOwnerId(withFolder.getId(), ownerId)).thenReturn(Optional.of(withFolder));
+        when(messages.lockOwned(withFolder.getId(), ownerId)).thenReturn(Optional.of(withFolder));
         when(folders.lockById(inbox.getId())).thenReturn(Optional.of(inbox));
 
-        service.hardDeleteMessage(ownerId, withFolder.getId());
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.hardDeleteMessage(ownerId, withFolder.getId());
+            TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
         assertEquals(21, inbox.getHighestModseq());
 
         MessageMetadata folderless = message(inbox, 3, "user@company.local/INBOX/new/missing.eml");
         folderless.setFolder(null);
-        when(messages.findByIdAndOwnerId(folderless.getId(), ownerId)).thenReturn(Optional.of(folderless));
-        service.hardDeleteMessage(ownerId, folderless.getId());
+        when(messages.lockOwned(folderless.getId(), ownerId)).thenReturn(Optional.of(folderless));
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.hardDeleteMessage(ownerId, folderless.getId());
+            TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
         verify(messages).delete(folderless);
     }
 

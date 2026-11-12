@@ -58,6 +58,10 @@ public interface MessageMetadataRepository extends JpaRepository<MessageMetadata
 
     List<MessageMetadata> findAllByFolder_IdAndOwnerIdAndDeletedTrue(UUID folderId, UUID ownerId);
 
+    // Select scalar UIDs so the persistence context does not retain stale entities before locking.
+    @Query("select m.uid from MessageMetadata m where m.folder.id = :folderId and m.ownerId = :ownerId and m.deleted = true order by m.uid")
+    List<Long> findDeletedUids(@Param("folderId") UUID folderId, @Param("ownerId") UUID ownerId);
+
     List<MessageMetadata> findAllByFolder_IdAndOwnerId(UUID folderId, UUID ownerId);
 
     long countByOwnerId(UUID ownerId);

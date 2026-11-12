@@ -7,6 +7,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 import ru.corvex.mailstorage.api.dto.ProtocolDtos;
 import ru.corvex.mailstorage.client.AuthUserClient;
@@ -266,22 +268,18 @@ public class ProtocolMailService {
     @Transactional
     public ProtocolDtos.ExpungeResponse expunge(UUID ownerId, UUID folderId, ProtocolDtos.ExpungeRequest req) {
         MailFolder folder = folders.lockById(loadFolder(ownerId, folderId).getId()).orElseThrow();
-        List<MessageMetadata> victims;
-        if (req == null || req.uids() == null || req.uids().isEmpty()) {
-            victims = messages.findAllByFolder_IdAndOwnerIdAndDeletedTrue(folderId, ownerId);
-        } else {
-            victims = new ArrayList<>();
-            for (Long uid : req.uids()) {
-                messages.findByFolder_IdAndUidAndOwnerId(folderId, uid, ownerId)
-                        .filter(MessageMetadata::isDeleted) // UID EXPUNGE трогает только \Deleted
-                        .ifPresent(victims::add);
-            }
-        }
+        List<Long> uids = req == null || req.uids() == null || req.uids().isEmpty()
+                ? messages.findDeletedUids(folderId, ownerId) : req.uids();
         List<Long> expunged = new ArrayList<>();
-        for (MessageMetadata m : victims) {
-            deleteFileQuietly(m);
-            messages.delete(m);
-            expunged.add(m.getUid());
+        for (Long uid : new java.util.LinkedHashSet<>(uids)) {
+            if (uid == null) continue;
+            messages.lockFolderUid(folderId, uid, ownerId)
+                    .filter(MessageMetadata::isDeleted)
+                    .ifPresent(m -> {
+                        deleteFileAfterCommit(m);
+                        messages.delete(m);
+                        expunged.add(m.getUid());
+                    });
         }
         if (!expunged.isEmpty()) {
             nextModSeq(folder); // CONDSTORE/QRESYNC: удаление тоже двигает HIGHESTMODSEQ папки
@@ -292,9 +290,10 @@ public class ProtocolMailService {
     /** Жёсткое удаление одного письма — POP3 DELE, применённый на QUIT (флага \Deleted в POP3 нет). */
     @Transactional
     public void hardDeleteMessage(UUID ownerId, UUID messageId) {
-        MessageMetadata m = loadMessage(ownerId, messageId);
+        MessageMetadata m = messages.lockOwned(messageId, ownerId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Письмо не найдено"));
         UUID folderId = m.getFolder() == null ? null : m.getFolder().getId();
-        deleteFileQuietly(m);
+        deleteFileAfterCommit(m);
         messages.delete(m);
         if (folderId != null) {
             folders.lockById(folderId).ifPresent(this::nextModSeq);
@@ -495,6 +494,25 @@ public class ProtocolMailService {
             current = parentId == null ? null : byId.get(parentId);
         }
         return false;
+    }
+
+    /** Only remove the body after a confirmed commit; rollback/unknown keeps the original. */
+    private void deleteFileAfterCommit(MessageMetadata message) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            throw new IllegalStateException("Удаление письма требует активной транзакции");
+        }
+        UUID id = message.getId();
+        String path = message.getMaildirPath();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCompletion(int status) {
+                if (status != STATUS_COMMITTED) return;
+                try {
+                    maildir.deleteMessage(path);
+                } catch (IOException e) {
+                    log.warn("Не удалось очистить файл удалённого письма {} ({}): {}", id, path, e.getMessage());
+                }
+            }
+        });
     }
 
     private void deleteFileQuietly(MessageMetadata m) {

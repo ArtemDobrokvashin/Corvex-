@@ -162,14 +162,43 @@ class ProtocolMailServiceTest {
         victim.setDeleted(true);
         when(folders.findByIdAndOwnerId(inbox.getId(), ownerId)).thenReturn(Optional.of(inbox));
         when(folders.lockById(inbox.getId())).thenReturn(Optional.of(inbox));
-        when(messages.findAllByFolder_IdAndOwnerIdAndDeletedTrue(inbox.getId(), ownerId)).thenReturn(List.of(victim));
-
-        ProtocolDtos.ExpungeResponse res = service.expunge(ownerId, inbox.getId(), new ProtocolDtos.ExpungeRequest(List.of()));
+        when(messages.findDeletedUids(inbox.getId(), ownerId)).thenReturn(List.of(7L));
+        when(messages.lockFolderUid(inbox.getId(), 7L, ownerId)).thenReturn(Optional.of(victim));
+        TransactionSynchronizationManager.initSynchronization();
+        ProtocolDtos.ExpungeResponse res;
+        try {
+            res = service.expunge(ownerId, inbox.getId(), new ProtocolDtos.ExpungeRequest(List.of()));
+            assertTrue(Files.exists(tmp.resolve("mail").resolve(rel)), "source remains before commit");
+            TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
 
         assertEquals(List.of(7L), res.expungedUids());
         assertEquals(21L, inbox.getHighestModseq(), "EXPUNGE двигает HIGHESTMODSEQ, иначе QRESYNC не увидит удаление");
         assertFalse(Files.exists(tmp.resolve("mail").resolve(rel)), "файл .eml должен быть удалён с диска");
         verify(messages).delete(victim);
+    }
+
+    @Test
+    void hardDeleteRetainsFileForRollbackOrUnknownOutcome() throws Exception {
+        MailFolder inbox = folder("INBOX", "INBOX", 9);
+        when(folders.lockById(inbox.getId())).thenReturn(Optional.of(inbox));
+        for (int status : List.of(TransactionSynchronization.STATUS_ROLLED_BACK, TransactionSynchronization.STATUS_UNKNOWN)) {
+            String rel = maildir.storeMessage("ivanov@corp.local", "INBOX",
+                    new ByteArrayInputStream("keep".getBytes(StandardCharsets.UTF_8))).toString();
+            MessageMetadata m = message(inbox, 4, rel);
+            when(messages.lockOwned(m.getId(), ownerId)).thenReturn(Optional.of(m));
+            TransactionSynchronizationManager.initSynchronization();
+            try {
+                service.hardDeleteMessage(ownerId, m.getId());
+                assertTrue(Files.exists(tmp.resolve("mail").resolve(rel)));
+                TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCompletion(status));
+                assertTrue(Files.exists(tmp.resolve("mail").resolve(rel)));
+            } finally {
+                TransactionSynchronizationManager.clearSynchronization();
+            }
+        }
     }
 
     @Test
@@ -179,7 +208,7 @@ class ProtocolMailServiceTest {
         alive.setDeleted(false);
         when(folders.findByIdAndOwnerId(inbox.getId(), ownerId)).thenReturn(Optional.of(inbox));
         when(folders.lockById(inbox.getId())).thenReturn(Optional.of(inbox));
-        when(messages.findByFolder_IdAndUidAndOwnerId(inbox.getId(), 4L, ownerId)).thenReturn(Optional.of(alive));
+        when(messages.lockFolderUid(inbox.getId(), 4L, ownerId)).thenReturn(Optional.of(alive));
 
         ProtocolDtos.ExpungeResponse res = service.expunge(ownerId, inbox.getId(),
                 new ProtocolDtos.ExpungeRequest(List.of(4L)));
