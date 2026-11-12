@@ -23,6 +23,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 import ru.corvex.mailstorage.av.ClamAvClient;
+import ru.corvex.mailstorage.api.dto.MailDtos;
 import ru.corvex.mailstorage.domain.MailFolder;
 import ru.corvex.mailstorage.domain.MessageMetadata;
 import ru.corvex.mailstorage.mime.MimeMailParser;
@@ -34,6 +35,8 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -43,6 +46,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
@@ -83,7 +87,7 @@ class MailMoveConcurrencyIT {
     @TempDir Path temp;
 
     @Test
-    void staleFlagUpdateMustNotRestoreOldPathAfterMove() throws Exception {
+    void webFlagsAndMoveKeepTheCommittedMessageAndFile() throws Exception {
         TransactionTemplate tx = new TransactionTemplate(transactionManager);
         UUID owner = UUID.randomUUID();
         MaildirStorage storage = new MaildirStorage(temp.resolve("mail"), temp.resolve("attachments"));
@@ -103,52 +107,88 @@ class MailMoveConcurrencyIT {
             return new UUID[]{source.getId(), target.getId(), m.getId()};
         });
         assertNotNull(ids);
-        MailApiService service = new MailApiService(folders, messages, mock(MailDeliveryService.class),
-                storage, new MimeMailParser(storage), jdbc, mock(ClamAvClient.class));
         CountDownLatch loaded = new CountDownLatch(1);
         CountDownLatch resume = new CountDownLatch(1);
-        ExecutorService executor = Executors.newSingleThreadExecutor();
+        CountDownLatch moveAtLock = new CountDownLatch(1);
+        AtomicInteger flagsPid = new AtomicInteger();
+        AtomicInteger movePid = new AtomicInteger();
+        MessageMetadataRepository flagsRepo = (MessageMetadataRepository) Proxy.newProxyInstance(
+                MessageMetadataRepository.class.getClassLoader(), new Class<?>[]{MessageMetadataRepository.class},
+                (proxy, method, args) -> {
+                    try {
+                        Object result = method.invoke(messages, args);
+                        if (method.getName().equals("findByIdAndOwnerId") || method.getName().equals("lockOwned")) {
+                            flagsPid.set(jdbc.queryForObject("select pg_backend_pid()", Integer.class));
+                            loaded.countDown();
+                            if (!resume.await(30, TimeUnit.SECONDS)) throw new IllegalStateException("Flag pause timed out");
+                        }
+                        return result;
+                    } catch (InvocationTargetException e) {
+                        throw e.getCause();
+                    }
+                });
+        MessageMetadataRepository moveRepo = (MessageMetadataRepository) Proxy.newProxyInstance(
+                MessageMetadataRepository.class.getClassLoader(), new Class<?>[]{MessageMetadataRepository.class},
+                (proxy, method, args) -> {
+                    try {
+                        if (method.getName().equals("lockOwned")) {
+                            movePid.set(jdbc.queryForObject("select pg_backend_pid()", Integer.class));
+                            moveAtLock.countDown();
+                        }
+                        return method.invoke(messages, args);
+                    } catch (InvocationTargetException e) {
+                        throw e.getCause();
+                    }
+                });
+        MailApiService flagService = new MailApiService(folders, flagsRepo, mock(MailDeliveryService.class),
+                storage, new MimeMailParser(storage), jdbc, mock(ClamAvClient.class));
+        MailApiService moveService = new MailApiService(folders, moveRepo, mock(MailDeliveryService.class),
+                storage, new MimeMailParser(storage), jdbc, mock(ClamAvClient.class));
+        ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
-            // Reproduce updateFlags' vulnerable ordering using a real, separate JPA transaction.
-            // This intentionally pauses after loading the entity, before taking the folder lock.
-            Future<?> flags = executor.submit(() -> tx.executeWithoutResult(status -> {
-                MessageMetadata m = messages.findByIdAndOwnerId(ids[2], owner).orElseThrow();
-                m.setSeen(true);
-                loaded.countDown();
+            // Pause the actual webmail flags handler after its repository read/lock.
+            Future<?> flags = executor.submit(() -> tx.executeWithoutResult(status ->
+                    flagService.updateFlags(owner, ids[2], new MailDtos.UpdateFlagsRequest(true, null, null, null))));
+            assertTrue(loaded.await(30, TimeUnit.SECONDS), "Flag handler did not load the message");
+            Future<?> move = executor.submit(() -> tx.executeWithoutResult(status -> {
                 try {
-                    if (!resume.await(30, TimeUnit.SECONDS)) throw new IllegalStateException("Timed out waiting for move");
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException(e);
-                }
-                MailFolder folder = folders.lockById(m.getFolder().getId()).orElseThrow();
-                long modseq = Math.max(1, folder.getHighestModseq()) + 1;
-                folder.setHighestModseq(modseq);
-                folders.save(folder);
-                m.setModseq(modseq);
-                messages.save(m);
-            }));
-            assertTrue(loaded.await(30, TimeUnit.SECONDS), "Flag transaction did not load message");
-            tx.executeWithoutResult(status -> {
-                try {
-                    service.moveMessage(owner, ids[2], ids[1], ids[0], 1L);
+                    moveService.moveMessage(owner, ids[2], ids[1], ids[0], 1L);
                 } catch (IOException e) {
                     throw new UncheckedIOException(e);
                 }
-            });
+            }));
+            assertTrue(moveAtLock.await(30, TimeUnit.SECONDS), "MOVE did not reach message lock");
+            // Wait until MOVE finishes or PostgreSQL confirms it is blocked by flags.
+            boolean blocked = false;
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+            while (!move.isDone() && System.nanoTime() < deadline) {
+                blocked = Boolean.TRUE.equals(jdbc.queryForObject(
+                        "select ? = any(pg_blocking_pids(?))", Boolean.class, flagsPid.get(), movePid.get()));
+                if (blocked) break;
+                Thread.sleep(25);
+            }
+            assertTrue(blocked || move.isDone(), "MOVE neither completed nor waited for the flag transaction");
+            if (move.isDone()) move.get(30, TimeUnit.SECONDS); // propagate failure before releasing flags
             resume.countDown();
             flags.get(30, TimeUnit.SECONDS);
+            move.get(30, TimeUnit.SECONDS);
             tx.executeWithoutResult(status -> {
                 MessageMetadata current = messages.findByIdAndOwnerId(ids[2], owner).orElseThrow();
                 assertEquals(ids[1], current.getFolder().getId(), "A stale flag update reverted the folder");
                 assertNotEquals(original, current.getMaildirPath(), "A stale flag update reverted the path");
-                assertTrue(Files.isRegularFile(temp.resolve("mail").resolve(current.getMaildirPath())),
-                        "The path persisted in the database must still exist");
+                assertTrue(current.isSeen());
+                Path persisted = temp.resolve("mail").resolve(current.getMaildirPath());
+                assertTrue(Files.isRegularFile(persisted), "The database path must exist");
+                try {
+                    assertArrayEquals(raw, Files.readAllBytes(persisted));
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
             });
         } finally {
             resume.countDown();
             executor.shutdownNow();
-            assertTrue(executor.awaitTermination(30, TimeUnit.SECONDS), "Flag transaction did not stop");
+            assertTrue(executor.awaitTermination(30, TimeUnit.SECONDS), "Transactions did not stop");
         }
     }
 }
