@@ -475,4 +475,67 @@ class MailMoveConcurrencyIT {
         assertArrayEquals(raw, Files.readAllBytes(file));
     }
 
+    @Test
+    void concurrentNewReferenceMustSurviveCommittedDeletion() throws Exception {
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+        UUID owner = UUID.randomUUID();
+        MaildirStorage storage = new MaildirStorage(temp.resolve("mail"), temp.resolve("attachments"));
+        byte[] raw = "From: test@example.test\r\n\r\nconcurrent reference\r\n".getBytes(StandardCharsets.UTF_8);
+        String original = storage.storeMessage("owner@example.test", "Inbox", new ByteArrayInputStream(raw)).toString();
+        UUID[] ids = tx.execute(status -> {
+            MailFolder folder = new MailFolder();
+            folder.setOwnerId(owner); folder.setName("Inbox"); folder.setSpecialUse("INBOX");
+            folder = folders.saveAndFlush(folder);
+            MessageMetadata m = new MessageMetadata();
+            m.setOwnerId(owner); m.setFolder(folder); m.setUid(1); m.setSender("test@example.test");
+            m.setSubject("concurrent reference"); m.setInternalDate(Instant.now()); m.setSizeBytes(raw.length);
+            m.setMaildirPath(original); m = messages.saveAndFlush(m);
+            return new UUID[]{folder.getId(), m.getId()};
+        });
+        assertNotNull(ids);
+        CountDownLatch counted = new CountDownLatch(1);
+        CountDownLatch resume = new CountDownLatch(1);
+        MessageMetadataRepository slowRepo = (MessageMetadataRepository) Proxy.newProxyInstance(
+                MessageMetadataRepository.class.getClassLoader(), new Class<?>[]{MessageMetadataRepository.class},
+                (proxy, method, args) -> {
+                    try {
+                        Object result = method.invoke(messages, args);
+                        if (method.getName().equals("countByMaildirPath")) {
+                            counted.countDown();
+                            if (!resume.await(30, TimeUnit.SECONDS)) throw new IllegalStateException("Count pause timed out");
+                        }
+                        return result;
+                    } catch (InvocationTargetException e) {
+                        throw e.getCause();
+                    }
+                });
+        ProtocolMailService service = new ProtocolMailService(folders, slowRepo, mock(MailDeliveryService.class),
+                storage, mock(RawMessageSpool.class), new MimeMailParser(storage), mock(AuthUserClient.class));
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> deletion = executor.submit(() -> tx.executeWithoutResult(status -> service.hardDeleteMessage(owner, ids[1])));
+            assertTrue(counted.await(30, TimeUnit.SECONDS), "Deletion did not reach reference count");
+            UUID newId = tx.execute(status -> {
+                MailFolder folder = folders.findByIdAndOwnerId(ids[0], owner).orElseThrow();
+                MessageMetadata m = new MessageMetadata();
+                m.setOwnerId(owner); m.setFolder(folder); m.setUid(2); m.setSender("test@example.test");
+                m.setSubject("new concurrent reference"); m.setInternalDate(Instant.now());
+                m.setSizeBytes(raw.length); m.setMaildirPath(original);
+                return messages.saveAndFlush(m).getId();
+            });
+            assertNotNull(newId);
+            resume.countDown();
+            deletion.get(30, TimeUnit.SECONDS);
+            tx.executeWithoutResult(status -> assertEquals(original,
+                    messages.findByIdAndOwnerId(newId, owner).orElseThrow().getMaildirPath()));
+            Path file = temp.resolve("mail").resolve(original);
+            assertTrue(Files.isRegularFile(file), "Concurrent new reference points to a deleted file");
+            assertArrayEquals(raw, Files.readAllBytes(file));
+        } finally {
+            resume.countDown();
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(30, TimeUnit.SECONDS), "Deletion transaction did not stop");
+        }
+    }
+
 }
