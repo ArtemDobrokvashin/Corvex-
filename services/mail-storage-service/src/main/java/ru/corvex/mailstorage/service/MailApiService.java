@@ -114,7 +114,9 @@ public class MailApiService {
 
     @Transactional
     public MailDtos.MessageListItem updateFlags(UUID ownerId, UUID messageId, MailDtos.UpdateFlagsRequest req) {
-        MessageMetadata m = loadOwned(ownerId, messageId);
+        // Serialize flag writes with MOVE before loading a mutable entity.
+        MessageMetadata m = messages.lockOwned(messageId, ownerId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Письмо не найдено"));
         boolean beforeSeen = m.isSeen();
         boolean beforeFlagged = m.isFlagged();
         boolean beforeAnswered = m.isAnswered();

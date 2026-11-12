@@ -241,7 +241,8 @@ public class ProtocolMailService {
 
     @Transactional
     public ProtocolDtos.MessageMeta updateFlags(UUID ownerId, UUID folderId, long uid, ProtocolDtos.FlagsUpdate flags) {
-        MessageMetadata m = messages.findByFolder_IdAndUidAndOwnerId(folderId, uid, ownerId)
+        // UID and folder are checked by the same locking query used by IMAP MOVE.
+        MessageMetadata m = messages.lockFolderUid(folderId, uid, ownerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Письмо не найдено"));
         boolean beforeSeen = m.isSeen();
         boolean beforeAnswered = m.isAnswered();

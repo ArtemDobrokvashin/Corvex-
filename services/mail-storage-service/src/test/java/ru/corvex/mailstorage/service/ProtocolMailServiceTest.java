@@ -140,7 +140,7 @@ class ProtocolMailServiceTest {
         MessageMetadata m = message(inbox, 3, "x/y.eml");
         m.setSeen(false);
         m.setFlagged(true);
-        when(messages.findByFolder_IdAndUidAndOwnerId(inbox.getId(), 3L, ownerId)).thenReturn(Optional.of(m));
+        when(messages.lockFolderUid(inbox.getId(), 3L, ownerId)).thenReturn(Optional.of(m));
         when(folders.lockById(inbox.getId())).thenReturn(Optional.of(inbox));
         when(messages.save(any())).thenAnswer(inv -> inv.getArgument(0));
 

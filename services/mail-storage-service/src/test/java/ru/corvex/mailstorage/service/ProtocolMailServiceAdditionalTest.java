@@ -252,10 +252,10 @@ class ProtocolMailServiceAdditionalTest {
     }
 
     @Test
-    void flagUpdateWithoutChangesStillSavesWithoutLock() {
+    void flagUpdateWithoutChangesLocksMessageButDoesNotLockFolder() {
         MailFolder inbox = folder("INBOX", "INBOX");
         MessageMetadata message = message(inbox, 3, "x");
-        when(messages.findByFolder_IdAndUidAndOwnerId(inbox.getId(), 3L, ownerId)).thenReturn(Optional.of(message));
+        when(messages.lockFolderUid(inbox.getId(), 3L, ownerId)).thenReturn(Optional.of(message));
         when(messages.save(any(MessageMetadata.class))).thenAnswer(inv -> inv.getArgument(0));
 
         var meta = service.updateFlags(ownerId, inbox.getId(), 3,

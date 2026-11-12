@@ -274,7 +274,7 @@ class MailApiServiceTest {
         MessageMetadata message = message(inbox, 3);
         message.setSeen(true);
         message.setFlagged(true);
-        when(messages.findByIdAndOwnerId(message.getId(), ownerId)).thenReturn(Optional.of(message));
+        when(messages.lockOwned(message.getId(), ownerId)).thenReturn(Optional.of(message));
         when(jdbc.queryForObject(anyString(), eq(Integer.class), any(Object[].class))).thenReturn(0);
 
         var result = service.updateFlags(ownerId, message.getId(),
@@ -291,7 +291,7 @@ class MailApiServiceTest {
         MailFolder inbox = folder("INBOX", "INBOX");
         inbox.setHighestModseq(0);
         MessageMetadata message = message(inbox, 3);
-        when(messages.findByIdAndOwnerId(message.getId(), ownerId)).thenReturn(Optional.of(message));
+        when(messages.lockOwned(message.getId(), ownerId)).thenReturn(Optional.of(message));
         when(folders.lockById(inbox.getId())).thenReturn(Optional.of(inbox));
         when(jdbc.queryForObject(anyString(), eq(Integer.class), any(Object[].class))).thenReturn(2);
 
