@@ -44,6 +44,7 @@ import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -205,4 +206,41 @@ class MailMoveConcurrencyIT {
             assertTrue(executor.awaitTermination(30, TimeUnit.SECONDS), "Transactions did not stop");
         }
     }
+    @ParameterizedTest(name = "expunge={0}")
+    @ValueSource(booleans = {true, false})
+    void rolledBackProtocolDeletionKeepsDatabaseAndFile(boolean expunge) throws Exception {
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+        UUID owner = UUID.randomUUID();
+        MaildirStorage storage = new MaildirStorage(temp.resolve("mail"), temp.resolve("attachments"));
+        byte[] raw = "From: test@example.test\r\n\r\nsynthetic rollback message\r\n".getBytes(StandardCharsets.UTF_8);
+        String original = storage.storeMessage("owner@example.test", "Inbox", new ByteArrayInputStream(raw)).toString();
+        UUID[] ids = tx.execute(status -> {
+            MailFolder folder = new MailFolder();
+            folder.setOwnerId(owner); folder.setName("Inbox"); folder.setSpecialUse("INBOX");
+            folder = folders.saveAndFlush(folder);
+            MessageMetadata message = new MessageMetadata();
+            message.setOwnerId(owner); message.setFolder(folder); message.setUid(1);
+            message.setSender("test@example.test"); message.setSubject("synthetic rollback");
+            message.setInternalDate(Instant.now()); message.setSizeBytes(raw.length);
+            message.setMaildirPath(original); message.setDeleted(true);
+            message = messages.saveAndFlush(message);
+            return new UUID[]{folder.getId(), message.getId()};
+        });
+        assertNotNull(ids);
+        ProtocolMailService service = new ProtocolMailService(folders, messages, mock(MailDeliveryService.class),
+                storage, mock(RawMessageSpool.class), new MimeMailParser(storage), mock(AuthUserClient.class));
+        tx.executeWithoutResult(status -> {
+            if (expunge) service.expunge(owner, ids[0], new ProtocolDtos.ExpungeRequest(List.of(1L)));
+            else service.hardDeleteMessage(owner, ids[1]);
+            status.setRollbackOnly(); // Force DB rollback after the real deletion handler returns.
+        });
+        tx.executeWithoutResult(status -> {
+            MessageMetadata current = messages.findByIdAndOwnerId(ids[1], owner).orElseThrow();
+            assertEquals(original, current.getMaildirPath());
+        });
+        Path file = temp.resolve("mail").resolve(original);
+        assertTrue(Files.isRegularFile(file), "Rollback left a message row referencing a missing file");
+        assertArrayEquals(raw, Files.readAllBytes(file));
+    }
+
 }
