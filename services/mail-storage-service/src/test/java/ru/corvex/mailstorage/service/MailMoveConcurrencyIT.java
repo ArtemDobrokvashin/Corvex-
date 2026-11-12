@@ -350,4 +350,85 @@ class MailMoveConcurrencyIT {
         assertArrayEquals(raw, Files.readAllBytes(file));
     }
 
+    @Test
+    void movingOneOfTwoReferencesKeepsOtherMessageReadable() throws Exception {
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+        UUID owner = UUID.randomUUID();
+        MaildirStorage storage = new MaildirStorage(temp.resolve("mail"), temp.resolve("attachments"));
+        byte[] raw = "From: test@example.test\r\n\r\nshared move\r\n".getBytes(StandardCharsets.UTF_8);
+        String original = storage.storeMessage("owner@example.test", "Junk", new ByteArrayInputStream(raw)).toString();
+        UUID[] ids = tx.execute(status -> {
+            MailFolder source = new MailFolder();
+            source.setOwnerId(owner); source.setName("Junk"); source.setSpecialUse("SPAM");
+            source = folders.saveAndFlush(source);
+            MailFolder target = new MailFolder();
+            target.setOwnerId(owner); target.setName("Trash"); target.setSpecialUse("TRASH");
+            target = folders.saveAndFlush(target);
+            UUID[] result = new UUID[]{source.getId(), target.getId(), null, null};
+            for (int i = 0; i < 2; i++) {
+                MessageMetadata m = new MessageMetadata();
+                m.setOwnerId(owner); m.setFolder(source); m.setUid(i + 1); m.setSender("test@example.test");
+                m.setSubject("shared move"); m.setInternalDate(Instant.now()); m.setSizeBytes(raw.length);
+                m.setMaildirPath(original); result[i + 2] = messages.saveAndFlush(m).getId();
+            }
+            return result;
+        });
+        assertNotNull(ids);
+        MailApiService service = new MailApiService(folders, messages, mock(MailDeliveryService.class),
+                storage, new MimeMailParser(storage), jdbc, mock(ClamAvClient.class));
+        tx.executeWithoutResult(status -> {
+            try {
+                service.moveMessage(owner, ids[2], ids[1], ids[0], 1L);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
+        tx.executeWithoutResult(status -> {
+            assertEquals(original, messages.findByIdAndOwnerId(ids[3], owner).orElseThrow().getMaildirPath());
+            assertEquals(ids[1], messages.findByIdAndOwnerId(ids[2], owner).orElseThrow().getFolder().getId());
+        });
+        Path file = temp.resolve("mail").resolve(original);
+        assertTrue(Files.isRegularFile(file), "MOVE removed a file still referenced by another message");
+        assertArrayEquals(raw, Files.readAllBytes(file));
+    }
+
+    @Test
+    void rolledBackRenameKeepsOriginalFolderAndMessage() throws Exception {
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+        UUID owner = UUID.randomUUID();
+        MaildirStorage storage = new MaildirStorage(temp.resolve("mail"), temp.resolve("attachments"));
+        byte[] raw = "From: test@example.test\r\n\r\nrename rollback\r\n".getBytes(StandardCharsets.UTF_8);
+        String original = storage.storeMessage("owner@example.test", "Projects", new ByteArrayInputStream(raw)).toString();
+        UUID[] ids = tx.execute(status -> {
+            MailFolder folder = new MailFolder();
+            folder.setOwnerId(owner); folder.setName("Projects"); folder = folders.saveAndFlush(folder);
+            MessageMetadata m = new MessageMetadata();
+            m.setOwnerId(owner); m.setFolder(folder); m.setUid(1); m.setSender("test@example.test");
+            m.setSubject("rename rollback"); m.setInternalDate(Instant.now()); m.setSizeBytes(raw.length);
+            m.setMaildirPath(original); m = messages.saveAndFlush(m);
+            return new UUID[]{folder.getId(), m.getId()};
+        });
+        assertNotNull(ids);
+        AuthUserClient auth = mock(AuthUserClient.class);
+        when(auth.findById(owner)).thenReturn(Optional.of(
+                new AuthUserClient.MailboxOwner(owner, "owner@example.test", "Test", "ACTIVE", 0)));
+        ProtocolMailService service = new ProtocolMailService(folders, messages, mock(MailDeliveryService.class),
+                storage, mock(RawMessageSpool.class), new MimeMailParser(storage), auth);
+        tx.executeWithoutResult(status -> {
+            try {
+                service.renameFolder(owner, ids[0], new ProtocolDtos.RenameFolderRequest("Renamed", null, false));
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+            status.setRollbackOnly();
+        });
+        tx.executeWithoutResult(status -> {
+            assertEquals("Projects", folders.findByIdAndOwnerId(ids[0], owner).orElseThrow().getName());
+            assertEquals(original, messages.findByIdAndOwnerId(ids[1], owner).orElseThrow().getMaildirPath());
+        });
+        Path file = temp.resolve("mail").resolve(original);
+        assertTrue(Files.isRegularFile(file), "Rename rollback left a message referencing a missing file");
+        assertArrayEquals(raw, Files.readAllBytes(file));
+    }
+
 }
