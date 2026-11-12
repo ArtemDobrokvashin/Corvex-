@@ -8,7 +8,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.io.IOException;
 import java.nio.file.Path;
 
-/** Copy before database update; clean up only after a known transaction outcome. */
+/** Stage a copy; retain originals on commit until safe, durable reconciliation exists. */
 public final class TransactionalMailMove {
     private static final Logger log = LoggerFactory.getLogger(TransactionalMailMove.class);
     private TransactionalMailMove() { }
@@ -21,8 +21,9 @@ public final class TransactionalMailMove {
         String stagedPath = staged.toString();
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override public void afterCompletion(int status) {
-                // On unknown outcome retain both copies for recovery.
-                String unused = status == STATUS_COMMITTED ? original : status == STATUS_ROLLED_BACK ? stagedPath : null;
+                // A committed MOVE never deletes the source: other rows or a concurrent
+                // writer may still reference it. Unknown outcomes also keep both copies.
+                String unused = status == STATUS_ROLLED_BACK ? stagedPath : null;
                 if (unused == null) return;
                 try { maildir.deleteMessage(unused); }
                 catch (IOException e) { log.warn("Не удалось очистить копию письма после переноса: {}", e.getMessage()); }

@@ -121,10 +121,10 @@ public class ProtocolMailService {
         return toFolderInfo(folders.saveAndFlush(f));
     }
 
-    @Transactional
+    @Transactional(rollbackFor = IOException.class)
     public ProtocolDtos.FolderInfo renameFolder(UUID ownerId, UUID folderId, ProtocolDtos.RenameFolderRequest req)
             throws IOException {
-        MailFolder folder = loadFolder(ownerId, folderId);
+        MailFolder folder = folders.lockById(loadFolder(ownerId, folderId).getId()).orElseThrow();
         if (folder.getSpecialUse() != null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Системную папку переименовать нельзя");
         }
@@ -149,11 +149,14 @@ public class ProtocolMailService {
         }
         String oldName = folder.getName();
         if (!oldName.equals(newName)) {
-            AuthUserClient.MailboxOwner owner = loadOwner(ownerId);
-            maildir.renameFolderDir(owner.email(), oldName, newName);
-            // Пути писем содержат сегмент каталога папки: <mailbox>/<folder>/new|cur/<file>
-            for (MessageMetadata m : messages.findAllByFolder_IdAndOwnerId(folderId, ownerId)) {
-                m.setMaildirPath(replaceFolderSegment(m.getMaildirPath(), newName));
+            // Retain the original directory and stage independent message copies.
+            // Rollback keeps every original; commit does not recursively clean up.
+            loadOwner(ownerId);
+            for (Long uid : messages.findFolderUids(folderId, ownerId)) {
+                MessageMetadata m = messages.lockFolderUid(folderId, uid, ownerId)
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Письмо изменилось во время переименования"));
+                Path staged = TransactionalMailMove.stage(maildir, m.getMaildirPath(), newName, m.isSeen());
+                m.setMaildirPath(staged.toString());
                 messages.save(m);
             }
             folder.setName(newName);

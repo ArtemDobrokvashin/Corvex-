@@ -121,17 +121,27 @@ class ProtocolMailServiceAdditionalTest {
     }
 
     @Test
-    void renameActuallyRenamesDirectoryAndMessagePaths() throws Exception {
+    void renameStagesMessageAndRetainsOriginalDirectory() throws Exception {
         MailFolder folder = folder("Projects", null);
         String rel = maildir.storeMessage("user@company.local", "Projects", bytes("body")).toString();
         MessageMetadata message = message(folder, 1, rel);
         when(folders.findByIdAndOwnerId(folder.getId(), ownerId)).thenReturn(Optional.of(folder));
+        when(folders.lockById(folder.getId())).thenReturn(Optional.of(folder));
         when(auth.findById(ownerId)).thenReturn(Optional.of(owner()));
-        when(messages.findAllByFolder_IdAndOwnerId(folder.getId(), ownerId)).thenReturn(List.of(message));
+        when(messages.findFolderUids(folder.getId(), ownerId)).thenReturn(List.of(1L));
+        when(messages.lockFolderUid(folder.getId(), 1L, ownerId)).thenReturn(Optional.of(message));
         when(messages.countByFolder_Id(folder.getId())).thenReturn(1L);
 
-        var renamed = service.renameFolder(ownerId, folder.getId(),
-                new ProtocolDtos.RenameFolderRequest("Renamed Folder", null, false));
+        TransactionSynchronizationManager.initSynchronization();
+        ProtocolDtos.FolderInfo renamed;
+        try {
+            renamed = service.renameFolder(ownerId, folder.getId(),
+                    new ProtocolDtos.RenameFolderRequest("Renamed Folder", null, false));
+            TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+        assertTrue(Files.exists(tmp.resolve("mail").resolve(rel)));
 
         assertEquals("Renamed Folder", renamed.name());
         assertTrue(message.getMaildirPath().contains("Renamed_Folder"));
@@ -144,6 +154,7 @@ class ProtocolMailServiceAdditionalTest {
     void renameGuardsSystemCycleSiblingAndCanMoveToRoot() throws Exception {
         MailFolder system = folder("INBOX", "INBOX");
         when(folders.findByIdAndOwnerId(system.getId(), ownerId)).thenReturn(Optional.of(system));
+        when(folders.lockById(system.getId())).thenReturn(Optional.of(system));
         assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
                 () -> service.renameFolder(ownerId, system.getId(),
                         new ProtocolDtos.RenameFolderRequest("Other", null, false))).getStatusCode());
@@ -152,6 +163,7 @@ class ProtocolMailServiceAdditionalTest {
         MailFolder child = folder("Child", null);
         child.setParent(parent);
         when(folders.findByIdAndOwnerId(parent.getId(), ownerId)).thenReturn(Optional.of(parent));
+        when(folders.lockById(parent.getId())).thenReturn(Optional.of(parent));
         when(folders.findByIdAndOwnerId(child.getId(), ownerId)).thenReturn(Optional.of(child));
         when(folders.findAllByOwnerIdOrderBySpecialUseAscNameAsc(ownerId)).thenReturn(List.of(parent, child));
         assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
@@ -161,6 +173,7 @@ class ProtocolMailServiceAdditionalTest {
         MailFolder movable = folder("Movable", null);
         movable.setParent(parent);
         when(folders.findByIdAndOwnerId(movable.getId(), ownerId)).thenReturn(Optional.of(movable));
+        when(folders.lockById(movable.getId())).thenReturn(Optional.of(movable));
         when(folders.existsSibling(ownerId, null, "Movable")).thenReturn(false);
         var moved = service.renameFolder(ownerId, movable.getId(),
                 new ProtocolDtos.RenameFolderRequest("Movable", child.getId(), true));
@@ -176,6 +189,7 @@ class ProtocolMailServiceAdditionalTest {
     void renameWithoutChangesDoesNotPersistFolder() throws Exception {
         MailFolder folder = folder("Same", null);
         when(folders.findByIdAndOwnerId(folder.getId(), ownerId)).thenReturn(Optional.of(folder));
+        when(folders.lockById(folder.getId())).thenReturn(Optional.of(folder));
 
         var result = service.renameFolder(ownerId, folder.getId(),
                 new ProtocolDtos.RenameFolderRequest("Same", null, false));
@@ -365,7 +379,7 @@ class ProtocolMailServiceAdditionalTest {
             assertTrue(Files.exists(tmp.resolve("mail").resolve(source.getMaildirPath())));
             TransactionSynchronizationManager.getSynchronizations()
                     .forEach(sync -> sync.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
-            assertFalse(Files.exists(tmp.resolve("mail").resolve(rel)));
+            assertTrue(Files.exists(tmp.resolve("mail").resolve(rel)), "original retained for safe reconciliation");
             assertTrue(Files.exists(tmp.resolve("mail").resolve(source.getMaildirPath())));
             verify(messages).save(source);
         } finally {

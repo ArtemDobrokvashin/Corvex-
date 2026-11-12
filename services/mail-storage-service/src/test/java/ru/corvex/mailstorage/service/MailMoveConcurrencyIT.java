@@ -195,6 +195,7 @@ class MailMoveConcurrencyIT {
                 assertEquals(ids[1], current.getFolder().getId(), "A stale flag update reverted the folder");
                 assertNotEquals(original, current.getMaildirPath(), "A stale flag update reverted the path");
                 assertTrue(current.isSeen());
+                assertTrue(Files.isRegularFile(temp.resolve("mail").resolve(original)), "Original must be retained until safe cleanup exists");
                 Path persisted = temp.resolve("mail").resolve(current.getMaildirPath());
                 assertTrue(Files.isRegularFile(persisted), "The database path must exist");
                 try {
@@ -428,6 +429,49 @@ class MailMoveConcurrencyIT {
         });
         Path file = temp.resolve("mail").resolve(original);
         assertTrue(Files.isRegularFile(file), "Rename rollback left a message referencing a missing file");
+        assertArrayEquals(raw, Files.readAllBytes(file));
+    }
+
+    @Test
+    void committedRenameMakesStagedMessageReadable() throws Exception {
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+        UUID owner = UUID.randomUUID();
+        MaildirStorage storage = new MaildirStorage(temp.resolve("mail"), temp.resolve("attachments"));
+        byte[] raw = "From: test@example.test\r\n\r\nrename rollback\r\n".getBytes(StandardCharsets.UTF_8);
+        String original = storage.storeMessage("owner@example.test", "Projects", new ByteArrayInputStream(raw)).toString();
+        UUID[] ids = tx.execute(status -> {
+            MailFolder folder = new MailFolder();
+            folder.setOwnerId(owner); folder.setName("Projects"); folder = folders.saveAndFlush(folder);
+            MessageMetadata m = new MessageMetadata();
+            m.setOwnerId(owner); m.setFolder(folder); m.setUid(1); m.setSender("test@example.test");
+            m.setSubject("rename rollback"); m.setInternalDate(Instant.now()); m.setSizeBytes(raw.length);
+            m.setMaildirPath(original); m = messages.saveAndFlush(m);
+            return new UUID[]{folder.getId(), m.getId()};
+        });
+        assertNotNull(ids);
+        AuthUserClient auth = mock(AuthUserClient.class);
+        when(auth.findById(owner)).thenReturn(Optional.of(
+                new AuthUserClient.MailboxOwner(owner, "owner@example.test", "Test", "ACTIVE", 0)));
+        ProtocolMailService service = new ProtocolMailService(folders, messages, mock(MailDeliveryService.class),
+                storage, mock(RawMessageSpool.class), new MimeMailParser(storage), auth);
+        tx.executeWithoutResult(status -> {
+            try {
+                service.renameFolder(owner, ids[0], new ProtocolDtos.RenameFolderRequest("Renamed", null, false));
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
+        tx.executeWithoutResult(status -> {
+            assertEquals("Renamed", folders.findByIdAndOwnerId(ids[0], owner).orElseThrow().getName());
+            MessageMetadata current = messages.findByIdAndOwnerId(ids[1], owner).orElseThrow();
+            assertNotEquals(original, current.getMaildirPath());
+            Path staged = temp.resolve("mail").resolve(current.getMaildirPath());
+            assertTrue(Files.isRegularFile(staged));
+            try { assertArrayEquals(raw, Files.readAllBytes(staged)); }
+            catch (IOException e) { throw new UncheckedIOException(e); }
+        });
+        Path file = temp.resolve("mail").resolve(original);
+        assertTrue(Files.isRegularFile(file), "Original must remain until safe reconciliation");
         assertArrayEquals(raw, Files.readAllBytes(file));
     }
 

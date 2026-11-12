@@ -357,7 +357,7 @@ class MailApiServiceTest {
             assertTrue(Files.exists(tmp.resolve("mail").resolve(rel)));
             assertTrue(Files.exists(tmp.resolve("mail").resolve(message.getMaildirPath())));
             TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCompletion(status));
-            assertEquals(status != TransactionSynchronization.STATUS_COMMITTED, Files.exists(tmp.resolve("mail").resolve(rel)));
+            assertTrue(Files.exists(tmp.resolve("mail").resolve(rel)), "original retained for safe reconciliation");
             assertEquals(status != TransactionSynchronization.STATUS_ROLLED_BACK, Files.exists(tmp.resolve("mail").resolve(message.getMaildirPath())));
         } finally {
             TransactionSynchronizationManager.clearSynchronization();

@@ -349,6 +349,7 @@ class ProtocolMailServiceTest {
         MailFolder child = folder("2026", null, 1);
         child.setParent(projects);
         when(folders.findByIdAndOwnerId(child.getId(), ownerId)).thenReturn(Optional.of(child));
+        when(folders.lockById(child.getId())).thenReturn(Optional.of(child));
         when(folders.findByIdAndOwnerId(archive.getId(), ownerId)).thenReturn(Optional.of(archive));
         when(folders.findAllByOwnerIdOrderBySpecialUseAscNameAsc(ownerId))
                 .thenReturn(List.of(projects, archive, child));
