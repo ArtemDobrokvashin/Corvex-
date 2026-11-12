@@ -1,6 +1,7 @@
 package ru.corvex.mailstorage.service;
 
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,12 +25,15 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 import ru.corvex.mailstorage.av.ClamAvClient;
 import ru.corvex.mailstorage.api.dto.MailDtos;
+import ru.corvex.mailstorage.api.dto.ProtocolDtos;
+import ru.corvex.mailstorage.client.AuthUserClient;
 import ru.corvex.mailstorage.domain.MailFolder;
 import ru.corvex.mailstorage.domain.MessageMetadata;
 import ru.corvex.mailstorage.mime.MimeMailParser;
 import ru.corvex.mailstorage.repository.MailFolderRepository;
 import ru.corvex.mailstorage.repository.MessageMetadataRepository;
 import ru.corvex.mailstorage.storage.MaildirStorage;
+import ru.corvex.mailstorage.storage.RawMessageSpool;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -86,8 +90,9 @@ class MailMoveConcurrencyIT {
     @Autowired PlatformTransactionManager transactionManager;
     @TempDir Path temp;
 
-    @Test
-    void webFlagsAndMoveKeepTheCommittedMessageAndFile() throws Exception {
+    @ParameterizedTest(name = "protocolFlags={0}")
+    @ValueSource(booleans = {false, true})
+    void webOrProtocolFlagsAndMoveKeepTheCommittedMessageAndFile(boolean protocolFlags) throws Exception {
         TransactionTemplate tx = new TransactionTemplate(transactionManager);
         UUID owner = UUID.randomUUID();
         MaildirStorage storage = new MaildirStorage(temp.resolve("mail"), temp.resolve("attachments"));
@@ -117,7 +122,9 @@ class MailMoveConcurrencyIT {
                 (proxy, method, args) -> {
                     try {
                         Object result = method.invoke(messages, args);
-                        if (method.getName().equals("findByIdAndOwnerId") || method.getName().equals("lockOwned")) {
+                        if (method.getName().equals("findByIdAndOwnerId") || method.getName().equals("lockOwned")
+                                || method.getName().equals("findByFolder_IdAndUidAndOwnerId")
+                                || method.getName().equals("lockFolderUid")) {
                             flagsPid.set(jdbc.queryForObject("select pg_backend_pid()", Integer.class));
                             loaded.countDown();
                             if (!resume.await(30, TimeUnit.SECONDS)) throw new IllegalStateException("Flag pause timed out");
@@ -142,13 +149,20 @@ class MailMoveConcurrencyIT {
                 });
         MailApiService flagService = new MailApiService(folders, flagsRepo, mock(MailDeliveryService.class),
                 storage, new MimeMailParser(storage), jdbc, mock(ClamAvClient.class));
+        ProtocolMailService protocolService = new ProtocolMailService(folders, flagsRepo, mock(MailDeliveryService.class),
+                storage, mock(RawMessageSpool.class), new MimeMailParser(storage), mock(AuthUserClient.class));
         MailApiService moveService = new MailApiService(folders, moveRepo, mock(MailDeliveryService.class),
                 storage, new MimeMailParser(storage), jdbc, mock(ClamAvClient.class));
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
-            // Pause the actual webmail flags handler after its repository read/lock.
-            Future<?> flags = executor.submit(() -> tx.executeWithoutResult(status ->
-                    flagService.updateFlags(owner, ids[2], new MailDtos.UpdateFlagsRequest(true, null, null, null))));
+            // Pause the selected real flag handler after its repository read/lock.
+            Future<?> flags = executor.submit(() -> tx.executeWithoutResult(status -> {
+                if (protocolFlags) {
+                    protocolService.updateFlags(owner, ids[0], 1L, new ProtocolDtos.FlagsUpdate(true, null, null, null, null));
+                } else {
+                    flagService.updateFlags(owner, ids[2], new MailDtos.UpdateFlagsRequest(true, null, null, null));
+                }
+            }));
             assertTrue(loaded.await(30, TimeUnit.SECONDS), "Flag handler did not load the message");
             Future<?> move = executor.submit(() -> tx.executeWithoutResult(status -> {
                 try {
