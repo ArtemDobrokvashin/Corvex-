@@ -4,9 +4,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.SpringBootConfiguration;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -45,10 +50,17 @@ import static org.mockito.Mockito.mock;
 /** Opt-in diagnostic. PostgreSQL and files are isolated and contain only synthetic data. */
 @EnabledIfSystemProperty(named = "mail.move.it", matches = "true")
 @Testcontainers
+@ContextConfiguration(classes = MailMoveConcurrencyIT.JpaTestApplication.class)
 @DataJpaTest(properties = {"spring.flyway.enabled=true", "spring.jpa.hibernate.ddl-auto=none"})
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class MailMoveConcurrencyIT {
+    @SpringBootConfiguration
+    @EnableAutoConfiguration
+    @EntityScan(basePackageClasses = MailFolder.class)
+    @EnableJpaRepositories(basePackageClasses = MailFolderRepository.class)
+    static class JpaTestApplication { }
+
     @Container
     static final GenericContainer<?> POSTGRES = new GenericContainer<>(DockerImageName.parse("postgres:16-alpine"))
             .withEnv("POSTGRES_DB", "mail_db")
