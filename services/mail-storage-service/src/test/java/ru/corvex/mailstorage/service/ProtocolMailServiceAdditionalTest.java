@@ -7,6 +7,8 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 import ru.corvex.mailstorage.api.dto.ProtocolDtos;
 import ru.corvex.mailstorage.client.AuthUserClient;
@@ -321,17 +323,25 @@ class ProtocolMailServiceAdditionalTest {
         when(folders.findByIdAndOwnerId(inbox.getId(), ownerId)).thenReturn(Optional.of(inbox));
         when(folders.findByIdAndOwnerId(archive.getId(), ownerId)).thenReturn(Optional.of(archive));
         when(folders.lockById(archive.getId())).thenReturn(Optional.of(archive));
-        when(messages.findByFolder_IdAndUidAndOwnerId(inbox.getId(), 4L, ownerId)).thenReturn(Optional.of(source));
+        when(messages.lockFolderUid(inbox.getId(), 4L, ownerId)).thenReturn(Optional.of(source));
 
-        var moved = service.copyMessages(ownerId, inbox.getId(),
-                new ProtocolDtos.CopyRequest(List.of(4L), archive.getId(), true));
-
-        assertEquals(List.of(50L), moved.targetUids());
-        assertEquals(archive, source.getFolder());
-        assertEquals(50, source.getUid());
-        assertFalse(Files.exists(tmp.resolve("mail").resolve(rel)));
-        assertTrue(Files.exists(tmp.resolve("mail").resolve(source.getMaildirPath())));
-        verify(messages).save(source);
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            var moved = service.copyMessages(ownerId, inbox.getId(),
+                    new ProtocolDtos.CopyRequest(List.of(4L), archive.getId(), true));
+            assertEquals(List.of(50L), moved.targetUids());
+            assertEquals(archive, source.getFolder());
+            assertEquals(50, source.getUid());
+            assertTrue(Files.exists(tmp.resolve("mail").resolve(rel)), "original remains until commit");
+            assertTrue(Files.exists(tmp.resolve("mail").resolve(source.getMaildirPath())));
+            TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(sync -> sync.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+            assertFalse(Files.exists(tmp.resolve("mail").resolve(rel)));
+            assertTrue(Files.exists(tmp.resolve("mail").resolve(source.getMaildirPath())));
+            verify(messages).save(source);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
 
         var empty = service.copyMessages(ownerId, inbox.getId(),
                 new ProtocolDtos.CopyRequest(null, archive.getId(), false));
