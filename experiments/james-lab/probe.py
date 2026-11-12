@@ -79,12 +79,39 @@ def main():
         copies = uid_search(client, marker)
         if len(copies) != 1 or body(client, copies[0]) != raw:
             raise RuntimeError('COPY round-trip mismatch')
+        ok(client.uid('STORE', copies[0], '+FLAGS.SILENT', r'(\Flagged)'), 'set flag')
+        flag_data = ok(client.uid('FETCH', copies[0], '(FLAGS)'), 'fetch flags')
+        flag_lines = [line for line in flag_data if isinstance(line, bytes)]
+        if not any(b'\\Flagged' in imaplib.ParseFlags(line) for line in flag_lines):
+            raise RuntimeError('Flag update not visible')
+        if body(client, copies[0]) != raw:
+            raise RuntimeError('Flag update changed MIME bytes')
+        advertised = ok(client.capability(), 'capability')
+        caps = b' '.join(line for line in advertised if isinstance(line, bytes)).upper().split()
+        if b'MOVE' not in caps:
+            raise RuntimeError('IMAP MOVE capability unavailable; MOVE not tested')
+        destination = folder + '-moved'
+        ok(client.create(destination), 'create MOVE destination')
+        ok(client.uid('MOVE', copies[0], destination), 'move copy')
+        if uid_search(client, marker):
+            raise RuntimeError('MOVE left copy in source folder')
+        ok(client.select(destination), 'select MOVE destination')
+        moved = uid_search(client, marker)
+        if len(moved) != 1 or body(client, moved[0]) != raw:
+            raise RuntimeError('MOVE round-trip mismatch')
+        moved_flags = ok(client.uid('FETCH', moved[0], '(FLAGS)'), 'fetch moved flags')
+        if not any(b'\\Flagged' in imaplib.ParseFlags(line) for line in moved_flags if isinstance(line, bytes)):
+            raise RuntimeError('MOVE lost flag')
+        ok(client.select('INBOX', readonly=True), 'select original inbox')
+        originals = uid_search(client, marker)
+        if len(originals) != 1 or body(client, originals[0]) != raw:
+            raise RuntimeError('MOVE of copy damaged original')
         other = connect(OTHER, time.monotonic() + 120)
         ok(other.select('INBOX', readonly=True), 'select other inbox')
         if uid_search(other, marker):
             raise RuntimeError('Synthetic message visible in other inbox')
-        print('PASS: APPEND, MIME bytes, COPY and other-user inbox isolation')
-        print('Not tested: SMTP, POP3, MOVE, rollback, restart, durability, Corvex integration')
+        print('PASS: APPEND, MIME bytes, COPY, flags, MOVE and other-user inbox isolation')
+        print('Not tested: SMTP, POP3, concurrency, rollback, restart, durability, Corvex integration')
     finally:
         if other:
             other.logout()
