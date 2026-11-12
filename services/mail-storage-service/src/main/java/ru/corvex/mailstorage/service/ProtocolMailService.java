@@ -169,25 +169,23 @@ public class ProtocolMailService {
 
     @Transactional
     public void deleteFolder(UUID ownerId, UUID folderId) {
-        MailFolder folder = loadFolder(ownerId, folderId);
+        MailFolder folder = folders.lockById(loadFolder(ownerId, folderId).getId()).orElseThrow();
         if (folder.getSpecialUse() != null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Системную папку удалить нельзя");
         }
         if (folders.existsByParent_Id(folderId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Сначала удалите вложенные папки");
         }
-        for (MessageMetadata m : messages.findAllByFolder_IdAndOwnerId(folderId, ownerId)) {
-            deleteFileQuietly(m);
-            messages.delete(m);
+        // Read scalar UIDs before locking; do not keep stale entities in the persistence context.
+        for (Long uid : messages.findFolderUids(folderId, ownerId)) {
+            messages.lockFolderUid(folderId, uid, ownerId).ifPresent(m -> {
+                deleteFileAfterCommit(m);
+                messages.delete(m);
+            });
         }
         folders.delete(folder);
-        auth.findById(ownerId).ifPresent(owner -> {
-            try {
-                maildir.deleteFolderDir(owner.email(), folder.getName());
-            } catch (IOException e) {
-                log.warn("Не удалось удалить каталог папки {} владельца {}: {}", folderId, ownerId, e.getMessage());
-            }
-        });
+        // Do not recursively remove the physical directory: it may contain unrelated
+        // or unreferenced files, and another folder may map to the same path.
     }
 
     /** Webmail removes only empty personal folders; unlike IMAP DELETE this never deletes messages. */
@@ -503,6 +501,12 @@ public class ProtocolMailService {
         }
         UUID id = message.getId();
         String path = message.getMaildirPath();
+        // Fail safe for already-shared paths. This pre-commit check is not a
+        // complete solution for concurrent new references; see MAIL-MOVE-SAFETY.md.
+        if (messages.countByMaildirPath(path) > 1) {
+            log.warn("Файл удалённого письма {} сохранён: путь используется несколькими записями", id);
+            return;
+        }
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override public void afterCompletion(int status) {
                 if (status != STATUS_COMMITTED) return;
@@ -513,15 +517,6 @@ public class ProtocolMailService {
                 }
             }
         });
-    }
-
-    private void deleteFileQuietly(MessageMetadata m) {
-        try {
-            maildir.deleteMessage(m.getMaildirPath());
-        } catch (IOException e) {
-            // Строка БД — источник правды; осиротевший файл подберёт reconciler, письмо не «воскреснет».
-            log.warn("Не удалось удалить файл письма {} ({}): {}", m.getId(), m.getMaildirPath(), e.getMessage());
-        }
     }
 
     static String validateFolderName(String raw) {

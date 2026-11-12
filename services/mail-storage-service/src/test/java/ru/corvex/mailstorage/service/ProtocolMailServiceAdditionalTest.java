@@ -186,14 +186,16 @@ class ProtocolMailServiceAdditionalTest {
     }
 
     @Test
-    void deleteFolderGuardsAndSuccessPathRemoveRowsFilesAndDirectory() throws Exception {
+    void deleteFolderGuardsAndDefersFilesWithoutRemovingDirectory() throws Exception {
         MailFolder system = folder("INBOX", "INBOX");
         when(folders.findByIdAndOwnerId(system.getId(), ownerId)).thenReturn(Optional.of(system));
+        when(folders.lockById(system.getId())).thenReturn(Optional.of(system));
         assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
                 () -> service.deleteFolder(ownerId, system.getId())).getStatusCode());
 
         MailFolder parent = folder("Parent", null);
         when(folders.findByIdAndOwnerId(parent.getId(), ownerId)).thenReturn(Optional.of(parent));
+        when(folders.lockById(parent.getId())).thenReturn(Optional.of(parent));
         when(folders.existsByParent_Id(parent.getId())).thenReturn(true);
         assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
                 () -> service.deleteFolder(ownerId, parent.getId())).getStatusCode());
@@ -202,15 +204,24 @@ class ProtocolMailServiceAdditionalTest {
         String rel = maildir.storeMessage("user@company.local", "Disposable", bytes("delete")).toString();
         MessageMetadata message = message(disposable, 1, rel);
         when(folders.findByIdAndOwnerId(disposable.getId(), ownerId)).thenReturn(Optional.of(disposable));
+        when(folders.lockById(disposable.getId())).thenReturn(Optional.of(disposable));
         when(folders.existsByParent_Id(disposable.getId())).thenReturn(false);
-        when(messages.findAllByFolder_IdAndOwnerId(disposable.getId(), ownerId)).thenReturn(List.of(message));
-        when(auth.findById(ownerId)).thenReturn(Optional.of(owner()));
+        when(messages.findFolderUids(disposable.getId(), ownerId)).thenReturn(List.of(1L));
+        when(messages.lockFolderUid(disposable.getId(), 1L, ownerId)).thenReturn(Optional.of(message));
 
-        service.deleteFolder(ownerId, disposable.getId());
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.deleteFolder(ownerId, disposable.getId());
+            assertTrue(Files.exists(tmp.resolve("mail").resolve(rel)));
+            TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
 
         verify(messages).delete(message);
         verify(folders).delete(disposable);
-        assertFalse(Files.exists(tmp.resolve("mail/user@company.local/Disposable")));
+        assertFalse(Files.exists(tmp.resolve("mail").resolve(rel)));
+        assertTrue(Files.isDirectory(tmp.resolve("mail/user@company.local/Disposable")));
     }
 
     @Test
