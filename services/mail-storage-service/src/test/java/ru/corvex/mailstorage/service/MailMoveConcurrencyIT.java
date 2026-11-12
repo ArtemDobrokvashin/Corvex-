@@ -1,5 +1,6 @@
 package ru.corvex.mailstorage.service;
 
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -45,6 +46,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -55,6 +57,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /** Opt-in diagnostic. PostgreSQL and files are isolated and contain only synthetic data. */
 @EnabledIfSystemProperty(named = "mail.move.it", matches = "true")
@@ -275,6 +278,76 @@ class MailMoveConcurrencyIT {
         });
         Path file = temp.resolve("mail").resolve(original);
         assertFalse(Files.exists(file), "Committed deletion did not clean up its message file");
+    }
+
+    @Test
+    void rolledBackFolderDeleteKeepsMessagesAndDirectory() throws Exception {
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+        UUID owner = UUID.randomUUID();
+        MaildirStorage storage = new MaildirStorage(temp.resolve("mail"), temp.resolve("attachments"));
+        byte[] raw = "From: test@example.test\r\n\r\nfolder rollback\r\n".getBytes(StandardCharsets.UTF_8);
+        String original = storage.storeMessage("owner@example.test", "Projects", new ByteArrayInputStream(raw)).toString();
+        UUID[] ids = tx.execute(status -> {
+            MailFolder folder = new MailFolder();
+            folder.setOwnerId(owner); folder.setName("Projects"); folder = folders.saveAndFlush(folder);
+            MessageMetadata message = new MessageMetadata();
+            message.setOwnerId(owner); message.setFolder(folder); message.setUid(1);
+            message.setSender("test@example.test"); message.setSubject("folder rollback");
+            message.setInternalDate(Instant.now()); message.setSizeBytes(raw.length); message.setMaildirPath(original);
+            message = messages.saveAndFlush(message);
+            return new UUID[]{folder.getId(), message.getId()};
+        });
+        assertNotNull(ids);
+        AuthUserClient auth = mock(AuthUserClient.class);
+        when(auth.findById(owner)).thenReturn(Optional.of(
+                new AuthUserClient.MailboxOwner(owner, "owner@example.test", "Test", "ACTIVE", 0)));
+        ProtocolMailService service = new ProtocolMailService(folders, messages, mock(MailDeliveryService.class),
+                storage, mock(RawMessageSpool.class), new MimeMailParser(storage), auth);
+        tx.executeWithoutResult(status -> {
+            service.deleteFolder(owner, ids[0]);
+            status.setRollbackOnly();
+        });
+        tx.executeWithoutResult(status -> {
+            assertTrue(folders.findByIdAndOwnerId(ids[0], owner).isPresent());
+            assertTrue(messages.findByIdAndOwnerId(ids[1], owner).isPresent());
+        });
+        Path file = temp.resolve("mail").resolve(original);
+        assertTrue(Files.isRegularFile(file), "Folder rollback left a message referencing a missing file");
+        assertArrayEquals(raw, Files.readAllBytes(file));
+    }
+
+    @Test
+    void deletingOneOfTwoReferencesKeepsSharedMessageFile() throws Exception {
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+        UUID owner = UUID.randomUUID();
+        MaildirStorage storage = new MaildirStorage(temp.resolve("mail"), temp.resolve("attachments"));
+        byte[] raw = "From: test@example.test\r\n\r\nshared path\r\n".getBytes(StandardCharsets.UTF_8);
+        String original = storage.storeMessage("owner@example.test", "Inbox", new ByteArrayInputStream(raw)).toString();
+        UUID[] ids = tx.execute(status -> {
+            MailFolder folder = new MailFolder();
+            folder.setOwnerId(owner); folder.setName("Inbox"); folder.setSpecialUse("INBOX");
+            folder = folders.saveAndFlush(folder);
+            UUID[] result = new UUID[2];
+            for (int i = 0; i < 2; i++) {
+                MessageMetadata m = new MessageMetadata();
+                m.setOwnerId(owner); m.setFolder(folder); m.setUid(i + 1);
+                m.setSender("test@example.test"); m.setSubject("shared path");
+                m.setInternalDate(Instant.now()); m.setSizeBytes(raw.length); m.setMaildirPath(original);
+                result[i] = messages.saveAndFlush(m).getId();
+            }
+            return result;
+        });
+        assertNotNull(ids);
+        ProtocolMailService service = new ProtocolMailService(folders, messages, mock(MailDeliveryService.class),
+                storage, mock(RawMessageSpool.class), new MimeMailParser(storage), mock(AuthUserClient.class));
+        tx.executeWithoutResult(status -> service.hardDeleteMessage(owner, ids[0]));
+        tx.executeWithoutResult(status -> {
+            assertTrue(messages.findByIdAndOwnerId(ids[0], owner).isEmpty());
+            assertEquals(original, messages.findByIdAndOwnerId(ids[1], owner).orElseThrow().getMaildirPath());
+        });
+        Path file = temp.resolve("mail").resolve(original);
+        assertTrue(Files.isRegularFile(file), "Deletion removed a file still referenced by another message");
+        assertArrayEquals(raw, Files.readAllBytes(file));
     }
 
 }
