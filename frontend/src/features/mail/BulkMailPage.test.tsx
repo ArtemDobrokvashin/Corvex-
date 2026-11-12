@@ -20,7 +20,7 @@ describe('bulk mail selection', () => {
     expect(all).not.toBeNull();
     await act(async () => all.click());
     expect(host.textContent).toContain('Selected: 4');
-    const archive = Array.from(host.querySelectorAll('button.btn-secondary')).find((button) => button.textContent === 'Archive')!;
+    const archive = Array.from(host.querySelectorAll<HTMLButtonElement>('button.btn-secondary')).find((button) => button.textContent === 'Archive')!;
     expect(archive).toBeTruthy();
     await act(async () => archive.click());
     expect(host.textContent).toContain('Selected: 4');
