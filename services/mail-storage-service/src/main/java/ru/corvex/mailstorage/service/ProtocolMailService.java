@@ -7,7 +7,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 import ru.corvex.mailstorage.api.dto.ProtocolDtos;
@@ -182,7 +181,7 @@ public class ProtocolMailService {
         // Read scalar UIDs before locking; do not keep stale entities in the persistence context.
         for (Long uid : messages.findFolderUids(folderId, ownerId)) {
             messages.lockFolderUid(folderId, uid, ownerId).ifPresent(m -> {
-                deleteFileAfterCommit(m);
+                retainFileForReconciliation(m);
                 messages.delete(m);
             });
         }
@@ -277,7 +276,7 @@ public class ProtocolMailService {
             messages.lockFolderUid(folderId, uid, ownerId)
                     .filter(MessageMetadata::isDeleted)
                     .ifPresent(m -> {
-                        deleteFileAfterCommit(m);
+                        retainFileForReconciliation(m);
                         messages.delete(m);
                         expunged.add(m.getUid());
                     });
@@ -294,7 +293,7 @@ public class ProtocolMailService {
         MessageMetadata m = messages.lockOwned(messageId, ownerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Письмо не найдено"));
         UUID folderId = m.getFolder() == null ? null : m.getFolder().getId();
-        deleteFileAfterCommit(m);
+        retainFileForReconciliation(m);
         messages.delete(m);
         if (folderId != null) {
             folders.lockById(folderId).ifPresent(this::nextModSeq);
@@ -497,29 +496,14 @@ public class ProtocolMailService {
         return false;
     }
 
-    /** Only remove the body after a confirmed commit; rollback/unknown keeps the original. */
-    private void deleteFileAfterCommit(MessageMetadata message) {
+    /** Temporary fail-closed behavior: never delete bodies until safe reconciliation exists. */
+    private void retainFileForReconciliation(MessageMetadata message) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             throw new IllegalStateException("Удаление письма требует активной транзакции");
         }
-        UUID id = message.getId();
-        String path = message.getMaildirPath();
-        // Fail safe for already-shared paths. This pre-commit check is not a
-        // complete solution for concurrent new references; see MAIL-MOVE-SAFETY.md.
-        if (messages.countByMaildirPath(path) > 1) {
-            log.warn("Файл удалённого письма {} сохранён: путь используется несколькими записями", id);
-            return;
-        }
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override public void afterCompletion(int status) {
-                if (status != STATUS_COMMITTED) return;
-                try {
-                    maildir.deleteMessage(path);
-                } catch (IOException e) {
-                    log.warn("Не удалось очистить файл удалённого письма {} ({}): {}", id, path, e.getMessage());
-                }
-            }
-        });
+        // A concurrent transaction can create a reference after any count/check.
+        // Retention consumes space and retains sensitive data; not production-ready.
+        log.warn("Тело удалённого письма {} временно сохранено; безопасная очистка не настроена", message.getId());
     }
 
     static String validateFolderName(String raw) {

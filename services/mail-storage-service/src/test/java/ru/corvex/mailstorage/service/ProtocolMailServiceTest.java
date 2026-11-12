@@ -176,7 +176,7 @@ class ProtocolMailServiceTest {
 
         assertEquals(List.of(7L), res.expungedUids());
         assertEquals(21L, inbox.getHighestModseq(), "EXPUNGE двигает HIGHESTMODSEQ, иначе QRESYNC не увидит удаление");
-        assertFalse(Files.exists(tmp.resolve("mail").resolve(rel)), "файл .eml должен быть удалён с диска");
+        assertTrue(Files.exists(tmp.resolve("mail").resolve(rel)), "original retained pending safe reconciliation");
         verify(messages).delete(victim);
     }
 

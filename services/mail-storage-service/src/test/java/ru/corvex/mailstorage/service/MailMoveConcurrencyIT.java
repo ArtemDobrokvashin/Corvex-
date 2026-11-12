@@ -249,7 +249,7 @@ class MailMoveConcurrencyIT {
 
     @ParameterizedTest(name = "expunge={0}")
     @ValueSource(booleans = {true, false})
-    void committedProtocolDeletionRemovesDatabaseAndFile(boolean expunge) throws Exception {
+    void committedProtocolDeletionRetainsFileUntilReconciliation(boolean expunge) throws Exception {
         TransactionTemplate tx = new TransactionTemplate(transactionManager);
         UUID owner = UUID.randomUUID();
         MaildirStorage storage = new MaildirStorage(temp.resolve("mail"), temp.resolve("attachments"));
@@ -278,7 +278,8 @@ class MailMoveConcurrencyIT {
             assertTrue(messages.findByIdAndOwnerId(ids[1], owner).isEmpty());
         });
         Path file = temp.resolve("mail").resolve(original);
-        assertFalse(Files.exists(file), "Committed deletion did not clean up its message file");
+        assertTrue(Files.isRegularFile(file), "Original must remain until safe reconciliation");
+        assertArrayEquals(raw, Files.readAllBytes(file));
     }
 
     @Test
@@ -500,9 +501,9 @@ class MailMoveConcurrencyIT {
                 (proxy, method, args) -> {
                     try {
                         Object result = method.invoke(messages, args);
-                        if (method.getName().equals("countByMaildirPath")) {
+                        if (method.getName().equals("lockOwned")) {
                             counted.countDown();
-                            if (!resume.await(30, TimeUnit.SECONDS)) throw new IllegalStateException("Count pause timed out");
+                            if (!resume.await(30, TimeUnit.SECONDS)) throw new IllegalStateException("Delete pause timed out");
                         }
                         return result;
                     } catch (InvocationTargetException e) {
@@ -514,7 +515,7 @@ class MailMoveConcurrencyIT {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
             Future<?> deletion = executor.submit(() -> tx.executeWithoutResult(status -> service.hardDeleteMessage(owner, ids[1])));
-            assertTrue(counted.await(30, TimeUnit.SECONDS), "Deletion did not reach reference count");
+            assertTrue(counted.await(30, TimeUnit.SECONDS), "Deletion did not reach message lock");
             UUID newId = tx.execute(status -> {
                 MailFolder folder = folders.findByIdAndOwnerId(ids[0], owner).orElseThrow();
                 MessageMetadata m = new MessageMetadata();

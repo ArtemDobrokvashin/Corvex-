@@ -234,7 +234,7 @@ class ProtocolMailServiceAdditionalTest {
 
         verify(messages).delete(message);
         verify(folders).delete(disposable);
-        assertFalse(Files.exists(tmp.resolve("mail").resolve(rel)));
+        assertTrue(Files.exists(tmp.resolve("mail").resolve(rel)), "original retained pending safe reconciliation");
         assertTrue(Files.isDirectory(tmp.resolve("mail/user@company.local/Disposable")));
     }
 

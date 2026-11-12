@@ -62,8 +62,6 @@ public interface MessageMetadataRepository extends JpaRepository<MessageMetadata
     @Query("select m.uid from MessageMetadata m where m.folder.id = :folderId and m.ownerId = :ownerId order by m.uid")
     List<Long> findFolderUids(@Param("folderId") UUID folderId, @Param("ownerId") UUID ownerId);
 
-    long countByMaildirPath(String maildirPath);
-
     @Query("select m.uid from MessageMetadata m where m.folder.id = :folderId and m.ownerId = :ownerId and m.deleted = true order by m.uid")
     List<Long> findDeletedUids(@Param("folderId") UUID folderId, @Param("ownerId") UUID ownerId);
 
