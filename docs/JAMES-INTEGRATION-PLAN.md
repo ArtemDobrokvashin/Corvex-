@@ -286,9 +286,18 @@ account и непрозрачному ID James. Обратный поиск вы
 лабораторный сценарий добавляет синтетическое письмо через IMAP и читает его
 Java-клиентом JMAP; его фактический запуск и результат ещё неизвестны.
 
-Подготовлены отдельный preview писем и позиционная пагинация JMAP с проверкой
-`queryState`: если состояние изменилось между запросами, требуется перезагрузка.
-Письмо без подтверждённого provenance имеет статус `UNVERIFIED`, а не CLEAN.
-Значения JMAP не маскируются под IMAP UID. Этот формат пока не подключён к
-публичному API и интерфейсу, live проверка новой версии ещё не выполнена;
-нужна совместимая схема cursor/ID и политика AV прежде чем включать маршрут.
+На ПК попытка позиционной пагинации с проверкой `queryState` завершилась
+ошибкой live-теста: 46 тестов, 0 failures, 1 error. В исходниках James 3.9.1
+`EmailQueryMethod.toResponse` вызывает `QueryState.forIds(ids)` **после**
+ограничения до конкретной страницы, а `QueryState.forStrings` хеширует эти ID.
+Поэтому состояния разных страниц закономерно отличаются и не подтверждают
+стабильность всего списка. Кроме того, этот метод отклоняет JMAP `anchor` и
+`anchorOffset`. Проверку нельзя просто удалить: это может скрыть пропуски при
+конкурентных изменениях. Продолжение временно отключено; заполненная первая
+страница явно помечается `continuationUnavailable`. Надёжная пагинация всё ещё
+не реализована и является блокером перехода webmail.
+
+Источники: [EmailQueryMethod 3.9.1](https://github.com/apache/james-project/blob/james-project-3.9.1/server/protocols/jmap-rfc-8621/src/main/scala/org/apache/james/jmap/method/EmailQueryMethod.scala),
+[QueryState 3.9.1](https://github.com/apache/james-project/blob/james-project-3.9.1/server/protocols/jmap-rfc-8621/src/main/scala/org/apache/james/jmap/core/Query.scala).
+Письмо без подтверждённого provenance имеет статус `UNVERIFIED`, не CLEAN.
+Обновлённое отключение пагинации ещё не прошло новый Maven/live прогон.

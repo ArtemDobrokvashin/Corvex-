@@ -70,7 +70,7 @@ final class JamesOwnMailboxAccess {
                 reader.listFolders(authorized.principal(), authorized.mapping()));
     }
 
-    record FolderMessagePage(List<JamesMessagePreviewMapper.Preview> messages, String queryState, Integer nextPosition) { }
+    record FolderMessagePage(List<JamesMessagePreviewMapper.Preview> messages, String queryState, boolean continuationUnavailable) { }
 
     /** Internal experimental view; it is not the legacy UID-based public API. */
     FolderMessagePage messagePage(Authentication authentication, UUID publicFolderId, int limit,
@@ -81,7 +81,7 @@ final class JamesOwnMailboxAccess {
                 limit, folderMapper, position, expectedState);
         var previews = new JamesMessagePreviewMapper().map(authorized.principal().verifiedOwnerId(),
                 authorized.mapping().accountId(), publicFolderId, page.items());
-        return new FolderMessagePage(previews, page.queryState(), page.nextPosition());
+        return new FolderMessagePage(previews, page.queryState(), page.continuationUnavailable());
     }
 
     /** Internal JMAP metadata only: never expose without DTO conversion and AV policy. */

@@ -98,11 +98,10 @@ class JamesLiveMailboxTest {
         assertEquals("Corvex James live synthetic message", previews.get(0).subject());
         assertEquals("UNVERIFIED", previews.get(0).avStatus());
         assertTrue(previews.get(0).hasAttachments());
-        assertEquals(1, first.nextPosition().intValue());
-        var second = reader.messagePage(principal1,
+        assertTrue(first.continuationUnavailable());
+        assertThrows(UnsupportedOperationException.class, () -> reader.messagePage(principal1,
                 new JamesMailboxBinding.ProvisionedMailbox(owner1, true, USER1, account1),
-                inbox.id(), 1, folderMapper, first.nextPosition(), first.queryState());
-        assertTrue(second.items().isEmpty());
+                inbox.id(), 1, folderMapper, 1, null));
         assertThrows(SecurityException.class, () -> reader.firstMessagePage(principal2,
                 new JamesMailboxBinding.ProvisionedMailbox(owner2, true, USER2, account2),
                 inbox.id(), 25, folderMapper));

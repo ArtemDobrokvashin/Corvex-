@@ -88,20 +88,18 @@ class JamesMessagePageTest {
         assertThrows(IOException.class, () -> reader.firstMessagePage(principal, mapping, folderId, 10, folders));
     }
 
-    @Test void changedQueryStateRequiresReloadBeforeEmailGet() throws Exception {
-        var changed = mapper.readTree("{\"accountId\":\"account-1\",\"ids\":[\"a\"],\"queryState\":\"new-state\",\"position\":10}");
-        when(client.read(anyString(), eq("Email/query"), any())).thenReturn(changed);
-        assertThrows(IOException.class, () -> reader.messagePage(principal, mapping, folderId, 10, folders, 10, "old-state"));
-        verify(client, never()).read(anyString(), eq("Email/get"), any());
+    @Test void refusesContinuationWithoutAnyNetworkRequest() {
+        assertThrows(UnsupportedOperationException.class,
+                () -> reader.messagePage(principal, mapping, folderId, 10, folders, 10, null));
+        verifyNoInteractions(client);
     }
 
-    @Test void boundedPaginationRequiresState() throws Exception {
+    @Test void fullFirstPageExplicitlyReportsContinuationUnavailable() throws Exception {
         query("{\"accountId\":\"account-1\",\"ids\":[\"a\"]}");
         emails("{\"accountId\":\"account-1\",\"list\":[{\"id\":\"a\",\"mailboxIds\":{\"inbox-native\":true}}],\"notFound\":[]}");
         var page = reader.messagePage(principal, mapping, folderId, 1, folders, 0, null);
         assertEquals("state-1", page.queryState());
-        assertEquals(1, page.nextPosition().intValue());
-        assertThrows(IllegalArgumentException.class, () -> reader.messagePage(principal, mapping, folderId, 10, folders, 10, null));
+        assertTrue(page.continuationUnavailable());
     }
 
     @Test void rejectsPageOutsideBoundsWithoutAnyNetworkRequest() {
