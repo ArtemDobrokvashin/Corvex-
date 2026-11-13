@@ -3,7 +3,7 @@ import email
 import email.policy
 import os
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock, call
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location('james_probe', Path(__file__).with_name('probe.py'))
@@ -60,6 +60,29 @@ class FakeImap:
 
 
 class ProbeTests(unittest.TestCase):
+    def test_starttls_precedes_login(self):
+        client = Mock()
+        client.starttls.return_value = ('OK', [b'tls'])
+        client.login.return_value = ('OK', [b'authenticated'])
+        with patch.object(probe.imaplib, 'IMAP4', return_value=client):
+            self.assertIs(client, probe.connect(probe.USER, probe.time.monotonic() + 1))
+        self.assertEqual('starttls', client.method_calls[0][0])
+        self.assertEqual(call.login(probe.USER, probe.PASSWORD), client.method_calls[1])
+        context = client.starttls.call_args.kwargs['ssl_context']
+        self.assertFalse(context.check_hostname)  # DEMO ONLY; not production policy
+        self.assertEqual(probe.ssl.CERT_NONE, context.verify_mode)
+
+    def test_failed_starttls_never_falls_back_to_cleartext(self):
+        client = Mock()
+        client.starttls.side_effect = probe.imaplib.IMAP4.error('TLS unavailable')
+        error_class = probe.imaplib.IMAP4.error
+        with patch.object(probe.imaplib, 'IMAP4', return_value=client) as constructor:
+            constructor.error = error_class
+            with self.assertRaisesRegex(RuntimeError, 'did not become ready'):
+                probe.connect(probe.USER, 0)
+        client.login.assert_not_called()
+        client.shutdown.assert_called_once()
+
     def test_requires_explicit_confirmation_before_network(self):
         with patch.dict(os.environ, {}, clear=True), patch.object(probe, 'connect') as connect:
             with self.assertRaises(RuntimeError): probe.main()

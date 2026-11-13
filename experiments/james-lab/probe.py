@@ -4,6 +4,7 @@ from email.message import EmailMessage
 import imaplib
 import os
 import secrets
+import ssl
 import time
 
 HOST = 'james'
@@ -24,6 +25,10 @@ def connect(user, deadline):
         client = None
         try:
             client = imaplib.IMAP4(HOST, 143, timeout=5)
+            # Demo generates a self-signed certificate. No identity validation is
+            # acceptable ONLY for this disposable, internal, synthetic-data lab.
+            # Never reuse this context for production or actual credentials.
+            ok(client.starttls(ssl_context=ssl._create_unverified_context()), 'STARTTLS')
             ok(client.login(user, PASSWORD), 'login')
             return client
         except (OSError, imaplib.IMAP4.error):
