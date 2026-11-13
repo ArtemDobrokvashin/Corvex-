@@ -95,7 +95,8 @@ class ProbeTests(unittest.TestCase):
         received.set_content('Synthetic')
         received.add_attachment(b'smtp-lab-attachment\x00\xff', maintype='application',
                                 subtype='octet-stream', filename='synthetic.bin')
-        with patch.object(probe.smtplib, 'SMTP', return_value=context) as transport, \
+        with patch.dict(probe.os.environ, {}, clear=True), \
+                patch.object(probe.smtplib, 'SMTP', return_value=context) as transport, \
                 patch.object(probe, 'connect', return_value=client), \
                 patch.object(probe, 'uid_search', return_value=[b'1']), \
                 patch.object(probe, 'body', return_value=received.as_bytes()):
@@ -104,6 +105,44 @@ class ProbeTests(unittest.TestCase):
         self.assertEqual([probe.OTHER], smtp.send_message.call_args.kwargs['to_addrs'])
         client.select.assert_called_once_with('INBOX', readonly=True)
         client.logout.assert_called_once()
+
+    def test_submission_uses_tls_before_auth_and_send(self):
+        smtp = Mock()
+        smtp.send_message.return_value = {}
+        ctx = Mock()
+        ctx.__enter__ = Mock(return_value=smtp)
+        ctx.__exit__ = Mock(return_value=False)
+        client = Mock()
+        client.select.return_value = ('OK', [b'1'])
+        received = email.message.EmailMessage(policy=email.policy.SMTP)
+        received.set_content('Synthetic')
+        received.add_attachment(b'smtp-lab-attachment\x00\xff', maintype='application',
+                                subtype='octet-stream', filename='synthetic.bin')
+        with patch.dict(probe.os.environ, {'JAMES_LAB_SMTP_MODE': 'submission'}, clear=True), \
+                patch.object(probe.smtplib, 'SMTP', return_value=ctx) as transport, \
+                patch.object(probe, 'connect', return_value=client), \
+                patch.object(probe, 'uid_search', return_value=[b'1']), \
+                patch.object(probe, 'body', return_value=received.as_bytes()):
+            probe.smtp_probe()
+        transport.assert_called_once_with('james', 587, timeout=10)
+        names = [entry[0] for entry in smtp.method_calls]
+        self.assertLess(names.index('starttls'), names.index('login'))
+        self.assertLess(names.index('login'), names.index('send_message'))
+        smtp.login.assert_called_once_with(probe.USER, probe.PASSWORD)
+
+    def test_submission_tls_failure_never_sends_or_logs_in(self):
+        smtp = Mock()
+        smtp.starttls.side_effect = OSError('TLS failure')
+        ctx = Mock()
+        ctx.__enter__ = Mock(return_value=smtp)
+        ctx.__exit__ = Mock(return_value=False)
+        with patch.dict(probe.os.environ, {'JAMES_LAB_SMTP_MODE': 'submission'}, clear=True), \
+                patch.object(probe.smtplib, 'SMTP', return_value=ctx), \
+                patch.object(probe, 'connect') as connect:
+            with self.assertRaises(OSError): probe.smtp_probe()
+        smtp.login.assert_not_called()
+        smtp.send_message.assert_not_called()
+        connect.assert_not_called()
 
     def test_starttls_precedes_login(self):
         client = Mock()

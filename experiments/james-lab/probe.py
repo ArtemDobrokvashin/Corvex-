@@ -137,7 +137,18 @@ def smtp_probe():
     msg.set_content('Synthetic SMTP test only.')
     msg.add_attachment(b'smtp-lab-attachment\x00\xff', maintype='application',
                        subtype='octet-stream', filename='synthetic.bin')
-    with smtplib.SMTP(HOST, 25, timeout=10) as smtp:
+    mode = os.environ.get('JAMES_LAB_SMTP_MODE', 'inbound')
+    if mode not in ('inbound', 'submission'):
+        raise ValueError('Unknown laboratory SMTP mode')
+    port = 587 if mode == 'submission' else 25
+    with smtplib.SMTP(HOST, port, timeout=10) as smtp:
+        if mode == 'submission':
+            # Self-signed demo certificate: encryption without identity verification.
+            # LAB ONLY; production needs verified certificates and hostnames.
+            smtp.ehlo()
+            smtp.starttls(context=ssl._create_unverified_context())
+            smtp.ehlo()
+            smtp.login(USER, PASSWORD)
         refused = smtp.send_message(msg, from_addr=USER, to_addrs=[OTHER])
         if refused:
             raise RuntimeError('SMTP refused the local demo recipient')

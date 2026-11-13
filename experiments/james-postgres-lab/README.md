@@ -30,3 +30,8 @@ experiments/james-postgres-lab -v`.
 [search.properties](https://github.com/apache/james-project/blob/james-project-3.9.1/server/apps/postgres-app/sample-configuration-single/search.properties),
 [blob.properties](https://github.com/apache/james-project/blob/james-project-3.9.1/server/apps/postgres-app/sample-configuration/blob.properties),
 [JMAP SessionRoutes](https://github.com/apache/james-project/blob/james-project-3.9.1/server/protocols/jmap-rfc-8621/src/main/scala/org/apache/james/jmap/routes/SessionRoutes.scala).
+
+Для IMAP/SMTP suite используется `../james-lab/probe.py`: на этой сборке выбрать
+`JAMES_LAB_SMTP_MODE=submission` (порт 587, STARTTLS и demo auth). Публичный
+самоподписанный сертификат в эксперименте не проверяется; это не production TLS.
+Без этого параметра inbound-вариант теста получает 530 Authentication Required.
