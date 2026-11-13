@@ -100,6 +100,8 @@ try {
     if ([int]$suite.tests -lt 1 -or [int]$suite.skipped -ne 0 -or [int]$suite.failures -ne 0 -or [int]$suite.errors -ne 0) {
         throw 'FAIL: live James test was skipped or failed'
     }
+    & docker compose -p $Project -f $Compose run --rm --no-deps --entrypoint python seed /fixture/migration_probe.py
+    Require-Success 'synthetic migration byte and flags round-trip'
     Write-Host 'PASS: unit tests and live James JWT/HTTPS test completed'
 } finally {
     if ($Started) {

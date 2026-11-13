@@ -38,6 +38,7 @@ services:
     volumes:
       - ../james-lab/probe.py:/fixture/probe.py:ro
       - ./seed.py:/fixture/seed.py:ro
+      - ./migration_probe.py:/fixture/migration_probe.py:ro
     entrypoint: ["python", "/fixture/seed.py"]
     networks: [isolated]
   tls-proxy:
