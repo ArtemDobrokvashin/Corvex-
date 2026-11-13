@@ -21,12 +21,17 @@ try {
         $Container = $ids[0].Trim()
         & docker exec $Container mkdir $Remote
         if ($LASTEXITCODE -ne 0) { throw 'FAIL: create probe directory inside running container' }
-        & docker cp (Join-Path $Temp 'JamesTransitionTlsProbe.class') "${Container}:${Remote}/"
-        if ($LASTEXITCODE -ne 0) { throw 'FAIL: copy compiled probe into running container' }
+        foreach ($class in @('JamesTransitionTlsProbe.class', 'JamesTransitionTlsProbe$1.class')) {
+            & docker cp (Join-Path $Temp $class) "${Container}:${Remote}/"
+            if ($LASTEXITCODE -ne 0) { throw 'FAIL: copy compiled probe into running container' }
+        }
         & docker exec $Container java -cp $Remote JamesTransitionTlsProbe
         if ($LASTEXITCODE -ne 0) { throw 'FAIL: TLS/HTTP probe; no mail or configuration changed' }
     } finally { Pop-Location }
 } finally {
-    if ($Container) { & docker exec $Container rm -f "$Remote/JamesTransitionTlsProbe.class"; & docker exec $Container rmdir $Remote }
+    if ($Container) {
+        & docker exec $Container rm -f "$Remote/JamesTransitionTlsProbe.class" ($Remote + '/JamesTransitionTlsProbe$1.class')
+        & docker exec $Container rmdir $Remote
+    }
     if (Test-Path $Temp) { Remove-Item -LiteralPath $Temp -Recurse -Force }
 }
