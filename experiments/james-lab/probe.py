@@ -1,5 +1,6 @@
 """Disposable James demo protocol probe. Synthetic messages only; not production."""
 import email.policy
+from email.parser import BytesParser
 from email.message import EmailMessage
 import imaplib
 import os
@@ -91,11 +92,46 @@ def restart_probe(mode, marker):
         client.logout()
 
 
+def diagnose_restart(marker):
+    """Read-only diagnostic for a disposable synthetic lab, no message output."""
+    if not re.fullmatch(r'[0-9a-f]{32}', marker or ''):
+        raise ValueError('JAMES_LAB_MARKER must be exactly 32 lowercase hexadecimal characters')
+    client = connect(USER, time.monotonic() + 120)
+    try:
+        selected = ok(client.select('INBOX', readonly=True), 'select inbox')
+        if not selected or not selected[0] or not selected[0].isdigit():
+            raise RuntimeError('Invalid INBOX message count')
+        total = int(selected[0])
+        if total > 100:
+            raise RuntimeError('Refusing diagnostic for an INBOX with over 100 messages')
+        matches = uid_search(client, marker)
+        data = ok(client.uid('SEARCH', None, 'ALL'), 'search all')
+        uids = data[0].split() if data and data[0] else []
+        if len(uids) != total or len(set(uids)) != len(uids):
+            raise RuntimeError('SEARCH ALL does not match selected INBOX count; diagnostic incomplete')
+        exact = marked = 0
+        for uid in uids:
+            raw = body(client, uid)
+            header = BytesParser(policy=email.policy.default).parsebytes(raw, headersonly=True)
+            if header.get('X-Corvex-Lab') == marker:
+                marked += 1
+                if raw == restart_message(marker):
+                    exact += 1
+        print(f'DIAGNOSTIC: inbox_count={total} header_search_count={len(matches)} '
+              f'scan_marker_count={marked} exact_bytes_count={exact}')
+        print('No message contents displayed. This is a diagnostic, not a restart PASS.')
+    finally:
+        client.logout()
+
+
 def main():
     # This intentionally refuses an arbitrary host or accounts. It is not a migration tool.
     if os.environ.get('JAMES_LAB_CONFIRM') != 'synthetic-only':
         raise RuntimeError('Set JAMES_LAB_CONFIRM=synthetic-only in the isolated lab')
     mode = os.environ.get('JAMES_LAB_MODE', 'basic')
+    if mode == 'diagnose':
+        diagnose_restart(os.environ.get('JAMES_LAB_MARKER', ''))
+        return
     if mode != 'basic':
         restart_probe(mode, os.environ.get('JAMES_LAB_MARKER', ''))
         return

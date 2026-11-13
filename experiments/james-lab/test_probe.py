@@ -1,9 +1,11 @@
 import importlib.util
+import io
 import email
 import email.policy
 import os
 import unittest
 from unittest.mock import patch, Mock, call
+from contextlib import redirect_stdout
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location('james_probe', Path(__file__).with_name('probe.py'))
@@ -92,6 +94,37 @@ class ProbeTests(unittest.TestCase):
         with patch.dict(os.environ, {'JAMES_LAB_CONFIRM': 'synthetic-only'}, clear=True), \
                 patch.object(probe, 'connect', side_effect=[primary, other]):
             probe.main()
+
+    def test_diagnostic_distinguishes_search_miss_from_preserved_bytes(self):
+        marker = 'a' * 32
+        client = Mock()
+        client.select.return_value = ('OK', [b'1'])
+        client.uid.return_value = ('OK', [b'7'])
+        output = io.StringIO()
+        with patch.object(probe, 'connect', return_value=client), \
+                patch.object(probe, 'uid_search', return_value=[]), \
+                patch.object(probe, 'body', return_value=probe.restart_message(marker)), \
+                redirect_stdout(output):
+            probe.diagnose_restart(marker)
+        self.assertIn('header_search_count=0 scan_marker_count=1 exact_bytes_count=1', output.getvalue())
+        client.select.assert_called_once_with('INBOX', readonly=True)
+        client.logout.assert_called_once()
+
+    def test_diagnostic_rejects_large_or_inconsistent_inbox(self):
+        client = Mock()
+        client.select.return_value = ('OK', [b'101'])
+        with patch.object(probe, 'connect', return_value=client):
+            with self.assertRaisesRegex(RuntimeError, 'over 100'):
+                probe.diagnose_restart('a' * 32)
+        client.uid.assert_not_called()
+        client.logout.assert_called_once()
+        client.reset_mock()
+        client.select.return_value = ('OK', [b'1'])
+        client.uid.return_value = ('OK', [b''])
+        with patch.object(probe, 'connect', return_value=client), patch.object(probe, 'uid_search', return_value=[]):
+            with self.assertRaisesRegex(RuntimeError, 'diagnostic incomplete'):
+                probe.diagnose_restart('a' * 32)
+        client.logout.assert_called_once()
 
     def test_restart_seed_and_verify_same_bytes(self):
         client = FakeImap()
