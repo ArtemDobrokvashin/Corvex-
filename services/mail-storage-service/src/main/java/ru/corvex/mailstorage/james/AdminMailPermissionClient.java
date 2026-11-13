@@ -15,7 +15,7 @@ import java.util.concurrent.TimeoutException;
 import ru.corvex.mailstorage.security.InternalTokenGuard;
 
 /** Internal admin-service RBAC query, disconnected until configuration and TLS are reviewed. */
-final class AdminMailPermissionClient implements CurrentMailPermissionLookup {
+final class AdminMailPermissionClient implements CurrentMailPermissionLookup, CurrentProvisioningPermissionLookup {
     private final URI base;
     private final ObjectMapper mapper;
     private final InternalTokenGuard tokens;
@@ -37,6 +37,14 @@ final class AdminMailPermissionClient implements CurrentMailPermissionLookup {
     }
 
     @Override public boolean canReadOwnMail(UUID ownerId) {
+        return hasPermission(ownerId, "MAIL_READ_OWN");
+    }
+
+    @Override public boolean canManageUsers(UUID actorId) {
+        return hasPermission(actorId, "ADMIN_USERS_MANAGE");
+    }
+
+    private boolean hasPermission(UUID ownerId, String requiredPermission) {
         Objects.requireNonNull(ownerId);
         URI uri = base.resolve("/internal/users/" + ownerId + "/access");
         HttpRequest req = HttpRequest.newBuilder(uri).timeout(TIMEOUT)
@@ -53,7 +61,7 @@ final class AdminMailPermissionClient implements CurrentMailPermissionLookup {
             boolean granted = false;
             for (JsonNode permission : body.path("permissions")) {
                 if (!permission.isTextual()) throw new IllegalStateException("Invalid admin permission");
-                if ("MAIL_READ_OWN".equals(permission.textValue())) granted = true;
+                if (requiredPermission.equals(permission.textValue())) granted = true;
             }
             return granted;
         } catch (InterruptedException e) {

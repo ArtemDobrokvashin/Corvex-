@@ -48,6 +48,15 @@ class AdminMailPermissionClientTest {
         assertFalse(client.canReadOwnMail(owner));
     }
 
+    @Test void provisioningUsesCurrentManageUsersPermission() {
+        var actor = UUID.randomUUID();
+        body.set("{\"permissions\":[\"ADMIN_USERS_MANAGE\"]}");
+        assertTrue(client.canManageUsers(actor));
+        assertFalse(client.canReadOwnMail(actor));
+        body.set("{\"permissions\":[\"MAIL_READ_OWN\"]}");
+        assertFalse(client.canManageUsers(actor));
+    }
+
     @Test void invalidJsonShapeAndErrorsFailClosed() {
         for (String value : new String[]{"{}", "{\"permissions\":null}", "{\"permissions\":[1]}", "not-json"}) {
             body.set(value);
