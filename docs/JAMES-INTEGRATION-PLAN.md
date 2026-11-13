@@ -166,3 +166,15 @@ access-токене может задерживаться до окончани�
 пользователях и изолированных ключах, а не на демо-пароле или реальном токене.
 Источники: [JWTAuthenticationStrategy 3.9.1](https://github.com/apache/james-project/blob/james-project-3.9.1/server/protocols/jmap/src/main/java/org/apache/james/jmap/http/JWTAuthenticationStrategy.java),
 [JwtTokenVerifier 3.9.1](https://github.com/apache/james-project/blob/james-project-3.9.1/server/protocols/jwt/src/main/java/org/apache/james/jwt/JwtTokenVerifier.java).
+
+## Лабораторная проверка транспорта JMAP
+
+На ПК пользователя Java 17 скомпилировал `mail-storage-service`; при запуске
+`JamesJmapReadClientTest` Maven сообщил **7 тестов, 0 failures, 0 errors,
+0 skipped**, `BUILD SUCCESS`. Проверялись изолированные mock HTTP-ответы, а
+не обмен с работающим James. Maven вывел предупреждение HTTP 401 при загрузке
+метаданных `flyway-community-db-support`; оно не остановило данный запуск.
+
+Клиент остаётся отключённым от продукта. Он не предоставляет проверку прав,
+сопоставление идентичности и отзыв; реальный James, HTTPS и ограничение времени
+чтения тела ответа этим прогоном не проверены.
