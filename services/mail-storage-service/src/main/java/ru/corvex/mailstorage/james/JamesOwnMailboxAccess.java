@@ -70,6 +70,20 @@ final class JamesOwnMailboxAccess {
                 reader.listFolders(authorized.principal(), authorized.mapping()));
     }
 
+    record FolderMessagePage(List<JamesMessagePreviewMapper.Preview> messages, String queryState, Integer nextPosition) { }
+
+    /** Internal experimental view; it is not the legacy UID-based public API. */
+    FolderMessagePage messagePage(Authentication authentication, UUID publicFolderId, int limit,
+                                  int position, String expectedState)
+            throws IOException, GeneralSecurityException, InterruptedException {
+        Authorized authorized = authorize(authentication);
+        var page = reader.messagePage(authorized.principal(), authorized.mapping(), publicFolderId,
+                limit, folderMapper, position, expectedState);
+        var previews = new JamesMessagePreviewMapper().map(authorized.principal().verifiedOwnerId(),
+                authorized.mapping().accountId(), publicFolderId, page.items());
+        return new FolderMessagePage(previews, page.queryState(), page.nextPosition());
+    }
+
     /** Internal JMAP metadata only: never expose without DTO conversion and AV policy. */
     JsonNode firstMessagePage(Authentication authentication, UUID publicFolderId, int limit)
             throws IOException, GeneralSecurityException, InterruptedException {

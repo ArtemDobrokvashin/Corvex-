@@ -57,21 +57,44 @@ final class JamesOwnMailboxReader {
     JsonNode firstMessagePage(JamesMailboxBinding.Principal principal, JamesMailboxBinding.ProvisionedMailbox mapping,
                               UUID publicFolderId, int limit, JamesFolderMapper folderMapper)
             throws IOException, GeneralSecurityException, InterruptedException {
-        if (limit < 1 || limit > 100) throw new IllegalArgumentException("Invalid page size");
+        return messagePage(principal, mapping, publicFolderId, limit, folderMapper, 0, null).items();
+    }
+
+    record MessagePage(JsonNode items, String queryState, Integer nextPosition) { }
+
+    /** The caller must restart from page one on changed query state. */
+    MessagePage messagePage(JamesMailboxBinding.Principal principal, JamesMailboxBinding.ProvisionedMailbox mapping,
+                            UUID publicFolderId, int limit, JamesFolderMapper folderMapper,
+                            int position, String expectedState)
+            throws IOException, GeneralSecurityException, InterruptedException {
+        if (limit < 1 || limit > 100 || position < 0 || position > 1000000
+                || (position == 0 && expectedState != null)
+                || (position > 0 && (expectedState == null || expectedState.isBlank() || expectedState.length() > 1024))) {
+            throw new IllegalArgumentException("Invalid James page request");
+        }
         Objects.requireNonNull(publicFolderId);
         Objects.requireNonNull(folderMapper);
         Session session = open(principal, mapping);
         String account = session.binding().accountId();
         String folder = folderMapper.resolveNativeId(principal.verifiedOwnerId(), account, folders(session), publicFolderId)
                 .orElseThrow(() -> new SecurityException("James folder not found"));
-        ObjectNode query = mapper.createObjectNode().put("accountId", account).put("limit", limit);
+        ObjectNode query = mapper.createObjectNode().put("accountId", account).put("limit", limit).put("position", position);
         query.putObject("filter").put("inMailbox", folder);
         query.putArray("sort").addObject().put("property", "receivedAt").put("isAscending", false);
         JsonNode result = client.read(session.token(), "Email/query", query);
         JsonNode ids = result.path("ids");
-        if (!account.equals(result.path("accountId").asText()) || !ids.isArray() || ids.size() > limit) {
+        JsonNode stateNode = result.path("queryState");
+        JsonNode positionNode = result.path("position");
+        if (!account.equals(result.path("accountId").asText()) || !ids.isArray() || ids.size() > limit
+                || !stateNode.isTextual() || stateNode.textValue().isBlank() || stateNode.textValue().length() > 1024
+                || !positionNode.isIntegralNumber() || !positionNode.canConvertToInt() || positionNode.intValue() != position) {
             throw new IOException("Invalid James email query response");
         }
+        String state = stateNode.textValue();
+        if (expectedState != null && !expectedState.equals(state)) {
+            throw new IOException("James query changed; reload from first page");
+        }
+        Integer nextPosition = ids.size() == limit && position <= 1000000 - limit ? position + limit : null;
         var requested = new HashSet<String>();
         for (JsonNode id : ids) {
             if (!id.isTextual() || id.textValue().isBlank() || id.textValue().length() > 1024 || !requested.add(id.textValue())) {
@@ -79,7 +102,7 @@ final class JamesOwnMailboxReader {
             }
         }
         ArrayNode ordered = mapper.createArrayNode();
-        if (requested.isEmpty()) return ordered;
+        if (requested.isEmpty()) return new MessagePage(ordered, state, null);
         ObjectNode get = mapper.createObjectNode().put("accountId", account);
         get.set("ids", ids.deepCopy());
         ArrayNode properties = get.putArray("properties");
@@ -104,6 +127,6 @@ final class JamesOwnMailboxReader {
             }
         }
         for (JsonNode id : ids) ordered.add(byId.get(id.textValue()));
-        return ordered;
+        return new MessagePage(ordered, state, nextPosition);
     }
 }
