@@ -68,7 +68,8 @@ final class JamesMessagePreviewMapper {
         JsonNode address = from.get(0);
         if (!address.isObject()) throw new IOException("Invalid James sender");
         String email = requiredText(address, "email", 1024);
-        String name = optionalText(address, "name", 1024);
+        // James can omit an optional display name entirely, not just send null.
+        String name = address.path("name").isMissingNode() ? "" : optionalText(address, "name", 1024);
         return name.isBlank() ? email : name + " <" + email + ">";
     }
 

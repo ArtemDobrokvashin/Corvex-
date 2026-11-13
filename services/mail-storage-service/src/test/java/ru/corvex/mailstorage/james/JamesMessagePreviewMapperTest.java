@@ -44,6 +44,15 @@ class JamesMessagePreviewMapperTest {
         assertEquals("UNVERIFIED", item.avStatus());
     }
 
+    @Test void missingOrNullSenderNameUsesEmailAndWrongTypeFails() throws Exception {
+        String noName = json.replace("\"name\":\"Ivan\",", "");
+        String nullName = json.replace("\"name\":\"Ivan\"", "\"name\":null");
+        String wrongName = json.replace("\"name\":\"Ivan\"", "\"name\":123");
+        assertEquals("i@example.test", previews.map(owner, "account", folder, mapper.readTree(noName)).get(0).sender());
+        assertEquals("i@example.test", previews.map(owner, "account", folder, mapper.readTree(nullName)).get(0).sender());
+        assertThrows(IOException.class, () -> previews.map(owner, "account", folder, mapper.readTree(wrongName)));
+    }
+
     @Test void rejectsMalformedDateKeywordsAndMissingRequiredProperties() throws Exception {
         assertThrows(IOException.class, () -> previews.map(owner, "account", folder,
                 mapper.readTree(json.replace("2026-01-01T00:00:00Z", "invalid"))));
