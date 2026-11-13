@@ -187,6 +187,66 @@ services:
       - attachment-data:/data/attachments
     depends_on: { postgres: { condition: service_healthy }, elasticsearch: { condition: service_healthy }, rabbitmq: { condition: service_healthy }, auth-service: { condition: service_healthy } }
 
+  # Candidate engine in the SAME Corvex project; OFF by default. No published
+  # ports and no mail route changes. Configuration must be provisioned explicitly.
+  james-postgres:
+    image: postgres:16.9
+    profiles: [james-transition]
+    restart: "no"
+    environment:
+      POSTGRES_DB: james
+      POSTGRES_USER: james
+      POSTGRES_PASSWORD: ${CORVEX_JAMES_DATABASE_PASSWORD:-}
+    entrypoint: ["sh", "-ec", 'test -n "$${POSTGRES_PASSWORD}" || { echo "James database password is required" >&2; exit 1; }; exec docker-entrypoint.sh postgres']
+    volumes:
+      - james-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U james -d james"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [data]
+
+  james:
+    image: apache/james:postgres-3.9.1
+    profiles: [james-transition]
+    restart: "no"
+    depends_on:
+      james-postgres: { condition: service_healthy }
+    volumes:
+      - james-data:/root/var
+      - type: bind
+        source: ${CORVEX_JAMES_CONFIG_DIR:-./infra/secrets/james}/postgres.properties
+        target: /root/conf/postgres.properties
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${CORVEX_JAMES_CONFIG_DIR:-./infra/secrets/james}/jmap.properties
+        target: /root/conf/jmap.properties
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${CORVEX_JAMES_CONFIG_DIR:-./infra/secrets/james}/search.properties
+        target: /root/conf/search.properties
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${CORVEX_JAMES_CONFIG_DIR:-./infra/secrets/james}/blob.properties
+        target: /root/conf/blob.properties
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${CORVEX_JAMES_CONFIG_DIR:-./infra/secrets/james}/webadmin.properties
+        target: /root/conf/webadmin.properties
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${CORVEX_JAMES_CONFIG_DIR:-./infra/secrets/james}/jwt_publickey
+        target: /root/conf/jwt_publickey
+        read_only: true
+        bind: { create_host_path: false }
+    networks: [app, data]
+
   mail-smtp-service:
     <<: *java-common
     build: ./services/mail-smtp-service
@@ -431,6 +491,8 @@ networks:
 
 volumes:
   postgres-data: {}
+  james-postgres-data: {}  # isolated from existing Corvex PostgreSQL
+  james-data: {}           # James persistent data, not the legacy Maildir volume
   redis-data: {}
   rabbitmq-data: {}
   elasticsearch-data: {}

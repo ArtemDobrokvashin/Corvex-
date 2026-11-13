@@ -359,3 +359,6 @@ monitoring alert→email и реальный Chrome 109. Любой следую
 При ошибке после начала удаления часть операций может уже выполниться. Скрипт
 ещё не проверен на Windows/PowerShell и Docker; сначала требуется dry-run и
 проверка вывода. Не использовать `docker system prune` или `down -v`.
+
+Профиль `james-transition` в основном Compose — подготовка к подключению к
+существующему Corvex, пока не включать: [ограничения и обязательная конфигурация](../docs/JAMES-CORVEX-TRANSITION.md).
