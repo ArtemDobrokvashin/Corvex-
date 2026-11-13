@@ -39,7 +39,7 @@ try {
     $env:JAMES_JWT_LAB_DIR = $Root
     $env:JAMES_JWT_LAB_PORT = "$Port"
     $env:JAMES_LIVE_CONFIRM = 'synthetic-only'
-    $env:JAMES_LIVE_HTTPS_ORIGIN = "https://localhost:$Port"
+    $env:JAMES_LIVE_HTTPS_ORIGIN = "https://127.0.0.1:$Port"
     $env:JAMES_LIVE_TEST_KEY_PKCS8 = Join-Path $Root 'private\jwt-private.der'
     Write-Host "Synthetic project: $Project"
     Write-Host "Synthetic keys: $Root"
@@ -61,6 +61,18 @@ try {
         Start-Sleep -Seconds 3
     }
     if (-not $Ready) { throw 'FAIL: James did not become ready; synthetic data preserved' }
+    Write-Host 'Checking the loopback-only HTTPS proxy port'
+    & docker compose -p $Project -f $Compose port tls-proxy 8443
+    Require-Success 'inspect proxy port mapping'
+    $tcp = New-Object System.Net.Sockets.TcpClient
+    try {
+        $connect = $tcp.ConnectAsync('127.0.0.1', $Port)
+        if (-not $connect.Wait(5000) -or -not $tcp.Connected) {
+            throw 'FAIL: HTTPS proxy loopback port is not reachable'
+        }
+    } finally {
+        $tcp.Dispose()
+    }
     & docker compose -p $Project -f $Compose exec -T james james-cli AddDomain james.local
     Require-Success 'create synthetic domain'
     & docker compose -p $Project -f $Compose exec -T james james-cli AddUser user01@james.local 1234

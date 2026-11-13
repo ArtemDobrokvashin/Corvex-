@@ -38,10 +38,12 @@ services:
     ports:
       - "127.0.0.1:${JAMES_JWT_LAB_PORT:-18443}:8443"
     depends_on: [james]
-    networks: [isolated]
+    # A second bridge permits host port publishing; James/DB remain internal-only.
+    networks: [isolated, gateway]
 volumes:
   pgdata: {}
   jamesdata: {}
 networks:
   isolated:
     internal: true
+  gateway: {}
