@@ -32,6 +32,19 @@ class JamesReadConfigurationTest {
                 () -> JamesReadConfiguration.verifyRegistryReadable(jdbc));
     }
 
+    @Test void dedicatedTrustRejectsInvalidOrMultipleCertificates() throws Exception {
+        Path certificate = Path.of(getClass().getResource("/james/test-trust-cert.crt").toURI()).toAbsolutePath();
+        assertNotNull(JamesReadConfiguration.loadDedicatedTrust(certificate));
+        var original = Files.readString(certificate);
+        Path malformed = tmp.resolve("bad-cert.pem").toAbsolutePath();
+        Files.writeString(malformed, "not a certificate");
+        assertThrows(Exception.class, () -> JamesReadConfiguration.loadDedicatedTrust(malformed));
+        Path doubled = tmp.resolve("two-certs.pem").toAbsolutePath();
+        Files.writeString(doubled, original + "\n" + original);
+        assertThrows(Exception.class, () -> JamesReadConfiguration.loadDedicatedTrust(doubled));
+        assertThrows(Exception.class, () -> JamesReadConfiguration.loadDedicatedTrust(Path.of("relative.pem")));
+    }
+
     @Test void loadsDedicatedPkcs8RsaKeyAndRejectsInvalidOrWeakKey() throws Exception {
         var generator = KeyPairGenerator.getInstance("RSA");
         generator.initialize(2048);

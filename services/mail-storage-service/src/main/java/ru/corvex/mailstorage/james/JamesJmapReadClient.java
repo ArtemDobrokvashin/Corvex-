@@ -21,6 +21,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import javax.net.ssl.SSLContext;
 
 /**
  * Dormant read-only JMAP transport, not a Spring component or a public API.
@@ -45,12 +46,22 @@ public final class JamesJmapReadClient {
         this(origin, mapper, false);
     }
 
+    /** Optional dedicated trust context; standard hostname verification remains enabled. */
+    JamesJmapReadClient(URI origin, ObjectMapper mapper, SSLContext tlsContext) {
+        this(origin, mapper, false, Duration.ofSeconds(10), Objects.requireNonNull(tlsContext));
+    }
+
     /** Package-private HTTP override permits only local loopback unit tests. */
     JamesJmapReadClient(URI origin, ObjectMapper mapper, boolean allowTestLoopback) {
         this(origin, mapper, allowTestLoopback, Duration.ofSeconds(10));
     }
 
     JamesJmapReadClient(URI origin, ObjectMapper mapper, boolean allowTestLoopback, Duration deadline) {
+        this(origin, mapper, allowTestLoopback, deadline, null);
+    }
+
+    private JamesJmapReadClient(URI origin, ObjectMapper mapper, boolean allowTestLoopback, Duration deadline,
+                                SSLContext tlsContext) {
         Objects.requireNonNull(origin, "origin");
         if (deadline == null || deadline.isNegative() || deadline.isZero() || deadline.toMillis() < 1) {
             throw new IllegalArgumentException("Invalid JMAP deadline");
@@ -67,8 +78,10 @@ public final class JamesJmapReadClient {
         }
         this.sessionUri = origin.resolve("/jmap/session");
         this.apiUri = origin.resolve("/jmap");
-        this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3))
-                .followRedirects(HttpClient.Redirect.NEVER).build();
+        var builder = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3))
+                .followRedirects(HttpClient.Redirect.NEVER);
+        if (tlsContext != null) builder.sslContext(tlsContext);
+        this.http = builder.build();
     }
 
     public JsonNode session(String jamesBearerToken) throws IOException, InterruptedException {
