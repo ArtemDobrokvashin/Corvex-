@@ -37,6 +37,28 @@ class MigrationProbeTests(unittest.TestCase):
                                        ('OK', [b'2 (FLAGS (\\Flagged))'])]
         with self.assertRaises(RuntimeError): module.check(self.client, 'fixed', b'wire bytes')
 
+    def test_verify_is_read_only_and_does_not_append(self):
+        client = probe.connect.return_value
+        client.reset_mock()
+        client.select.return_value = ('OK', [b'1'])
+        probe.restart_message.return_value = b'wire bytes'
+        with patch.dict(os.environ, {'JAMES_LAB_CONFIRM': 'synthetic-only',
+                                     'JAMES_LAB_MIGRATION_MARKER': 'a' * 32,
+                                     'JAMES_LAB_MIGRATION_MODE': 'verify'}, clear=True), \
+             patch.object(module, 'check') as check:
+            module.main()
+        client.select.assert_called_once_with('INBOX', readonly=True)
+        client.append.assert_not_called()
+        check.assert_called_once_with(client, 'a' * 32, b'wire bytes')
+        client.logout.assert_called_once()
+
+    def test_rejects_invalid_marker_before_connecting(self):
+        with patch.dict(os.environ, {'JAMES_LAB_CONFIRM': 'synthetic-only',
+                                     'JAMES_LAB_MIGRATION_MARKER': 'bad',
+                                     'JAMES_LAB_MIGRATION_MODE': 'seed'}, clear=True):
+            with self.assertRaises(SystemExit): module.main()
+        probe.connect.assert_not_called()
+
     def test_requires_explicit_confirmation(self):
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(SystemExit): module.main()

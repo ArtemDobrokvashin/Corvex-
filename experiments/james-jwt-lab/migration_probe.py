@@ -2,7 +2,7 @@
 import hashlib
 import imaplib
 import os
-import secrets
+import re
 import time
 import probe
 
@@ -29,19 +29,23 @@ def check(client, marker, raw):
 def main():
     if os.environ.get('JAMES_LAB_CONFIRM') != 'synthetic-only':
         raise SystemExit('Synthetic-only confirmation required')
-    marker = secrets.token_hex(16)
+    marker = os.environ.get('JAMES_LAB_MIGRATION_MARKER', '')
+    mode = os.environ.get('JAMES_LAB_MIGRATION_MODE', '')
+    if not re.fullmatch(r'[0-9a-f]{32}', marker) or mode not in ('seed', 'verify'):
+        raise SystemExit('Synthetic marker and seed/verify mode required')
     raw = probe.restart_message(marker)
     client = probe.connect('user01@james.local', time.monotonic() + 120)
     try:
-        probe.ok(client.select('INBOX'), 'select synthetic inbox')
-        if probe.uid_search(client, marker):
-            raise RuntimeError('Unexpected marker collision')
-        probe.ok(client.append('INBOX', r'(\Flagged)', None, raw), 'append first synthetic copy')
-        probe.ok(client.append('INBOX', r'(\Seen \Flagged)', None, raw), 'append second synthetic copy')
+        probe.ok(client.select('INBOX', readonly=(mode == 'verify')), 'select synthetic inbox')
+        if mode == 'seed':
+            if probe.uid_search(client, marker):
+                raise RuntimeError('Unexpected marker collision')
+            probe.ok(client.append('INBOX', r'(\Flagged)', None, raw), 'append first synthetic copy')
+            probe.ok(client.append('INBOX', r'(\Seen \Flagged)', None, raw), 'append second synthetic copy')
         check(client, marker, raw)
     finally:
         client.logout()
-    print('PASS: synthetic two-copy IMAP byte and flags round-trip; sha256=' + hashlib.sha256(raw).hexdigest())
+    print('PASS: synthetic two-copy IMAP ' + mode + ' bytes and flags; sha256=' + hashlib.sha256(raw).hexdigest())
 
 if __name__ == '__main__':
     main()

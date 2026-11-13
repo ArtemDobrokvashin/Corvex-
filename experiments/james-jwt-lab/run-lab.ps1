@@ -100,8 +100,17 @@ try {
     if ([int]$suite.tests -lt 1 -or [int]$suite.skipped -ne 0 -or [int]$suite.failures -ne 0 -or [int]$suite.errors -ne 0) {
         throw 'FAIL: live James test was skipped or failed'
     }
-    & docker compose -p $Project -f $Compose run --rm --no-deps --entrypoint python seed /fixture/migration_probe.py
+    $MigrationMarker = [guid]::NewGuid().ToString('N')
+    & docker compose -p $Project -f $Compose run --rm --no-deps `
+        -e "JAMES_LAB_MIGRATION_MARKER=$MigrationMarker" -e JAMES_LAB_MIGRATION_MODE=seed `
+        --entrypoint python seed /fixture/migration_probe.py
     Require-Success 'synthetic migration byte and flags round-trip'
+    & docker compose -p $Project -f $Compose restart james
+    Require-Success 'restart synthetic James'
+    & docker compose -p $Project -f $Compose run --rm --no-deps `
+        -e "JAMES_LAB_MIGRATION_MARKER=$MigrationMarker" -e JAMES_LAB_MIGRATION_MODE=verify `
+        --entrypoint python seed /fixture/migration_probe.py
+    Require-Success 'verify synthetic copies after restart'
     Write-Host 'PASS: unit tests and live James JWT/HTTPS test completed'
 } finally {
     if ($Started) {
