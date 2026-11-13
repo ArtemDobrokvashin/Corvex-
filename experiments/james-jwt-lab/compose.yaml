@@ -47,6 +47,7 @@ services:
       - ../james-migration/prepare_metadata.py:/fixture/prepare_metadata.py:ro
       - ./source_export_probe.py:/fixture/source_export_probe.py:ro
       - ./jmap_import_probe.py:/fixture/jmap_import_probe.py:ro
+      - ./imap_import_probe.py:/fixture/imap_import_probe.py:ro
       - ${JAMES_JWT_LAB_DIR:?Set JAMES_JWT_LAB_DIR}/export:/lab:ro
     entrypoint: ["python", "/fixture/seed.py"]
     networks: [isolated]

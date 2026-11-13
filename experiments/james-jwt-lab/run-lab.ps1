@@ -127,10 +127,17 @@ try {
     & docker compose -p $Project -f $Compose run --rm --no-deps --entrypoint python seed /fixture/source_export_probe.py
     Require-Success 'verify synthetic metadata and file manifest'
 
-    & java (Join-Path $PSScriptRoot 'GenerateImportToken.java') $Root
-    Require-Success 'generate short-lived synthetic import token'
-    & docker compose -p $Project -f $Compose run --rm --no-deps --entrypoint python seed /fixture/jmap_import_probe.py
-    Require-Success 'synthetic JMAP import byte and flags test'
+    & docker compose -p $Project -f $Compose run --rm --no-deps --entrypoint python seed /fixture/imap_import_probe.py
+    Require-Success 'same synthetic MIME via IMAP APPEND'
+
+    if ($env:JAMES_LAB_RUN_JMAP_IMPORT_DIAGNOSTIC -eq '1') {
+        & java (Join-Path $PSScriptRoot 'GenerateImportToken.java') $Root
+        Require-Success 'generate short-lived synthetic import token'
+        & docker compose -p $Project -f $Compose run --rm --no-deps --entrypoint python seed /fixture/jmap_import_probe.py
+        Require-Success 'synthetic JMAP import byte and flags test'
+    } else {
+        Write-Warning 'JMAP import exact-byte test not run: previous synthetic test showed differing bytes. Do not use this route for exact migration.'
+    }
     Write-Host 'PASS: unit tests and live James JWT/HTTPS test completed'
 } finally {
     if ($Started) {
