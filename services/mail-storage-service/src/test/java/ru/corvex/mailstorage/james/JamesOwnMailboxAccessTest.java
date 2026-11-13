@@ -2,6 +2,7 @@ package ru.corvex.mailstorage.james;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -24,7 +25,10 @@ class JamesOwnMailboxAccessTest {
     private final AuthUserClient users = mock(AuthUserClient.class);
     private final JamesMailboxRegistry registry = mock(JamesMailboxRegistry.class);
     private final JamesOwnMailboxReader reader = mock(JamesOwnMailboxReader.class);
-    private final JamesOwnMailboxAccess access = new JamesOwnMailboxAccess(users, registry, reader, clock);
+    private final CurrentMailPermissionLookup permissions = mock(CurrentMailPermissionLookup.class);
+    private final JamesOwnMailboxAccess access = new JamesOwnMailboxAccess(users, registry, permissions, reader, clock);
+
+    @BeforeEach void allowCurrentPermission() { when(permissions.canReadOwnMail(owner)).thenReturn(true); }
 
     private JwtAuthenticationToken token(String subject, String issuer, Instant expires, boolean permission) {
         Jwt jwt = Jwt.withTokenValue("validated-by-spring-in-real-use").header("alg", "RS256")
@@ -52,7 +56,7 @@ class JamesOwnMailboxAccessTest {
         assertThrows(SecurityException.class, () -> access.listOwnFolders(token(owner.toString(), "corvex-auth", NOW.minusSeconds(1), true)));
         assertThrows(SecurityException.class, () -> access.listOwnFolders(token(owner.toString(), "corvex-auth", NOW.plusSeconds(60), false)));
         assertThrows(SecurityException.class, () -> access.listOwnFolders(token("not-a-uuid", "corvex-auth", NOW.plusSeconds(60), true)));
-        verifyNoInteractions(users, registry, reader);
+        verifyNoInteractions(users, registry, reader, permissions);
     }
 
     @Test void rejectsDisabledMissingOrMismatchedDirectoryUser() throws Exception {
@@ -72,6 +76,15 @@ class JamesOwnMailboxAccessTest {
         var auth = token(owner.toString(), "corvex-auth", NOW.plusSeconds(60), true);
         for (int i = 0; i < 3; i++) assertThrows(SecurityException.class, () -> access.listOwnFolders(auth));
         verifyNoInteractions(reader);
+    }
+
+    @Test void revokedOrUnavailableCurrentPermissionFailsClosedBeforeRegistry() {
+        when(users.findById(owner)).thenReturn(Optional.of(new AuthUserClient.MailboxOwner(owner, "", "", "ACTIVE", 0)));
+        when(permissions.canReadOwnMail(owner)).thenReturn(false).thenThrow(new IllegalStateException("admin unavailable"));
+        var auth = token(owner.toString(), "corvex-auth", NOW.plusSeconds(60), true);
+        assertThrows(SecurityException.class, () -> access.listOwnFolders(auth));
+        assertThrows(IllegalStateException.class, () -> access.listOwnFolders(auth));
+        verifyNoInteractions(registry, reader);
     }
 
     @Test void directoryOrRegistryFailureDoesNotFallBack() throws Exception {

@@ -20,13 +20,15 @@ import ru.corvex.mailstorage.client.AuthUserClient;
 final class JamesOwnMailboxAccess {
     private final AuthUserClient users;
     private final JamesMailboxRegistry registry;
+    private final CurrentMailPermissionLookup permissions;
     private final JamesOwnMailboxReader reader;
     private final Clock clock;
 
     JamesOwnMailboxAccess(AuthUserClient users, JamesMailboxRegistry registry,
-                          JamesOwnMailboxReader reader, Clock clock) {
+                          CurrentMailPermissionLookup permissions, JamesOwnMailboxReader reader, Clock clock) {
         this.users = Objects.requireNonNull(users);
         this.registry = Objects.requireNonNull(registry);
+        this.permissions = Objects.requireNonNull(permissions);
         this.reader = Objects.requireNonNull(reader);
         this.clock = Objects.requireNonNull(clock);
     }
@@ -46,6 +48,7 @@ final class JamesOwnMailboxAccess {
         catch (IllegalArgumentException | NullPointerException e) { throw new SecurityException("James access denied"); }
         var user = users.findById(owner).orElseThrow(() -> new SecurityException("James access denied"));
         if (!owner.equals(user.id()) || !user.active()) throw new SecurityException("James access denied");
+        if (!permissions.canReadOwnMail(owner)) throw new SecurityException("James access denied");
         var mapping = registry.find(owner).orElseThrow(() -> new SecurityException("James access denied"));
         var principal = new JamesMailboxBinding.Principal(owner, Set.of("MAIL_READ_OWN"));
         // Checks mapping owner and enabled before any token is issued.

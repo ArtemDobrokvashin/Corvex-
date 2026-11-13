@@ -138,7 +138,7 @@ public final class JamesJmapReadClient {
     }
 
     /** Bounded before allocation; cancels the upstream HTTP stream on overflow. */
-    private static final class BoundedBodySubscriber implements HttpResponse.BodySubscriber<byte[]> {
+    static final class BoundedBodySubscriber implements HttpResponse.BodySubscriber<byte[]> {
         private final CompletableFuture<byte[]> body = new CompletableFuture<>();
         private final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         private Flow.Subscription subscription;
