@@ -13,8 +13,11 @@ from compare_manifests import FLAGS, MAX_FILE, InvalidManifest, unique_object
 
 
 def valid_metadata(row):
-    if not isinstance(row, dict) or set(row) != {'source_id', 'mailbox', 'folder', 'path', 'flags'}:
+    required = {'source_id', 'mailbox', 'folder', 'path', 'flags'}
+    if not isinstance(row, dict) or set(row) not in (required, required | {'expected_size'}):
         raise InvalidManifest('invalid source row')
+    if 'expected_size' in row and (type(row['expected_size']) is not int or row['expected_size'] < 0):
+        raise InvalidManifest('invalid expected size')
     try:
         if str(UUID(row['source_id'])) != row['source_id']:
             raise ValueError()
@@ -98,6 +101,8 @@ def build(metadata_path, root_path):
                 raise InvalidManifest('duplicate source UUID')
             ids.add(row['source_id'])
             digest, size = hash_file(root_fd, parts)
+            if 'expected_size' in row and row['expected_size'] != size:
+                raise InvalidManifest('file size differs from metadata')
             result.append({k: row[k] for k in ('source_id', 'mailbox', 'folder', 'flags')} | {'sha256': digest, 'size': size})
         return {'version': 1, 'kind': 'source', 'snapshot_id': metadata['snapshot_id'], 'records': result}
     finally:
