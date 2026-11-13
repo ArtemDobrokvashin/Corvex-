@@ -33,11 +33,19 @@ public final class JamesMailboxBinding {
      */
     public static BoundMailbox requireOwnRead(Principal principal, ProvisionedMailbox mapping,
                                                String authenticatedPrimaryAccountId) {
+        BoundMailbox bound = requireEligible(principal, mapping);
+        if (!bound.accountId().equals(authenticatedPrimaryAccountId)) {
+            throw new SecurityException("James mailbox binding rejected");
+        }
+        return bound;
+    }
+
+    /** Initial authorization before minting a short-lived James token. */
+    static BoundMailbox requireEligible(Principal principal, ProvisionedMailbox mapping) {
         if (principal == null || mapping == null || !mapping.active()
                 || !principal.verifiedPermissions().contains("MAIL_READ_OWN")
                 || !principal.verifiedOwnerId().equals(mapping.ownerId())
-                || blank(mapping.jamesLogin()) || blank(mapping.accountId())
-                || !mapping.accountId().equals(authenticatedPrimaryAccountId)) {
+                || blank(mapping.jamesLogin()) || blank(mapping.accountId())) {
             throw new SecurityException("James mailbox binding rejected");
         }
         return new BoundMailbox(mapping.jamesLogin(), mapping.accountId());
