@@ -6,6 +6,8 @@ import imaplib
 import os
 import re
 import secrets
+import smtplib
+import sys
 import ssl
 import time
 
@@ -124,17 +126,92 @@ def diagnose_restart(marker):
         client.logout()
 
 
+def smtp_probe():
+    """Send synthetic MIME only to the fixed local demo account, then read via IMAP."""
+    marker = secrets.token_hex(16)
+    msg = EmailMessage(policy=email.policy.SMTP)
+    msg['From'] = USER
+    msg['To'] = OTHER
+    msg['Subject'] = 'Corvex synthetic SMTP lab'
+    msg['X-Corvex-Lab'] = marker
+    msg.set_content('Synthetic SMTP test only.')
+    msg.add_attachment(b'smtp-lab-attachment\x00\xff', maintype='application',
+                       subtype='octet-stream', filename='synthetic.bin')
+    with smtplib.SMTP(HOST, 25, timeout=10) as smtp:
+        refused = smtp.send_message(msg, from_addr=USER, to_addrs=[OTHER])
+        if refused:
+            raise RuntimeError('SMTP refused the local demo recipient')
+    client = connect(OTHER, time.monotonic() + 120)
+    try:
+        ok(client.select('INBOX', readonly=True), 'select SMTP recipient inbox')
+        deadline = time.monotonic() + 45
+        while True:
+            ids = uid_search(client, marker)
+            if ids:
+                break
+            if time.monotonic() >= deadline:
+                raise RuntimeError('SMTP accepted but message not found by IMAP search within 45 seconds')
+            time.sleep(1)
+            ok(client.select('INBOX', readonly=True), 'refresh SMTP recipient inbox')
+        if len(ids) != 1:
+            raise RuntimeError('SMTP marker found multiple times')
+        received = BytesParser(policy=email.policy.default).parsebytes(body(client, ids[0]))
+        attachments = list(received.iter_attachments())
+        if len(attachments) != 1 or attachments[0].get_payload(decode=True) != b'smtp-lab-attachment\x00\xff':
+            raise RuntimeError('SMTP delivered attachment missing or changed')
+    finally:
+        client.logout()
+
+
+def run_suite(marker):
+    """Run independent lab scenarios; never stop or restart a container."""
+    checks = [('IMAP basic (APPEND/COPY/flags/MOVE/isolation)', basic_probe),
+              ('SMTP local delivery with attachment', smtp_probe)]
+    if marker:
+        checks.append(('Previously seeded message after restart', lambda: restart_probe('verify', marker)))
+    results = []
+    for name, check in checks:
+        try:
+            check()
+        except Exception as exc:
+            # Error messages may include server responses; synthetic lab only.
+            results.append(('FAIL', name))
+            print(f'FAIL: {name}: {type(exc).__name__}: {exc}', flush=True)
+        else:
+            results.append(('PASS', name))
+            print(f'PASS: {name}', flush=True)
+    if not marker:
+        results.append(('SKIP', 'Previously seeded message after restart (marker missing)'))
+    for name in ('POP3 (demo disabled)', 'concurrent operations', 'crash/power loss',
+                 'backup/restore', 'Corvex integration', 'production TLS and AV'):
+        results.append(('SKIP', name))
+    print('\n=== LAB SUMMARY ===', flush=True)
+    for status, name in results:
+        print(f'{status}: {name}', flush=True)
+    counts = {status: sum(r[0] == status for r in results) for status in ('PASS', 'FAIL', 'SKIP')}
+    print(f"TOTAL: PASS={counts['PASS']} FAIL={counts['FAIL']} SKIP={counts['SKIP']}", flush=True)
+    print('Synthetic isolated demo only; not production acceptance.', flush=True)
+    return 1 if counts['FAIL'] else 0
+
+
 def main():
-    # This intentionally refuses an arbitrary host or accounts. It is not a migration tool.
     if os.environ.get('JAMES_LAB_CONFIRM') != 'synthetic-only':
         raise RuntimeError('Set JAMES_LAB_CONFIRM=synthetic-only in the isolated lab')
     mode = os.environ.get('JAMES_LAB_MODE', 'basic')
+    marker = os.environ.get('JAMES_LAB_MARKER', '')
+    if mode == 'suite':
+        return run_suite(marker)
     if mode == 'diagnose':
-        diagnose_restart(os.environ.get('JAMES_LAB_MARKER', ''))
-        return
+        diagnose_restart(marker)
+        return 0
     if mode != 'basic':
-        restart_probe(mode, os.environ.get('JAMES_LAB_MARKER', ''))
-        return
+        restart_probe(mode, marker)
+        return 0
+    basic_probe()
+    return 0
+
+
+def basic_probe():
     marker = secrets.token_hex(16)
     msg = EmailMessage(policy=email.policy.SMTP)
     msg['From'] = USER
@@ -192,7 +269,7 @@ def main():
         if uid_search(other, marker):
             raise RuntimeError('Synthetic message visible in other inbox')
         print('PASS: APPEND, MIME bytes, COPY, flags, MOVE and other-user inbox isolation')
-        print('Not tested: SMTP, POP3, concurrency, rollback, restart, durability, Corvex integration')
+        print('Basic IMAP scenario only; see suite summary for other checks.')
     finally:
         if other:
             other.logout()
@@ -201,4 +278,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

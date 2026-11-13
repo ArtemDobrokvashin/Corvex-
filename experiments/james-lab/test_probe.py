@@ -62,6 +62,49 @@ class FakeImap:
 
 
 class ProbeTests(unittest.TestCase):
+    def test_suite_collects_independent_failure_and_skip(self):
+        output = io.StringIO()
+        with patch.object(probe, 'basic_probe', side_effect=RuntimeError('synthetic failure')), \
+                patch.object(probe, 'smtp_probe') as smtp, \
+                patch.object(probe, 'restart_probe') as restart, redirect_stdout(output):
+            result = probe.run_suite('a' * 32)
+        self.assertEqual(1, result)
+        smtp.assert_called_once()
+        restart.assert_called_once_with('verify', 'a' * 32)
+        self.assertIn('TOTAL: PASS=2 FAIL=1 SKIP=6', output.getvalue())
+        self.assertIn('synthetic failure', output.getvalue())
+
+    def test_suite_missing_marker_is_skipped_not_passed(self):
+        output = io.StringIO()
+        with patch.object(probe, 'basic_probe'), patch.object(probe, 'smtp_probe'), \
+                patch.object(probe, 'restart_probe') as restart, redirect_stdout(output):
+            result = probe.run_suite('')
+        self.assertEqual(0, result)
+        restart.assert_not_called()
+        self.assertIn('TOTAL: PASS=2 FAIL=0 SKIP=7', output.getvalue())
+
+    def test_smtp_sends_only_to_demo_recipient_and_checks_attachment(self):
+        smtp = Mock()
+        smtp.send_message.return_value = {}
+        context = Mock()
+        context.__enter__ = Mock(return_value=smtp)
+        context.__exit__ = Mock(return_value=False)
+        client = Mock()
+        client.select.return_value = ('OK', [b'1'])
+        received = email.message.EmailMessage(policy=email.policy.SMTP)
+        received.set_content('Synthetic')
+        received.add_attachment(b'smtp-lab-attachment\x00\xff', maintype='application',
+                                subtype='octet-stream', filename='synthetic.bin')
+        with patch.object(probe.smtplib, 'SMTP', return_value=context) as transport, \
+                patch.object(probe, 'connect', return_value=client), \
+                patch.object(probe, 'uid_search', return_value=[b'1']), \
+                patch.object(probe, 'body', return_value=received.as_bytes()):
+            probe.smtp_probe()
+        transport.assert_called_once_with('james', 25, timeout=10)
+        self.assertEqual([probe.OTHER], smtp.send_message.call_args.kwargs['to_addrs'])
+        client.select.assert_called_once_with('INBOX', readonly=True)
+        client.logout.assert_called_once()
+
     def test_starttls_precedes_login(self):
         client = Mock()
         client.starttls.return_value = ('OK', [b'tls'])
