@@ -82,6 +82,18 @@ final class JamesProvisioningJournal {
         return rows.stream().findFirst();
     }
 
+    /** Recovery if reservation committed but its response was lost. */
+    Optional<OperationStatus> findStatusForOwner(UUID ownerId, UUID actorId) {
+        Objects.requireNonNull(ownerId);
+        Objects.requireNonNull(actorId);
+        var rows = jdbc.query("SELECT operation_id, owner_id, phase FROM corvex_james_provisioning "
+                        + "WHERE owner_id = ? AND actor_id = ?",
+                (rs, index) -> new OperationStatus(rs.getObject("operation_id", UUID.class),
+                        rs.getObject("owner_id", UUID.class), rs.getString("phase")), ownerId, actorId);
+        if (rows.size() > 1) throw new IllegalStateException("Duplicate provisioning owner");
+        return rows.stream().findFirst();
+    }
+
     /** Load only a confirmed creation belonging to the original actor. */
     Optional<Intent> findCreated(UUID operationId, UUID actorId) {
         Objects.requireNonNull(operationId);

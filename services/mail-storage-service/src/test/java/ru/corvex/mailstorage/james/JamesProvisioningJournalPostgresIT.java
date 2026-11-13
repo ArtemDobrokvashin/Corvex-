@@ -36,6 +36,7 @@ class JamesProvisioningJournalPostgresIT {
         new ResourceDatabasePopulator(new ClassPathResource("james-lab-schema/mailbox_bindings.sql"),
                 new ClassPathResource("james-lab-schema/provisioning_journal.sql")).execute(data);
         jdbc = new JdbcTemplate(data);
+        JamesProvisioningConfiguration.verifySchema(jdbc);
         transactions = new DataSourceTransactionManager(data);
         journal = new JamesProvisioningJournal(jdbc, transactions);
     }
@@ -58,6 +59,8 @@ class JamesProvisioningJournalPostgresIT {
         assertEquals("bound", phase(intent));
         assertEquals("bound", journal.findStatus(intent.operationId(), intent.actorId()).orElseThrow().phase());
         assertTrue(journal.findStatus(intent.operationId(), UUID.randomUUID()).isEmpty());
+        assertEquals(intent.operationId(), journal.findStatusForOwner(intent.ownerId(), intent.actorId()).orElseThrow().operationId());
+        assertTrue(journal.findStatusForOwner(intent.ownerId(), UUID.randomUUID()).isEmpty());
         var mapping = new JdbcJamesMailboxRegistry(jdbc).find(intent.ownerId()).orElseThrow();
         assertFalse(mapping.active());
         assertEquals(intent.login(), mapping.jamesLogin());

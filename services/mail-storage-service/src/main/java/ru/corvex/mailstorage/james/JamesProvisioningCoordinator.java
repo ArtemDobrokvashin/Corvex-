@@ -25,6 +25,11 @@ final class JamesProvisioningCoordinator {
                 .orElseThrow(() -> new SecurityException("Provisioning denied"));
     }
 
+    JamesProvisioningJournal.OperationStatus statusForOwner(UUID ownerId, UUID actorId) {
+        return journal.findStatusForOwner(ownerId, actorId)
+                .orElseThrow(() -> new SecurityException("Provisioning denied"));
+    }
+
     /**
      * Exactly one application-level create attempt, preceded by a committed
      * intent and submitting state. A positive result means only that James
@@ -38,7 +43,9 @@ final class JamesProvisioningCoordinator {
             throw new IllegalArgumentException("Invalid generated account password");
         }
         var intent = journal.reserve(owner, actor);
-        var submission = journal.beginCreate(intent);
+        final JamesProvisioningJournal.Submission submission;
+        try { submission = journal.beginCreate(intent); }
+        catch (RuntimeException ignored) { throw new JamesProvisioningUncertainException(intent.operationId()); }
         final boolean created;
         try {
             created = admin.create(intent.login(), generatedPassword);

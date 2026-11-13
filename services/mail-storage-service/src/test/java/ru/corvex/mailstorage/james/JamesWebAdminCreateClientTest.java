@@ -9,6 +9,10 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.net.ssl.SSLContext;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import org.slf4j.LoggerFactory;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -17,6 +21,14 @@ class JamesWebAdminCreateClientTest {
     private static final String ADMIN = "A".repeat(40);
     private static final String ACCOUNT = "B".repeat(40);
     private HttpServer server;
+    private final Logger wire = (Logger) LoggerFactory.getLogger("org.apache.hc.client5.http.wire");
+    private final Logger headers = (Logger) LoggerFactory.getLogger("org.apache.hc.client5.http.headers");
+    private Level previousWire, previousHeaders;
+
+    @BeforeEach void disableSensitiveLogs() {
+        previousWire = wire.getLevel(); previousHeaders = headers.getLevel();
+        wire.setLevel(Level.INFO); headers.setLevel(Level.INFO);
+    }
 
     private String login() { return "cvx-" + UUID.randomUUID().toString().replace("-", "") + "@localhost"; }
     private URI start(com.sun.net.httpserver.HttpHandler handler) throws Exception {
@@ -28,7 +40,10 @@ class JamesWebAdminCreateClientTest {
     private JamesWebAdminCreateClient client(URI origin) throws Exception {
         return new JamesWebAdminCreateClient(origin, ADMIN, new ObjectMapper(), SSLContext.getDefault(), true);
     }
-    @AfterEach void stop() { if (server != null) server.stop(0); }
+    @AfterEach void stop() {
+        if (server != null) server.stop(0);
+        wire.setLevel(previousWire); headers.setLevel(previousHeaders);
+    }
 
     @Test void createsOnlyGeneratedAccountWithoutForce() throws Exception {
         var path = new String[1]; var header = new String[1]; var body = new String[1]; var method = new String[1];
@@ -81,4 +96,17 @@ class JamesWebAdminCreateClientTest {
         try (var client = client(origin)) { assertThrows(IllegalArgumentException.class, () -> client.create("other@localhost", ACCOUNT)); }
         assertThrows(IllegalArgumentException.class, () -> new JamesWebAdminCreateClient(origin, ADMIN, new ObjectMapper(), SSLContext.getDefault()));
     }
+    @Test void debugHeadersOrWirePreventSendingSecrets() throws Exception {
+        var requests = new AtomicInteger();
+        URI origin = start(exchange -> { requests.incrementAndGet(); exchange.sendResponseHeaders(204, -1); exchange.close(); });
+        try (var client = client(origin)) {
+            headers.setLevel(Level.DEBUG);
+            assertThrows(java.io.IOException.class, () -> client.create(login(), ACCOUNT));
+            headers.setLevel(Level.INFO);
+            wire.setLevel(Level.DEBUG);
+            assertThrows(java.io.IOException.class, () -> client.create(login(), ACCOUNT));
+        }
+        assertEquals(0, requests.get());
+    }
+
 }

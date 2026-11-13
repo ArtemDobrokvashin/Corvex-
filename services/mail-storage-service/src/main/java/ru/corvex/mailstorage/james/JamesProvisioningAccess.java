@@ -79,6 +79,11 @@ final class JamesProvisioningAccess {
         return coordinator.status(operationId, authorizeActor(authentication));
     }
 
+    JamesProvisioningJournal.OperationStatus statusForOwner(Authentication authentication, UUID ownerId) {
+        Objects.requireNonNull(ownerId);
+        return coordinator.statusForOwner(ownerId, authorizeActor(authentication));
+    }
+
     /** Operation ID is supplied by caller; login/owner come only from the journal. */
     void discover(Authentication authentication, UUID operationId)
             throws IOException, GeneralSecurityException, InterruptedException {

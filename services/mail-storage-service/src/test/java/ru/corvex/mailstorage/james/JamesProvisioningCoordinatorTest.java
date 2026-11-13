@@ -66,7 +66,8 @@ class JamesProvisioningCoordinatorTest {
 
     @Test void failuresBeforeSubmissionNeverCallJames() {
         when(journal.beginCreate(intent)).thenThrow(new IllegalStateException("database unavailable"));
-        assertThrows(IllegalStateException.class, () -> coordinator.create(owner, actor, password));
+        var failure = assertThrows(JamesProvisioningUncertainException.class, () -> coordinator.create(owner, actor, password));
+        assertEquals(intent.operationId(), failure.operationId());
         verifyNoInteractions(admin);
     }
 

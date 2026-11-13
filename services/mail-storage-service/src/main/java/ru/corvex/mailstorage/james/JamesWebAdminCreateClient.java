@@ -5,6 +5,10 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import javax.net.ssl.SSLContext;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
@@ -55,7 +59,8 @@ final class JamesWebAdminCreateClient implements AutoCloseable {
                         .setSslContext(Objects.requireNonNull(tls)).build())
                 .build();
         var config = RequestConfig.custom().setConnectionRequestTimeout(Timeout.ofSeconds(3))
-                .setConnectTimeout(Timeout.ofSeconds(3)).setResponseTimeout(Timeout.ofSeconds(10)).build();
+                .setConnectTimeout(Timeout.ofSeconds(3)).setResponseTimeout(Timeout.ofSeconds(10))
+                .setAuthenticationEnabled(false).build();
         this.http = HttpClients.custom().setConnectionManager(manager).setDefaultRequestConfig(config)
                 .disableAutomaticRetries().disableRedirectHandling().disableContentCompression()
                 .disableCookieManagement().disableAuthCaching().build();
@@ -73,19 +78,42 @@ final class JamesWebAdminCreateClient implements AutoCloseable {
         if (generatedPassword == null || !generatedPassword.matches("[A-Za-z0-9_-]{32,256}")) {
             throw new IllegalArgumentException("Invalid generated account password");
         }
+        // Both wire and headers loggers expose credentials at DEBUG. A runtime
+        // logging change during a request remains an operational risk.
+        if (org.slf4j.LoggerFactory.getLogger("org.apache.hc.client5.http.wire").isDebugEnabled()
+                || org.slf4j.LoggerFactory.getLogger("org.apache.hc.client5.http.headers").isDebugEnabled()) {
+            throw new IOException("Unsafe HTTP debug logging enabled");
+        }
         var request = new HttpPut(origin.resolve("/users/" + generatedLogin));
         request.setHeader("Password", administratorSecret);
         byte[] body = mapper.writeValueAsBytes(Map.of("password", generatedPassword));
         request.setEntity(new ByteArrayEntity(body, ContentType.APPLICATION_JSON));
-        try (var response = http.executeOpen(null, request, null)) {
-            // Do not drain or parse an arbitrary administrative error body.
-            int code = response.getCode();
-            request.cancel();
-            return code == 204;
-        } catch (IOException e) {
-            // Do not expose a potentially sensitive upstream exception/body.
+        var executor = Executors.newSingleThreadExecutor(task -> {
+            var thread = new Thread(task, "james-provision-request");
+            thread.setDaemon(true);
+            return thread;
+        });
+        var future = executor.submit(() -> {
+            try (var response = http.executeOpen(null, request, null)) {
+                // Do not drain or parse an arbitrary administrative error body.
+                int code = response.getCode();
+                request.cancel();
+                return code == 204;
+            }
+        });
+        try {
+            // Overall bound, including a peer that slowly sends response headers.
+            return future.get(15, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("James account creation outcome uncertain");
+        } catch (ExecutionException | TimeoutException e) {
+            // Never expose a potentially sensitive upstream exception/body.
             throw new IOException("James account creation outcome uncertain");
         } finally {
+            request.cancel();
+            future.cancel(true);
+            executor.shutdownNow();
             java.util.Arrays.fill(body, (byte) 0);
         }
     }
