@@ -60,8 +60,17 @@ class JamesLiveMailboxTest {
         String account2 = account2Node.asText();
         assertNotEquals(account1, account2);
         var reader = new JamesOwnMailboxReader(issuer, client, mapper);
-        assertTrue(reader.listFolders(principal1,
-                new JamesMailboxBinding.ProvisionedMailbox(owner1, true, USER1, account1)).isArray());
+        var liveFolders1 = reader.listFolders(principal1,
+                new JamesMailboxBinding.ProvisionedMailbox(owner1, true, USER1, account1));
+        assertTrue(liveFolders1.isArray());
+        var folderMapper = new JamesFolderMapper();
+        var mapped = folderMapper.map(owner1, account1, liveFolders1);
+        assertEquals(liveFolders1.size(), mapped.size());
+        if (!mapped.isEmpty()) {
+            UUID folderId = mapped.get(0).id();
+            assertTrue(folderMapper.resolveNativeId(owner1, account1, liveFolders1, folderId).isPresent());
+            assertTrue(folderMapper.resolveNativeId(owner2, account1, liveFolders1, folderId).isEmpty());
+        }
         assertTrue(reader.listFolders(principal2,
                 new JamesMailboxBinding.ProvisionedMailbox(owner2, true, USER2, account2)).isArray());
         assertThrows(java.io.IOException.class, () -> client.read(jwt2, "Mailbox/get", mapper.createObjectNode().put("accountId", account1)));

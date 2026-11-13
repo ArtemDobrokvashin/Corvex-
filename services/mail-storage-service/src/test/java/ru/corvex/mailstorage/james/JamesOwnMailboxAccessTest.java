@@ -26,7 +26,7 @@ class JamesOwnMailboxAccessTest {
     private final JamesMailboxRegistry registry = mock(JamesMailboxRegistry.class);
     private final JamesOwnMailboxReader reader = mock(JamesOwnMailboxReader.class);
     private final CurrentMailPermissionLookup permissions = mock(CurrentMailPermissionLookup.class);
-    private final JamesOwnMailboxAccess access = new JamesOwnMailboxAccess(users, registry, permissions, reader, clock);
+    private final JamesOwnMailboxAccess access = new JamesOwnMailboxAccess(users, registry, permissions, reader, new JamesFolderMapper(), clock);
 
     @BeforeEach void allowCurrentPermission() { when(permissions.canReadOwnMail(owner)).thenReturn(true); }
 
@@ -43,7 +43,7 @@ class JamesOwnMailboxAccessTest {
 
     @Test void validPrincipalUsesOnlyServerLookups() throws Exception {
         provision();
-        assertTrue(access.listOwnFolders(token(owner.toString(), "corvex-auth", NOW.plusSeconds(60), true)).isArray());
+        assertTrue(access.listOwnFolders(token(owner.toString(), "corvex-auth", NOW.plusSeconds(60), true)).isEmpty());
         verify(users).findById(owner);
         verify(registry).find(owner);
         verify(reader).listFolders(argThat(p -> p.verifiedOwnerId().equals(owner)),

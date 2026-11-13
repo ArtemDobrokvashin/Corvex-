@@ -1,15 +1,16 @@
 package ru.corvex.mailstorage.james;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.time.Clock;
 import java.util.Objects;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import ru.corvex.mailstorage.client.AuthUserClient;
+import ru.corvex.mailstorage.api.dto.MailDtos;
 
 /**
  * Disconnected experiment. Authentication MUST come from a correctly configured
@@ -22,18 +23,21 @@ final class JamesOwnMailboxAccess {
     private final JamesMailboxRegistry registry;
     private final CurrentMailPermissionLookup permissions;
     private final JamesOwnMailboxReader reader;
+    private final JamesFolderMapper folderMapper;
     private final Clock clock;
 
     JamesOwnMailboxAccess(AuthUserClient users, JamesMailboxRegistry registry,
-                          CurrentMailPermissionLookup permissions, JamesOwnMailboxReader reader, Clock clock) {
+                          CurrentMailPermissionLookup permissions, JamesOwnMailboxReader reader,
+                          JamesFolderMapper folderMapper, Clock clock) {
         this.users = Objects.requireNonNull(users);
         this.registry = Objects.requireNonNull(registry);
         this.permissions = Objects.requireNonNull(permissions);
         this.reader = Objects.requireNonNull(reader);
+        this.folderMapper = Objects.requireNonNull(folderMapper);
         this.clock = Objects.requireNonNull(clock);
     }
 
-    JsonNode listOwnFolders(Authentication authentication)
+    List<MailDtos.FolderView> listOwnFolders(Authentication authentication)
             throws IOException, GeneralSecurityException, InterruptedException {
         if (!(authentication instanceof JwtAuthenticationToken auth) || !auth.isAuthenticated()
                 || !"corvex-auth".equals(auth.getToken().getClaimAsString("iss"))
@@ -53,6 +57,6 @@ final class JamesOwnMailboxAccess {
         var principal = new JamesMailboxBinding.Principal(owner, Set.of("MAIL_READ_OWN"));
         // Checks mapping owner and enabled before any token is issued.
         JamesMailboxBinding.requireEligible(principal, mapping);
-        return reader.listFolders(principal, mapping);
+        return folderMapper.map(owner, mapping.accountId(), reader.listFolders(principal, mapping));
     }
 }
