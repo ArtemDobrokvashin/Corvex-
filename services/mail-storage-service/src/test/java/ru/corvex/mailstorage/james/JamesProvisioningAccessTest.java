@@ -93,4 +93,14 @@ class JamesProvisioningAccessTest {
         verify(discovery, never()).complete(any());
     }
 
+    @Test void statusRequiresCurrentAdministrator() {
+        var op = UUID.randomUUID();
+        var status = new JamesProvisioningJournal.OperationStatus(op, owner, "uncertain");
+        when(coordinator.status(op, actor)).thenReturn(status);
+        assertEquals(status, access.status(authorized(), op));
+        when(permissions.canManageUsers(actor)).thenReturn(false);
+        assertThrows(SecurityException.class, () -> access.status(authorized(), op));
+        verify(coordinator, times(1)).status(op, actor);
+    }
+
 }

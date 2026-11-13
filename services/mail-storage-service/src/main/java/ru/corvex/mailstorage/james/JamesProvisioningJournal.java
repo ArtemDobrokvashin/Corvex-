@@ -68,6 +68,20 @@ final class JamesProvisioningJournal {
     /** On timeout, transport error or restart with submitting, fail closed. */
     void markUncertain(Intent intent) { transition(intent, "submitting", "uncertain"); }
 
+    /** Safe metadata only; ownership is restricted to the original actor. */
+    record OperationStatus(UUID operationId, UUID ownerId, String phase) { }
+
+    Optional<OperationStatus> findStatus(UUID operationId, UUID actorId) {
+        Objects.requireNonNull(operationId);
+        Objects.requireNonNull(actorId);
+        var rows = jdbc.query("SELECT operation_id, owner_id, phase FROM corvex_james_provisioning "
+                        + "WHERE operation_id = ? AND actor_id = ?",
+                (rs, index) -> new OperationStatus(rs.getObject("operation_id", UUID.class),
+                        rs.getObject("owner_id", UUID.class), rs.getString("phase")), operationId, actorId);
+        if (rows.size() > 1) throw new IllegalStateException("Duplicate provisioning operation");
+        return rows.stream().findFirst();
+    }
+
     /** Load only a confirmed creation belonging to the original actor. */
     Optional<Intent> findCreated(UUID operationId, UUID actorId) {
         Objects.requireNonNull(operationId);

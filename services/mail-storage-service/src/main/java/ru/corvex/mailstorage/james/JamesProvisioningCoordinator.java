@@ -20,6 +20,11 @@ final class JamesProvisioningCoordinator {
         this.admin = Objects.requireNonNull(admin);
     }
 
+    JamesProvisioningJournal.OperationStatus status(UUID operationId, UUID actorId) {
+        return journal.findStatus(operationId, actorId)
+                .orElseThrow(() -> new SecurityException("Provisioning denied"));
+    }
+
     /**
      * Exactly one application-level create attempt, preceded by a committed
      * intent and submitting state. A positive result means only that James
@@ -43,15 +48,17 @@ final class JamesProvisioningCoordinator {
             // propagate upstream errors which might include credentials.
             try { journal.markUncertain(intent); }
             catch (RuntimeException ignored) { /* submitting remains blocked */ }
-            throw new IOException("James account creation outcome uncertain");
+            throw new JamesProvisioningUncertainException(intent.operationId());
         }
         if (!created) {
-            journal.markUncertain(intent);
-            throw new IOException("James account creation outcome uncertain");
+            try { journal.markUncertain(intent); }
+            catch (RuntimeException ignored) { /* submitting remains blocked */ }
+            throw new JamesProvisioningUncertainException(intent.operationId());
         }
-        // If this commit fails the state remains submitting; a later process
-        // cannot infer ownership from the account's existence or retry.
-        journal.confirmCreate(submission);
+        // A database commit error can itself have an unknown outcome. Preserve
+        // the operation handle; never assume that repeating creation is safe.
+        try { journal.confirmCreate(submission); }
+        catch (RuntimeException ignored) { throw new JamesProvisioningUncertainException(intent.operationId()); }
         return intent;
     }
 }

@@ -73,6 +73,12 @@ final class JamesProvisioningAccess {
         return coordinator.create(ownerId, actorId, password);
     }
 
+    /** Does not grant access to login, credentials or another actor's operation. */
+    JamesProvisioningJournal.OperationStatus status(Authentication authentication, UUID operationId) {
+        Objects.requireNonNull(operationId);
+        return coordinator.status(operationId, authorizeActor(authentication));
+    }
+
     /** Operation ID is supplied by caller; login/owner come only from the journal. */
     void discover(Authentication authentication, UUID operationId)
             throws IOException, GeneralSecurityException, InterruptedException {

@@ -56,6 +56,8 @@ class JamesProvisioningJournalPostgresIT {
         journal.recordBinding(intent, "account-" + intent.operationId());
         assertTrue(journal.findCreated(intent.operationId(), intent.actorId()).isEmpty());
         assertEquals("bound", phase(intent));
+        assertEquals("bound", journal.findStatus(intent.operationId(), intent.actorId()).orElseThrow().phase());
+        assertTrue(journal.findStatus(intent.operationId(), UUID.randomUUID()).isEmpty());
         var mapping = new JdbcJamesMailboxRegistry(jdbc).find(intent.ownerId()).orElseThrow();
         assertFalse(mapping.active());
         assertEquals(intent.login(), mapping.jamesLogin());

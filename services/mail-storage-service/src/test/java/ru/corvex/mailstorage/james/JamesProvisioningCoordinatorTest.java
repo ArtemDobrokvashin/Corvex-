@@ -38,7 +38,8 @@ class JamesProvisioningCoordinatorTest {
 
     @Test void unknownResponseIsBlockedNotRetried() throws Exception {
         when(admin.create(intent.login(), password)).thenReturn(false);
-        assertThrows(IOException.class, () -> coordinator.create(owner, actor, password));
+        var failure = assertThrows(JamesProvisioningUncertainException.class, () -> coordinator.create(owner, actor, password));
+        assertEquals(intent.operationId(), failure.operationId());
         verify(admin, times(1)).create(intent.login(), password);
         verify(journal).markUncertain(intent);
         verify(journal, never()).confirmCreate(any());
@@ -72,7 +73,8 @@ class JamesProvisioningCoordinatorTest {
     @Test void databaseFailureAfterSuccessNeverRepeatsCreate() throws Exception {
         when(admin.create(intent.login(), password)).thenReturn(true);
         doThrow(new IllegalStateException("commit unavailable")).when(journal).confirmCreate(submission);
-        assertThrows(IllegalStateException.class, () -> coordinator.create(owner, actor, password));
+        var failure = assertThrows(JamesProvisioningUncertainException.class, () -> coordinator.create(owner, actor, password));
+        assertEquals(intent.operationId(), failure.operationId());
         verify(admin, times(1)).create(intent.login(), password);
         verify(journal, never()).markUncertain(any());
     }
