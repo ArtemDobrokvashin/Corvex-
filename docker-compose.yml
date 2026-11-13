@@ -186,6 +186,16 @@ services:
       CORVEX_JAMES_READ_ORIGIN: https://james-jmap:8443
       CORVEX_JAMES_READ_PRIVATE_KEY_FILE: /run/james-adapter/jwt-private.pem
       CORVEX_JAMES_READ_TLS_CERTIFICATE_FILE: /run/james-adapter/jmap-trust.crt
+      # Dormant until the mTLS bridge, schema and operational policy are ready.
+      CORVEX_JAMES_PROVISION_ENABLED: ${CORVEX_JAMES_PROVISION_ENABLED:-false}
+      CORVEX_JAMES_PROVISION_ADMIN_ORIGIN: https://james-admin:8443
+      CORVEX_JAMES_PROVISION_ADMIN_SECRET_FILE: /run/james-adapter/admin-secret
+      CORVEX_JAMES_PROVISION_ADMIN_KEYSTORE_FILE: /run/james-adapter/admin-client.p12
+      CORVEX_JAMES_PROVISION_ADMIN_KEYSTORE_PASSWORD_FILE: /run/james-adapter/admin-client-password
+      CORVEX_JAMES_PROVISION_ADMIN_TRUST_CERTIFICATE_FILE: /run/james-adapter/admin-trust.crt
+      CORVEX_JAMES_PROVISION_JMAP_ORIGIN: https://james-jmap:8443
+      CORVEX_JAMES_PROVISION_JMAP_PRIVATE_KEY_FILE: /run/james-adapter/jwt-private.pem
+      CORVEX_JAMES_PROVISION_JMAP_TRUST_CERTIFICATE_FILE: /run/james-adapter/jmap-trust.crt
     volumes:
       - mail-data:/data/mail
       - attachment-data:/data/attachments
@@ -266,7 +276,7 @@ services:
         read_only: true
         bind: { create_host_path: false }
       - type: bind
-        source: ${CORVEX_JAMES_CONFIG_DIR:-./infra/secrets/james}/webadmin.properties
+        source: ${CORVEX_JAMES_WEBADMIN_FILE:-${CORVEX_JAMES_CONFIG_DIR:-./infra/secrets/james}/webadmin.properties}
         target: /root/conf/webadmin.properties
         read_only: true
         bind: { create_host_path: false }
@@ -298,6 +308,37 @@ services:
       - type: bind
         source: ${CORVEX_JAMES_CONFIG_DIR:-./infra/secrets/james}/jmap.key
         target: /run/james-tls/jmap.key
+        read_only: true
+        bind: { create_host_path: false }
+    networks: [app, james-internal]
+
+  # Separate opt-in internal management bridge. Only mTLS, no published port.
+  # The profile does not enable WebAdmin or provisioning automatically.
+  james-admin:
+    image: nginx:1.31-alpine
+    profiles: [james-provision]
+    restart: "no"
+    depends_on:
+      james: { condition: service_started }
+    volumes:
+      - type: bind
+        source: ./infra/james/provision-nginx.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${CORVEX_JAMES_PROVISION_DIR:-./infra/secrets/james-provision}/admin.crt
+        target: /run/james-provision/admin.crt
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${CORVEX_JAMES_PROVISION_DIR:-./infra/secrets/james-provision}/admin.key
+        target: /run/james-provision/admin.key
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${CORVEX_JAMES_PROVISION_DIR:-./infra/secrets/james-provision}/client-ca.crt
+        target: /run/james-provision/client-ca.crt
         read_only: true
         bind: { create_host_path: false }
     networks: [app, james-internal]
