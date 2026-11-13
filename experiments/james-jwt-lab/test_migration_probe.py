@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'james-migration'))
 probe = Mock()
 spec = importlib.util.spec_from_file_location('migration_probe', Path(__file__).with_name('migration_probe.py'))
 with patch.dict(sys.modules, {'probe': probe}):
@@ -45,12 +46,23 @@ class MigrationProbeTests(unittest.TestCase):
         with patch.dict(os.environ, {'JAMES_LAB_CONFIRM': 'synthetic-only',
                                      'JAMES_LAB_MIGRATION_MARKER': 'a' * 32,
                                      'JAMES_LAB_MIGRATION_MODE': 'verify'}, clear=True), \
-             patch.object(module, 'check') as check:
+             patch.object(module, 'check') as check, \
+             patch.object(module, 'reconcile_fixture') as reconcile:
             module.main()
+        reconcile.assert_called_once_with(b'wire bytes', check.return_value)
         client.select.assert_called_once_with('INBOX', readonly=True)
         client.append.assert_not_called()
         check.assert_called_once_with(client, 'a' * 32, b'wire bytes')
         client.logout.assert_called_once()
+
+    def test_reconcile_two_known_fixture_copies(self):
+        module.reconcile_fixture(b'wire bytes', [(b'1', b'wire bytes', {b'\\Flagged'}),
+                                                  (b'2', b'wire bytes', {b'\\Flagged', b'\\Seen'})])
+
+    def test_reconcile_detects_corrupt_target(self):
+        with self.assertRaises(RuntimeError):
+            module.reconcile_fixture(b'wire bytes', [(b'1', b'bad', {b'\\Flagged'}),
+                                                       (b'2', b'wire bytes', {b'\\Flagged', b'\\Seen'})])
 
     def test_rejects_invalid_marker_before_connecting(self):
         with patch.dict(os.environ, {'JAMES_LAB_CONFIRM': 'synthetic-only',

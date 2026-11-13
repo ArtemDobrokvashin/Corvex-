@@ -39,6 +39,8 @@ services:
       - ../james-lab/probe.py:/fixture/probe.py:ro
       - ./seed.py:/fixture/seed.py:ro
       - ./migration_probe.py:/fixture/migration_probe.py:ro
+      - ../james-migration/compare_manifests.py:/fixture/compare_manifests.py:ro
+      - ../james-migration/source_manifest.py:/fixture/source_manifest.py:ro
     entrypoint: ["python", "/fixture/seed.py"]
     networks: [isolated]
   tls-proxy:
