@@ -1,10 +1,11 @@
 """Synthetic-only vertical slice: snapshot bytes -> journal -> IMAP -> verification.
 
-NEVER use for real mail. UID discovery assumes an exclusively used lab inbox.
+NEVER use for real mail. APPENDUID is checked, but recovery remains incomplete.
 """
 import hashlib
 import imaplib
 import os
+import re
 import time
 from pathlib import Path
 import probe
@@ -14,28 +15,48 @@ from jmap_import_probe import RAW
 SOURCE_ID = 'f61b2fbc-7419-4eb0-8992-35841d0c77af'
 
 
-def uid_set(client):
-    data = probe.ok(client.uid('SEARCH', None, 'ALL'), 'search test inbox')
-    return set(data[0].split()) if data and data[0] else set()
+def number(value):
+    if not isinstance(value, bytes) or not re.fullmatch(rb'[1-9][0-9]{0,9}', value):
+        raise RuntimeError('Invalid synthetic IMAP identifier')
+    if int(value) > 4294967295:
+        raise RuntimeError('Invalid synthetic IMAP identifier')
+    return value
+
+
+def validity(client):
+    _, data = client.response('UIDVALIDITY')
+    if not isinstance(data, list) or len(data) != 1:
+        raise RuntimeError('Missing synthetic UIDVALIDITY')
+    return number(data[0])
+
+
+def append_uid(client, expected_validity):
+    _, data = client.response('APPENDUID')
+    if not isinstance(data, list) or len(data) != 1 or not isinstance(data[0], bytes):
+        raise RuntimeError('Missing synthetic APPENDUID')
+    parts = data[0].split()
+    if len(parts) != 2 or number(parts[0]) != expected_validity:
+        raise RuntimeError('Invalid or changed synthetic APPENDUID')
+    return number(parts[1])
 
 
 def attempt(client, journal, source_id, content):
     digest = hashlib.sha256(content).hexdigest()
     journal.register(source_id, digest, len(content))
-    before = uid_set(client)
-    # Durable intent BEFORE append. No retries on any ambiguous result.
+    probe.ok(client.select('INBOX'), 'select synthetic inbox')
+    expected_validity = validity(client)
+    # Clear stale response code before sending a new command.
+    client.response('APPENDUID')
     journal.start(source_id)
     try:
         probe.ok(client.append('INBOX', r'(\Seen \Flagged)', None, content), 'append synthetic snapshot')
-        new_ids = uid_set(client) - before
-        if len(new_ids) != 1:
-            raise RuntimeError('Synthetic UID ambiguous')
-        uid = next(iter(new_ids))
-        if not uid.isdigit():
-            raise RuntimeError('Invalid synthetic UID')
-        journal.imported(source_id, uid.decode('ascii'))
+        uid = append_uid(client, expected_validity)
+        probe.ok(client.select('INBOX', readonly=True), 'reselect synthetic inbox')
+        if validity(client) != expected_validity:
+            raise RuntimeError('Synthetic UIDVALIDITY changed after append')
+        target = expected_validity.decode('ascii') + ':' + uid.decode('ascii')
+        journal.imported(source_id, target)
     except BaseException:
-        # If the imported transition already committed, leave that state intact.
         if journal.state(source_id) == ('submitting', None):
             journal.mark_uncertain(source_id)
         raise
@@ -44,8 +65,8 @@ def attempt(client, journal, source_id, content):
     lines = [x for x in data if isinstance(x, bytes) and b'FLAGS' in x]
     if len(lines) != 1 or not {b'\\Seen', b'\\Flagged'}.issubset(set(imaplib.ParseFlags(lines[0]))):
         raise RuntimeError('Synthetic imported flags mismatch')
-    journal.verify(source_id, uid.decode('ascii'), hashlib.sha256(downloaded).hexdigest(), len(downloaded))
-    return uid
+    journal.verify(source_id, target, hashlib.sha256(downloaded).hexdigest(), len(downloaded))
+    return target
 
 
 def main():
@@ -62,14 +83,13 @@ def main():
     client = None
     try:
         client = probe.connect('user01@james.local', time.monotonic() + 120)
-        probe.ok(client.select('INBOX'), 'select synthetic inbox')
         content = source.read_bytes()
         if content != RAW:
             raise RuntimeError('Synthetic source file changed')
-        uid = attempt(client, journal, SOURCE_ID, content)
-        if journal.state(SOURCE_ID) != ('verified', uid.decode('ascii')):
+        target = attempt(client, journal, SOURCE_ID, content)
+        if journal.state(SOURCE_ID) != ('verified', target):
             raise RuntimeError('Synthetic journal not verified')
-        print('PASS: synthetic file imported by IMAP with journal and verified bytes/flags')
+        print('PASS: synthetic file imported by IMAP APPENDUID with journal and verified bytes/flags')
     finally:
         if client is not None:
             client.logout()

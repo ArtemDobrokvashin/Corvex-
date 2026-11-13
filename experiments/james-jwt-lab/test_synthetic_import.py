@@ -24,7 +24,9 @@ class SyntheticImportTests(unittest.TestCase):
         probe.ok.side_effect = lambda result, _: result[1]
         probe.body.return_value = module.RAW
         self.client = Mock()
-        self.client.uid.side_effect = [('OK', [b'1']), ('OK', [b'1 2']), ('OK', [b'2 (FLAGS (\\Seen \\Flagged))'])]
+        self.client.uid.return_value = ('OK', [b'2 (FLAGS (\\Seen \\Flagged))'])
+        self.client.select.return_value = ('OK', [b'1'])
+        self.client.response.side_effect = [('UIDVALIDITY', [b'99']), ('APPENDUID', [None]), ('APPENDUID', [b'99 2']), ('UIDVALIDITY', [b'99'])]
         self.client.append.return_value = ('OK', [b''])
 
     def tearDown(self):
@@ -33,9 +35,9 @@ class SyntheticImportTests(unittest.TestCase):
 
     def test_import_verify_and_prevent_second_append(self):
         uid = module.attempt(self.client, self.j, module.SOURCE_ID, module.RAW)
-        self.assertEqual(uid, b'2')
-        self.assertEqual(self.j.state(module.SOURCE_ID), ('verified', '2'))
-        self.client.uid.side_effect = [('OK', [b'1 2'])]
+        self.assertEqual(uid, '99:2')
+        self.assertEqual(self.j.state(module.SOURCE_ID), ('verified', '99:2'))
+        self.client.response.side_effect = [('UIDVALIDITY', [b'99']), ('APPENDUID', [None])]
         with self.assertRaises(JournalError): module.attempt(self.client, self.j, module.SOURCE_ID, module.RAW)
         self.assertEqual(self.client.append.call_count, 1)
 
@@ -43,14 +45,24 @@ class SyntheticImportTests(unittest.TestCase):
         self.client.append.side_effect = TimeoutError('unknown')
         with self.assertRaises(TimeoutError): module.attempt(self.client, self.j, module.SOURCE_ID, module.RAW)
         self.assertEqual(self.j.state(module.SOURCE_ID), ('uncertain', None))
-        self.client.uid.side_effect = [('OK', [b'1'])]
+        self.client.response.side_effect = [('UIDVALIDITY', [b'99']), ('APPENDUID', [None])]
         with self.assertRaises(JournalError): module.attempt(self.client, self.j, module.SOURCE_ID, module.RAW)
         self.assertEqual(self.client.append.call_count, 1)
 
     def test_wrong_bytes_never_mark_verified(self):
         probe.body.return_value = b'changed'
         with self.assertRaises(JournalError): module.attempt(self.client, self.j, module.SOURCE_ID, module.RAW)
-        self.assertEqual(self.j.state(module.SOURCE_ID), ('imported', '2'))
+        self.assertEqual(self.j.state(module.SOURCE_ID), ('imported', '99:2'))
+
+    def test_missing_appenduid_is_uncertain(self):
+        self.client.response.side_effect = [('UIDVALIDITY', [b'99']), ('APPENDUID', [None]), ('APPENDUID', [None])]
+        with self.assertRaises(RuntimeError): module.attempt(self.client, self.j, module.SOURCE_ID, module.RAW)
+        self.assertEqual(self.j.state(module.SOURCE_ID), ('uncertain', None))
+
+    def test_changed_uidvalidity_is_uncertain(self):
+        self.client.response.side_effect = [('UIDVALIDITY', [b'99']), ('APPENDUID', [None]), ('APPENDUID', [b'99 2']), ('UIDVALIDITY', [b'100'])]
+        with self.assertRaises(RuntimeError): module.attempt(self.client, self.j, module.SOURCE_ID, module.RAW)
+        self.assertEqual(self.j.state(module.SOURCE_ID), ('uncertain', None))
 
     def test_requires_explicit_confirmation(self):
         with patch.dict(os.environ, {}, clear=True), self.assertRaises(SystemExit): module.main()
