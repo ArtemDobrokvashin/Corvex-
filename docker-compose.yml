@@ -221,6 +221,31 @@ services:
     volumes:
       - james-data:/root/var
       - type: bind
+        source: ./infra/james/protocols/imapserver.xml
+        target: /root/conf/imapserver.xml
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./infra/james/protocols/smtpserver.xml
+        target: /root/conf/smtpserver.xml
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./infra/james/protocols/pop3server.xml
+        target: /root/conf/pop3server.xml
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./infra/james/protocols/lmtpserver.xml
+        target: /root/conf/lmtpserver.xml
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./infra/james/protocols/managesieveserver.xml
+        target: /root/conf/managesieveserver.xml
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
         source: ${CORVEX_JAMES_CONFIG_DIR:-./infra/secrets/james}/postgres.properties
         target: /root/conf/postgres.properties
         read_only: true
