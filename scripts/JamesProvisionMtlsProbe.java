@@ -66,7 +66,9 @@ class JamesProvisionMtlsProbe {
         var trusted = client(true);
         expect(trusted, "GET", "/jmap/session", 404);
         expect(trusted, "GET", USER_PATH, 403);
-        expect(trusted, "GET", USER_PATH + "?force=true", 400);
+        // Test the allowed method: a GET can be rejected before the query guard.
+        // Empty body and no Password cannot constitute a valid user creation.
+        expect(trusted, "PUT", USER_PATH + "?force=true", 400);
         expect(trusted, "PUT", "/not-a-user", 404);
         // No Password header and empty body: no valid create payload exists.
         expect(trusted, "PUT", USER_PATH, 401);
