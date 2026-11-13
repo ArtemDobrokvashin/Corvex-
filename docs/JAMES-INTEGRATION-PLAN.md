@@ -301,3 +301,16 @@ Java-клиентом JMAP; его фактический запуск и рез
 [QueryState 3.9.1](https://github.com/apache/james-project/blob/james-project-3.9.1/server/protocols/jmap-rfc-8621/src/main/scala/org/apache/james/jmap/core/Query.scala).
 Письмо без подтверждённого provenance имеет статус `UNVERIFIED`, не CLEAN.
 Обновлённое отключение пагинации ещё не прошло новый Maven/live прогон.
+
+### Исследование account-level Email/get state
+
+В исходниках James 3.9.1 `Email/get` после чтения получает последний state из
+`EmailChangeRepository`; PostgreSQL-реализация читает его через DAO. Это другой
+state, не page-local `Email/query.queryState`. Добавлен лабораторный probe,
+который проверяет его изменение после пометки `Seen` и IMAP APPEND. На момент
+подготовки фактический live результат неизвестен. Даже если эти два сценария
+пройдут, равенство state не доказывает согласованность индекса с хранилищем,
+порядок всех событий или атомарный снимок между запросами; проверены не будут
+MOVE, EXPUNGE и конкуренция. Поэтому отключение дальнейших страниц сохраняется.
+Источники: [EmailGetMethod 3.9.1](https://github.com/apache/james-project/blob/james-project-3.9.1/server/protocols/jmap-rfc-8621/src/main/scala/org/apache/james/jmap/method/EmailGetMethod.scala),
+[PostgresEmailChangeRepository 3.9.1](https://github.com/apache/james-project/blob/james-project-3.9.1/server/data/data-jmap-postgres/src/main/java/org/apache/james/jmap/postgres/change/PostgresEmailChangeRepository.java).

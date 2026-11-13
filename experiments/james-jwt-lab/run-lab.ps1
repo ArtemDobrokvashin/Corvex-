@@ -13,6 +13,8 @@ $oldPort = $env:JAMES_JWT_LAB_PORT
 $oldConfirm = $env:JAMES_LIVE_CONFIRM
 $oldOrigin = $env:JAMES_LIVE_HTTPS_ORIGIN
 $oldPrivate = $env:JAMES_LIVE_TEST_KEY_PKCS8
+$oldProject = $env:JAMES_LIVE_TEST_PROJECT
+$oldCompose = $env:JAMES_LIVE_TEST_COMPOSE
 $Started = $false
 
 function Require-Success($Step) {
@@ -41,6 +43,8 @@ try {
     $env:JAMES_LIVE_CONFIRM = 'synthetic-only'
     $env:JAMES_LIVE_HTTPS_ORIGIN = "https://127.0.0.1:$Port"
     $env:JAMES_LIVE_TEST_KEY_PKCS8 = Join-Path $Root 'private\jwt-private.der'
+    $env:JAMES_LIVE_TEST_PROJECT = $Project
+    $env:JAMES_LIVE_TEST_COMPOSE = $Compose
     Write-Host "Synthetic project: $Project"
     Write-Host "Synthetic keys: $Root"
     $Started = $true
@@ -107,4 +111,6 @@ try {
     $env:JAMES_LIVE_CONFIRM = $oldConfirm
     $env:JAMES_LIVE_HTTPS_ORIGIN = $oldOrigin
     $env:JAMES_LIVE_TEST_KEY_PKCS8 = $oldPrivate
+    $env:JAMES_LIVE_TEST_PROJECT = $oldProject
+    $env:JAMES_LIVE_TEST_COMPOSE = $oldCompose
 }

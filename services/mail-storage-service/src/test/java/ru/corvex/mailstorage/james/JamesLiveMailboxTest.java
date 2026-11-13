@@ -2,6 +2,7 @@ package ru.corvex.mailstorage.james;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import java.io.IOException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import java.net.URI;
@@ -15,6 +16,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -117,4 +119,59 @@ class JamesLiveMailboxTest {
         var expired = expiredIssuer.issue(principal1, new JamesMailboxBinding.ProvisionedMailbox(owner1, true, USER1, account1));
         assertThrows(java.io.IOException.class, () -> client.session(expired));
     }
+    @Test void accountEmailStateRespondsToSyntheticImapChanges() throws Exception {
+        URI origin = URI.create(required("JAMES_LIVE_HTTPS_ORIGIN"));
+        if (!"https".equalsIgnoreCase(origin.getScheme())
+                || !("localhost".equalsIgnoreCase(origin.getHost()) || "127.0.0.1".equals(origin.getHost()))) {
+            throw new IllegalArgumentException("Only a loopback HTTPS synthetic lab is permitted");
+        }
+        byte[] pkcs8 = Files.readAllBytes(Path.of(required("JAMES_LIVE_TEST_KEY_PKCS8")));
+        var key = (RSAPrivateKey) KeyFactory.getInstance("RSA").generatePrivate(new PKCS8EncodedKeySpec(pkcs8));
+        var client = new JamesJmapReadClient(origin, mapper);
+        var issuer = new JamesReadTokenIssuer(key, Clock.systemUTC(), mapper);
+        UUID owner = UUID.randomUUID();
+        var principal = new JamesMailboxBinding.Principal(owner, Set.of("MAIL_READ_OWN"));
+        String token = issuer.issue(principal, new JamesMailboxBinding.ProvisionedMailbox(owner, true, USER1, "synthetic"));
+        var accountNode = client.session(token).path("primaryAccounts").path(MAIL);
+        assertTrue(accountNode.isTextual() && !accountNode.asText().isBlank());
+        String account = accountNode.textValue();
+        var stateReader = new JamesEmailStateReader(client, mapper);
+        String initial = stateReader.current(token, account);
+        seed("seen");
+        String afterFlag = awaitStateChange(stateReader, token, account, initial);
+        seed("append");
+        String afterAppend = awaitStateChange(stateReader, token, account, afterFlag);
+        assertNotEquals(initial, afterFlag);
+        assertNotEquals(afterFlag, afterAppend);
+    }
+
+    private static String awaitStateChange(JamesEmailStateReader reader, String token, String account, String oldState)
+            throws Exception {
+        for (int i = 0; i < 40; i++) {
+            String current = reader.current(token, account);
+            if (!oldState.equals(current)) return current;
+            Thread.sleep(250);
+        }
+        throw new AssertionError("James Email/get state did not change after synthetic mutation");
+    }
+
+    /** Mutates only a unique named disposable project and fixed synthetic data. */
+    private static void seed(String mode) throws Exception {
+        String project = required("JAMES_LIVE_TEST_PROJECT");
+        Path compose = Path.of(required("JAMES_LIVE_TEST_COMPOSE")).toAbsolutePath().normalize();
+        if (!project.matches("corvex-jwt-lab-[0-9a-f]{12}")
+                || !compose.endsWith(Path.of("experiments", "james-jwt-lab", "compose.yaml"))
+                || !(mode.equals("append") || mode.equals("seen"))) {
+            throw new IllegalArgumentException("Only the synthetic lab project may be mutated");
+        }
+        Process process = new ProcessBuilder("docker", "compose", "-p", project, "-f", compose.toString(),
+                "run", "--rm", "--no-deps", "-e", "JAMES_LAB_SEED_MODE=" + mode, "seed")
+                .inheritIO().start();
+        if (!process.waitFor(90, TimeUnit.SECONDS)) {
+            process.destroyForcibly();
+            throw new IOException("Synthetic seed timed out");
+        }
+        if (process.exitValue() != 0) throw new IOException("Synthetic seed failed");
+    }
+
 }
