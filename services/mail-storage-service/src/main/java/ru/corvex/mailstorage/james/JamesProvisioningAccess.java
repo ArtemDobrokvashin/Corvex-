@@ -2,6 +2,7 @@ package ru.corvex.mailstorage.james;
 
 import java.io.IOException;
 import java.security.SecureRandom;
+import java.security.GeneralSecurityException;
 import java.time.Clock;
 import java.util.Base64;
 import java.util.Objects;
@@ -20,20 +21,22 @@ final class JamesProvisioningAccess {
     private final AuthUserClient users;
     private final CurrentProvisioningPermissionLookup permissions;
     private final JamesProvisioningCoordinator coordinator;
+    private final JamesProvisioningDiscovery discovery;
     private final Clock clock;
     private final SecureRandom random;
 
     JamesProvisioningAccess(AuthUserClient users, CurrentProvisioningPermissionLookup permissions,
-                            JamesProvisioningCoordinator coordinator, Clock clock, SecureRandom random) {
+                            JamesProvisioningCoordinator coordinator, JamesProvisioningDiscovery discovery,
+                            Clock clock, SecureRandom random) {
         this.users = Objects.requireNonNull(users);
         this.permissions = Objects.requireNonNull(permissions);
         this.coordinator = Objects.requireNonNull(coordinator);
+        this.discovery = Objects.requireNonNull(discovery);
         this.clock = Objects.requireNonNull(clock);
         this.random = Objects.requireNonNull(random);
     }
 
-    JamesProvisioningJournal.Intent create(Authentication authentication, UUID ownerId) throws IOException {
-        Objects.requireNonNull(ownerId);
+    private UUID authorizeActor(Authentication authentication) {
         if (!(authentication instanceof JwtAuthenticationToken auth) || !auth.isAuthenticated()
                 || !"corvex-auth".equals(auth.getToken().getClaimAsString("iss"))
                 || auth.getToken().getExpiresAt() == null
@@ -49,8 +52,18 @@ final class JamesProvisioningAccess {
         if (!actorId.equals(actor.id()) || !actor.active() || !permissions.canManageUsers(actorId)) {
             throw new SecurityException("Provisioning denied");
         }
+        return actorId;
+    }
+
+    private void requireActiveOwner(UUID ownerId) {
         var owner = users.findById(ownerId).orElseThrow(() -> new SecurityException("Provisioning denied"));
         if (!ownerId.equals(owner.id()) || !owner.active()) throw new SecurityException("Provisioning denied");
+    }
+
+    JamesProvisioningJournal.Intent create(Authentication authentication, UUID ownerId) throws IOException {
+        Objects.requireNonNull(ownerId);
+        UUID actorId = authorizeActor(authentication);
+        requireActiveOwner(ownerId);
         byte[] bytes = new byte[32];
         random.nextBytes(bytes);
         String password = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
@@ -58,5 +71,15 @@ final class JamesProvisioningAccess {
         // Password is intentionally not returned or persisted. Native protocols
         // remain disabled; enabling them later requires a separate credential flow.
         return coordinator.create(ownerId, actorId, password);
+    }
+
+    /** Operation ID is supplied by caller; login/owner come only from the journal. */
+    void discover(Authentication authentication, UUID operationId)
+            throws IOException, GeneralSecurityException, InterruptedException {
+        Objects.requireNonNull(operationId);
+        UUID actorId = authorizeActor(authentication);
+        var intent = discovery.requireCreated(operationId, actorId);
+        requireActiveOwner(intent.ownerId());
+        discovery.complete(intent);
     }
 }

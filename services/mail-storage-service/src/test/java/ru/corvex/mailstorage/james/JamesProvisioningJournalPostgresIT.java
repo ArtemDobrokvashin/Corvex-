@@ -49,8 +49,12 @@ class JamesProvisioningJournalPostgresIT {
         var intent = reserved();
         assertTrue(intent.login().matches("cvx-[0-9a-f]{32}@localhost"));
         var submitted = journal.beginCreate(intent);
+        assertTrue(journal.findCreated(intent.operationId(), intent.actorId()).isEmpty());
         journal.confirmCreate(submitted);
+        assertEquals(intent, journal.findCreated(intent.operationId(), intent.actorId()).orElseThrow());
+        assertTrue(journal.findCreated(intent.operationId(), UUID.randomUUID()).isEmpty());
         journal.recordBinding(intent, "account-" + intent.operationId());
+        assertTrue(journal.findCreated(intent.operationId(), intent.actorId()).isEmpty());
         assertEquals("bound", phase(intent));
         var mapping = new JdbcJamesMailboxRegistry(jdbc).find(intent.ownerId()).orElseThrow();
         assertFalse(mapping.active());

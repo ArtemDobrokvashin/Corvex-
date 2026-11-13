@@ -25,7 +25,8 @@ class JamesProvisioningAccessTest {
     private final AuthUserClient users = mock(AuthUserClient.class);
     private final CurrentProvisioningPermissionLookup permissions = mock(CurrentProvisioningPermissionLookup.class);
     private final JamesProvisioningCoordinator coordinator = mock(JamesProvisioningCoordinator.class);
-    private final JamesProvisioningAccess access = new JamesProvisioningAccess(users, permissions, coordinator,
+    private final JamesProvisioningDiscovery discovery = mock(JamesProvisioningDiscovery.class);
+    private final JamesProvisioningAccess access = new JamesProvisioningAccess(users, permissions, coordinator, discovery,
             Clock.fixed(NOW, ZoneOffset.UTC), new SecureRandom());
 
     @BeforeEach void setup() {
@@ -71,4 +72,25 @@ class JamesProvisioningAccessTest {
         for (int i=0; i<3; i++) assertThrows(SecurityException.class, () -> access.create(authorized(), owner));
         verifyNoInteractions(coordinator);
     }
+    @Test void discoveryRechecksActorPermissionAndOwner() throws Exception {
+        var op = UUID.randomUUID();
+        var intent = new JamesProvisioningJournal.Intent(op, owner, actor, "cvx-" + UUID.randomUUID().toString().replace("-", "") + "@localhost");
+        when(discovery.requireCreated(op, actor)).thenReturn(intent);
+        access.discover(authorized(), op);
+        verify(discovery).complete(intent);
+        when(permissions.canManageUsers(actor)).thenReturn(false);
+        assertThrows(SecurityException.class, () -> access.discover(authorized(), op));
+        verify(discovery, times(1)).requireCreated(op, actor);
+        verify(discovery, times(1)).complete(intent);
+    }
+
+    @Test void discoveryBlockedOwnerNeverMintsToken() throws Exception {
+        var op = UUID.randomUUID();
+        var intent = new JamesProvisioningJournal.Intent(op, owner, actor, "cvx-" + UUID.randomUUID().toString().replace("-", "") + "@localhost");
+        when(discovery.requireCreated(op, actor)).thenReturn(intent);
+        when(users.findById(owner)).thenReturn(Optional.of(new AuthUserClient.MailboxOwner(owner, "", "", "BLOCKED", 0)));
+        assertThrows(SecurityException.class, () -> access.discover(authorized(), op));
+        verify(discovery, never()).complete(any());
+    }
+
 }

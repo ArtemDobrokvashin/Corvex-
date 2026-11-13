@@ -1,6 +1,7 @@
 package ru.corvex.mailstorage.james;
 
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -66,6 +67,21 @@ final class JamesProvisioningJournal {
 
     /** On timeout, transport error or restart with submitting, fail closed. */
     void markUncertain(Intent intent) { transition(intent, "submitting", "uncertain"); }
+
+    /** Load only a confirmed creation belonging to the original actor. */
+    Optional<Intent> findCreated(UUID operationId, UUID actorId) {
+        Objects.requireNonNull(operationId);
+        Objects.requireNonNull(actorId);
+        var rows = jdbc.query("SELECT operation_id, owner_id, actor_id, james_login FROM corvex_james_provisioning "
+                        + "WHERE operation_id = ? AND actor_id = ? AND phase = 'created'",
+                (rs, index) -> new Intent(rs.getObject("operation_id", UUID.class),
+                        rs.getObject("owner_id", UUID.class), rs.getObject("actor_id", UUID.class),
+                        rs.getString("james_login")), operationId, actorId);
+        if (rows.size() > 1) throw new IllegalStateException("Duplicate provisioning operation");
+        if (rows.isEmpty()) return Optional.empty();
+        validate(rows.get(0));
+        return Optional.of(rows.get(0));
+    }
 
     /**
      * Only after successful creation and authenticated discovery of primary
