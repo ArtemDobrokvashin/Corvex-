@@ -29,6 +29,17 @@ services:
       - ${JAMES_JWT_LAB_DIR:?Set JAMES_JWT_LAB_DIR}/james/jwt-public.pem:/root/conf/jwt_publickey:ro
       - jamesdata:/root/var
     networks: [isolated]
+  seed:
+    image: python:3.12-alpine
+    profiles: [seed]
+    working_dir: /fixture
+    environment:
+      JAMES_LAB_CONFIRM: synthetic-only
+    volumes:
+      - ../james-lab/probe.py:/fixture/probe.py:ro
+      - ./seed.py:/fixture/seed.py:ro
+    entrypoint: ["python", "/fixture/seed.py"]
+    networks: [isolated]
   tls-proxy:
     image: python:3.12-alpine
     command: ["python", "/fixture/tls_proxy.py"]

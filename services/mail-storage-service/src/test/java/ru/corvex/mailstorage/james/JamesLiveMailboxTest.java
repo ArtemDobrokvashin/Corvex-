@@ -1,6 +1,7 @@
 package ru.corvex.mailstorage.james;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import java.net.URI;
@@ -73,6 +74,25 @@ class JamesLiveMailboxTest {
         }
         assertTrue(reader.listFolders(principal2,
                 new JamesMailboxBinding.ProvisionedMailbox(owner2, true, USER2, account2)).isArray());
+        var inbox = mapped.stream().filter(f -> "INBOX".equals(f.specialUse())).findFirst()
+                .orElseThrow(() -> new AssertionError("Synthetic inbox missing"));
+        JsonNode page = null;
+        for (int attempt = 0; attempt < 20; attempt++) {
+            page = reader.firstMessagePage(principal1,
+                    new JamesMailboxBinding.ProvisionedMailbox(owner1, true, USER1, account1),
+                    inbox.id(), 25, folderMapper);
+            if (!page.isEmpty()) break;
+            Thread.sleep(500);
+        }
+        assertNotNull(page);
+        boolean found = false;
+        for (JsonNode message : page) {
+            if ("Corvex James live synthetic message".equals(message.path("subject").asText())) found = true;
+        }
+        assertTrue(found, "Synthetic IMAP message not found by Java JMAP reader");
+        assertThrows(SecurityException.class, () -> reader.firstMessagePage(principal2,
+                new JamesMailboxBinding.ProvisionedMailbox(owner2, true, USER2, account2),
+                inbox.id(), 25, folderMapper));
         assertThrows(java.io.IOException.class, () -> client.read(jwt2, "Mailbox/get", mapper.createObjectNode().put("accountId", account1)));
         assertThrows(SecurityException.class, () -> reader.listFolders(principal1,
                 new JamesMailboxBinding.ProvisionedMailbox(owner1, true, USER1, account2)));

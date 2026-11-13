@@ -50,6 +50,18 @@ class JamesOwnMailboxAccessTest {
                 argThat(m -> m.ownerId().equals(owner) && m.accountId().equals("account-1")));
     }
 
+    @Test void messageReadRequiresCurrentPermissionBeforeReader() throws Exception {
+        provision();
+        var auth = token(owner.toString(), "corvex-auth", NOW.plusSeconds(60), true);
+        UUID folder = UUID.randomUUID();
+        when(reader.firstMessagePage(any(), any(), eq(folder), eq(10), any()))
+                .thenReturn(new ObjectMapper().createArrayNode());
+        assertTrue(access.firstMessagePage(auth, folder, 10).isArray());
+        when(permissions.canReadOwnMail(owner)).thenReturn(false);
+        assertThrows(SecurityException.class, () -> access.firstMessagePage(auth, folder, 10));
+        verify(reader, times(1)).firstMessagePage(any(), any(), eq(folder), eq(10), any());
+    }
+
     @Test void rejectsNonJwtWrongIssuerExpiredAndNoPermissionBeforeLookup() {
         assertThrows(SecurityException.class, () -> access.listOwnFolders(new TestingAuthenticationToken("u", "p")));
         assertThrows(SecurityException.class, () -> access.listOwnFolders(token(owner.toString(), "other", NOW.plusSeconds(60), true)));

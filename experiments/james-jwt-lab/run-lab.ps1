@@ -79,6 +79,8 @@ try {
     Require-Success 'create synthetic user01'
     & docker compose -p $Project -f $Compose exec -T james james-cli AddUser user02@james.local 1234
     Require-Success 'create synthetic user02'
+    & docker compose -p $Project -f $Compose run --rm --no-deps seed
+    Require-Success 'seed synthetic IMAP message'
 
     $startedAt = [DateTime]::UtcNow.AddSeconds(-2)
     & mvn -B -f $Pom '-Dtest=*James*Test,AdminMailPermissionClientTest' `

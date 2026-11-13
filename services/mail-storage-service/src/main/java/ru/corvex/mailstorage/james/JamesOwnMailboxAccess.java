@@ -1,5 +1,6 @@
 package ru.corvex.mailstorage.james;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.time.Clock;
@@ -37,8 +38,10 @@ final class JamesOwnMailboxAccess {
         this.clock = Objects.requireNonNull(clock);
     }
 
-    List<MailDtos.FolderView> listOwnFolders(Authentication authentication)
-            throws IOException, GeneralSecurityException, InterruptedException {
+    private record Authorized(JamesMailboxBinding.Principal principal,
+                              JamesMailboxBinding.ProvisionedMailbox mapping) { }
+
+    private Authorized authorize(Authentication authentication) {
         if (!(authentication instanceof JwtAuthenticationToken auth) || !auth.isAuthenticated()
                 || !"corvex-auth".equals(auth.getToken().getClaimAsString("iss"))
                 || auth.getToken().getExpiresAt() == null
@@ -57,6 +60,20 @@ final class JamesOwnMailboxAccess {
         var principal = new JamesMailboxBinding.Principal(owner, Set.of("MAIL_READ_OWN"));
         // Checks mapping owner and enabled before any token is issued.
         JamesMailboxBinding.requireEligible(principal, mapping);
-        return folderMapper.map(owner, mapping.accountId(), reader.listFolders(principal, mapping));
+        return new Authorized(principal, mapping);
+    }
+
+    List<MailDtos.FolderView> listOwnFolders(Authentication authentication)
+            throws IOException, GeneralSecurityException, InterruptedException {
+        Authorized authorized = authorize(authentication);
+        return folderMapper.map(authorized.principal().verifiedOwnerId(), authorized.mapping().accountId(),
+                reader.listFolders(authorized.principal(), authorized.mapping()));
+    }
+
+    /** Internal JMAP metadata only: never expose without DTO conversion and AV policy. */
+    JsonNode firstMessagePage(Authentication authentication, UUID publicFolderId, int limit)
+            throws IOException, GeneralSecurityException, InterruptedException {
+        Authorized authorized = authorize(authentication);
+        return reader.firstMessagePage(authorized.principal(), authorized.mapping(), publicFolderId, limit, folderMapper);
     }
 }
