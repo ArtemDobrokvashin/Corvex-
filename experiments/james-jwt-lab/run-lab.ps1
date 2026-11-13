@@ -24,6 +24,7 @@ function Require-Success($Step) {
 try {
     if (Test-Path $Root) { throw 'FAIL: key directory already exists' }
     New-Item -ItemType Directory -Path $Root | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $Root 'export') | Out-Null
     $tlsStore = Join-Path $Root 'tls-lab.p12'
     $cert = Join-Path $Root 'tls-lab-cert.pem'
     $trust = Join-Path $Root 'trust-lab.p12'
@@ -111,6 +112,20 @@ try {
         -e "JAMES_LAB_MIGRATION_MARKER=$MigrationMarker" -e JAMES_LAB_MIGRATION_MODE=verify `
         --entrypoint python seed /fixture/migration_probe.py
     Require-Success 'verify synthetic copies after restart'
+
+    # Separate empty synthetic database inside this uniquely named lab PostgreSQL.
+    & docker compose -p $Project -f $Compose exec -T postgres createdb -U james corvex_fixture
+    Require-Success 'create synthetic source database'
+    & docker compose -p $Project -f $Compose exec -T postgres psql -X -U james -d corvex_fixture -v ON_ERROR_STOP=1 -f /fixture/schema.sql
+    Require-Success 'create synthetic source schema'
+    & docker compose -p $Project -f $Compose exec -T postgres psql -X -U james -d corvex_fixture -v ON_ERROR_STOP=1 -f /fixture/source_fixture.sql
+    Require-Success 'insert synthetic source record'
+    & docker compose -p $Project -f $Compose exec -T postgres psql -X -qAt -U james -d corvex_fixture -v ON_ERROR_STOP=1 -o /tmp/source-export.jsonl -f /fixture/export_snapshot.sql
+    Require-Success 'export synthetic source metadata'
+    & docker compose -p $Project -f $Compose cp postgres:/tmp/source-export.jsonl (Join-Path (Join-Path $Root 'export') 'source-export.jsonl')
+    Require-Success 'copy synthetic export to test directory'
+    & docker compose -p $Project -f $Compose run --rm --no-deps --entrypoint python seed /fixture/source_export_probe.py
+    Require-Success 'verify synthetic metadata and file manifest'
     Write-Host 'PASS: unit tests and live James JWT/HTTPS test completed'
 } finally {
     if ($Started) {

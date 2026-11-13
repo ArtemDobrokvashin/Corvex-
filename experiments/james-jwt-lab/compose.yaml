@@ -8,6 +8,9 @@ services:
       POSTGRES_PASSWORD: secret1
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ../../services/mail-storage-service/src/main/resources/db/migration/V1__mail_schema.sql:/fixture/schema.sql:ro
+      - ./source_fixture.sql:/fixture/source_fixture.sql:ro
+      - ../james-migration/export_snapshot.sql:/fixture/export_snapshot.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U james -d james"]
       interval: 5s
@@ -41,6 +44,9 @@ services:
       - ./migration_probe.py:/fixture/migration_probe.py:ro
       - ../james-migration/compare_manifests.py:/fixture/compare_manifests.py:ro
       - ../james-migration/source_manifest.py:/fixture/source_manifest.py:ro
+      - ../james-migration/prepare_metadata.py:/fixture/prepare_metadata.py:ro
+      - ./source_export_probe.py:/fixture/source_export_probe.py:ro
+      - ${JAMES_JWT_LAB_DIR:?Set JAMES_JWT_LAB_DIR}/export:/lab:ro
     entrypoint: ["python", "/fixture/seed.py"]
     networks: [isolated]
   tls-proxy:
