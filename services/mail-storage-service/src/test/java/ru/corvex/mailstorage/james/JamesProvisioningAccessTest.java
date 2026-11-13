@@ -36,7 +36,7 @@ class JamesProvisioningAccessTest {
 
     private JwtAuthenticationToken token(String subject, String issuer, Instant expires, boolean allowed) {
         var jwt = Jwt.withTokenValue("verified-by-spring-in-real-use").header("alg", "RS256")
-                .subject(subject).claim("iss", issuer).issuedAt(NOW.minusSeconds(1)).expiresAt(expires).build();
+                .subject(subject).claim("iss", issuer).issuedAt(NOW.minusSeconds(120)).expiresAt(expires).build();
         return new JwtAuthenticationToken(jwt, allowed ? List.of(new SimpleGrantedAuthority("ADMIN_USERS_MANAGE")) : List.of());
     }
     private JwtAuthenticationToken authorized() { return token(actor.toString(), "corvex-auth", NOW.plusSeconds(60), true); }
