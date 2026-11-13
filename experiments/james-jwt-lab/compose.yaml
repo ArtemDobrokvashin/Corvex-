@@ -1,0 +1,47 @@
+# Disposable synthetic integration fixture. Never overlay onto Corvex or existing James labs.
+services:
+  postgres:
+    image: postgres:16.9
+    environment:
+      POSTGRES_DB: james
+      POSTGRES_USER: james
+      POSTGRES_PASSWORD: secret1
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U james -d james"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [isolated]
+  james:
+    image: apache/james:postgres-3.9.1
+    hostname: james.local
+    command: ["--generate-keystore"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../james-postgres-lab/search.properties:/root/conf/search.properties:ro
+      - ../james-postgres-lab/blob.properties:/root/conf/blob.properties:ro
+      - ../james-postgres-lab/webadmin.properties:/root/conf/webadmin.properties:ro
+      - ./jmap.properties:/root/conf/jmap.properties:ro
+      - ${JAMES_JWT_LAB_DIR:?Set JAMES_JWT_LAB_DIR}/james/jwt-public.pem:/root/conf/jwt_publickey:ro
+      - jamesdata:/root/var
+    networks: [isolated]
+  tls-proxy:
+    image: python:3.12-alpine
+    command: ["python", "/fixture/tls_proxy.py"]
+    volumes:
+      - ./tls_proxy.py:/fixture/tls_proxy.py:ro
+      - ${JAMES_JWT_LAB_DIR:?Set JAMES_JWT_LAB_DIR}/tls:/keys:ro
+    ports:
+      - "127.0.0.1:${JAMES_JWT_LAB_PORT:-18443}:8443"
+    depends_on: [james]
+    networks: [isolated]
+volumes:
+  pgdata: {}
+  jamesdata: {}
+networks:
+  isolated:
+    internal: true
