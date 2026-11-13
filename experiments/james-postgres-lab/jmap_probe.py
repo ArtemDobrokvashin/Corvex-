@@ -10,6 +10,7 @@ import time
 import sys
 import urllib.error
 import urllib.request
+import urllib.parse
 
 HOST = 'http://james:80'  # Only the isolated, synthetic lab network.
 USERS = ('user01@james.local', 'user02@james.local')
@@ -40,6 +41,24 @@ def request(path, user=None, payload=None):
             return response.status, json.loads(data)
     except urllib.error.HTTPError as error:
         return error.code, None
+
+
+def download_attachment(user, account, blob):
+    # Fixed James 3.9.1 endpoint; encode each path segment. Never trust a
+    # server-provided URL or follow redirects with the demo credentials.
+    if not all(isinstance(x, str) and x and x not in ('.', '..') for x in (account, blob)):
+        raise RuntimeError('Invalid account or blob identifier')
+    path = '/download/' + urllib.parse.quote(account, safe='') + '/' + urllib.parse.quote(blob, safe='')
+    auth = base64.b64encode((user + ':' + PASSWORD).encode('ascii')).decode('ascii')
+    req = urllib.request.Request(HOST + path, headers={'Authorization': 'Basic ' + auth})
+    try:
+        with urllib.request.build_opener(NoRedirect()).open(req, timeout=10) as response:
+            data = response.read(1024 * 1024 + 1)
+            if len(data) > 1024 * 1024:
+                raise RuntimeError('JMAP blob exceeded limit')
+            return response.status, data
+    except urllib.error.HTTPError as error:
+        return error.code, b''
 
 
 def mailbox_get(user, account):
@@ -101,13 +120,24 @@ def imap_to_jmap(account):
     if len(ids) != 1 or not isinstance(ids[0], str):
         raise RuntimeError('Expected exactly one matching JMAP message')
     data = jmap_method(USERS[0], 'Email/get', {
-        'accountId': account, 'ids': ids, 'properties': ['id', 'subject', 'hasAttachment']})
+        'accountId': account, 'ids': ids, 'properties': ['id', 'subject', 'hasAttachment', 'attachments']})
     entries = data.get('list')
     if not isinstance(entries, list) or len(entries) != 1:
         raise RuntimeError('Email/get did not return exactly one message')
     entry = entries[0]
     if entry.get('id') != ids[0] or entry.get('subject') != subject or entry.get('hasAttachment') is not True:
         raise RuntimeError('JMAP message properties do not match the synthetic IMAP message')
+    attachments = entry.get('attachments')
+    if not isinstance(attachments, list) or len(attachments) != 1:
+        raise RuntimeError('Expected one JMAP attachment')
+    blob = attachments[0].get('blobId') if isinstance(attachments[0], dict) else None
+    status, data = download_attachment(USERS[0], account, blob)
+    if status != 200 or data != b'jmap-lab-attachment\x00\xff':
+        raise RuntimeError('JMAP attachment bytes differ from the IMAP original')
+    status, _ = download_attachment(USERS[1], account, blob)
+    if status not in (403, 404):
+        raise RuntimeError('Cross-user attachment download was not denied')
+
 
 
 def main():
@@ -155,7 +185,7 @@ def main():
     else:
         results.append(('SKIP', 'own mailbox and cross-user denial (session prerequisite failed)'))
     if USERS[0] in sessions:
-        check('IMAP message visible through JMAP', lambda: imap_to_jmap(sessions[USERS[0]]))
+        check('IMAP to JMAP message and attachment bytes/isolation', lambda: imap_to_jmap(sessions[USERS[0]]))
     else:
         results.append(('SKIP', 'IMAP message visible through JMAP (session prerequisite failed)'))
     for name in ('Corvex JWT integration', 'SMTP/IMAP interoperability', 'restart and crash recovery',

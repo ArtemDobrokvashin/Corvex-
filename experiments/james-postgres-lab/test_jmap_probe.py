@@ -69,10 +69,12 @@ class JmapProbeTests(unittest.TestCase):
         imap.ok.side_effect = lambda response, operation: response
         imap.secrets = None
         responses = [ {'ids': ['id-1']}, {'list': [{'id': 'id-1',
-                       'subject': 'corvex-jmap-lab-' + 'a' * 32, 'hasAttachment': True}]} ]
+                       'subject': 'corvex-jmap-lab-' + 'a' * 32, 'hasAttachment': True,
+                       'attachments': [{'blobId': 'blob-1'}]}]} ]
         with patch.object(probe.importlib, 'import_module', return_value=imap), \
                 patch.object(probe.secrets, 'token_hex', return_value='a' * 32), \
-                patch.object(probe, 'jmap_method', side_effect=responses) as method:
+                patch.object(probe, 'jmap_method', side_effect=responses) as method, \
+                patch.object(probe, 'download_attachment', side_effect=[(200, b'jmap-lab-attachment\x00\xff'), (403, b'')]):
             probe.imap_to_jmap('account-1')
         client.append.assert_called_once()
         client.logout.assert_called_once()
@@ -88,6 +90,28 @@ class JmapProbeTests(unittest.TestCase):
                 patch.object(probe, 'jmap_method', side_effect=responses):
             with self.assertRaisesRegex(RuntimeError, 'properties do not match'):
                 probe.imap_to_jmap('account-1')
+
+    def test_attachment_corruption_and_cross_user_leak_fail(self):
+        for downloads in [[(200, b'wrong')], [(200, b'jmap-lab-attachment\x00\xff'), (200, b'leak')]]:
+            imap = Mock()
+            imap.ok.side_effect = lambda response, operation: response
+            responses = [{'ids': ['id-1']}, {'list': [{'id': 'id-1',
+                         'subject': 'corvex-jmap-lab-' + 'a' * 32, 'hasAttachment': True,
+                         'attachments': [{'blobId': 'blob-1'}]}]}]
+            with self.subTest(downloads=downloads), \
+                    patch.object(probe.importlib, 'import_module', return_value=imap), \
+                    patch.object(probe.secrets, 'token_hex', return_value='a' * 32), \
+                    patch.object(probe, 'jmap_method', side_effect=responses), \
+                    patch.object(probe, 'download_attachment', side_effect=downloads):
+                with self.assertRaises(RuntimeError):
+                    probe.imap_to_jmap('account-1')
+
+    def test_download_rejects_invalid_segments_before_network(self):
+        with patch.object(probe.urllib.request, 'build_opener') as opener:
+            for segment in ('', '..', None):
+                with self.assertRaises(RuntimeError):
+                    probe.download_attachment(probe.USERS[0], 'account', segment)
+            opener.assert_not_called()
 
     def test_never_follows_redirect_with_credentials(self):
         self.assertIsNone(probe.NoRedirect().redirect_request(None, None, 302, 'redirect', {}, 'http://foreign/'))
