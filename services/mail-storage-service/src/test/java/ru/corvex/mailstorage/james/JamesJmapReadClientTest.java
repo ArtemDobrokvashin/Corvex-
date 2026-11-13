@@ -11,6 +11,9 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -100,6 +103,30 @@ class JamesJmapReadClientTest {
         assertThrows(IOException.class, () -> client.read("token", "Mailbox/get", args));
         reply.set("{\"methodResponses\":[[\"Mailbox/get\",{},\"wrong\"]]}");
         assertThrows(IOException.class, () -> client.read("token", "Mailbox/get", args));
+    }
+
+    @Test
+    void timesOutWhenBodyStallsAfterHeaders() throws Exception {
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        server.createContext("/jmap/session", exchange -> {
+            exchange.sendResponseHeaders(200, 100);
+            try (var out = exchange.getResponseBody()) {
+                out.write('{');
+                out.flush();
+                started.countDown();
+                release.await(3, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        var shortDeadline = new JamesJmapReadClient(origin, mapper, true, Duration.ofSeconds(1));
+        try {
+            assertThrows(IOException.class, () -> shortDeadline.session("token"));
+            assertTrue(started.await(1, TimeUnit.SECONDS));
+        } finally {
+            release.countDown();
+        }
     }
 
     @Test
