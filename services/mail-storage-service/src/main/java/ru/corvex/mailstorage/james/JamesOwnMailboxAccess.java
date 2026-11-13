@@ -17,7 +17,8 @@ import ru.corvex.mailstorage.api.dto.MailDtos;
  * Disconnected experiment. Authentication MUST come from a correctly configured
  * Spring resource server security context, never be built from request input.
  * Authentication signature/key/issuer must already be verified by that filter;
- * type and claim checks here do not verify a JWT. No Spring wiring or HTTP API.
+ * type and claim checks here do not verify a JWT. The optional preview route
+ * is disabled by default and has not yet passed end-to-end security review.
  */
 final class JamesOwnMailboxAccess {
     private final AuthUserClient users;

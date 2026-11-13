@@ -314,3 +314,22 @@ state, не page-local `Email/query.queryState`. Добавлен лаборат
 MOVE, EXPUNGE и конкуренция. Поэтому отключение дальнейших страниц сохраняется.
 Источники: [EmailGetMethod 3.9.1](https://github.com/apache/james-project/blob/james-project-3.9.1/server/protocols/jmap-rfc-8621/src/main/scala/org/apache/james/jmap/method/EmailGetMethod.scala),
 [PostgresEmailChangeRepository 3.9.1](https://github.com/apache/james-project/blob/james-project-3.9.1/server/data/data-jmap-postgres/src/main/java/org/apache/james/jmap/postgres/change/PostgresEmailChangeRepository.java).
+
+### Отключённые по умолчанию HTTP-маршруты чтения
+
+Подготовлен отдельный серверный API `/api/v1/mail/james/folders` и
+`/api/v1/mail/james/folders/{folderId}/messages`, регистрируемый только при
+`corvex.james.read.enabled=true`. По умолчанию он отсутствует и существующие
+маршруты webmail не меняются. При включении нужны отдельный RSA ключ James,
+HTTPS origin с доверенным сертификатом, серверное сопоставление в отдельном
+реестре и защищённые внутренние auth/admin; никаких demo-значений ключа нет.
+Доступ должен проходить JWT-фильтр, проверку права в токене, текущего права и
+ACTIVE пользователя. Токен James даёт полные права ящика; доверие внутренней
+сети и секретам, отзыв после выдачи, миграция записей и безопасность
+provisioning ещё требуют отдельной проверки.
+
+Это только первая страница и preview, без тела, вложений, отправки, AV-проверки
+и замены текущего frontend. Флаг не включать в рабочей среде до проверки и
+согласованной схемы переключения. Сборка и JUnit для нового кода, MockMvc и live
+проверка нового HTTP маршрута ещё не выполнялись. В тестах MockMvc используется
+симулированный Spring JWT, не проверка подписи реального Corvex JWT.
