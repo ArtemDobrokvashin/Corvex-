@@ -87,8 +87,9 @@ try {
     Require-Success 'seed synthetic IMAP message'
 
     $startedAt = [DateTime]::UtcNow.AddSeconds(-2)
-    & mvn -B -f $Pom '-Dtest=*James*Test,AdminMailPermissionClientTest' `
-        "-Djavax.net.ssl.trustStore=$trust" '-Djavax.net.ssl.trustStorePassword=synthetic-lab-only' test
+    # Pass lab properties to the Surefire profile only, not to Maven's own TLS.
+    & mvn -B -f $Pom '-Pjames-live-lab' '-Dtest=*James*Test,AdminMailPermissionClientTest' `
+        "-Djames.live.truststore=$trust" '-Djames.live.truststore.password=synthetic-lab-only' test
     Require-Success 'Java tests and live James test'
     $report = Join-Path $Repo 'services\mail-storage-service\target\surefire-reports\TEST-ru.corvex.mailstorage.james.JamesLiveMailboxTest.xml'
     if (-not (Test-Path $report) -or (Get-Item $report).LastWriteTimeUtc -lt $startedAt) {
