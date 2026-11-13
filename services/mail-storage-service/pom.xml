@@ -17,6 +17,9 @@
     <properties>
         <java.version>17</java.version>
         <spring-cloud.version>2023.0.6</spring-cloud.version>
+        <!-- 5.5.2 is affected by GHSA-hjcp-jmpx-g3qm; align core to client 5.6.3. -->
+        <httpclient5.version>5.6.3</httpclient5.version>
+        <httpcore5.version>5.4.3</httpcore5.version>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -30,6 +33,8 @@
     </dependencyManagement>
     <dependencies>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
+        <!-- Explicit no-retry client for uncertain James provisioning operations. -->
+        <dependency><groupId>org.apache.httpcomponents.client5</groupId><artifactId>httpclient5</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-actuator</artifactId></dependency>
         <dependency><groupId>io.micrometer</groupId><artifactId>micrometer-registry-prometheus</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-validation</artifactId></dependency>
