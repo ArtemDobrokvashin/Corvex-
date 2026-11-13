@@ -132,3 +132,37 @@ audience, expiry, идентичность, отзыв и отсутствие �
 [WebAdmin](https://james.apache.org/server/manage-webadmin.html),
 [James 3.9.1 release](https://james.apache.org/james/update/2026/09/25/james-3.9.1.html),
 [upstream packaging](https://github.com/apache/james-project/blob/james-project-3.9.1/src/site/xdoc/server/packaging.xml).
+
+## Различие идентичности JWT: блокер прямого подключения
+
+Проверка кода Corvex: `TokenService.issueAccessToken` выдаёт RS256-токен, в
+`sub` помещает **UUID пользователя**, в `preferred_username` — логин, issuer —
+`corvex-auth`, отдельного `aud` в этом методе нет. Существующий `MailController`
+получает owner UUID из `sub`, а `StorageSecurityConfig` извлекает разрешения из
+`permissions`. `TokenService` отдельно указывает, что отзыв прав в выданном
+access-токене может задерживаться до окончания его TTL.
+
+Проверка исходников James 3.9.1: `JWTAuthenticationStrategy` через
+`JwtTokenVerifier.verifyAndExtractLogin` берёт `sub` как **логин James** и
+проверяет пользователя в репозитории James. Иными словами, нельзя просто
+направить существующий Corvex JWT в James и считать идентичность и правила
+проверки эквивалентными. Формат и доступность ключей, issuer/audience и срок,
+смена email и отзыв прав также нуждаются в отдельной проверке для выбранной
+сборки; нельзя обходить её проверкой только подписи.
+
+Возможное направление — ограниченный серверный адаптер/обмен токена: сначала
+проверить Corvex JWT, разрешение операции и актуальное соответствие UUID ↔
+активный пользователь; затем использовать специально предназначенный для James
+короткоживущий токен или другой поддерживаемый механизм авторизации. Права,
+область действия, отдельные ключи/аудитория, отзыв, срок, доступ к операциям и
+ротация должны быть спроектированы и проверены прежде, чем делать рабочий путь.
+Пользовательские пароли в адаптере не сохранять; мастер-имперсонацию по умолчанию
+не использовать. Это проектный вариант, а не заявленная готовая реализация.
+
+Минимальные обязательные отрицательные тесты: неподписанный/поддельный/истёкший
+токен, неверный issuer/audience/назначение, неактивный пользователь, изменённый
+логин, потеря связи с auth-service, чужой account ID и отзыв доступа; ни одно
+из них не должно открывать чужую почту. Схема тестируется на синтетических
+пользователях и изолированных ключах, а не на демо-пароле или реальном токене.
+Источники: [JWTAuthenticationStrategy 3.9.1](https://github.com/apache/james-project/blob/james-project-3.9.1/server/protocols/jmap/src/main/java/org/apache/james/jmap/http/JWTAuthenticationStrategy.java),
+[JwtTokenVerifier 3.9.1](https://github.com/apache/james-project/blob/james-project-3.9.1/server/protocols/jwt/src/main/java/org/apache/james/jwt/JwtTokenVerifier.java).
