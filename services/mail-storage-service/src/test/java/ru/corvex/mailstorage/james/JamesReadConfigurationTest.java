@@ -24,6 +24,14 @@ class JamesReadConfigurationTest {
                 .run(context -> assertThat(context).hasFailed());
     }
 
+    @Test void registryReadinessFailsClosedWhenDatabaseIsUnavailable() {
+        var jdbc = org.mockito.Mockito.mock(org.springframework.jdbc.core.JdbcTemplate.class);
+        org.mockito.Mockito.when(jdbc.queryForList(org.mockito.ArgumentMatchers.anyString()))
+                .thenThrow(new org.springframework.dao.DataAccessResourceFailureException("unavailable"));
+        assertThrows(org.springframework.dao.DataAccessResourceFailureException.class,
+                () -> JamesReadConfiguration.verifyRegistryReadable(jdbc));
+    }
+
     @Test void loadsDedicatedPkcs8RsaKeyAndRejectsInvalidOrWeakKey() throws Exception {
         var generator = KeyPairGenerator.getInstance("RSA");
         generator.initialize(2048);

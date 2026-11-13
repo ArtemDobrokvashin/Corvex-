@@ -30,6 +30,9 @@ class JamesReadConfiguration {
             @Value("${corvex.james.read.private-key-file}") String keyFile,
             @Value("${corvex.admin-service-url:${CORVEX_ADMIN_SERVICE_URL:http://admin-service:8090}}") String adminOrigin)
             throws Exception {
+        // Fail closed at startup if the separately provisioned registry is absent.
+        // This checks reachability and columns, not schema integrity or permissions.
+        verifyRegistryReadable(jdbc);
         // Explicit configuration only, no demo key, no fallback to the auth JWT key.
         RSAPrivateKey key = loadPrivateKey(Path.of(keyFile));
         var tokenIssuer = new JamesReadTokenIssuer(key, Clock.systemUTC(), mapper);
@@ -37,6 +40,11 @@ class JamesReadConfiguration {
         var currentPermissions = new AdminMailPermissionClient(URI.create(adminOrigin), mapper, internalTokens);
         return new JamesOwnMailboxAccess(users, new JdbcJamesMailboxRegistry(jdbc), currentPermissions,
                 new JamesOwnMailboxReader(tokenIssuer, jamesClient, mapper), new JamesFolderMapper(), Clock.systemUTC());
+    }
+
+    static void verifyRegistryReadable(JdbcTemplate jdbc) {
+        jdbc.queryForList("SELECT owner_id, enabled, james_login, account_id "
+                + "FROM corvex_james_mailbox_binding WHERE FALSE");
     }
 
     static RSAPrivateKey loadPrivateKey(Path path) throws Exception {
