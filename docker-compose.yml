@@ -182,9 +182,14 @@ services:
       CORVEX_EXTERNAL_MAIL_BATCH_SIZE: ${CORVEX_EXTERNAL_MAIL_BATCH_SIZE:-200}
       CORVEX_CLAMD_HOST: clamav
       CORVEX_CLAMD_PORT: 3310
+      CORVEX_JAMES_READ_ENABLED: ${CORVEX_JAMES_READ_ENABLED:-false}
+      CORVEX_JAMES_READ_ORIGIN: https://james-jmap:8443
+      CORVEX_JAMES_READ_PRIVATE_KEY_FILE: /run/james-adapter/jwt-private.pem
+      CORVEX_JAMES_READ_TLS_CERTIFICATE_FILE: /run/james-adapter/jmap-trust.crt
     volumes:
       - mail-data:/data/mail
       - attachment-data:/data/attachments
+      - "${CORVEX_JAMES_ADAPTER_DIR:-./infra/secrets/james-adapter}:/run/james-adapter:ro"
     depends_on: { postgres: { condition: service_healthy }, elasticsearch: { condition: service_healthy }, rabbitmq: { condition: service_healthy }, auth-service: { condition: service_healthy } }
 
   # Candidate engine in the SAME Corvex project; OFF by default. No published
@@ -205,7 +210,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 30
-    networks: [data]
+    networks: [james-internal]
 
   james:
     image: apache/james:postgres-3.9.1
@@ -245,7 +250,32 @@ services:
         target: /root/conf/jwt_publickey
         read_only: true
         bind: { create_host_path: false }
-    networks: [app, data]
+    networks: [james-internal]
+
+  # Only this TLS endpoint bridges James' isolated network to Corvex app.
+  james-jmap:
+    image: nginx:1.31-alpine
+    profiles: [james-transition]
+    restart: "no"
+    depends_on:
+      james: { condition: service_started }
+    volumes:
+      - type: bind
+        source: ./infra/james/jmap-nginx.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${CORVEX_JAMES_CONFIG_DIR:-./infra/secrets/james}/jmap.crt
+        target: /run/james-tls/jmap.crt
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${CORVEX_JAMES_CONFIG_DIR:-./infra/secrets/james}/jmap.key
+        target: /run/james-tls/jmap.key
+        read_only: true
+        bind: { create_host_path: false }
+    networks: [app, james-internal]
 
   mail-smtp-service:
     <<: *java-common
@@ -488,6 +518,8 @@ networks:
   data:           # БД/очереди/поиск: порты наружу НЕ публикуются
     internal: true
   monitoring: {}
+  james-internal:
+    internal: true
 
 volumes:
   postgres-data: {}
