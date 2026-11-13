@@ -126,6 +126,11 @@ try {
     Require-Success 'copy synthetic export to test directory'
     & docker compose -p $Project -f $Compose run --rm --no-deps --entrypoint python seed /fixture/source_export_probe.py
     Require-Success 'verify synthetic metadata and file manifest'
+
+    & java (Join-Path $PSScriptRoot 'GenerateImportToken.java') $Root
+    Require-Success 'generate short-lived synthetic import token'
+    & docker compose -p $Project -f $Compose run --rm --no-deps --entrypoint python seed /fixture/jmap_import_probe.py
+    Require-Success 'synthetic JMAP import byte and flags test'
     Write-Host 'PASS: unit tests and live James JWT/HTTPS test completed'
 } finally {
     if ($Started) {
