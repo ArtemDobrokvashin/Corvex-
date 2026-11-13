@@ -239,7 +239,8 @@ public class AdminGroupService {
         List<UserGroup> userGroups = groups.findAllById(groupIds).stream()
                 .sorted(Comparator.comparing(UserGroup::getCode))
                 .toList();
-        List<String> groupCodes = userGroups.stream().map(UserGroup::getCode).toList();
+        // JWT group claims represent effective membership, not disabled assignments.
+        List<String> groupCodes = userGroups.stream().filter(UserGroup::isEnabled).map(UserGroup::getCode).toList();
         boolean superAdmin = userGroups.stream().anyMatch(g -> g.isSuperAdmin() && g.isEnabled());
         Set<Permission> perms = superAdmin
                 ? EnumSet.allOf(Permission.class)

@@ -288,7 +288,7 @@ class AdminGroupServiceTest {
 
         AccessView access = service.accessOf(USER_ID);
 
-        assertEquals(List.of("AAA_DISABLED", "SALES"), access.groups());
+        assertEquals(List.of("SALES"), access.groups());
         assertEquals(List.of("CHAT_READ", "MAIL_READ_OWN"), access.permissions());
     }
 
@@ -304,6 +304,7 @@ class AdminGroupServiceTest {
 
         superAdmin.setEnabled(false);
         AccessView disabled = service.accessOf(USER_ID);
+        assertEquals(List.of(), disabled.groups());
         assertEquals(List.of(), disabled.permissions());
     }
 
