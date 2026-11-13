@@ -9,7 +9,7 @@ import re
 import time
 from pathlib import Path
 import probe
-from import_journal import Journal
+from import_journal import Journal, JournalError
 from jmap_import_probe import RAW
 
 SOURCE_ID = 'f61b2fbc-7419-4eb0-8992-35841d0c77af'
@@ -40,7 +40,7 @@ def append_uid(client, expected_validity):
     return number(parts[1])
 
 
-def attempt(client, journal, source_id, content):
+def attempt(client, journal, source_id, content, after_append=None):
     digest = hashlib.sha256(content).hexdigest()
     journal.register(source_id, digest, len(content))
     probe.ok(client.select('INBOX'), 'select synthetic inbox')
@@ -50,6 +50,8 @@ def attempt(client, journal, source_id, content):
     journal.start(source_id)
     try:
         probe.ok(client.append('INBOX', r'(\Seen \Flagged)', None, content), 'append synthetic snapshot')
+        if after_append is not None:
+            after_append()
         uid = append_uid(client, expected_validity)
         probe.ok(client.select('INBOX', readonly=True), 'reselect synthetic inbox')
         if validity(client) != expected_validity:

@@ -133,6 +133,11 @@ try {
     & docker compose -p $Project -f $Compose run --rm --no-deps --entrypoint python seed /fixture/synthetic_import.py
     Require-Success 'synthetic snapshot import with journal'
 
+    & docker compose -p $Project -f $Compose run --rm --no-deps -e JAMES_LAB_CRASH_MODE=seed --entrypoint python seed /fixture/synthetic_crash.py
+    if ($LASTEXITCODE -ne 73) { throw "FAIL: synthetic injected process crash expected exit 73; got $LASTEXITCODE" }
+    & docker compose -p $Project -f $Compose run --rm --no-deps -e JAMES_LAB_CRASH_MODE=recover --entrypoint python seed /fixture/synthetic_crash.py
+    Require-Success 'synthetic crash recovery blocks duplicate retry'
+
     if ($env:JAMES_LAB_RUN_JMAP_IMPORT_DIAGNOSTIC -eq '1') {
         & java (Join-Path $PSScriptRoot 'GenerateImportToken.java') $Root
         Require-Success 'generate short-lived synthetic import token'

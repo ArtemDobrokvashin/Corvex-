@@ -54,6 +54,13 @@ class SyntheticImportTests(unittest.TestCase):
         with self.assertRaises(JournalError): module.attempt(self.client, self.j, module.SOURCE_ID, module.RAW)
         self.assertEqual(self.j.state(module.SOURCE_ID), ('imported', '99:2'))
 
+    def test_injected_failure_after_accept_blocks_retry(self):
+        def fail(): raise RuntimeError('synthetic failure')
+        with self.assertRaisesRegex(RuntimeError, 'synthetic failure'):
+            module.attempt(self.client, self.j, module.SOURCE_ID, module.RAW, after_append=fail)
+        self.assertEqual(self.client.append.call_count, 1)
+        self.assertEqual(self.j.state(module.SOURCE_ID), ('uncertain', None))
+
     def test_missing_appenduid_is_uncertain(self):
         self.client.response.side_effect = [('UIDVALIDITY', [b'99']), ('APPENDUID', [None]), ('APPENDUID', [None])]
         with self.assertRaises(RuntimeError): module.attempt(self.client, self.j, module.SOURCE_ID, module.RAW)
