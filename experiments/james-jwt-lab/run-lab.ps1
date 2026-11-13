@@ -25,6 +25,7 @@ try {
     if (Test-Path $Root) { throw 'FAIL: key directory already exists' }
     New-Item -ItemType Directory -Path $Root | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $Root 'export') | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $Root 'journal') | Out-Null
     $tlsStore = Join-Path $Root 'tls-lab.p12'
     $cert = Join-Path $Root 'tls-lab-cert.pem'
     $trust = Join-Path $Root 'trust-lab.p12'
@@ -129,6 +130,8 @@ try {
 
     & docker compose -p $Project -f $Compose run --rm --no-deps --entrypoint python seed /fixture/imap_import_probe.py
     Require-Success 'same synthetic MIME via IMAP APPEND'
+    & docker compose -p $Project -f $Compose run --rm --no-deps --entrypoint python seed /fixture/synthetic_import.py
+    Require-Success 'synthetic snapshot import with journal'
 
     if ($env:JAMES_LAB_RUN_JMAP_IMPORT_DIAGNOSTIC -eq '1') {
         & java (Join-Path $PSScriptRoot 'GenerateImportToken.java') $Root
