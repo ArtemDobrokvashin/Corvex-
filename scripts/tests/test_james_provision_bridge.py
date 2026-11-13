@@ -44,5 +44,17 @@ class JamesProvisionBridgeTest(unittest.TestCase):
         self.assertNotIn('prune', text.lower())
 
 
+    def test_live_probe_requires_marker_and_never_retries(self):
+        text = (ROOT / 'scripts/test-james-provision-live.ps1').read_text(encoding='utf-8')
+        self.assertIn('if (Test-Path $Marker)', text)
+        self.assertIn('[IO.FileMode]::CreateNew', text)
+        self.assertLess(text.index("Write-NewAscii (Join-Path $Marker 'intent.txt')"),
+                        text.index('ru.corvex.mailstorage.james.JamesProvisionLiveProbe $login'))
+        self.assertIn('$logs.Contains($testPassword)', text)
+        self.assertIn('$logs.Contains($adminSecret)', text)
+        self.assertNotIn('down -v', text.lower())
+        self.assertNotIn('prune', text.lower())
+
+
 if __name__ == '__main__':
     unittest.main()
