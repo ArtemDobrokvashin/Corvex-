@@ -93,6 +93,35 @@ class ProbeTests(unittest.TestCase):
                 patch.object(probe, 'connect', side_effect=[primary, other]):
             probe.main()
 
+    def test_restart_seed_and_verify_same_bytes(self):
+        client = FakeImap()
+        marker = 'a' * 32
+        with patch.object(probe, 'connect', return_value=client):
+            probe.restart_probe('seed', marker)
+            probe.restart_probe('verify', marker)
+        self.assertEqual(probe.restart_message(marker), client.raw)
+        parsed = email.message_from_bytes(client.raw, policy=email.policy.default)
+        self.assertEqual(b'\x00\x01\x02\xff', next(parsed.iter_attachments()).get_payload(decode=True))
+
+    def test_restart_detects_missing_corruption_and_duplicate(self):
+        marker = 'a' * 32
+        client = FakeImap()
+        with patch.object(probe, 'connect', return_value=client):
+            with self.assertRaisesRegex(RuntimeError, 'missing, duplicated or changed'):
+                probe.restart_probe('verify', marker)
+            probe.restart_probe('seed', marker)
+            with self.assertRaisesRegex(RuntimeError, 'refusing duplicate'):
+                probe.restart_probe('seed', marker)
+            client.corrupt = True
+            with self.assertRaisesRegex(RuntimeError, 'missing, duplicated or changed'):
+                probe.restart_probe('verify', marker)
+
+    def test_restart_rejects_invalid_mode_and_marker_before_connect(self):
+        with patch.object(probe, 'connect') as connect:
+            with self.assertRaises(ValueError): probe.restart_probe('seed', 'invalid')
+            with self.assertRaises(ValueError): probe.restart_probe('bad', 'a' * 32)
+            connect.assert_not_called()
+
     def test_success(self):
         first, second = FakeImap(), FakeImap(other=True)
         self.run_probe(first, second)

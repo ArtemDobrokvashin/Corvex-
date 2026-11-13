@@ -3,6 +3,7 @@ import email.policy
 from email.message import EmailMessage
 import imaplib
 import os
+import re
 import secrets
 import ssl
 import time
@@ -55,10 +56,49 @@ def body(client, uid):
     return literals[0]
 
 
+def restart_message(marker):
+    # Explicit fixed wire bytes permit comparison across separate probe containers.
+    return (f'From: {USER}\r\nTo: {USER}\r\n'
+            f'Subject: Corvex restart test\r\nX-Corvex-Lab: {marker}\r\n'
+            'MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary="corvex-lab"\r\n'
+            '\r\n--corvex-lab\r\nContent-Type: text/plain\r\n\r\n'
+            'Synthetic restart test.\r\n--corvex-lab\r\n'
+            'Content-Type: application/octet-stream\r\n'
+            'Content-Disposition: attachment; filename="test.bin"\r\n'
+            'Content-Transfer-Encoding: base64\r\n\r\n'
+            'AAEC/w==\r\n--corvex-lab--\r\n').encode('ascii')
+
+
+def restart_probe(mode, marker):
+    if not re.fullmatch(r'[0-9a-f]{32}', marker or ''):
+        raise ValueError('JAMES_LAB_MARKER must be exactly 32 lowercase hexadecimal characters')
+    if mode not in ('seed', 'verify'):
+        raise ValueError('Unknown restart probe mode')
+    raw = restart_message(marker)
+    client = connect(USER, time.monotonic() + 120)
+    try:
+        ok(client.select('INBOX', readonly=(mode == 'verify')), 'select inbox')
+        matches = uid_search(client, marker)
+        if mode == 'seed':
+            if matches:
+                raise RuntimeError('Marker already exists; refusing duplicate seed')
+            ok(client.append('INBOX', None, None, raw), 'append restart message')
+            matches = uid_search(client, marker)
+        if len(matches) != 1 or body(client, matches[0]) != raw:
+            raise RuntimeError('Restart message missing, duplicated or changed')
+        print('PASS: restart ' + mode + ' marker=' + marker + ' bytes matched')
+    finally:
+        client.logout()
+
+
 def main():
     # This intentionally refuses an arbitrary host or accounts. It is not a migration tool.
     if os.environ.get('JAMES_LAB_CONFIRM') != 'synthetic-only':
         raise RuntimeError('Set JAMES_LAB_CONFIRM=synthetic-only in the isolated lab')
+    mode = os.environ.get('JAMES_LAB_MODE', 'basic')
+    if mode != 'basic':
+        restart_probe(mode, os.environ.get('JAMES_LAB_MARKER', ''))
+        return
     marker = secrets.token_hex(16)
     msg = EmailMessage(policy=email.policy.SMTP)
     msg['From'] = USER

@@ -60,3 +60,15 @@ experiments/james-lab/compose.yaml stop`. Никаких `down -v`, удален
 [demo Dockerfile](https://github.com/apache/james-project/blob/james-project-3.9.1/server/apps/demo/Dockerfile),
 [POP3 configuration](https://github.com/apache/james-project/blob/james-project-3.9.1/server/apps/demo/pop3server.xml),
 [варианты поставки James](https://james.apache.org/server/packaging.html).
+
+### Проверка после обычного перезапуска (подготовлена, ещё не испытана на James)
+
+Дополнительные режимы `JAMES_LAB_MODE=seed` и `verify` используют один и тот же
+`JAMES_LAB_MARKER` — строго 32 строчных шестнадцатеричных символа. Seed откажется
+создать дубликат и сравнит оригинальные MIME-байты с прочитанными; verify ищет
+ту же метку и сравнивает те же байты без записи. Оба режима требуют
+`JAMES_LAB_CONFIRM=synthetic-only`. Для теста следует сначала записать сообщение,
+затем отдельно перезапустить *тот же* контейнер и выполнить verify с той же меткой.
+Пересоздание контейнера или очистка уничтожит данные лаборатории: тома нет.
+Обычный restart не проверяет потерю питания, корректность backup, персистентность
+при пересоздании или production-конфигурацию. До исполнения не считать PASS.
