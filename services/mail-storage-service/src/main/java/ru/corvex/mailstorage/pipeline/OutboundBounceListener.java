@@ -41,7 +41,7 @@ public class OutboundBounceListener {
         this.events = events;
     }
 
-    @RabbitListener(queues = StoragePipelineAmqpConfig.BOUNCE_QUEUE, containerFactory = "mailListenerFactory")
+    @RabbitListener(queues = StoragePipelineAmqpConfig.BOUNCE_QUEUE, containerFactory = "bounceListenerFactory")
     public void onBounced(String payload) throws IOException {
         MailPipelineEvents.OutboundBouncedEvent event =
                 mapper.readValue(payload, MailPipelineEvents.OutboundBouncedEvent.class);
@@ -79,7 +79,10 @@ public class OutboundBounceListener {
             events.publishConfirmed("mail.inbound.received", new MailPipelineEvents.InboundReceivedEvent(
                     raw.rawRef(), daemon, List.of(notifyMailbox), "dsn", raw.sizeBytes(), raw.sha256(), Instant.now()), raw.rawRef());
         } catch (RuntimeException e) {
-            spool.delete(raw.rawRef());
+            // A lost confirm does not mean the broker rejected the event. Keep
+            // the referenced body and let the bounce event go to the DLQ.
+            // Do not replay it without reconciling the downstream delivery.
+            log.warn("DSN publish outcome uncertain; retaining spool {} for reconciliation", raw.rawRef());
             throw e;
         }
     }

@@ -61,6 +61,7 @@ class StoragePipelineAmqpConfigTest {
         assertInstanceOf(SimpleMessageConverter.class, config.simpleMessageConverter());
         var factory = config.mailListenerFactory(mock(ConnectionFactory.class));
         assertNotNull(factory);
+        assertNotNull(config.bounceListenerFactory(mock(ConnectionFactory.class)));
     }
 
     @Test

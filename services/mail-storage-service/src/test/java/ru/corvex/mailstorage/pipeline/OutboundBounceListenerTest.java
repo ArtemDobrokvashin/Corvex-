@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import ru.corvex.mailstorage.client.AuthUserClient;
 import ru.corvex.mailstorage.storage.RawMessageSpool;
 
@@ -121,7 +122,7 @@ class OutboundBounceListenerTest {
     }
 
     @Test
-    void publishFailureDeletesGeneratedDsnAndRethrows() throws Exception {
+    void uncertainPublishRetainsGeneratedDsnAndRethrows() throws Exception {
         UUID senderId = UUID.randomUUID();
         when(auth.findById(senderId)).thenReturn(Optional.of(owner(senderId, "a@company.local", "ACTIVE")));
         AtomicReference<String> rawRef = new AtomicReference<>();
@@ -134,7 +135,16 @@ class OutboundBounceListenerTest {
 
         assertThrows(IllegalStateException.class, () -> listener.onBounced(mapper.writeValueAsString(event)));
 
-        assertFalse(spool.exists(rawRef.get()));
+        assertTrue(spool.exists(rawRef.get()));
+        assertTrue(readSpool(rawRef.get()).contains("Diagnostic: 550 rejected"));
+    }
+
+    @Test
+    void bounceListenerUsesDedicatedFactory() throws Exception {
+        RabbitListener annotation = OutboundBounceListener.class.getMethod("onBounced", String.class)
+                .getAnnotation(RabbitListener.class);
+        assertEquals("bounceListenerFactory", annotation.containerFactory());
+        assertEquals(StoragePipelineAmqpConfig.BOUNCE_QUEUE, annotation.queues()[0]);
     }
 
     @Test
