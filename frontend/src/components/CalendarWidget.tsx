@@ -69,7 +69,10 @@ export function CalendarWidget({ className = '' }: { className?: string }) {
     setViewMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1));
 
   return (
-    <div ref={wrapperRef} className={`relative inline-block ${className}`}>
+    <div
+      ref={wrapperRef}
+      className={`relative flex flex-col items-center gap-1 ${className}`}
+    >
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -80,6 +83,7 @@ export function CalendarWidget({ className = '' }: { className?: string }) {
       >
         <CalendarIcon size={16} strokeWidth={1.75} />
       </button>
+      <span className="text-[10px] text-muted">{t('Календарь')}</span>
 
       {open && (
         <div
