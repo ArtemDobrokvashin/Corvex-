@@ -40,6 +40,13 @@ public class AntivirusCheckListener {
         try (InputStream in = raw.open(event.rawRef())) {
             scan = clam.scan(in);
         }
+        // AlertExceedsMax reports an incomplete scan using a FOUND signature.
+        // It is not an infection verdict and must not become a delivered event.
+        // Route to DLQ for operator reconciliation, not an endless scanner retry.
+        if (scan != null && scan.result() == ClamAvClient.Result.INFECTED
+                && scan.signature() != null && scan.signature().startsWith("Heuristics.Limits.Exceeded")) {
+            throw new AvScanLimitExceededException();
+        }
         if (scan == null || (scan.result() != ClamAvClient.Result.CLEAN
                 && scan.result() != ClamAvClient.Result.INFECTED)) {
             // The spool must remain available for retry or operator-led recovery.

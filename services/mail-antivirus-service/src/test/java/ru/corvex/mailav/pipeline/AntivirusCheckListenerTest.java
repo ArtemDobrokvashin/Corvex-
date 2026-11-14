@@ -68,6 +68,17 @@ class AntivirusCheckListenerTest {
     }
 
     @Test
+    void limitAlertIsNotPublishedAsInfectionAndRetainsRawStream() throws Exception {
+        CloseTrackingInputStream input = arrangeScan(new ClamAvClient.ScanResult(
+                ClamAvClient.Result.INFECTED, "Heuristics.Limits.Exceeded.MaxRecursion"));
+
+        assertThrows(AvScanLimitExceededException.class, () -> listener.onSpamChecked(spamCheckedPayload()));
+
+        assertTrue(input.closed());
+        verifyNoInteractions(rabbit);
+    }
+
+    @Test
     void scanErrorRetainsEventForRetryWithoutPublishing() throws Exception {
         CloseTrackingInputStream input = arrangeScan(
                 new ClamAvClient.ScanResult(ClamAvClient.Result.ERROR, "clamd unavailable"));

@@ -25,6 +25,13 @@ class AvRetryRecovererTest {
     }
 
     @Test
+    void scanLimitIsRejectedRatherThanRequeued() {
+        ListenerExecutionFailedException failure = assertThrows(ListenerExecutionFailedException.class,
+                () -> recoverer.recover(message, new AvScanLimitExceededException()));
+        assertInstanceOf(AmqpRejectAndDontRequeueException.class, failure.getCause());
+    }
+
+    @Test
     void otherFailuresKeepPriorDeadLetterPolicy() {
         ListenerExecutionFailedException failure = assertThrows(ListenerExecutionFailedException.class,
                 () -> recoverer.recover(message, new IOException("spool or publisher failure")));
