@@ -178,21 +178,23 @@ export default function AppShell() {
           <LogoMark size={30} />
           <span className="text-[17px] font-semibold tracking-[-0.02em]">Corvex</span>
         </div>
-        <div className="flex items-center gap-2 flex-1 min-w-0 max-w-[700px]">
-          <Search size={18} className="shrink-0 text-faint" />
-          <input
-            type="text"
-            placeholder={t('Поиск по почте (отправитель, тема, текст)…')}
-            value={topSearch}
-            onChange={(e) => setTopSearch(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                navigate(`/mail?mailSearch=${encodeURIComponent(topSearch)}`);
-              }
-            }}
-            className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none focus:ring-0 placeholder:text-faint"
-          />
+        <div className="flex items-center gap-1 flex-1 min-w-0 max-w-[700px]">
+          <div className="flex items-center gap-2 rounded-full border border-line bg-white px-3 py-1.5 min-w-[260px] shadow-soft">
+            <Search size={16} className="shrink-0 text-faint" />
+            <input
+              type="text"
+              placeholder={t('Поиск по почте…')}
+              value={topSearch}
+              onChange={(e) => setTopSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  navigate(`/mail?mailSearch=${encodeURIComponent(topSearch)}`);
+                }
+              }}
+              className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none focus:ring-0 placeholder:text-faint"
+            />
+          </div>
         </div>
         <div className="flex items-center gap-3 shrink-0">
           <button
@@ -211,7 +213,7 @@ export default function AppShell() {
           >
             <Globe size={16} strokeWidth={1.8} />
           </button>
-          <Clock className="text-[11px] shrink-0 hidden sm:flex" />
+          <Clock className="text-[12px] font-medium text-ink shrink-0 hidden sm:flex" />
           <button type="button" onClick={() => setProfileOpen(!profileOpen)} className="flex items-center gap-1.5 rounded-full border border-line px-2 py-1 text-sm font-medium text-ink hover:bg-black/[0.04] transition" aria-label={t('Профиль')}>
             <Avatar name={user.displayName} size={28} presence />
             <span className="truncate hidden sm:inline">{user.displayName}</span>
