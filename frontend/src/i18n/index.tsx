@@ -910,6 +910,12 @@ const EN: Record<string, string> = {
   'Права группы SUPER_ADMIN не редактируются (страховка от самоблокировки)': 'SUPER_ADMIN permissions cannot be edited (protection against locking the system out)',
   'Код группы не указан': 'No group code was provided',
   'Пустой набор настроек': 'The settings set is empty',
+  // Calendar
+  'Календарь': 'Calendar',
+  'Текущее время': 'Current time',
+  'Предыдущий месяц': 'Previous month',
+  'Следующий месяц': 'Next month',
+  'Локальный календарь без серверных событий. Создание и сохранение встреч появятся после подключения сервера календаря.': 'Local calendar without server events. Creating and saving meetings will appear after connecting the calendar server.',
 };
 
 const API_PATTERNS: Array<{ pattern: RegExp; en: string; ru?: string }> = [

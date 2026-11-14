@@ -37,6 +37,14 @@ describe('RU/EN localization', () => {
       .toBe('quotaBytes: должно быть не меньше 0');
   });
 
+  it('localizes calendar strings', () => {
+    expect(translate('en', 'Календарь')).toBe('Calendar');
+    expect(translate('en', 'Текущее время')).toBe('Current time');
+    expect(translate('en', 'Предыдущий месяц')).toBe('Previous month');
+    expect(translate('en', 'Следующий месяц')).toBe('Next month');
+    expect(translate('en', 'Локальный календарь без серверных событий. Создание и сохранение встреч появятся после подключения сервера календаря.')).toBe('Local calendar without server events. Creating and saving meetings will appear after connecting the calendar server.');
+  });
+
   it('formats dates, bytes, plurals and system groups for both locales', () => {
     expect(formatDate('en', '2026-10-19T12:00:00Z')).toContain('Oct 19, 2026');
     expect(formatDate('ru', '2026-10-19T12:00:00Z')).toContain('19');

@@ -146,6 +146,8 @@ export function IconButton({
   );
 }
 
+export { Clock } from './Clock';
+
 export function LoadingScreen({ label }: { label?: string }) {
   const t = useT();
   const effectiveLabel = label ?? t('Загружаем рабочее пространство');
