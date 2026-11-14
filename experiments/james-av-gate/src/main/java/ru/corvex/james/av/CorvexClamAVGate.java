@@ -38,6 +38,7 @@ public final class CorvexClamAVGate extends ClamAVScan {
     private static final int MAX_ADDRESSES = 4;
     private static final long SCAN_BUDGET_NANOS = TimeUnit.SECONDS.toNanos(30);
     private static final ScheduledThreadPoolExecutor DEADLINES = createDeadlineExecutor();
+    private volatile ClamdAddressCache addressCache;
 
     private static ScheduledThreadPoolExecutor createDeadlineExecutor() {
         ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1, task -> {
@@ -67,12 +68,26 @@ public final class CorvexClamAVGate extends ClamAVScan {
         try {
             InetAddress[] resolved = InetAddress.getAllByName(host);
             if (resolved.length == 0) throw new MessagingException("ClamAV host has no addresses");
+            if (addressCache != null) throw new MessagingException("ClamAV gate already initialized");
             setAddresses(resolved);
             setPort(port);
+            ClamdAddressCache cache = new ClamdAddressCache(host, resolved, InetAddress::getAllByName, System::nanoTime);
+            addressCache = cache;
+            try { cache.start(); }
+            catch (RuntimeException e) {
+                cache.close();
+                throw new MessagingException("Cannot start ClamAV address refresh", e);
+            }
         } catch (UnknownHostException e) {
             throw new MessagingException("Cannot resolve ClamAV host", e);
         }
         // No clamd PING here: an outage is handled as UNKNOWN per message.
+    }
+
+    @Override
+    public void destroy() {
+        ClamdAddressCache cache = addressCache;
+        if (cache != null) cache.close();
     }
 
     @Override
@@ -94,7 +109,9 @@ public final class CorvexClamAVGate extends ClamAVScan {
     /** Bounded TCP connect to resolved addresses. No name lookup or retry after a scan begins. */
     @Override
     protected Socket getClamdSocket() throws ConnectException {
-        InetAddress[] configured = getAddresses();
+        ClamdAddressCache cache = addressCache;
+        // Uninitialized instances are used only by the synthetic dependency tests.
+        InetAddress[] configured = cache == null ? getAddresses() : cache.snapshot();
         int port = getPort();
         if (configured == null || configured.length == 0 || port < 1 || port > 65535) {
             throw new ConnectException("ClamAV is not configured");

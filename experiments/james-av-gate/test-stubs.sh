@@ -5,6 +5,6 @@ here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 find "$here/test-fixtures" -name '*.java' -print > "$tmp/sources"
-printf '%s\n' "$here/src/main/java/ru/corvex/james/av/CorvexClamAVGate.java" >> "$tmp/sources"
+find "$here/src/main/java" -name '*.java' -print >> "$tmp/sources"
 javac --release 17 -d "$tmp" @"$tmp/sources"
 java -cp "$tmp" ru.corvex.james.av.Harness

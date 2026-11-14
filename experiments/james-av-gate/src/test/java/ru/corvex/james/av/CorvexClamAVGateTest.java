@@ -56,6 +56,7 @@ class CorvexClamAVGateTest {
         CorvexClamAVGate gate = new CorvexClamAVGate();
         gate.init(config(Map.of("host", "127.0.0.1", "port", "12345")));
         assertEquals(12345, gate.getPort());
+        gate.destroy();
     }
 
 }
