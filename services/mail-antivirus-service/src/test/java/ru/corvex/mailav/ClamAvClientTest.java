@@ -25,7 +25,7 @@ class ClamAvClientTest {
     @Test
     void streamsPayloadWithInstreamFramingAndParsesCleanReply() throws Exception {
         byte[] payload = "clean eml content".getBytes(StandardCharsets.UTF_8);
-        try (FakeClamd clamd = new FakeClamd("stream: OK\n")) {
+        try (FakeClamd clamd = new FakeClamd("stream: OK\0")) {
             ClamAvClient client = new ClamAvClient("127.0.0.1", clamd.port());
 
             ClamAvClient.ScanResult result = client.scan(new ByteArrayInputStream(payload));
@@ -39,7 +39,7 @@ class ClamAvClientTest {
 
     @Test
     void parsesInfectedSignature() throws Exception {
-        try (FakeClamd clamd = new FakeClamd("stream: Eicar-Test-Signature FOUND\n")) {
+        try (FakeClamd clamd = new FakeClamd("stream: Eicar-Test-Signature FOUND\0")) {
             ClamAvClient client = new ClamAvClient("127.0.0.1", clamd.port());
 
             ClamAvClient.ScanResult result = client.scan(new ByteArrayInputStream(new byte[]{1, 2, 3}));
@@ -51,7 +51,7 @@ class ClamAvClientTest {
 
     @Test
     void unknownClamdReplyIsErrorWithReplyTextPreserved() throws Exception {
-        try (FakeClamd clamd = new FakeClamd("stream: engine ERROR\n")) {
+        try (FakeClamd clamd = new FakeClamd("stream: engine ERROR\0")) {
             ClamAvClient client = new ClamAvClient("127.0.0.1", clamd.port());
 
             ClamAvClient.ScanResult result = client.scan(new ByteArrayInputStream(new byte[0]));
@@ -72,6 +72,123 @@ class ClamAvClientTest {
         assertNotNull(result.signature());
     }
 
+    /** Ответ, действительно заканчивающийся на "OK", но не являющийся точным "stream: OK", не чистый. */
+    @Test
+    void replyEndingWithOkIsNotAutomaticallyClean() throws Exception {
+        try (FakeClamd clamd = new FakeClamd("stream: NOT OK\0")) {
+            ClamAvClient client = new ClamAvClient("127.0.0.1", clamd.port());
+
+            ClamAvClient.ScanResult result = client.scan(new ByteArrayInputStream(new byte[]{1}));
+
+            assertEquals(ClamAvClient.Result.ERROR, result.result());
+        }
+    }
+
+    /** Лидирующий пробел перед "stream: OK" — не точный ответ, ошибка. */
+    @Test
+    void cleanReplyWithLeadingSpaceIsError() throws Exception {
+        try (FakeClamd clamd = new FakeClamd(" stream: OK\0")) {
+            ClamAvClient client = new ClamAvClient("127.0.0.1", clamd.port());
+
+            ClamAvClient.ScanResult result = client.scan(new ByteArrayInputStream(new byte[]{1}));
+
+            assertEquals(ClamAvClient.Result.ERROR, result.result());
+        }
+    }
+
+    /** Пробел между "OK" и NUL — не точный ответ, ошибка. */
+    @Test
+    void cleanReplyWithTrailingSpaceBeforeNulIsError() throws Exception {
+        try (FakeClamd clamd = new FakeClamd("stream: OK \0")) {
+            ClamAvClient client = new ClamAvClient("127.0.0.1", clamd.port());
+
+            ClamAvClient.ScanResult result = client.scan(new ByteArrayInputStream(new byte[]{1}));
+
+            assertEquals(ClamAvClient.Result.ERROR, result.result());
+        }
+    }
+
+    /** Перевод строки перед NUL — не точный ответ, ошибка. */
+    @Test
+    void cleanReplyWithNewlineBeforeNulIsError() throws Exception {
+        try (FakeClamd clamd = new FakeClamd("stream: OK\n\0")) {
+            ClamAvClient client = new ClamAvClient("127.0.0.1", clamd.port());
+
+            ClamAvClient.ScanResult result = client.scan(new ByteArrayInputStream(new byte[]{1}));
+
+            assertEquals(ClamAvClient.Result.ERROR, result.result());
+        }
+    }
+
+    /** Пустой ответ clamd — ошибка, а не CLEAN. */
+    @Test
+    void emptyReplyIsError() throws Exception {
+        try (FakeClamd clamd = new FakeClamd("")) {
+            ClamAvClient client = new ClamAvClient("127.0.0.1", clamd.port());
+
+            ClamAvClient.ScanResult result = client.scan(new ByteArrayInputStream(new byte[]{1}));
+
+            assertEquals(ClamAvClient.Result.ERROR, result.result());
+        }
+    }
+
+    /** Усечённый ответ (соединение закрыто без NUL) — ошибка. */
+    @Test
+    void truncatedReplyIsError() throws Exception {
+        try (FakeClamd clamd = new FakeClamd("stream: O")) {
+            ClamAvClient client = new ClamAvClient("127.0.0.1", clamd.port());
+
+            ClamAvClient.ScanResult result = client.scan(new ByteArrayInputStream(new byte[]{1}));
+
+            assertEquals(ClamAvClient.Result.ERROR, result.result());
+        }
+    }
+
+    /** Ответ без завершающего NUL — ошибка, даже если выглядит как "stream: OK". */
+    @Test
+    void nonNulTerminatedCleanReplyIsError() throws Exception {
+        try (FakeClamd clamd = new FakeClamd("stream: OK")) {
+            ClamAvClient client = new ClamAvClient("127.0.0.1", clamd.port());
+
+            ClamAvClient.ScanResult result = client.scan(new ByteArrayInputStream(new byte[]{1}));
+
+            assertEquals(ClamAvClient.Result.ERROR, result.result());
+        }
+    }
+
+    /** Слишком длинный ответ не приводит к исчерпанию памяти и классифицируется как ошибка. */
+    @Test
+    void overlyLongReplyIsError() throws Exception {
+        StringBuilder tooLong = new StringBuilder();
+        for (int i = 0; i < 1_024 * 1_024 + 10_000; i++) {
+            tooLong.append('A');
+        }
+        try (FakeClamd clamd = new FakeClamd(tooLong.toString())) {
+            ClamAvClient client = new ClamAvClient("127.0.0.1", clamd.port());
+
+            ClamAvClient.ScanResult result = client.scan(new ByteArrayInputStream(new byte[]{1}));
+
+            assertEquals(ClamAvClient.Result.ERROR, result.result());
+        }
+    }
+
+    /**
+     * Таймаут чтения: clamd принял соединение, но не отвечает. Клиент должен вернуть ERROR
+     * гораздо быстрее 60 с — тест использует управляемый таймаут 1500 мс через второй
+     * конструктор, production-значение (60 с) не меняется.
+     */
+    @Test
+    void readTimeoutIsError() throws Exception {
+        try (HoldClamd clamd = new HoldClamd()) {
+            ClamAvClient client = new ClamAvClient("127.0.0.1", clamd.port(), 5_000, 1_500);
+
+            ClamAvClient.ScanResult result = client.scan(new ByteArrayInputStream(new byte[]{1}));
+
+            assertEquals(ClamAvClient.Result.ERROR, result.result());
+            assertNotNull(result.signature());
+        }
+    }
+
     private static int closedPort() throws IOException {
         try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))) {
             return socket.getLocalPort();
@@ -88,7 +205,7 @@ class ClamAvClientTest {
 
         private FakeClamd(String reply) throws IOException {
             this.server = new ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"));
-            this.thread = new Thread(() -> serve(reply), "fake-clamd");
+            this.thread = new Thread(() -> serve(reply, false), "fake-clamd");
             this.thread.start();
         }
 
@@ -113,8 +230,14 @@ class ClamAvClientTest {
             }
         }
 
-        private void serve(String reply) {
-            try (Socket socket = server.accept()) {
+        /**
+         * Отправляет ответ clamd в реальном формате zINSTREAM: строка завершается NUL-байтом.
+         * Когда reply не содержит NUL — имитирует усечённый/повреждённый ответ.
+         */
+        private void serve(String reply, boolean hold) {
+            Socket socket = null;
+            try {
+                socket = server.accept();
                 socket.setSoTimeout(5_000);
                 DataInputStream input = new DataInputStream(socket.getInputStream());
                 command.set(readNullTerminatedCommand(input));
@@ -131,11 +254,20 @@ class ClamAvClientTest {
                     content.write(chunk);
                 }
                 payload.set(content.toByteArray());
-                socket.getOutputStream().write(reply.getBytes(StandardCharsets.US_ASCII));
-                socket.getOutputStream().flush();
+                if (!hold) {
+                    socket.getOutputStream().write(reply.getBytes(StandardCharsets.US_ASCII));
+                    socket.getOutputStream().flush();
+                }
+                // hold: соединение удерживается открытым, чтение клиента упрется в таймаут
             } catch (Exception e) {
                 failure.set(e);
             } finally {
+                if (socket != null && !hold) {
+                    try {
+                        socket.close();
+                    } catch (IOException ignored) {
+                    }
+                }
                 done.countDown();
             }
         }
@@ -151,6 +283,62 @@ class ClamAvClientTest {
 
         @Override
         public void close() throws Exception {
+            server.close();
+            thread.join(5_000);
+        }
+    }
+
+    /**
+     * clamd, который принимает соединение, читает запрос, но никогда не отвечает и не закрывает
+     * соединение — имитирует подвисший сканер для проверки таймаута чтения.
+     */
+    private static final class HoldClamd implements AutoCloseable {
+        private final ServerSocket server;
+        private final Thread thread;
+        private final CountDownLatch accepted = new CountDownLatch(1);
+
+        private HoldClamd() throws IOException {
+            this.server = new ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"));
+            this.thread = new Thread(this::serve, "hold-clamd");
+            this.thread.start();
+        }
+
+        private int port() {
+            return server.getLocalPort();
+        }
+
+        private void serve() {
+            Socket socket = null;
+            try {
+                socket = server.accept();
+                accepted.countDown();
+                socket.setSoTimeout(5_000);
+                DataInputStream input = new DataInputStream(socket.getInputStream());
+                readNullTerminatedCommand(input);
+                while (true) {
+                    int length = input.readInt();
+                    if (length == 0) {
+                        break;
+                    }
+                    input.readNBytes(length);
+                }
+                // никогда не отвечаем и не закрываем сокет
+            } catch (Exception ignored) {
+            }
+        }
+
+        private static String readNullTerminatedCommand(DataInputStream input) throws IOException {
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            int value;
+            while ((value = input.read()) != -1 && value != 0) {
+                bytes.write(value);
+            }
+            return bytes.toString(StandardCharsets.US_ASCII);
+        }
+
+        @Override
+        public void close() throws Exception {
+            assertTrue(accepted.await(5, TimeUnit.SECONDS), "hold clamd did not accept");
             server.close();
             thread.join(5_000);
         }
