@@ -198,7 +198,7 @@ export default function AppShell() {
         </div>
 
         {/* Поиск: на десктопе всегда развёрнут; на мобильных — иконка лупы, при тапе разворачивается */}
-        <div className="flex items-center justify-center flex-1 min-w-0 max-w-[720px]">
+        <div className="flex items-center gap-2 shrink-0">
           {/* Десктоп: поиск всегда развёрнут */}
           <div className="hidden sm:flex items-center gap-2 rounded-full border border-[#e5e5ea] bg-[#f2f2f7] px-3 py-1.5 min-w-[280px] shadow-[0_1px_0_rgba(0,0,0,0.05)]">
             <Search size={17} className="shrink-0 text-ink-soft" />
@@ -230,7 +230,7 @@ export default function AppShell() {
 
         {/* Мобильный: развёрнутый поиск (п롭оска во всю ширину хэдера) */}
         {mobileSearchOpen && (
-          <div className="sm:hidden flex items-center gap-2 px-3 py-2 w-full bg-[#f2f2f7]">
+          <div className="sm:hidden flex items-center gap-2 rounded-full border border-[#e5e5ea] bg-[#f2f2f7] px-3 py-1.5 min-w-[200px] shadow-[0_1px_0_rgba(0,0,0,0.05)]">
             <Search size={17} className="shrink-0 text-ink-soft" />
             <input
               type="text"
@@ -248,10 +248,10 @@ export default function AppShell() {
             <button
               type="button"
               onClick={() => setMobileSearchOpen(false)}
-              className="h-8 w-8 rounded-full flex items-center justify-center text-ink-soft hover:text-ink transition hover:bg-[#e5e5ea] touch-target"
+              className="h-7 w-7 rounded-full flex items-center justify-center text-ink-soft hover:text-ink transition hover:bg-[#e5e5ea] touch-target"
               aria-label={t('Закрыть поиск')}
             >
-              <X size={16} strokeWidth={1.75} />
+              <X size={15} strokeWidth={1.75} />
             </button>
           </div>
         )}
