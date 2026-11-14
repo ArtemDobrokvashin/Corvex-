@@ -14,8 +14,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 /**
- * Второе звено конвейера. ClamAV недоступен -> ScanResult ERROR: storage доставит письмо,
- * но вложения останутся заблокированы статусом ERROR до повторной проверки (fail-closed по файлам).
+ * Второе звено конвейера. Неопределённый результат не публикуется как проверенное письмо:
+ * повторная попытка запускает сканирование заново; после исчерпания попыток событие уходит в DLQ.
  */
 @Component
 public class AntivirusCheckListener {
@@ -39,6 +39,12 @@ public class AntivirusCheckListener {
         ClamAvClient.ScanResult scan;
         try (InputStream in = raw.open(event.rawRef())) {
             scan = clam.scan(in);
+        }
+        if (scan == null || (scan.result() != ClamAvClient.Result.CLEAN
+                && scan.result() != ClamAvClient.Result.INFECTED)) {
+            // The spool must remain available for retry or operator-led recovery.
+            // Do not publish an ERROR event which an older storage service may deliver.
+            throw new IOException("Antivirus verdict unavailable; message retained for retry");
         }
         var checked = new MailPipelineEvents.AvCheckedEvent(
                 event.rawRef(), event.mailFrom(), event.recipients(), event.remoteAddress(),

@@ -68,15 +68,21 @@ class AntivirusCheckListenerTest {
     }
 
     @Test
-    void publishesCleanAndErrorStatusesWithoutChangingSpamData() throws Exception {
-        arrangeScan(new ClamAvClient.ScanResult(ClamAvClient.Result.ERROR, "clamd unavailable"));
+    void scanErrorRetainsEventForRetryWithoutPublishing() throws Exception {
+        CloseTrackingInputStream input = arrangeScan(
+                new ClamAvClient.ScanResult(ClamAvClient.Result.ERROR, "clamd unavailable"));
+        assertThrows(IOException.class, () -> listener.onSpamChecked(spamCheckedPayload()));
+        assertTrue(input.closed());
+        verifyNoInteractions(rabbit);
+    }
+
+    @Test
+    void cleanVerdictKeepsSpamData() throws Exception {
+        arrangeScan(new ClamAvClient.ScanResult(ClamAvClient.Result.CLEAN, null));
         completeConfirm(true, null);
-
         listener.onSpamChecked(spamCheckedPayload());
-
         MailPipelineEvents.AvCheckedEvent published = publishedEvent();
-        assertEquals("ERROR", published.avStatus());
-        assertEquals("clamd unavailable", published.avSignature());
+        assertEquals("CLEAN", published.avStatus());
         assertTrue(published.spamChecked());
         assertEquals(5.0, published.spamThreshold(), 0.001);
     }
