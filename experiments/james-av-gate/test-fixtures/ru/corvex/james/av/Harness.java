@@ -126,7 +126,25 @@ public class Harness {
             check(!thread.isAlive() && error.get() == null);
         }
     }
+    static void configuration() throws Exception {
+        for (java.util.Map<String, String> bad : java.util.List.of(
+                java.util.Map.<String, String>of(),
+                java.util.Map.of("host", " "),
+                java.util.Map.of("host", "127.0.0.1", "port", "0"),
+                java.util.Map.of("host", "127.0.0.1", "port", "65536"),
+                java.util.Map.of("host", "127.0.0.1", "port", "+3310"),
+                java.util.Map.of("host", "127.0.0.1", "maxPings", "1"))) {
+            CorvexClamAVGate gate = new CorvexClamAVGate(); gate.parameters = bad;
+            try { gate.init(); throw new AssertionError("invalid configuration accepted"); }
+            catch (jakarta.mail.MessagingException expected) { }
+        }
+        CorvexClamAVGate good = new CorvexClamAVGate();
+        good.parameters = java.util.Map.of("host", "127.0.0.1", "port", "12345");
+        good.init();
+        check(ClamAVScan.addresses.length == 1 && ClamAVScan.port == 12345);
+    }
     public static void main(String[] args) throws Exception {
+        configuration();
         reply("stream: OK\0", "root");
         reply("stream: Eicar-Test FOUND\0", CorvexClamAVGate.INFECTED);
         for (String bad : new String[]{"stream: BAD OK\0", "stream: OK", "stream: failure ERROR\0", "", "stream:  FOUND\0"})

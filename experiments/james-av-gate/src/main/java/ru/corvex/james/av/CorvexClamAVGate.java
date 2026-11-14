@@ -11,11 +11,13 @@ import java.net.ConnectException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.UnknownHostException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.Set;
 import org.apache.james.clamav.ClamAVScan;
 import org.apache.mailet.Mail;
 
@@ -45,6 +47,32 @@ public final class CorvexClamAVGate extends ClamAVScan {
         });
         executor.setRemoveOnCancelPolicy(true);
         return executor;
+    }
+
+    /** Reject incomplete configuration instead of inheriting fail-open init. */
+    @Override
+    public void init() throws MessagingException {
+        checkInitParameters(Set.of("host", "port"));
+        String host = getInitParameter("host");
+        if (host == null || host.isBlank() || !host.equals(host.trim())) {
+            throw new MessagingException("ClamAV host must be explicitly configured");
+        }
+        String portValue = getInitParameter("port");
+        int port = 3310;
+        if (portValue != null) {
+            if (!portValue.matches("[0-9]{1,5}")) throw new MessagingException("Invalid ClamAV port");
+            port = Integer.parseInt(portValue);
+            if (port < 1 || port > 65535) throw new MessagingException("Invalid ClamAV port");
+        }
+        try {
+            InetAddress[] resolved = InetAddress.getAllByName(host);
+            if (resolved.length == 0) throw new MessagingException("ClamAV host has no addresses");
+            setAddresses(resolved);
+            setPort(port);
+        } catch (UnknownHostException e) {
+            throw new MessagingException("Cannot resolve ClamAV host", e);
+        }
+        // No clamd PING here: an outage is handled as UNKNOWN per message.
     }
 
     @Override
