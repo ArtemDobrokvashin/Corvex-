@@ -32,6 +32,15 @@ class DarkPaletteTest(unittest.TestCase):
         for color in colors:
             self.assertGreaterEqual(contrast(color, tokens['accent-soft']), 4.5, color)
 
+    def test_mail_sidebar_readability_and_scope(self):
+        for text, background in (('#a9bad0', '#0f172a'), ('#cbd5e1', '#0f172a'), ('#8bf0c2', '#183d37')):
+            self.assertGreaterEqual(contrast(text, background), 4.5)
+        sidebar = CSS.split('/* Dark navigation is confined', 1)[1]
+        self.assertIn('.mail-sidebar .nav-row-active:hover', sidebar)
+        self.assertIn('box-shadow: inset 3px 0 #8bf0c2', sidebar)
+        page = (ROOT / 'frontend/src/features/mail/MailPage.tsx').read_text(encoding='utf-8')
+        self.assertIn('<aside className="mail-sidebar ', page)
+
     def test_selected_component_has_background_and_non_color_indicator(self):
         self.assertIn('[data-theme="dark"] .nav-row-active:hover', CSS)
         self.assertIn('box-shadow: inset 3px 0 var(--corvex-accent-on-dark)', CSS)

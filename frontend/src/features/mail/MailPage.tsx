@@ -685,7 +685,7 @@ export default function MailPage() {
     <div className="mail-workspace h-full md:p-3 xl:p-4">
       <div className="flex h-full min-h-0 gap-0 overflow-hidden bg-surface md:gap-2 md:bg-transparent">
         {/* Папки */}
-        <aside className="hidden w-[238px] shrink-0 flex-col border border-line bg-surface p-3 xl:flex xl:rounded-2xl">
+        <aside className="mail-sidebar hidden w-[238px] shrink-0 flex-col border p-3 xl:flex xl:rounded-2xl">
           <div className="flex shrink-0 items-center justify-between px-2 pb-3 pt-1">
             <h1 className="text-[17px] font-semibold tracking-[-0.02em]">{t('Почта')}</h1>
             <span className="text-xs text-faint">{countLabel(locale, folderCounts.INBOX ?? 0, ['новое', 'новых', 'новых'], ['new', 'new'])}</span>

@@ -618,3 +618,44 @@ html[data-theme="dark"] .bg-accent-soft {
   color: var(--corvex-accent-on-dark);
   box-shadow: inset 3px 0 var(--corvex-accent-on-dark);
 }
+
+/* Dark navigation is confined to the desktop mail folder sidebar. */
+.mail-sidebar {
+  background-color: #0f172a;
+  border-color: #334155;
+  color: #f8fafc;
+}
+.mail-sidebar .section-label,
+.mail-sidebar .text-faint,
+.mail-sidebar .text-muted { color: #a9bad0; }
+.mail-sidebar .text-ink-soft { color: #e2e8f0; }
+.mail-sidebar .nav-row { color: #cbd5e1; }
+.mail-sidebar .nav-row:hover { color: #f8fafc; background-color: #26354b; }
+.mail-sidebar .nav-row-active,
+.mail-sidebar .nav-row-active:hover {
+  background-color: #183d37;
+  color: #8bf0c2;
+  box-shadow: inset 3px 0 #8bf0c2;
+}
+.mail-sidebar .nav-row-active .text-accent { color: #8bf0c2; }
+.mail-sidebar .btn-secondary {
+  background-color: #1e293b;
+  border-color: #475569;
+  color: #f8fafc;
+}
+.mail-sidebar .btn-secondary:hover { background-color: #334155; color: #fff; }
+.mail-sidebar form { color: #172033; }
+.mail-sidebar .icon-btn-sm { color: #475569; }
+.mail-sidebar [role="progressbar"] { background-color: #475569; }
+.mail-sidebar .scroll-area::-webkit-scrollbar-thumb { background-color: #64748b; }
+/* Existing dark-mode utility overrides are !important; keep this scope narrower. */
+html[data-theme="dark"] .mail-sidebar .text-faint,
+html[data-theme="dark"] .mail-sidebar .text-muted { color: #a9bad0 !important; }
+html[data-theme="dark"] .mail-sidebar .text-ink-soft { color: #e2e8f0 !important; }
+html[data-theme="dark"] .mail-sidebar .nav-row-active,
+html[data-theme="dark"] .mail-sidebar .nav-row-active:hover {
+  background-color: #183d37;
+  color: #8bf0c2;
+  box-shadow: inset 3px 0 #8bf0c2;
+}
+html[data-theme="dark"] .mail-sidebar form { color: #f8fafc; }
