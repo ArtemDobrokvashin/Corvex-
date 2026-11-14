@@ -2,6 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================================
+   Apple HIG Design System
+   ============================================================================
+
+   Principles: Clarity, Deference, Depth (Liquid Glass)
+   - SF Pro Display (20px+) / SF Pro Text (<20px) with optical sizing
+   - Single accent: Apple Blue #0071e3
+   - Surfaces: #ffffff → #f3f6f6 → #fafafc → #e8e8ed (tint separation, no borders)
+   - Pill buttons (980px radius) + underlined text links — never boxy buttons
+   - Tight letter-spacing (-0.37px to -0.011em)
+   - One soft shadow max, or none — separation via tint/whitespace
+   ============================================================================ */
+
 @layer base {
   html,
   body,
@@ -17,11 +30,11 @@
   }
 
   ::selection {
-    background: #dbe5ff;
+    background: #cce0ff;
   }
 
   :focus-visible {
-    outline: 2px solid rgba(49, 87, 213, 0.55);
+    outline: 2px solid #0071e3;
     outline-offset: 2px;
   }
 
@@ -30,6 +43,15 @@
   select,
   button {
     font: inherit;
+  }
+
+  /* Prevent horizontal overflow on mobile */
+  body {
+    overflow-x: hidden;
+  }
+
+  #root {
+    overflow-x: hidden;
   }
 
   @media (max-width: 640px) {
@@ -57,48 +79,39 @@
       transition-duration: 0.01ms !important;
     }
   }
-
-  /* Prevent horizontal overflow on mobile */
-  body {
-    overflow-x: hidden;
-  }
-
-  #root {
-    overflow-x: hidden;
-  }
 }
 
 @layer components {
-  .btn-primary {
-    @apply inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-ink px-5 text-sm font-medium text-white shadow-sm transition duration-150 hover:bg-[#000000] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100;
-  }
+  /* ---------- Buttons (Apple HIG: pill or text-link, never boxy) ---------- */
 
-  .btn-accent {
-    @apply inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-accent px-5 text-sm font-medium text-white shadow-sm transition duration-150 hover:bg-[#3157D5] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100;
+  .btn-primary {
+    @apply inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#0071e3] px-6 text-sm font-medium text-white transition duration-150 hover:bg-[#0076df] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 shadow-[0_1px_0_rgba(0,113,227,0.35)];
   }
 
   .btn-secondary {
-    @apply inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#E5E5EA] bg-white px-5 text-sm font-medium text-ink shadow-sm transition duration-150 hover:bg-[#F2F2F7] hover:border-[#D1D1D6] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100;
+    @apply inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#d1d1d6] bg-white px-6 text-sm font-medium text-ink transition duration-150 hover:bg-[#f2f2f7] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 shadow-sm;
   }
 
   .btn-ghost {
-    @apply inline-flex h-9 items-center justify-center gap-2 rounded-xl px-3 text-sm font-medium text-ink-soft transition duration-150 hover:bg-[#F2F2F7] hover:text-ink disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-full px-3 text-sm font-medium text-ink-soft transition duration-150 hover:bg-[#f2f2f7] hover:text-ink disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-danger-ghost {
-    @apply inline-flex h-9 items-center justify-center gap-2 rounded-xl px-3 text-sm font-medium text-red-600 transition duration-150 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-full px-3 text-sm font-medium text-red-600 transition duration-150 hover:bg-[#fdf2f2] disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .icon-btn {
-    @apply inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-ink-soft transition duration-150 hover:bg-[#F2F2F7] hover:text-ink disabled:cursor-not-allowed disabled:opacity-45;
+    @apply inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-ink-soft transition duration-150 hover:bg-[#f2f2f7] hover:text-ink disabled:cursor-not-allowed disabled:opacity-45;
   }
 
   .icon-btn-sm {
-    @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-ink-soft transition duration-150 hover:bg-[#F2F2F7] hover:text-ink disabled:cursor-not-allowed disabled:opacity-45;
+    @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-soft transition duration-150 hover:bg-[#f2f2f7] hover:text-ink disabled:cursor-not-allowed disabled:opacity-45;
   }
 
+  /* ---------- Fields ---------- */
+
   .field {
-    @apply h-11 w-full rounded-xl border border-[#E5E5EA] bg-white px-4 text-sm text-ink shadow-[0_1px_0_rgba(23,24,28,0.04)] outline-none transition duration-150 placeholder:text-ink-soft hover:border-[#D1D1D6] focus:border-accent focus:ring-4 focus:ring-accent/10 disabled:cursor-not-allowed disabled:bg-[#F2F2F7] disabled:text-muted;
+    @apply h-11 w-full rounded-xl border border-[#d1d1d6] bg-white px-4 text-sm text-ink shadow-[0_1px_0_rgba(23,24,28,0.04)] outline-none transition duration-150 placeholder:text-ink-soft hover:border-[#b9b9c1] focus:border-[#0071e3] focus:ring-4 focus:ring-[#0071e3]/10 disabled:cursor-not-allowed disabled:bg-[#f2f2f7] disabled:text-muted;
   }
 
   .field-sm {
@@ -114,11 +127,21 @@
   }
 
   .search-field {
-    @apply h-10 w-full rounded-full border-transparent bg-[#F2F2F7] pl-10 pr-10 text-sm text-ink outline-none transition duration-150 placeholder:text-ink-soft hover:bg-[#E5E5EA] focus:border-accent/35 focus:bg-white focus:ring-4 focus:ring-accent/10;
+    @apply h-10 w-full rounded-full border-transparent bg-[#f2f2f7] pl-10 pr-10 text-sm text-ink outline-none transition duration-150 placeholder:text-ink-soft hover:bg-[#e5e5ea] focus:border-[#0071e3]/35 focus:bg-white focus:ring-4 focus:ring-[#0071e3]/10;
   }
 
+  /* ---------- Surfaces & Panels (Apple: tint separation, NO borders on cards) ---------- */
+
   .panel {
-    @apply rounded-2xl border border-[#E5E5EA] bg-white shadow-[0_1px_0_rgba(23,24,28,0.06),0_0_0_1px_rgba(23,24,28,0.03)];
+    @apply rounded-2xl bg-white shadow-[0_1px_0_rgba(23,24,28,0.06),0_0_0_1px_rgba(23,24,28,0.03)];
+  }
+
+  .panel-alt {
+    @apply rounded-2xl bg-[#f3f6f6];
+  }
+
+  .surface-faint {
+    @apply rounded-xl bg-[#f2f2f7];
   }
 
   .section-label {
@@ -126,48 +149,50 @@
   }
 
   .nav-row {
-    @apply flex min-h-10 w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-ink-soft transition duration-150 hover:bg-[#F2F2F7] hover:text-ink;
+    @apply flex min-h-11 w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-ink-soft transition duration-150 hover:bg-[#f2f2f7] hover:text-ink;
   }
 
   .nav-row-active {
-    @apply bg-[#F2F2F7] font-medium text-ink hover:bg-[#F2F2F7] hover:text-ink;
+    @apply bg-[#f2f2f7] font-medium text-ink hover:bg-[#f2f2f7] hover:text-ink;
   }
 
   .chip {
-    @apply inline-flex items-center gap-1.5 rounded-full border border-[#E5E5EA] bg-white px-2.5 py-1 text-[11px] font-medium text-ink-soft shadow-sm;
+    @apply inline-flex items-center gap-1.5 rounded-full border border-[#e5e5ea] bg-white px-2.5 py-1 text-[11px] font-medium text-ink-soft shadow-sm;
   }
 
   .chip-accent {
-    @apply border-[#E5E5EA] bg-white text-ink shadow-sm;
+    @apply border-[#e5e5ea] bg-white text-ink shadow-sm;
   }
 
   .kbd {
-    @apply inline-flex h-5 min-w-5 items-center justify-center rounded border border-[#E5E5EA] bg-white px-1 font-mono text-[10px] font-medium text-ink-soft shadow-[0_1px_0_rgba(23,24,28,0.06)];
+    @apply inline-flex h-5 min-w-5 items-center justify-center rounded border border-[#e5e5ea] bg-white px-1 font-mono text-[10px] font-medium text-ink-soft shadow-[0_1px_0_rgba(23,24,28,0.06)];
   }
 
   .notice {
-    @apply flex items-start gap-2.5 rounded-xl border border-[#E5E5EA] bg-white px-3.5 py-3 text-sm leading-relaxed shadow-sm;
+    @apply flex items-start gap-2.5 rounded-xl border border-[#e5e5ea] bg-white px-3.5 py-3 text-sm leading-relaxed shadow-sm;
   }
 
   .notice-error {
-    @apply border-red-100 bg-red-50 text-red-800;
+    @apply border-red-100 bg-[#fdf2f2] text-red-800;
   }
 
   .notice-success {
-    @apply border-emerald-100 bg-emerald-50 text-emerald-900;
+    @apply border-emerald-100 bg-[#f2fcf5] text-emerald-900;
   }
 
   .notice-warning {
-    @apply border-amber-100 bg-amber-50 text-amber-900;
+    @apply border-amber-100 bg-[#fdf7e7] text-amber-900;
   }
 
   .hairline-t {
-    @apply border-t border-[#E5E5EA];
+    @apply border-t border-[#e5e5ea];
   }
 
   .hairline-b {
-    @apply border-b border-[#E5E5EA];
+    @apply border-b border-[#e5e5ea];
   }
+
+  /* ---------- Scroll ---------- */
 
   .scroll-area {
     overflow-y: auto;
@@ -190,6 +215,34 @@
     background: rgba(23, 24, 28, 0.24);
   }
 
+  /* ---------- Typography helpers ---------- */
+
+  .text-hero {
+    @apply text-[40px] font-display font-semibold leading-[1.10] tracking-tight text-ink;
+  }
+
+  .text-section {
+    @apply text-[28px] font-display font-medium leading-[1.14] tracking-tight text-ink;
+  }
+
+  .text-card-title {
+    @apply text-[21px] font-display font-semibold leading-[1.19] tracking-tight text-ink;
+  }
+
+  .text-body {
+    @apply text-[17px] font-text font-normal leading-[1.47] tracking-tight text-ink;
+  }
+
+  .text-caption {
+    @apply text-[14px] font-text font-normal leading-[1.29] tracking-tight text-ink-soft;
+  }
+
+  .text-micro {
+    @apply text-[12px] font-text font-normal leading-[1.33] tracking-tight text-ink-soft;
+  }
+
+  /* ---------- Markdown ---------- */
+
   .message-markdown {
     min-width: 0;
     overflow-wrap: anywhere;
@@ -210,11 +263,11 @@
   }
 
   .message-markdown a {
-    @apply text-accent underline decoration-accent/30 underline-offset-2;
+    @apply text-[#0071e3] underline decoration-[#0071e3]/30 underline-offset-2;
   }
 
   .message-markdown code {
-    @apply rounded border border-[#E5E5EA] bg-[#F2F2F7] px-1.5 py-0.5 font-mono text-[0.86em] text-ink;
+    @apply rounded border border-[#e5e5ea] bg-[#f2f2f7] px-1.5 py-0.5 font-mono text-[0.86em] text-ink;
   }
 
   .emoji-text {

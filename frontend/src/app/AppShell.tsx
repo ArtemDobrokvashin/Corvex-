@@ -146,11 +146,11 @@ export default function AppShell() {
     <NavLink
       key={to}
       to={to}
-      className={({ isActive }) => `group relative flex min-h-[56px] w-full flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium transition duration-150 ${isActive ? 'bg-[#F2F2F7] text-ink font-medium' : 'text-ink-soft hover:bg-[#F2F2F7] hover:text-ink'}`}
+      className={({ isActive }) => `group relative flex min-h-[52px] w-full flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium transition duration-150 ${isActive ? 'bg-[#f2f2f7] text-[#0071e3] font-medium' : 'text-ink-soft hover:bg-[#f2f2f7] hover:text-ink'}`}
     >
       <span className="relative">
         <Icon size={20} strokeWidth={1.6} />
-        {badge ? <span className="absolute -right-2 -top-1.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-accent px-0.5 text-[8px] font-semibold text-white">{badge}</span> : null}
+        {badge ? <span className="absolute -right-2 -top-1.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-[#0071e3] px-0.5 text-[8px] font-semibold text-white">{badge}</span> : null}
       </span>
       <span>{label}</span>
     </NavLink>
@@ -160,11 +160,11 @@ export default function AppShell() {
     <NavLink
       key={to}
       to={to}
-      className={({ isActive }) => `relative flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium ${isActive ? 'text-ink' : 'text-ink-soft'}`}
+      className={({ isActive }) => `relative flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium ${isActive ? 'text-[#0071e3]' : 'text-ink-soft'}`}
     >
       <span className="relative">
         <Icon size={20} strokeWidth={1.6} />
-        {badge ? <span className="absolute -right-2 -top-1.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-accent px-0.5 text-[8px] font-semibold text-white">{badge}</span> : null}
+        {badge ? <span className="absolute -right-2 -top-1.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-[#0071e3] px-0.5 text-[8px] font-semibold text-white">{badge}</span> : null}
       </span>
       {label}
     </NavLink>
@@ -172,14 +172,14 @@ export default function AppShell() {
 
   return (
     <div className="flex h-full flex-col bg-canvas">
-      {/* Топбар — на всю ширину: логотип, поиск, время, аватар */}
-      <header className="flex shrink-0 items-center justify-between border-b border-[#E5E5EA] bg-white px-5 py-2.5 shadow-[0_1px_0_rgba(23,24,28,0.06)]">
-        <div className="flex items-center gap-7 shrink-0">
-          <LogoMark size={30} />
+      {/* Топбар — на всю ширину: логотип, поиск, управление */}
+      <header className="flex shrink-0 items-center justify-between border-b border-[#e5e5ea] bg-white px-5 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.04)]">
+        <div className="flex items-center gap-8 shrink-0">
+          <LogoMark size={28} />
           <span className="text-[16px] font-semibold tracking-tight text-ink">Corvex</span>
         </div>
         <div className="flex items-center justify-center flex-1 min-w-0 max-w-[720px]">
-          <div className="flex items-center gap-2 rounded-full border border-[#E5E5EA] bg-[#F2F2F7] px-3 py-1.5 min-w-[280px] shadow-sm">
+          <div className="flex items-center gap-2 rounded-full border border-[#e5e5ea] bg-[#f2f2f7] px-3 py-1.5 min-w-[280px] shadow-[0_1px_0_rgba(0,0,0,0.05)]">
             <Search size={17} className="shrink-0 text-ink-soft" />
             <input
               type="text"
@@ -196,10 +196,10 @@ export default function AppShell() {
             />
           </div>
         </div>
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
-            className="h-9 w-9 rounded-full flex items-center justify-center text-ink-soft hover:text-ink transition hover:bg-[#F2F2F7]"
+            className="h-9 w-9 rounded-full flex items-center justify-center text-ink-soft hover:text-ink transition hover:bg-[#f2f2f7]"
             aria-label={t('Уведомления')}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
@@ -207,14 +207,14 @@ export default function AppShell() {
           <button
             type="button"
             onClick={() => setLocale(nextLocale)}
-            className="h-9 w-9 rounded-full flex items-center justify-center text-ink-soft hover:text-ink transition hover:bg-[#F2F2F7]"
+            className="h-9 w-9 rounded-full flex items-center justify-center text-ink-soft hover:text-ink transition hover:bg-[#f2f2f7]"
             aria-label={t('Язык интерфейса')}
             title={t('Язык интерфейса')}
           >
             <Globe size={17} strokeWidth={1.8} />
           </button>
           <Clock className="text-[13px] font-medium text-ink shrink-0 hidden sm:flex" />
-          <button type="button" onClick={() => setProfileOpen(!profileOpen)} className="flex items-center gap-1.5 rounded-full border border-[#E5E5EA] bg-white px-2 py-1 text-sm font-medium text-ink hover:bg-[#F2F2F7] transition shadow-sm" aria-label={t('Профиль')}>
+          <button type="button" onClick={() => setProfileOpen(!profileOpen)} className="flex items-center gap-1.5 rounded-full border border-[#e5e5ea] bg-white px-2 py-1 text-sm font-medium text-ink hover:bg-[#f2f2f7] transition shadow-[0_1px_0_rgba(0,0,0,0.04)]" aria-label={t('Профиль')}>
             <Avatar name={user.displayName} size={28} presence />
             <span className="truncate hidden sm:inline">{user.displayName}</span>
           </button>
@@ -223,8 +223,8 @@ export default function AppShell() {
 
       <div className="flex-1 flex min-h-0">
         {/* Десктопный сайдбар слева */}
-        <aside className="hidden w-[80px] shrink-0 flex-col items-center border-r border-[#E5E5EA] bg-white px-2 py-4 md:flex shadow-[0_1px_0_rgba(23,24,28,0.06)]">
-          <nav className="mt-8 flex w-full flex-col gap-1.5" aria-label={t('Основная навигация')}>
+        <aside className="hidden w-[80px] shrink-0 flex-col items-center border-r border-[#e5e5ea] bg-white px-2 py-4 md:flex shadow-[0_1px_0_rgba(0,0,0,0.04)]">
+          <nav className="mt-8 flex w-full flex-col gap-1" aria-label={t('Основная навигация')}>
             {navItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
             {navItem('/chat', t('Чат'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
             <CalendarWidget className="mt-1" />
@@ -234,7 +234,7 @@ export default function AppShell() {
           <button
             type="button"
             onClick={() => setPaletteOpen(true)}
-            className="mt-5 flex min-h-[56px] w-full flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium text-ink-soft transition hover:bg-[#F2F2F7] hover:text-ink"
+            className="mt-6 flex min-h-[52px] w-full flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium text-ink-soft transition hover:bg-[#f2f2f7] hover:text-ink"
           >
             <Search size={19} strokeWidth={1.75} />
             {t('Перейти')}
@@ -242,14 +242,14 @@ export default function AppShell() {
           </button>
 
           <div className="mt-auto flex flex-col items-center gap-3">
-            {demoMode && <span className="rounded-full border border-[#E5E5EA] bg-white px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-ink">{t('Демо')}</span>}
+            {demoMode && <span className="rounded-full border border-[#e5e5ea] bg-white px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-ink">{t('Демо')}</span>}
           </div>
         </aside>
 
         {/* Контент */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {demoMode && (
-            <div className="flex shrink-0 items-center justify-center gap-2 border-b border-[#E5E5EA] bg-[#FEF3E7] px-4 py-1.5 text-center text-xs text-amber-800">
+            <div className="flex shrink-0 items-center justify-center gap-2 border-b border-[#e5e5ea] bg-[#fef3e7] px-4 py-1.5 text-center text-xs text-amber-800">
               <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
               <span>{t('Демо-режим: сервер не подключён, данные учебные.')}</span>
               <button onClick={onLogout} className="font-medium text-accent underline decoration-accent/30 underline-offset-2">{t('Выйти')}</button>
@@ -260,7 +260,7 @@ export default function AppShell() {
       </div>
 
       {/* Мобильная нижняя навигация */}
-      <nav className="flex shrink-0 border-t border-[#E5E5EA] bg-white px-3 pb-[env(safe-area-inset-bottom)] md:hidden shadow-[0_-1px_0_rgba(23,24,28,0.06)]" aria-label={t('Основная навигация')}>
+      <nav className="flex shrink-0 border-t border-[#e5e5ea] bg-white px-3 pb-[env(safe-area-inset-bottom)] md:hidden shadow-[0_-1px_0_rgba(0,0,0,0.04)]" aria-label={t('Основная навигация')}>
         {mobileNavItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
         {mobileNavItem('/chat', t('Сообщения'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
         <CalendarWidget className="mt-0.5 mb-0.5" />
@@ -271,17 +271,17 @@ export default function AppShell() {
       {profileOpen && (
         <>
           <button type="button" aria-label={t('Закрыть меню')} className="fixed inset-0 z-40 cursor-default" onClick={() => setProfileOpen(false)} />
-          <div className="fixed right-3 top-16 z-50 w-[280px] animate-scale-in rounded-2xl border border-[#E5E5EA] bg-white p-2 shadow-[0_10px_40px_rgba(23,24,28,0.12)] md:bottom-4 md:left-[86px] md:right-auto md:top-auto">
+          <div className="fixed right-3 top-16 z-50 w-[280px] animate-scale-in rounded-2xl border border-[#e5e5ea] bg-white p-2 shadow-[0_10px_40px_rgba(0,0,0,0.10)] md:bottom-4 md:left-[86px] md:right-auto md:top-auto">
             <div className="flex items-center gap-3 px-3 py-3">
               <Avatar name={user.displayName} size={42} presence />
               <div className="min-w-0">
-                <div className="truncate text-sm font-semibold">{user.displayName}</div>
-                <div className="truncate text-xs text-muted">{user.email}</div>
-                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{t('В сети')}{user.groups.length > 0 && ` · ${user.groups.map((code) => systemGroupName(locale, code)).join(', ')}`}</div>
+                <div className="truncate text-sm font-semibold text-ink">{user.displayName}</div>
+                <div className="truncate text-xs text-ink-soft">{user.email}</div>
+                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-ink-soft"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{t('В сети')}{user.groups.length > 0 && ` · ${user.groups.map((code) => systemGroupName(locale, code)).join(', ')}`}</div>
               </div>
             </div>
             <div className="hairline-t py-1.5">
-              <div className="flex items-center gap-2.5 px-2.5 py-2 text-sm text-muted">
+              <div className="flex items-center gap-2.5 px-2.5 py-2 text-sm text-ink-soft">
                 <Globe size={17} strokeWidth={1.8} />
                 <span className="min-w-0 flex-1">{t('Язык интерфейса')}</span>
                 <LanguageSwitcher />
@@ -289,7 +289,7 @@ export default function AppShell() {
               <button type="button" onClick={() => { setProfileOpen(false); setSecurityOpen(true); }} className="nav-row">
                 <ShieldCheck size={17} strokeWidth={1.8} /> {t('Безопасность')}
               </button>
-              <button type="button" onClick={onLogout} className="nav-row text-danger hover:bg-red-50 hover:text-danger">
+              <button type="button" onClick={onLogout} className="nav-row text-[#0071e3] hover:bg-[#f2f2f7] hover:text-[#0071e3]">
                 <LogOut size={17} strokeWidth={1.8} /> {demoMode ? t('Выйти из демо') : t('Выйти')}
               </button>
             </div>
