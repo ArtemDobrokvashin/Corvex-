@@ -21,5 +21,15 @@
   <build><plugins>
     <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.13.0</version></plugin>
     <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.5.2</version></plugin>
+    <!-- Keep the official parent mailet separate: never shade James classes into the extension. -->
+    <plugin>
+      <groupId>org.apache.maven.plugins</groupId><artifactId>maven-dependency-plugin</artifactId><version>3.8.1</version>
+      <executions><execution><id>copy-clamav-parent</id><phase>package</phase><goals><goal>copy</goal></goals>
+        <configuration><artifactItems><artifactItem>
+          <groupId>org.apache.james</groupId><artifactId>apache-james-clamav</artifactId><version>${james.version}</version>
+          <type>jar</type><outputDirectory>${project.build.directory}/extension-deps</outputDirectory>
+        </artifactItem></artifactItems></configuration>
+      </execution></executions>
+    </plugin>
   </plugins></build>
 </project>

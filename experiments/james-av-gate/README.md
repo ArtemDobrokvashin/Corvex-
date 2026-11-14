@@ -91,3 +91,43 @@ fake clamd, не запущенный James или реальный сканер
 UNKNOWN, а не как доказанный вирус. Синтетическая проверка этого поведения не
 подтверждает настройки или поведение настоящего clamd. Ничего в существующем
 контейнере или его конфигурации не менялось.
+
+### Подготовка перехода к проверке в существующем James
+
+`mailetcontainer.candidate.xml` — **отключённый пример**, основанный на
+[конфигурации PostgreSQL James 3.9.1](https://github.com/apache/james-project/blob/james-project-3.9.1/server/apps/postgres-app/sample-configuration/mailetcontainer.xml).
+Он помещает gate первым в spool `root`, направляет INFECTED и UNKNOWN в разные
+Postgres-репозитории и убирает Bounce из общего processor `error`. Проверки
+`scripts/tests/test_james_av_pipeline_candidate.py` проверяют только структуру
+XML. Это не утверждение, что spool/repository/retry устойчивы или что AV покрывает
+все входы: `Email/import`, IMAP APPEND и другие прямые записи обходят spool.
+Значение `clamav` в примере пока **недоступно** из изолированной сети James:
+текущий clamd находится в сети `app`. Настройки сетей или Compose не менялись.
+
+[Образ James 3.9.1](https://github.com/apache/james-project/blob/james-project-3.9.1/server/apps/postgres-app/pom.xml)
+предусматривает `/root/extensions-jars` для внешних jar; в
+[README образа](https://github.com/apache/james-project/blob/james-project-3.9.1/server/apps/postgres-app/src/main/extensions-jars/README.md)
+этот каталог описан как classpath для custom mailets. Наш класс наследует
+`ClamAVScan`: кроме собранного jar ему нужен `apache-james-clamav` 3.9.1 в
+classpath, если этот класс отсутствует в самом образе. `provided` в нашем POM
+не включает эту зависимость в jar. Текущий образ на ПК, точный classloader,
+совместимость зависимостей и загрузка **не проверены**. Не подменять entrypoint
+и не копировать случайные версии библиотек: сначала определить фактический
+classpath и сделать однократную проверку на синтетических данных в существующем
+James с подготовленным откатом.
+
+Прежде чем вообще предлагать временное включение, нужен объединённый сценарий:
+проверить наличие кода в classpath и его инициализацию; конфигурацию и сетевой
+доступ к clamd; реальный CLEAN/EICAR и ошибку/лимиты/недоступность; отдельно
+убедиться, что письма удерживаются в нужных репозиториях без bounce, а при
+ошибке БД/рестарте не теряются; вернуть исходные настройки. Исключение из
+`ToRepository` передаётся дальше в коде `ProcessorImpl`, но итог очереди и
+восстановление в текущем образе остаются неизвестными. Этот кандидат нельзя
+применять к пользовательским сообщениям или использовать как допуск к cutover.
+
+Для последующего опыта Maven `package` дополнительно готовит отдельную копию
+`apache-james-clamav-3.9.1.jar` в `target/extension-deps/`; сам проектный jar
+остаётся в `target/`. Это не fat jar и автоматически в James не устанавливается.
+Новая стадия packaging ещё не запускалась с настоящим Maven, а копию upstream jar
+следует использовать только после проверки отсутствия конфликтующей версии в
+образе. Старые результаты `mvn test` этого packaging не проверяют.
