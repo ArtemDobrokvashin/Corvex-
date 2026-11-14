@@ -323,6 +323,7 @@ export default function CalendarPage() {
                     </span>
                     <span className="text-[10px] text-faint">{e.time || t('Весь день')}</span>
                   </div>
+                  <div className="h-5 w-[1px] bg-line shrink-0" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className={`text-sm font-medium text-ink truncate ${e.priority === 'high' ? 'font-bold' : ''}`}>{e.title}</span>
@@ -332,8 +333,8 @@ export default function CalendarPage() {
                         </span>
                       )}
                       {e.priority && (
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded uppercase font-bold ${PRIORITY_COLORS[e.priority]}`}>
-                          {PRIORITY_LABELS[e.priority].charAt(0).toUpperCase()}
+                        <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${PRIORITY_COLORS[e.priority]}`}>
+                          {PRIORITY_LABELS[e.priority]}
                         </span>
                       )}
                     </div>
