@@ -232,6 +232,23 @@ class ExternalSmtpClientTest {
     }
 
     @Test
+    void providerHandlerStoresDataThenFailsReturnsUnknown() throws Exception {
+        String host = siteLocalHost();
+        EasyAuthenticationHandlerFactory auth = new EasyAuthenticationHandlerFactory((username, password, context) -> { });
+        try (FakeSmtpServer server = new FakeSmtpServer(0, InetAddress.getByName(host), auth)) {
+            server.storeThenFailData = true;
+            ExternalSmtpClient client = new ExternalSmtpClient(true, true, "mail.company.local");
+            var cfg = config(host, 993, "SSL_TLS", host, server.port(), "PLAIN", "secret", true, "IMAP");
+
+            var results = client.send(cfg, EML, "old@example.ru", List.of("good@example.org"));
+
+            assertEquals(SmtpRelayClient.Status.UNKNOWN, results.get(0).status());
+            assertEquals(1, server.dataAttempts());
+            assertEquals(1, server.messageTexts().size());
+        }
+    }
+
+    @Test
     void providerStarttlsRequirementAndInvalidRecipientSyntaxAreTemporary() throws Exception {
         String host = siteLocalHost();
         EasyAuthenticationHandlerFactory auth = new EasyAuthenticationHandlerFactory((username, password, context) -> {

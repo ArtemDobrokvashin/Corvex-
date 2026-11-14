@@ -76,7 +76,7 @@ public class SmtpRelayClient {
     private List<RecipientResult> sendViaHost(byte[] eml, String mailFrom, String host, List<String> recipients) {
         Properties props = new Properties();
         props.put("mail.smtp.host", host);
-        props.put("mail.smtp.port", "25");
+        props.put("mail.smtp.port", Integer.toString(smtpPort()));
         props.put("mail.smtp.auth", "false");
         props.put("mail.smtp.localhost", heloHostname);
         props.put("mail.smtp.from", mailFrom);
@@ -124,6 +124,12 @@ public class SmtpRelayClient {
                     .map(r -> new RecipientResult(r, status, rootMessage(e), host))
                     .toList();
         }
+    }
+
+    // Production direct-to-MX is always port 25; a package-local test double
+    // overrides this to use an unprivileged loopback port.
+    int smtpPort() {
+        return 25;
     }
 
     static Status sendOutcome(boolean sendCompleted) {
