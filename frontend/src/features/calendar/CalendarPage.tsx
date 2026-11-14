@@ -7,19 +7,37 @@ import {
   Clock,
   Mail,
   X,
+  Pencil,
   Calendar as CalendarIcon,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { localeTag, useI18n } from '../../i18n';
+export type CalendarPriority = 'low' | 'medium' | 'high';
+
 export interface CalendarEvent {
   id: string;
   title: string;
   date: string; // YYYY-MM-DD
   time?: string; // HH:MM
   description?: string;
+  priority?: CalendarPriority;
   source?: 'manual' | 'email';
   sourceId?: string;
   sourceTitle?: string;
 }
+
+const PRIORITY_LABELS: Record<CalendarPriority, string> = {
+  low: 'Низкий',
+  medium: 'Средний',
+  high: 'Высокий',
+};
+
+const PRIORITY_COLORS: Record<CalendarPriority, string> = {
+  low: 'bg-blue-100 text-blue-700',
+  medium: 'bg-amber-100 text-amber-700',
+  high: 'bg-red-100 text-red-700',
+};
 
 const STORAGE_KEY = 'corvex.calendar.events';
 
@@ -55,7 +73,9 @@ export default function CalendarPage() {
     title?: string;
     date?: string;
     description?: string;
+    priority?: CalendarPriority;
   }>({});
+  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
 
   // Создание события из письма: ?createEvent=1&title=...&date=...&description=...
   useEffect(() => {
@@ -64,10 +84,12 @@ export default function CalendarPage() {
       title: searchParams.get('title') ?? undefined,
       date: searchParams.get('date') ?? undefined,
       description: searchParams.get('description') ?? undefined,
+      priority: 'medium',
     });
     if (searchParams.get('date')) {
       setSelectedDate(searchParams.get('date'));
     }
+    setEditingEvent(null);
     setOpenForm(true);
   }, [searchParams]);
 
@@ -149,6 +171,16 @@ export default function CalendarPage() {
     });
     setOpenForm(false);
     setSelectedDate(newEvent.date);
+  };
+
+  const updateEvent = (updatedEvent: CalendarEvent) => {
+    setEvents((prev) => {
+      const next = prev.map((e) => (e.id === updatedEvent.id ? updatedEvent : e));
+      saveEvents(next);
+      return next;
+    });
+    setOpenForm(false);
+    setEditingEvent(null);
   };
 
   const deleteEvent = (id: string) => {
@@ -280,23 +312,28 @@ export default function CalendarPage() {
 
           {upcomingEvents.length > 0 ? (
             <div className="space-y-2">
-              {upcomingEvents.map((e) => (
+                {upcomingEvents.map((e) => (
                 <div
                   key={e.id}
-                  className="flex items-start gap-2 rounded-lg p-2.5 border border-line bg-chrome hover:bg-slate-50 transition"
+                  className="flex items-center gap-3 rounded-lg p-2.5 border border-line bg-chrome hover:bg-slate-50 transition group"
                 >
-                  <div className="flex flex-col items-center justify-center gap-1">
+                  <div className="flex flex-col items-center justify-center gap-1 shrink-0">
                     <span className="text-[10px] font-semibold text-muted">
                       {new Date(e.date).toLocaleDateString(locale === 'ru' ? 'ru-RU' : 'en-US', { day: 'numeric' })}
                     </span>
                     <span className="text-[10px] text-faint">{e.time || t('Весь день')}</span>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1">
-                      <span className="text-sm font-medium text-ink truncate">{e.title}</span>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-sm font-medium text-ink truncate ${e.priority === 'high' ? 'font-bold' : ''}`}>{e.title}</span>
                       {e.source === 'email' && (
                         <span className="h-2 w-2 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
                           <Mail size={10} strokeWidth={1.5} />
+                        </span>
+                      )}
+                      {e.priority && (
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded uppercase font-bold ${PRIORITY_COLORS[e.priority]}`}>
+                          {PRIORITY_LABELS[e.priority].charAt(0).toUpperCase()}
                         </span>
                       )}
                     </div>
@@ -309,14 +346,24 @@ export default function CalendarPage() {
                       </p>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => deleteEvent(e.id)}
-                    className="p-1 text-faint hover:text-red-500 transition"
-                    aria-label={t('Удалить событие')}
-                  >
-                    <X size={14} strokeWidth={1.75} />
-                  </button>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      type="button"
+                      onClick={() => { setEditingEvent(e); setOpenForm(true); }}
+                      className="p-1 text-faint hover:text-accent-dark transition"
+                      aria-label={t('Редактировать событие')}
+                    >
+                      <Pencil size={14} strokeWidth={1.75} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deleteEvent(e.id)}
+                      className="p-1 text-faint hover:text-red-500 transition"
+                      aria-label={t('Удалить событие')}
+                    >
+                      <X size={14} strokeWidth={1.75} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -335,7 +382,7 @@ export default function CalendarPage() {
           <div className="w-full max-w-md animate-scale-in overflow-hidden rounded-2xl border border-line bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-line px-4 py-3">
               <h3 className="text-sm font-semibold text-ink">
-                {selectedDate ? t('Новое событие на {date}', { date: formatEventDate(selectedDate) }) : t('Новое событие')}
+                {editingEvent ? t('Редактирование события') : selectedDate ? t('Новое событие на {date}', { date: formatEventDate(selectedDate) }) : t('Новое событие')}
               </h3>
               <button type="button" onClick={() => setOpenForm(false)} className="icon-btn-sm p-1 hover:bg-slate-50 rounded-md" aria-label={t('Закрыть')}>
                 <X size={16} strokeWidth={1.75} />
@@ -349,8 +396,13 @@ export default function CalendarPage() {
                 const date = formData.get('date') as string;
                 const time = formData.get('time') as string;
                 const description = formData.get('description') as string;
+                const priority = formData.get('priority') as CalendarPriority;
                 if (!title || !date) return;
-                addEvent({ title, date, time: time || undefined, description: description || undefined, source: 'manual' });
+                if (editingEvent) {
+                  updateEvent({ ...editingEvent, title, date, time: time || undefined, description: description || undefined, priority });
+                } else {
+                  addEvent({ title, date, time: time || undefined, description: description || undefined, priority: priority || 'medium', source: 'manual' });
+                }
               }}>
                 <div className="space-y-3">
                   <div>
@@ -359,7 +411,7 @@ export default function CalendarPage() {
                       name="title"
                       type="text"
                       required
-                      defaultValue={formDefaults.title ?? ''}
+                      defaultValue={editingEvent?.title ?? formDefaults.title ?? ''}
                       className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-accent/20 focus:border-transparent outline-none"
                       placeholder={t('Например, Встреча с клиентом')}
                     />
@@ -371,7 +423,7 @@ export default function CalendarPage() {
                         name="date"
                         type="date"
                         required
-                        defaultValue={formDefaults.date ?? selectedDate ?? ''}
+                        defaultValue={editingEvent?.date ?? formDefaults.date ?? selectedDate ?? ''}
                         className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-accent/20 focus:border-transparent outline-none"
                       />
                     </div>
@@ -380,16 +432,28 @@ export default function CalendarPage() {
                       <input
                         name="time"
                         type="time"
+                        defaultValue={editingEvent?.time ?? ''}
                         className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-accent/20 focus:border-transparent outline-none"
                       />
                     </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-muted mb-1">{t('Приоритет')}</label>
+                    <select
+                      name="priority"
+                      className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-accent/20 focus:border-transparent outline-none"
+                    >
+                      <option value="low">{PRIORITY_LABELS.low}</option>
+                      <option value="medium">{PRIORITY_LABELS.medium}</option>
+                      <option value="high">{PRIORITY_LABELS.high}</option>
+                    </select>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-muted mb-1">{t('Описание')}</label>
                     <textarea
                       name="description"
                       rows={2}
-                      defaultValue={formDefaults.description ?? ''}
+                      defaultValue={editingEvent?.description ?? formDefaults.description ?? ''}
                       className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-accent/20 focus:border-transparent outline-none"
                       placeholder={t('Что нужно сделать')}
                     />
@@ -404,7 +468,7 @@ export default function CalendarPage() {
                     {t('Отмена')}
                   </button>
                   <button type="submit" className="text-sm font-medium text-white bg-accent px-3 py-1.5 rounded-lg hover:bg-blue-700 transition">
-                    {t('Сохранить')}
+                    {editingEvent ? t('Сохранить изменения') : t('Сохранить')}
                   </button>
                 </div>
               </form>
