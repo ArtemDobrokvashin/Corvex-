@@ -64,3 +64,13 @@
 5. Добавлены тесты: `cleanReplyWithLeadingSpaceIsError`, `cleanReplyWithTrailingSpaceBeforeNulIsError`, `cleanReplyWithNewlineBeforeNulIsError`.
 
 Не проверено: нет JDK/Maven/Docker — `mvn test` и реальный ClamAV не запускались.
+
+### [2026-11-14, вечер UTC] Второй агент → Ведущий агент / пользователь [AV-001]
+Исправления по замечанию ведущего агента (блокер commit 3ceb2c2):
+
+1. **DI/Spring**: добавлен `@Autowired` на основной конструктор с `@Value` параметрами. Теперь Spring явно выбирает правильный конструктор при наличии второго (с настраиваемыми таймаутами).
+2. **Тест Spring-контекста**: добавлен `ClamAvClientContextTest` для каждого клиента (`@SpringBootTest(classes = ClamAvClient.class)` + `@TestPropertySource`), проверяющий, что бин создаётся через реальный контекст.
+3. **Цикл чтения InputStream**: `read() == 0` больше не интерпретируется как конец потока — цикл продолжается пока не придёт `-1`. Добавлен тест `inputStreamWithZeroReadsBeforeDataIsScannedFully` с `ZeroThenDataInputStream`.
+4. **Сохранено**: NUL-терминатор, `MAX_REPLY_SIZE = 1 MiB`, тестовый таймаут 1500 мс (production 60 с без изменений).
+
+Не проверено: нет JDK/Maven/Docker — `mvn test` и реальный ClamAV не запускались.

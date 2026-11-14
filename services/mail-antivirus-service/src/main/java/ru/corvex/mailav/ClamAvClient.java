@@ -1,5 +1,6 @@
 package ru.corvex.mailav;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -45,6 +46,7 @@ public class ClamAvClient {
     private final int connectTimeoutMs;
     private final int readTimeoutMs;
 
+    @Autowired
     public ClamAvClient(@Value("${corvex.clamd.host:clamav}") String host,
                         @Value("${corvex.clamd.port:3310}") int port) {
         this(host, port, CONNECT_TIMEOUT_MS, READ_TIMEOUT_MS);
@@ -69,9 +71,20 @@ public class ClamAvClient {
             socket.setSoTimeout(readTimeoutMs);
             var out = new DataOutputStream(socket.getOutputStream());
             out.write("zINSTREAM\0".getBytes(StandardCharsets.US_ASCII));
+
+            // Читаем весь входной поток до конца. read() может вернуть 0 (нет данных
+            // сейчас, но поток не закрыт) — это не конец, продолжаем читать.
+            // read() возвращает -1 только при достижении конца потока.
             byte[] buf = new byte[CHUNK];
             int n;
-            while ((n = in.read(buf)) > 0) {
+            while (true) {
+                n = in.read(buf);
+                if (n < 0) {
+                    break; // конец потока — всё отправлено
+                }
+                if (n == 0) {
+                    continue; // не конец потока, пробуем ещё
+                }
                 out.writeInt(n);
                 out.write(buf, 0, n);
             }

@@ -1,11 +1,15 @@
 package ru.corvex.mailstorage.av;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.TestPropertySource;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -18,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ClamAvClientTest {
@@ -189,6 +194,24 @@ class ClamAvClientTest {
         }
     }
 
+    /**
+     * InputStream, который возвращает 0 (нет данных сейчас, но поток не закрыт)
+     * перед реальными данными. read() == 0 не должен интерпретироваться как конец
+     * потока — сканирование должно отправить все данные и вернуть корректный результат.
+     */
+    @Test
+    void inputStreamWithZeroReadsBeforeDataIsScannedFully() throws Exception {
+        try (FakeClamd clamd = new FakeClamd("stream: OK\0")) {
+            ClamAvClient client = new ClamAvClient("127.0.0.1", clamd.port());
+
+            byte[] payload = "partial read payload".getBytes(StandardCharsets.UTF_8);
+            ClamAvClient.ScanResult result = client.scan(new ZeroThenDataInputStream(payload, 3));
+
+            assertEquals(ClamAvClient.Result.CLEAN, result.result());
+            assertArrayEquals(payload, clamd.payload());
+        }
+    }
+
     private static int closedPort() throws IOException {
         try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))) {
             return socket.getLocalPort();
@@ -338,5 +361,73 @@ class ClamAvClientTest {
             server.close();
             thread.join(5_000);
         }
+    }
+
+    /**
+     * InputStream, который сначала возвращает 0 заданное количество раз (имитация
+     * "нет данных сейчас, но поток не закрыт"), а затем отдаёт реальные данные и -1.
+     * Проверяет, что клиент не интерпретирует 0 как конец потока.
+     */
+    private static final class ZeroThenDataInputStream extends InputStream {
+        private final byte[] data;
+        private final int zeroCount;
+        private int zerosLeft;
+        private int pos;
+
+        private ZeroThenDataInputStream(byte[] data, int zeroCount) {
+            this.data = data;
+            this.zeroCount = zeroCount;
+            this.zerosLeft = zeroCount;
+            this.pos = 0;
+        }
+
+        @Override
+        public int read() {
+            if (zerosLeft > 0) {
+                zerosLeft--;
+                return 0;
+            }
+            if (pos < data.length) {
+                return data[pos++] & 0xFF;
+            }
+            return -1;
+        }
+
+        @Override
+        public int read(byte[] b, int off, int len) {
+            if (zerosLeft > 0) {
+                zerosLeft--;
+                return 0;
+            }
+            if (pos >= data.length) {
+                return -1;
+            }
+            int toCopy = Math.min(len, data.length - pos);
+            System.arraycopy(data, pos, b, off, toCopy);
+            pos += toCopy;
+            return toCopy;
+        }
+    }
+}
+
+/**
+ * Проверка создания бина ClamAvClient через реальный Spring-контекст.
+ * Убеждается, что @Autowired конструктор выбирается корректно при наличии
+ * второго конструктора с настраиваемыми таймаутами.
+ */
+@SpringBootTest(classes = ClamAvClient.class)
+@TestPropertySource(properties = {
+    "corvex.clamd.host=clamav",
+    "corvex.clamd.port=3310"
+})
+class ClamAvClientContextTest {
+
+    @Autowired
+    private ClamAvClient clam;
+
+    @Test
+    void springContextCreatesClamAvClientBean() {
+        assertNotNull(clam);
+        assertSame(ClamAvClient.class, clam.getClass());
     }
 }
