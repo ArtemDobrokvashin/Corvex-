@@ -206,7 +206,14 @@ public final class CorvexClamAVGate extends ClamAVScan {
                 String text = new String(reply, StandardCharsets.ISO_8859_1);
                 if (text.startsWith("stream: ") && text.endsWith(" FOUND")) {
                     String signature = text.substring(8, text.length() - 6);
-                    if (!signature.isBlank() && signature.chars().allMatch(ch -> ch >= 32 && ch <= 126)) return true;
+                    if (!signature.isBlank() && signature.chars().allMatch(ch -> ch >= 32 && ch <= 126)) {
+                        // A configured ClamAV limit alert is not proof of infection
+                        // or of a complete scan; quarantine as UNKNOWN.
+                        if (signature.startsWith("Heuristics.Limits.Exceeded")) {
+                            throw new IOException("Scanner limit exceeded");
+                        }
+                        return true;
+                    }
                 }
                 throw new IOException("Unknown scanner reply");
             }

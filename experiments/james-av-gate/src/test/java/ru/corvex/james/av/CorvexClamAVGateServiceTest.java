@@ -77,6 +77,7 @@ class CorvexClamAVGateServiceTest {
         runCase("stream: OK\0", "transport");
         runCase("stream: Test-Signature FOUND\0", CorvexClamAVGate.INFECTED);
         runCase("stream: ERROR\0", CorvexClamAVGate.UNKNOWN);
+        runCase("stream: Heuristics.Limits.Exceeded.MaxFileSize FOUND\0", CorvexClamAVGate.UNKNOWN);
         runCase("stream: OK", CorvexClamAVGate.UNKNOWN);
     }
 

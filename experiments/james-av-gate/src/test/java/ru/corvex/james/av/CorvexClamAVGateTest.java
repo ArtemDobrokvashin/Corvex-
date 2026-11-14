@@ -21,7 +21,7 @@ class CorvexClamAVGateTest {
     @Test void recognizesOnlyExactCleanAndValidFound() throws Exception {
         assertFalse(CorvexClamAVGate.parseReply(reply("stream: OK\0")));
         assertTrue(CorvexClamAVGate.parseReply(reply("stream: Eicar-Test FOUND\0")));
-        for (String bad : new String[]{"stream: OK", "stream: BAD OK\0", "stream:  FOUND\0", "stream: ERROR\0", ""}) {
+        for (String bad : new String[]{"stream: OK", "stream: BAD OK\0", "stream:  FOUND\0", "stream: ERROR\0", "", "stream: Heuristics.Limits.Exceeded.MaxFileSize FOUND\0"}) {
             assertThrows(IOException.class, () -> CorvexClamAVGate.parseReply(reply(bad)));
         }
         assertThrows(IOException.class, () -> CorvexClamAVGate.parseReply(reply("x".repeat(4096))));

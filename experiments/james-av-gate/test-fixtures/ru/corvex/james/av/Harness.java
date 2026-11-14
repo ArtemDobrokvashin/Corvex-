@@ -147,7 +147,7 @@ public class Harness {
         configuration();
         reply("stream: OK\0", "root");
         reply("stream: Eicar-Test FOUND\0", CorvexClamAVGate.INFECTED);
-        for (String bad : new String[]{"stream: BAD OK\0", "stream: OK", "stream: failure ERROR\0", "", "stream:  FOUND\0"})
+        for (String bad : new String[]{"stream: BAD OK\0", "stream: OK", "stream: failure ERROR\0", "", "stream:  FOUND\0", "stream: Heuristics.Limits.Exceeded.MaxFileSize FOUND\0"})
             reply(bad, CorvexClamAVGate.UNKNOWN);
         Message m = new Message(); m.message = null;
         new CorvexClamAVGate().service(m);

@@ -76,3 +76,18 @@ BUILD SUCCESS. **После этого код изменён**: потокова
 [PostgresMailRepositoryContentDAO](https://github.com/apache/james-project/blob/james-project-3.9.1/server/data/data-postgres/src/main/java/org/apache/james/mailrepository/postgres/PostgresMailRepositoryContentDAO.java).
 Лимит собственного INSTREAM не гарантирует ограничения памяти внутри самой
 реализации MIME, таймаута источника, настроек clamd или размера входа SMTP.
+
+### Неполное сканирование ClamAV
+
+По [примеру конфигурации ClamAV 1.5.4](https://github.com/Cisco-Talos/clamav/blob/clamav-1.5.4/etc/clamd.conf.sample)
+`ScanMail` по умолчанию включён, однако `AlertExceedsMax` по умолчанию выключен.
+Без этого предупреждения превышение `MaxFileSize`, `MaxScanSize` или
+`MaxRecursion` может оставить вложенный контент непроверенным; `OK` одного
+протокольного ответа не доказывает, что всё содержимое действительно проверено.
+Нужно отдельно подтвердить фактическую конфигурацию образа, согласовать лимиты,
+включить и проверить сообщения об исчерпании лимитов, а также исследовать
+`MaxFiles`, `MaxScanTime` и другие случаи неполного сканирования. Кандидат
+маршрутизирует ответ с сигнатурой `Heuristics.Limits.Exceeded... FOUND` как
+UNKNOWN, а не как доказанный вирус. Синтетическая проверка этого поведения не
+подтверждает настройки или поведение настоящего clamd. Ничего в существующем
+контейнере или его конфигурации не менялось.
