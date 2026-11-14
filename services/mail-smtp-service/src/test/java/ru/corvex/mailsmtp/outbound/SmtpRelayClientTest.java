@@ -1,9 +1,6 @@
 package ru.corvex.mailsmtp.outbound;
 
-import jakarta.mail.Address;
 import jakarta.mail.MessagingException;
-import jakarta.mail.SendFailedException;
-import jakarta.mail.internet.InternetAddress;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
@@ -40,6 +37,12 @@ class SmtpRelayClientTest {
             sharedServer.close();
             sharedServer = null;
         }
+    }
+
+    @Test
+    void incompleteSendIsUnknownAndCloseFailureAfterSuccessfulSendIsSent() {
+        assertEquals(SmtpRelayClient.Status.UNKNOWN, SmtpRelayClient.sendOutcome(false));
+        assertEquals(SmtpRelayClient.Status.SENT, SmtpRelayClient.sendOutcome(true));
     }
 
     @Test
@@ -91,9 +94,9 @@ class SmtpRelayClientTest {
                 List.of("good@example.test", "bad@example.test", "temp@example.test"));
 
         Map<String, SmtpRelayClient.RecipientResult> byRecipient = byRecipient(results);
-        assertEquals(SmtpRelayClient.Status.PERMANENT, byRecipient.get("bad@example.test").status());
-        assertEquals(SmtpRelayClient.Status.TEMPORARY, byRecipient.get("good@example.test").status());
-        assertEquals(SmtpRelayClient.Status.TEMPORARY, byRecipient.get("temp@example.test").status());
+        assertEquals(SmtpRelayClient.Status.UNKNOWN, byRecipient.get("bad@example.test").status());
+        assertEquals(SmtpRelayClient.Status.UNKNOWN, byRecipient.get("good@example.test").status());
+        assertEquals(SmtpRelayClient.Status.UNKNOWN, byRecipient.get("temp@example.test").status());
         assertEquals(0, server.dataAttempts(), "sendpartial=false must abort DATA when any RCPT fails");
     }
 
@@ -105,12 +108,12 @@ class SmtpRelayClientTest {
         List<SmtpRelayClient.RecipientResult> results = client.sendToDomain(
                 EML, "alice@company.local", "example.test", List.of("bad@example.test"));
 
-        assertEquals(SmtpRelayClient.Status.PERMANENT, results.get(0).status());
+        assertEquals(SmtpRelayClient.Status.UNKNOWN, results.get(0).status());
         assertEquals(1, server.recipients().size());
     }
 
     @Test
-    void temporaryDataFailureIsRetriedOnNextMxHost() {
+    void dataFailureDoesNotRetryAnotherMxWhenOutcomeIsUncertain() {
         FakeSmtpServer server = relayServer();
         server.rejectFirstDataWithCode = 451;
         SmtpRelayClient client = client(List.of("127.0.0.1", "127.0.0.1"), false);
@@ -118,9 +121,9 @@ class SmtpRelayClientTest {
         List<SmtpRelayClient.RecipientResult> results = client.sendToDomain(
                 EML, "alice@company.local", "example.test", List.of("good@example.test"));
 
-        assertEquals(SmtpRelayClient.Status.SENT, results.get(0).status());
-        assertEquals(2, server.dataAttempts());
-        assertEquals(1, server.messageTexts().size());
+        assertEquals(SmtpRelayClient.Status.UNKNOWN, results.get(0).status());
+        assertEquals(1, server.dataAttempts());
+        assertEquals(0, server.messageTexts().size());
     }
 
     @Test
@@ -169,32 +172,6 @@ class SmtpRelayClientTest {
     }
 
     @Test
-    void classifySendFailedUsesCodeRulesAndFillsMissingRecipients() throws Exception {
-        SmtpRelayClient client = client(List.of(), false);
-        List<String> recipients = List.of(
-                "sent@example.test", "invalid@example.test", "unsent@example.test", "missing@example.test");
-
-        SendFailedException noCode = new SendFailedException(
-                "partial failure", new Exception("gateway failed"),
-                addresses("sent@example.test"), addresses("unsent@example.test"), addresses("invalid@example.test"));
-        Map<String, SmtpRelayClient.RecipientResult> noCodeResults = byRecipient(classify(client, noCode, recipients));
-        assertEquals(SmtpRelayClient.Status.SENT, noCodeResults.get("sent@example.test").status());
-        assertEquals(SmtpRelayClient.Status.PERMANENT, noCodeResults.get("invalid@example.test").status());
-        assertEquals(SmtpRelayClient.Status.TEMPORARY, noCodeResults.get("unsent@example.test").status());
-        assertEquals(SmtpRelayClient.Status.TEMPORARY, noCodeResults.get("missing@example.test").status());
-
-        SendFailedException temporaryCode = new SendFailedException(
-                "451 temporary", null, null, null, addresses("invalid@example.test"));
-        assertEquals(SmtpRelayClient.Status.TEMPORARY,
-                byRecipient(classify(client, temporaryCode, recipients)).get("invalid@example.test").status());
-
-        SendFailedException permanentCode = new SendFailedException(
-                "550 permanent", null, null, null, addresses("invalid@example.test"));
-        assertEquals(SmtpRelayClient.Status.PERMANENT,
-                byRecipient(classify(client, permanentCode, recipients)).get("invalid@example.test").status());
-    }
-
-    @Test
     void rootMessageFallsBackToExceptionClassName() throws Exception {
         SmtpRelayClient client = client(List.of(), false);
         Method rootMessage = SmtpRelayClient.class.getDeclaredMethod("rootMessage", Throwable.class);
@@ -229,25 +206,9 @@ class SmtpRelayClientTest {
         return sharedServer;
     }
 
-    private static Address[] addresses(String... emails) throws Exception {
-        Address[] addresses = new Address[emails.length];
-        for (int i = 0; i < emails.length; i++) {
-            addresses[i] = new InternetAddress(emails[i]);
-        }
-        return addresses;
-    }
-
     private static Map<String, SmtpRelayClient.RecipientResult> byRecipient(List<SmtpRelayClient.RecipientResult> results) {
         return results.stream().collect(Collectors.toMap(
                 SmtpRelayClient.RecipientResult::recipient, Function.identity()));
     }
 
-    @SuppressWarnings("unchecked")
-    private static List<SmtpRelayClient.RecipientResult> classify(
-            SmtpRelayClient client, SendFailedException error, List<String> recipients) throws Exception {
-        Method method = SmtpRelayClient.class.getDeclaredMethod(
-                "classifySendFailed", SendFailedException.class, List.class, String.class);
-        method.setAccessible(true);
-        return (List<SmtpRelayClient.RecipientResult>) method.invoke(client, error, recipients, "127.0.0.1");
-    }
 }

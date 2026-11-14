@@ -2,7 +2,6 @@ package ru.corvex.mailsmtp.outbound;
 
 import jakarta.mail.Address;
 import jakarta.mail.MessagingException;
-import jakarta.mail.SendFailedException;
 import jakarta.mail.Session;
 import jakarta.mail.Transport;
 import jakarta.mail.internet.InternetAddress;
@@ -44,7 +43,7 @@ public class SmtpRelayClient {
         this.requireStarttls = requireStarttls;
     }
 
-    public enum Status {SENT, TEMPORARY, PERMANENT}
+    public enum Status {SENT, TEMPORARY, PERMANENT, UNKNOWN}
 
     public record RecipientResult(String recipient, Status status, String diagnostic, String remoteHost) {
     }
@@ -97,6 +96,8 @@ public class SmtpRelayClient {
                     .map(r -> new RecipientResult(r, Status.PERMANENT, "Некорректный MIME: " + e.getMessage(), host))
                     .toList();
         }
+        boolean sendStarted = false;
+        boolean sendCompleted = false;
         try (Transport transport = session.getTransport("smtp")) {
             transport.connect();
             Address[] addresses = recipients.stream().map(r -> {
@@ -106,15 +107,18 @@ public class SmtpRelayClient {
                     throw new IllegalStateException(e);
                 }
             }).toArray(Address[]::new);
+            sendStarted = true;
             transport.sendMessage(message, addresses);
+            sendCompleted = true;
             return recipients.stream()
                     .map(r -> new RecipientResult(r, Status.SENT, "250 OK", host))
                     .toList();
-        } catch (SendFailedException e) {
-            return classifySendFailed(e, recipients, host);
         } catch (MessagingException | RuntimeException e) {
-            int code = smtpCode(e);
-            Status status = code >= 500 ? Status.PERMANENT : Status.TEMPORARY;
+            // Once sendMessage starts, an exception alone cannot prove whether
+            // DATA was accepted, even if the connection fails before the reply.
+            // A close failure after sendMessage returned must not undo success.
+            Status status = sendStarted ? sendOutcome(sendCompleted)
+                    : (smtpCode(e) >= 500 ? Status.PERMANENT : Status.TEMPORARY);
             log.warn("SMTP доставка через {} не удалась ({}) : {}", host, status, rootMessage(e));
             return recipients.stream()
                     .map(r -> new RecipientResult(r, status, rootMessage(e), host))
@@ -122,27 +126,8 @@ public class SmtpRelayClient {
         }
     }
 
-    private List<RecipientResult> classifySendFailed(SendFailedException e, List<String> recipients, String host) {
-        Map<String, RecipientResult> out = new LinkedHashMap<>();
-        putAll(out, e.getValidSentAddresses(), Status.SENT, "250 OK", host);
-        int code = smtpCode(e);
-        Status invalidStatus = code >= 500 || code == 0 ? Status.PERMANENT : Status.TEMPORARY;
-        putAll(out, e.getInvalidAddresses(), invalidStatus, rootMessage(e), host);
-        putAll(out, e.getValidUnsentAddresses(), Status.TEMPORARY, rootMessage(e), host);
-        for (String r : recipients) {
-            out.putIfAbsent(r, new RecipientResult(r, Status.TEMPORARY, rootMessage(e), host));
-        }
-        return new ArrayList<>(out.values());
-    }
-
-    private void putAll(Map<String, RecipientResult> out, Address[] addresses, Status status, String diagnostic, String host) {
-        if (addresses == null) {
-            return;
-        }
-        for (Address a : addresses) {
-            String email = a instanceof InternetAddress ia ? ia.getAddress() : a.toString();
-            out.put(email, new RecipientResult(email, status, diagnostic, host));
-        }
+    static Status sendOutcome(boolean sendCompleted) {
+        return sendCompleted ? Status.SENT : Status.UNKNOWN;
     }
 
     static int smtpCode(Throwable t) {

@@ -154,6 +154,23 @@ class ExternalOutboundWorkerTest {
     }
 
     @Test
+    void uncertainProviderSmtpKeepsSpoolAndDoesNotPublishRetryOrBounce() throws Exception {
+        when(raw.download(RAW_REF)).thenReturn(EML);
+        when(configs.fetch(ACCOUNT_ID)).thenReturn(config);
+        var recipients = List.of("a@example.com", "b@example.com");
+        when(smtp.send(config, EML, FROM, recipients)).thenReturn(List.of(
+                result("a@example.com", SmtpRelayClient.Status.SENT, "accepted"),
+                result("b@example.com", SmtpRelayClient.Status.UNKNOWN, "response lost")));
+
+        assertThrows(IOException.class, () -> worker.onExternalQueued(payload(event(recipients, Instant.now(), 1))));
+        verify(raw, never()).delete(anyString());
+        verify(smtp, never()).appendSent(config, EML);
+        assertTrue(retries().isEmpty());
+        assertTrue(bounced().isEmpty());
+        assertTrue(publishes.unconfirmed.isEmpty());
+    }
+
+    @Test
     void cleanupFailureAfterProviderAcceptanceEscapesWithoutAnotherSend() throws Exception {
         when(raw.download(RAW_REF)).thenReturn(EML);
         when(configs.fetch(ACCOUNT_ID)).thenReturn(config);

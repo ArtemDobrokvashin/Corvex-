@@ -159,6 +159,22 @@ class OutboundWorkerTest {
     }
 
     @Test
+    void uncertainSmtpKeepsSpoolAndDoesNotPublishRetryOrBounce() throws Exception {
+        when(raw.download(RAW_REF)).thenReturn(EML);
+        when(dkim.signIfConfigured(EML, FROM)).thenReturn(SIGNED);
+        var recipients = List.of("a@example.com", "b@example.com");
+        when(relay.sendToDomain(SIGNED, FROM, "example.com", recipients)).thenReturn(List.of(
+                result("a@example.com", SmtpRelayClient.Status.SENT, "accepted"),
+                result("b@example.com", SmtpRelayClient.Status.UNKNOWN, "response lost")));
+
+        assertThrows(IOException.class, () -> worker.onOutboundQueued(payload(event(recipients, Instant.now(), 1))));
+        verify(raw, never()).delete(anyString());
+        assertTrue(retries().isEmpty());
+        assertTrue(bounced().isEmpty());
+        assertTrue(publishes.unconfirmed.isEmpty());
+    }
+
+    @Test
     void cleanupFailureAfterSuccessfulSmtpEscapesWithoutAnotherSend() throws Exception {
         when(raw.download(RAW_REF)).thenReturn(EML);
         when(dkim.signIfConfigured(EML, FROM)).thenReturn(SIGNED);

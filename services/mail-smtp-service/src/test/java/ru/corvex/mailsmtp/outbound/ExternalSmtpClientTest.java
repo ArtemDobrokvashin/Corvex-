@@ -1,12 +1,9 @@
 package ru.corvex.mailsmtp.outbound;
 
-import jakarta.mail.Address;
 import jakarta.mail.AuthenticationFailedException;
 import jakarta.mail.Folder;
 import jakarta.mail.MessagingException;
-import jakarta.mail.SendFailedException;
 import jakarta.mail.Store;
-import jakarta.mail.internet.InternetAddress;
 import org.eclipse.angus.mail.imap.IMAPFolder;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
@@ -223,9 +220,9 @@ class ExternalSmtpClientTest {
             var mixed = client.send(cfg, EML, "old@example.ru",
                     List.of("good@example.org", "bad@example.org", "temp@example.org"));
             Map<String, SmtpRelayClient.RecipientResult> byRecipient = byRecipient(mixed);
-            assertEquals(SmtpRelayClient.Status.TEMPORARY, byRecipient.get("good@example.org").status());
-            assertEquals(SmtpRelayClient.Status.PERMANENT, byRecipient.get("bad@example.org").status());
-            assertEquals(SmtpRelayClient.Status.TEMPORARY, byRecipient.get("temp@example.org").status());
+            assertEquals(SmtpRelayClient.Status.UNKNOWN, byRecipient.get("good@example.org").status());
+            assertEquals(SmtpRelayClient.Status.UNKNOWN, byRecipient.get("bad@example.org").status());
+            assertEquals(SmtpRelayClient.Status.UNKNOWN, byRecipient.get("temp@example.org").status());
 
             var wrongPassword = config(host, 993, "SSL_TLS", host, server.port(), "PLAIN", "wrong", true, "IMAP");
             var authFailure = client.send(wrongPassword, EML, "old@example.ru", List.of("good@example.org"));
@@ -250,24 +247,6 @@ class ExternalSmtpClientTest {
             assertEquals(SmtpRelayClient.Status.TEMPORARY,
                     client.send(plain, EML, "old@example.ru", List.of("not an address")).get(0).status());
         }
-    }
-
-    @Test
-    void classifySendFailedHandlesOtherAddressTypesAndMissingRecipients() throws Exception {
-        ExternalSmtpClient client = new ExternalSmtpClient(false, false, "mail.company.local");
-        List<String> recipients = List.of("sent@example.org", "invalid@example.org", "other@example.org", "missing@example.org");
-        SendFailedException error = new SendFailedException(
-                "partial", new Exception("gateway"),
-                new Address[]{new InternetAddress("sent@example.org")},
-                new Address[]{new OtherAddress("other@example.org")},
-                new Address[]{new InternetAddress("invalid@example.org")});
-
-        Map<String, SmtpRelayClient.RecipientResult> results = byRecipient(classifySendFailed(client, error, recipients));
-
-        assertEquals(SmtpRelayClient.Status.SENT, results.get("sent@example.org").status());
-        assertEquals(SmtpRelayClient.Status.PERMANENT, results.get("invalid@example.org").status());
-        assertEquals(SmtpRelayClient.Status.TEMPORARY, results.get("other@example.org").status());
-        assertEquals(SmtpRelayClient.Status.TEMPORARY, results.get("missing@example.org").status());
     }
 
     @Test
@@ -452,12 +431,6 @@ class ExternalSmtpClientTest {
         return (String) invokePrivate(client, "rootMessage", new Class<?>[]{Throwable.class}, error);
     }
 
-    @SuppressWarnings("unchecked")
-    private static List<SmtpRelayClient.RecipientResult> classifySendFailed(
-            ExternalSmtpClient client, SendFailedException error, List<String> recipients) throws Exception {
-        return (List<SmtpRelayClient.RecipientResult>) invokePrivate(client, "classifySendFailed",
-                new Class<?>[]{SendFailedException.class, List.class, String.class}, error, recipients, "smtp.example.ru");
-    }
 
     private static Folder findSent(ExternalSmtpClient client, Store store, String preferred) throws Exception {
         return (Folder) invokePrivate(client, "findSentFolder", new Class<?>[]{Store.class, String.class}, store, preferred);
@@ -478,31 +451,4 @@ class ExternalSmtpClientTest {
         }
     }
 
-    private static final class OtherAddress extends Address {
-        private final String value;
-
-        private OtherAddress(String value) {
-            this.value = value;
-        }
-
-        @Override
-        public String getType() {
-            return "other";
-        }
-
-        @Override
-        public String toString() {
-            return value;
-        }
-
-        @Override
-        public boolean equals(Object other) {
-            return other instanceof OtherAddress that && value.equals(that.value);
-        }
-
-        @Override
-        public int hashCode() {
-            return value.hashCode();
-        }
-    }
 }
