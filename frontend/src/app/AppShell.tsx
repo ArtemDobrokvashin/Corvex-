@@ -11,6 +11,7 @@ import {
   Search,
   Settings2,
   ShieldCheck,
+  X,
 } from 'lucide-react';
 import { logout as apiLogout, restoreSession } from '../api/authApi';
 import { DEMO_MAILS, DEMO_ROOMS, getDemoUser } from '../api/demoData';
@@ -44,6 +45,7 @@ export default function AppShell() {
   const restoreStarted = useRef(false);
   const [securityOpen, setSecurityOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
   const [searchParams] = useSearchParams();
@@ -188,13 +190,17 @@ export default function AppShell() {
   return (
     <div className="flex h-full flex-col bg-canvas">
       {/* Топбар — на всю ширину: логотип, поиск, управление */}
-      <header className="flex shrink-0 items-center justify-between border-b border-[#e5e5ea] bg-white px-5 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.04)] safe-top">
-        <div className="flex items-center gap-8 shrink-0">
-          <LogoMark size={28} />
-          <span className="text-[16px] font-semibold tracking-tight text-ink">Corvex</span>
+      <header className="flex shrink-0 items-center justify-between border-b border-[#e5e5ea] bg-white px-4 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.04)] safe-top">
+        {/* Логотип — всегда; текст "Corvex" скрыт на мобильных */}
+        <div className="flex items-center gap-3 shrink-0">
+          <LogoMark size={26} />
+          <span className="hidden sm:inline text-[16px] font-semibold tracking-tight text-ink">Corvex</span>
         </div>
+
+        {/* Поиск: на десктопе всегда развёрнут; на мобильных — иконка лупы, при тапе разворачивается */}
         <div className="flex items-center justify-center flex-1 min-w-0 max-w-[720px]">
-          <div className="flex items-center gap-2 rounded-full border border-[#e5e5ea] bg-[#f2f2f7] px-3 py-1.5 min-w-[280px] shadow-[0_1px_0_rgba(0,0,0,0.05)]">
+          {/* Десктоп: поиск всегда развёрнут */}
+          <div className="hidden sm:flex items-center gap-2 rounded-full border border-[#e5e5ea] bg-[#f2f2f7] px-3 py-1.5 min-w-[280px] shadow-[0_1px_0_rgba(0,0,0,0.05)]">
             <Search size={17} className="shrink-0 text-ink-soft" />
             <input
               type="text"
@@ -210,7 +216,46 @@ export default function AppShell() {
               className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none focus:ring-0 placeholder:text-ink-soft"
             />
           </div>
+
+          {/* Мобильный: иконка лупы (свернуто) */}
+          <button
+            type="button"
+            onClick={() => setMobileSearchOpen(true)}
+            className="sm:hidden h-10 w-10 rounded-full flex items-center justify-center text-ink-soft hover:text-ink transition hover:bg-[#f2f2f7] touch-target"
+            aria-label={t('Поиск')}
+          >
+            <Search size={18} strokeWidth={1.75} />
+          </button>
         </div>
+
+        {/* Мобильный: развёрнутый поиск (п롭оска во всю ширину хэдера) */}
+        {mobileSearchOpen && (
+          <div className="sm:hidden flex items-center gap-2 px-3 py-2 w-full bg-[#f2f2f7]">
+            <Search size={17} className="shrink-0 text-ink-soft" />
+            <input
+              type="text"
+              placeholder={t('Поиск по почте…')}
+              value={topSearch}
+              onChange={(e) => setTopSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  navigate(`/mail?mailSearch=${encodeURIComponent(topSearch)}`);
+                }
+              }}
+              className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none focus:ring-0 placeholder:text-ink-soft"
+            />
+            <button
+              type="button"
+              onClick={() => setMobileSearchOpen(false)}
+              className="h-8 w-8 rounded-full flex items-center justify-center text-ink-soft hover:text-ink transition hover:bg-[#e5e5ea] touch-target"
+              aria-label={t('Закрыть поиск')}
+            >
+              <X size={16} strokeWidth={1.75} />
+            </button>
+          </div>
+        )}
+
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
