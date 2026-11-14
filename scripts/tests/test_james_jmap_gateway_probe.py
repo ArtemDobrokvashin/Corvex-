@@ -43,6 +43,19 @@ class GatewayProbeGuards(unittest.TestCase):
         self.assertIn('RUN node --test gateway.test.cjs', DOCKERFILE)
         self.assertIn('COPY --from=checked /app/gateway.cjs', DOCKERFILE)
 
+    def test_james_transition_uses_internal_read_gateway(self):
+        compose = (ROOT / 'docker-compose.yml').read_text(encoding='utf-8')
+        jmap = compose.split('  james-jmap:\n', 1)[1].split('\n  # Separate opt-in', 1)[0]
+        self.assertIn('image: corvex-james-jmap-read-gateway:local', jmap)
+        self.assertIn('build: ./infra/james/jmap-read-gateway', jmap)
+        self.assertIn('profiles: [james-transition]', jmap)
+        self.assertIn('read_only: true', jmap)
+        self.assertIn('cap_drop: [ALL]', jmap)
+        self.assertIn('target: /run/james-tls/jmap.crt', jmap)
+        self.assertIn('target: /run/james-tls/jmap.key', jmap)
+        self.assertNotIn('jmap-nginx.conf', jmap)
+        self.assertNotIn('ports:', jmap)
+
 
 if __name__ == '__main__':
     unittest.main()

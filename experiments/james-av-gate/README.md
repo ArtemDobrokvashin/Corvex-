@@ -28,13 +28,13 @@ APPEND и internal могут обходить mailet. Согласно исхо
 [`Email/import`](https://github.com/apache/james-project/blob/james-project-3.9.1/server/protocols/jmap-rfc-8621/src/main/scala/org/apache/james/jmap/method/EmailImportMethod.scala) вызывает `mailbox.appendMessageReactive` напрямую, минуя spool;
 [`EmailSubmission/set`](https://github.com/apache/james-project/blob/james-project-3.9.1/server/protocols/jmap-rfc-8621/src/main/scala/org/apache/james/jmap/method/EmailSubmissionSetMethod.scala) ставит письмо в spool. Это анализ исходников, не live test.
 
-Нынешний `jmap-nginx.conf` ограничивает HTTP-пути и методы, **не** JMAP-методы
-в JSON: любой обладатель bearer token и сетевого доступа к POST /jmap может
-попытаться выполнить операции записи. `JamesJmapReadClient` ограничивает свои
-собственные вызовы, но это не защита на границе сети. До включения путей импорта
-необходимо ограничить все записи и удостовериться, что каждый путь проходит
-политику AV/owner/RBAC; запрещать выдачу токенов браузерам недостаточно как
-единственную меру. Кандидат mailet сам по себе не защищает JMAP import.
+Прежний `jmap-nginx.conf` ограничивает HTTP-пути, но **не** JMAP-методы в
+JSON: обладатель bearer token и сетевого доступа к POST /jmap может попытаться
+выполнить запись. Подготовленный read-only шлюз проверен на ноутбуке с реальным
+James и теперь указан в Compose-профиле, но уже работающий nginx не меняется без
+пересоздания. Шлюз не закрывает прямой доступ к James по другим сетям и не
+обеспечивает AV/owner/RBAC. До включения пользовательских путей необходимо
+проверить все записи; mailet сам по себе не защищает JMAP import.
 Не использовать этот класс, пока они не закрыты и пока реальные письма и
 вложения не проходят проверку. EICAR/недоступность/сбои/restart/rollback не
 проверены в James. `ToRepository` без потерь и без bounce пока лишь направление.

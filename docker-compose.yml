@@ -287,19 +287,19 @@ services:
         bind: { create_host_path: false }
     networks: [james-internal]
 
-  # Only this TLS endpoint bridges James' isolated network to Corvex app.
+  # Internal JMAP bridge: reads only; token/owner/RBAC checks still required.
   james-jmap:
-    image: nginx:1.31-alpine
+    image: corvex-james-jmap-read-gateway:local
+    build: ./infra/james/jmap-read-gateway
     profiles: [james-transition]
     restart: "no"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       james: { condition: service_started }
     volumes:
-      - type: bind
-        source: ./infra/james/jmap-nginx.conf
-        target: /etc/nginx/nginx.conf
-        read_only: true
-        bind: { create_host_path: false }
       - type: bind
         source: ${CORVEX_JAMES_CONFIG_DIR:-./infra/secrets/james}/jmap.crt
         target: /run/james-tls/jmap.crt
