@@ -586,12 +586,12 @@ export default function MailPage() {
 
   return (
     <div className="h-full lg:p-3 xl:p-4">
-      <div className="flex h-full min-h-0 overflow-hidden bg-surface lg:rounded-[18px] lg:border lg:border-line lg:shadow-soft">
+      <div className="flex h-full min-h-0 overflow-hidden bg-white lg:rounded-[18px] lg:border lg:border-[#e5e5ea] lg:shadow-soft">
         {/* Папки */}
-        <aside className="hidden w-[238px] shrink-0 flex-col border-r border-line bg-chrome p-3 xl:flex">
+        <aside className="hidden w-[238px] shrink-0 flex-col border-r border-[#e5e5ea] bg-chrome p-3 xl:flex">
           <div className="flex shrink-0 items-center justify-between px-2 pb-3 pt-1">
             <h1 className="text-[17px] font-semibold tracking-[-0.02em]">{t('Почта')}</h1>
-            <span className="text-xs text-faint">{countLabel(locale, folderCounts.INBOX ?? 0, ['новое', 'новых', 'новых'], ['new', 'new'])}</span>
+            <span className="text-xs text-ink-soft">{countLabel(locale, folderCounts.INBOX ?? 0, ['новое', 'новых', 'новых'], ['new', 'new'])}</span>
           </div>
           <MailSidebarActions
             canAdminExternalAccounts={canAdminExternalAccounts}
@@ -600,7 +600,7 @@ export default function MailPage() {
             onOpenExternal={() => setExternalOpen(true)}
           />
 
-          <p className="section-label mb-1.5 mt-6 shrink-0">{t('Папки')}</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-soft mb-1.5 mt-6 shrink-0">{t('Папки')}</p>
           <nav className="scroll-area min-h-0 space-y-0.5 pr-1" aria-label={t('Папки почты')}>
             {folders.map((f) => {
               const Icon = FOLDER_ICONS[f.id] ?? Folder;
@@ -609,7 +609,7 @@ export default function MailPage() {
                 <button key={f.id} type="button" onClick={() => selectFolder(f.id)} className={`nav-row shrink-0 ${folder === f.id ? 'nav-row-active' : ''}`}>
                   <Icon size={16} strokeWidth={1.8} />
                   <span className="min-w-0 flex-1 truncate">{f.name}</span>
-                  {count > 0 && <span className={`text-xs ${folder === f.id ? 'font-semibold text-accent' : 'font-medium text-faint'}`}>{count}</span>}
+                  {count > 0 && <span className={`text-xs ${folder === f.id ? 'font-semibold text-[#0071e3]' : 'font-medium text-ink-soft'}`}>{count}</span>}
                 </button>
               );
             })}
@@ -619,24 +619,24 @@ export default function MailPage() {
         </aside>
 
         {/* Список писем */}
-        <section className={`${mobileReading ? 'hidden md:flex' : 'flex'} relative min-w-0 flex-1 flex-col border-r border-line bg-surface md:w-[322px] md:flex-none lg:w-[356px] xl:w-[392px]`}>
-          <header className="shrink-0 border-b border-line px-4 pb-3 pt-4">
+        <section className={`${mobileReading ? 'hidden md:flex' : 'flex'} relative min-w-0 flex-1 flex-col border-r border-[#e5e5ea] bg-white md:w-[322px] md:flex-none lg:w-[356px] xl:w-[392px]`}>
+          <header className="shrink-0 border-b border-[#e5e5ea] px-4 pb-3 pt-4">
             <div className="flex items-center gap-2">
               <h2 className="min-w-0 flex-1 truncate text-[17px] font-semibold tracking-[-0.02em]">{currentFolder?.name ?? t('Почта')}</h2>
-              <span className="text-xs text-faint">{visible.length}</span>
+              <span className="text-xs text-ink-soft">{visible.length}</span>
               <div ref={sortPanelRef} className="relative">
                 <IconButton
                   icon={ArrowUpDown}
                   label={t('Сортировка')}
-                  className={`h-8 w-8 ${sortActive || openListPanel === 'sort' ? 'bg-accent-soft text-accent-dark hover:bg-accent-soft' : ''}`}
+                  className={`h-8 w-8 ${sortActive || openListPanel === 'sort' ? 'bg-[#e3f2fd] text-[#004c9a] hover:bg-[#e3f2fd]' : ''}`}
                   size={16}
                   onClick={() => setOpenListPanel((panel) => (panel === 'sort' ? null : 'sort'))}
                   aria-expanded={openListPanel === 'sort'}
                   aria-haspopup="dialog"
                 />
-                {sortActive && <span className="pointer-events-none absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-accent ring-2 ring-surface" aria-hidden="true" />}
+                {sortActive && <span className="pointer-events-none absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-[#0071e3] ring-2 ring-[#000000]/10" aria-hidden="true" />}
                 {openListPanel === 'sort' && (
-                  <div role="dialog" aria-label={t('Сортировка')} className="absolute right-0 top-10 z-40 w-56 max-w-[calc(100vw-32px)] rounded-2xl border border-line bg-surface p-1.5 shadow-pop">
+                  <div role="dialog" aria-label={t('Сортировка')} className="absolute right-0 top-10 z-40 w-56 max-w-[calc(100vw-32px)] rounded-2xl border border-[#e5e5ea] bg-white p-1.5 shadow-[0_10px_20px_rgba(0,113,227,0.3)]">
                     {([
                       { value: 'date-desc', label: t('Сначала новые') },
                       { value: 'date-asc', label: t('Сначала старые') },
@@ -665,16 +665,16 @@ export default function MailPage() {
                 <IconButton
                   icon={SlidersHorizontal}
                   label={t('Фильтры')}
-                  className={`h-8 w-8 ${filtersActive || openListPanel === 'filters' ? 'bg-accent-soft text-accent-dark hover:bg-accent-soft' : ''}`}
+                  className={`h-8 w-8 ${filtersActive || openListPanel === 'filters' ? 'bg-[#e3f2fd] text-[#004c9a] hover:bg-[#e3f2fd]' : ''}`}
                   size={16}
                   onClick={() => setOpenListPanel((panel) => (panel === 'filters' ? null : 'filters'))}
                   aria-expanded={openListPanel === 'filters'}
                   aria-haspopup="dialog"
                 />
-                {filtersActive && <span className="pointer-events-none absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-accent ring-2 ring-surface" aria-hidden="true" />}
+                {filtersActive && <span className="pointer-events-none absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-[#0071e3] ring-2 ring-[#000000]/10" aria-hidden="true" />}
                 {openListPanel === 'filters' && (
-                  <div role="dialog" aria-label={t('Фильтры')} className="absolute right-0 top-10 z-40 w-72 max-w-[calc(100vw-32px)] rounded-2xl border border-line bg-surface p-3 shadow-pop">
-                    <p className="section-label">{t('Состояние')}</p>
+                  <div role="dialog" aria-label={t('Фильтры')} className="absolute right-0 top-10 z-40 w-72 max-w-[calc(100vw-32px)] rounded-2xl border border-[#e5e5ea] bg-white p-3 shadow-[0_10px_20px_rgba(0,113,227,0.3)]">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-soft">{t('Состояние')}</p>
                     <div className="mt-2 space-y-1" role="group" aria-label={t('Фильтр писем')}>
                       {([
                         { value: 'all', label: t('Все') },
@@ -695,11 +695,11 @@ export default function MailPage() {
                     </div>
                     <div className="mt-4 space-y-2.5">
                       <label className="flex cursor-pointer items-center gap-2.5 text-sm text-ink-soft">
-                        <input type="checkbox" checked={onlyFlagged} onChange={(event) => setOnlyFlagged(event.target.checked)} className="h-4 w-4 accent-[#3157D5]" />
+                        <input type="checkbox" checked={onlyFlagged} onChange={(event) => setOnlyFlagged(event.target.checked)} className="h-4 w-4 accent-[#0071e3]" />
                         <span>{t('Только важные')}</span>
                       </label>
                       <label className="flex cursor-pointer items-center gap-2.5 text-sm text-ink-soft">
-                        <input type="checkbox" checked={onlyAttachments} onChange={(event) => setOnlyAttachments(event.target.checked)} className="h-4 w-4 accent-[#3157D5]" />
+                        <input type="checkbox" checked={onlyAttachments} onChange={(event) => setOnlyAttachments(event.target.checked)} className="h-4 w-4 accent-[#0071e3]" />
                         <span>{t('Только с вложениями')}</span>
                       </label>
                     </div>
@@ -715,9 +715,9 @@ export default function MailPage() {
                 )}
               </div>
             </div>
-            <div className="mt-3 flex rounded-full border border-[#E5E5EA] bg-white p-0.5" role="tablist" aria-label={t('Фильтр писем')}>
+            <div className="mt-3 flex rounded-full border border-[#e5e5ea] bg-white p-0.5" role="tablist" aria-label={t('Фильтр писем')}>
               {(['all', 'unread', 'read'] as const).map((value) => (
-                <button key={value} type="button" role="tab" aria-selected={filter === value} onClick={() => setFilter(value)} className={`h-8 min-w-0 flex-1 truncate rounded-lg px-1 text-xs font-medium transition sm:text-[12.5px] ${filter === value ? 'bg-[#F2F2F7] text-ink font-medium shadow-sm' : 'text-ink-soft hover:text-ink hover:bg-[#F2F2F7]'}`}>
+                <button key={value} type="button" role="tab" aria-selected={filter === value} onClick={() => setFilter(value)} className={`h-8 min-w-0 flex-1 truncate rounded-lg px-1 text-xs font-medium transition sm:text-[12px] ${filter === value ? 'bg-[#f2f2f7] text-ink font-medium shadow-[0_1px_0_rgba(0,0,0,0.04)]' : 'text-ink-soft hover:text-ink hover:bg-[#f2f2f7]'}`}>
                   {value === 'all' ? t('Все') : value === 'unread' ? t('Непрочитанные') : t('Прочитанные')}
                 </button>
               ))}
@@ -750,7 +750,7 @@ export default function MailPage() {
 
           <div className="scroll-area min-h-0 flex-1">
             {loadError && (
-              <div className="m-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">{loadError}</div>
+              <div className="m-4 rounded-xl border border-[#fecaca] bg-[#fef2f2] px-4 py-3 text-sm text-[#dc2626]" role="alert">{loadError}</div>
             )}
             {visible.map((m) => {
               const selected = active?.id === m.id;
@@ -761,13 +761,13 @@ export default function MailPage() {
                   // screen-reader путь — настоящая кнопка темы ниже: role=button на
                   // контейнере создал бы недопустимую вложенную интерактивность со звездой.
                   onClick={() => open(m)}
-                  className={`group relative flex cursor-pointer gap-3 border-b border-[#E5E5EA] px-4 py-3 transition duration-150 ${selected ? 'bg-[#F2F2F7]' : 'hover:bg-[#F2F2F7]'}`}
+                  className={`group relative flex cursor-pointer gap-3 border-b border-[#e5e5ea] px-4 py-3 transition duration-150 ${selected ? 'bg-[#f2f2f7]' : 'hover:bg-[#f2f2f7]'}`}
                 >
-                  {selected && <span className="absolute inset-y-3 left-0 w-[3px] rounded-full bg-accent" />}
+                  {selected && <span className="absolute inset-y-3 left-0 w-[3px] rounded-full bg-[#0071e3]" />}
                   <Avatar name={m.from} size={38} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      {!m.seen && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-label={t('Непрочитано')} />}
+                      {!m.seen && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#0071e3]" aria-label={t('Непрочитано')} />}
                       <span className={`min-w-0 flex-1 truncate text-sm ${m.seen ? 'font-medium text-ink-soft' : 'font-semibold text-ink'} tracking-tight`}>{cleanPersonName(m.from)}</span>
                       <span className="shrink-0 text-[11px] text-ink-soft">{m.date}</span>
                     </div>
@@ -779,7 +779,7 @@ export default function MailPage() {
                         title={m.flagged ? t('Убрать из важных') : t('Отметить важным')}
                         aria-label={m.flagged ? t('Убрать из важных') : t('Отметить важным')}
                         onClick={(e) => { e.stopPropagation(); toggleFlag(m); }}
-                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition ${m.flagged ? 'text-accent bg-[#FDF2F2]' : 'text-ink-soft hover:bg-[#F2F2F7]'}`}
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition ${m.flagged ? 'text-[#0071e3] bg-[#fdf2f2]' : 'text-ink-soft hover:bg-[#f2f2f7]'}`}
                       >
                         <Star size={13} fill={m.flagged ? 'currentColor' : 'none'} strokeWidth={m.flagged ? 0 : undefined} />
                       </button>
@@ -794,20 +794,20 @@ export default function MailPage() {
             )}
           </div>
 
-          <button type="button" onClick={() => setComposeDraft({ to: '', subject: '', body: '' })} className="btn-primary absolute bottom-4 right-4 z-30 rounded-full shadow-pop md:hidden">
+          <button type="button" onClick={() => setComposeDraft({ to: '', subject: '', body: '' })} className="btn-primary absolute bottom-4 right-4 z-30 rounded-full shadow-[0_10px_20px_rgba(0,113,227,0.3)] md:hidden">
             <PenSquare size={16} /> {t('Написать')}
           </button>
         </section>
 
         {/* Чтение */}
-        <main className={`${mobileReading ? 'flex' : 'hidden md:flex'} min-w-0 flex-1 flex-col bg-surface`}>
+        <main className={`${mobileReading ? 'flex' : 'hidden md:flex'} min-w-0 flex-1 flex-col bg-white`}>
           {active ? (
             <>
-              <header className="flex h-14 shrink-0 items-center gap-1 border-b border-[#E5E5EA] bg-white px-4 sm:px-5 shadow-[0_1px_0_rgba(23,24,28,0.06)]">
+              <header className="flex h-14 shrink-0 items-center gap-1 border-b border-[#e5e5ea] bg-white px-4 sm:px-5 shadow-[0_1px_0_rgba(0,0,0,0.04)]">
                 <button type="button" onClick={() => setMobileReading(false)} className="btn-ghost px-2 md:hidden"><ArrowLeft size={16} strokeWidth={1.6} /> {t('К списку')}</button>
                 <IconButton icon={Archive} label={t('В архив')} onClick={() => moveActive('ARCHIVE')} size={17} strokeWidth={1.6} />
                 <IconButton icon={Trash2} label={t('Удалить')} onClick={() => moveActive('TRASH')} size={17} strokeWidth={1.6} />
-                <button type="button" onClick={() => toggleFlag(active)} className={`icon-btn ${active.flagged ? 'text-accent bg-[#FDF2F2]' : ''}`} aria-label={t('Важное')}>
+                <button type="button" onClick={() => toggleFlag(active)} className={`icon-btn ${active.flagged ? 'text-[#0071e3] bg-[#fdf2f2]' : ''}`} aria-label={t('Важное')}>
                   <Star size={17} fill={active.flagged ? 'currentColor' : 'none'} strokeWidth={active.flagged ? 0 : undefined} />
                 </button>
                 <IconButton icon={MoreHorizontal} label={t('Ещё действия')} size={17} strokeWidth={1.6} />
@@ -826,7 +826,7 @@ export default function MailPage() {
                   </div>
                   <h2 className="mt-5 text-[26px] font-semibold leading-tight tracking-[-0.03em] text-ink sm:text-[30px]">{active.subject}</h2>
 
-                  <div className="mt-8 flex items-start gap-3 border-b border-[#E5E5EA] pb-6">
+                  <div className="mt-8 flex items-start gap-3 border-b border-[#e5e5ea] pb-6">
                     <Avatar name={active.from} size={44} />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[15px] font-semibold text-ink tracking-tight">{cleanPersonName(active.from)}</div>
@@ -850,14 +850,14 @@ export default function MailPage() {
 
                   {activeHtml && <div className="mt-5 flex flex-wrap items-center gap-2 text-[11px] text-ink-soft">
                     <span>{t('Внешние изображения и ссылки отключены для безопасности.')}</span>
-                    <button type="button" className="font-medium text-accent underline decoration-accent/30" onClick={() => setShowPlainText(!showPlainText)}>{t(showPlainText ? 'Показать HTML' : 'Показать обычный текст')}</button>
+                    <button type="button" className="font-medium text-[#0071e3] underline decoration-accent/30" onClick={() => setShowPlainText(!showPlainText)}>{t(showPlainText ? 'Показать HTML' : 'Показать обычный текст')}</button>
                   </div>}
-                  {activeHtml && !showPlainText ? <iframe title={t('Содержимое HTML-письма')} sandbox="" referrerPolicy="no-referrer" srcDoc={mailHtmlDocument(activeHtml)} className="mt-4 h-[420px] w-full rounded-xl border border-[#E5E5EA] bg-white" />
+                  {activeHtml && !showPlainText ? <iframe title={t('Содержимое HTML-письма')} sandbox="" referrerPolicy="no-referrer" srcDoc={mailHtmlDocument(activeHtml)} className="mt-4 h-[420px] w-full rounded-xl border border-[#e5e5ea] bg-white" />
                     : <div className="mt-7 text-[15px] leading-[1.7] text-ink-soft">
                       {activeBody.split('\n').map((paragraph, i) => paragraph.trim() ? <p key={i} className="mb-4 whitespace-pre-wrap">{paragraph}</p> : null)}
                     </div>}
 
-                  <div className="mt-10 flex flex-wrap gap-2 border-t border-[#E5E5EA] pt-6">
+                  <div className="mt-10 flex flex-wrap gap-2 border-t border-[#e5e5ea] pt-6">
                     <button type="button" className="btn-primary" onClick={() => setComposeDraft({ to: emailFromHeader(active.from), subject: `Re: ${active.subject}`, body: '' })}>
                       <Reply size={17} strokeWidth={1.6} /> {t('Ответить')}
                     </button>
@@ -959,17 +959,17 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
   };
 
   return (
-    <section className="fixed inset-x-0 bottom-0 z-50 flex max-h-[94dvh] animate-rise-in flex-col overflow-hidden border border-[#E5E5EA] bg-white shadow-[0_10px_40px_rgba(23,24,28,0.16)] sm:inset-x-auto sm:bottom-4 sm:right-4 sm:h-[min(640px,92dvh)] sm:w-[min(590px,calc(100vw-2rem))] sm:rounded-2xl" aria-label={t('Новое письмо')}>
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-[#E5E5EA] bg-white px-4 py-2">
+    <section className="fixed inset-x-0 bottom-0 z-50 flex max-h-[94dvh] animate-rise-in flex-col overflow-hidden border border-[#e5e5ea] bg-white shadow-[0_10px_40px_rgba(0,0,0,0.10)] sm:inset-x-auto sm:bottom-4 sm:right-4 sm:h-[min(640px,92dvh)] sm:w-[min(590px,calc(100vw-2rem))] sm:rounded-2xl" aria-label={t('Новое письмо')}>
+      <header className="flex h-12 shrink-0 items-center justify-between border-b border-[#e5e5ea] bg-white px-4 py-2">
         <h3 className="text-[14px] font-medium text-ink tracking-tight">{initial.subject ? t('Ответ / пересылка') : t('Новое письмо')}</h3>
-        <button type="button" onClick={onClose} className="h-8 w-8 flex items-center justify-center rounded-lg text-ink-soft hover:bg-[#F2F2F7] hover:text-ink transition" aria-label={t('Закрыть черновик')}>
+        <button type="button" onClick={onClose} className="h-8 w-8 flex items-center justify-center rounded-lg text-ink-soft hover:bg-[#f2f2f7] hover:text-ink transition" aria-label={t('Закрыть черновик')}>
           <X size={15} strokeWidth={1.7} />
         </button>
       </header>
 
       {sent ? (
         <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
-          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#F2F2F7] text-accent"><CheckCircle2 size={27} strokeWidth={2} /></span>
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#f2f2f7] text-[#0071e3]"><CheckCircle2 size={27} strokeWidth={2} /></span>
           <h4 className="mt-4 text-lg font-semibold text-ink">{t('Письмо отправлено')}</h4>
           <p className="mt-1 text-sm text-ink-soft">{t('Копия сохранена в папке «Отправленные».')}</p>
         </div>
@@ -978,9 +978,9 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
           onDragOver={(event) => { if (Array.from(event.dataTransfer.types).includes('Files')) { event.preventDefault(); setDraggingFiles(true); } }}
           onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDraggingFiles(false); }}
           onDrop={(event) => { event.preventDefault(); setDraggingFiles(false); const dropped = Array.from(event.dataTransfer.files); if (dropped.length) setFiles((previous) => [...previous, ...dropped]); }}>
-          {draggingFiles && <div className="bg-[#F2F2F7] px-4 py-2 text-sm text-accent">{t('Отпустите файлы, чтобы прикрепить')}</div>}
+          {draggingFiles && <div className="bg-[#f2f2f7] px-4 py-2 text-sm text-[#0071e3]">{t('Отпустите файлы, чтобы прикрепить')}</div>}
           {sendAsAccounts.length > 0 && (
-            <div className="flex h-11 shrink-0 items-center gap-3 border-b border-[#E5E5EA] px-4">
+            <div className="flex h-11 shrink-0 items-center gap-3 border-b border-[#e5e5ea] px-4">
               <label htmlFor="compose-from" className="w-12 shrink-0 text-[12px] font-medium text-ink-soft">{t('От кого')}</label>
               <select
                 id="compose-from"
@@ -995,18 +995,18 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
               </select>
             </div>
           )}
-          <div className="flex h-11 shrink-0 items-center gap-3 border-b border-[#E5E5EA] px-4">
+          <div className="flex h-11 shrink-0 items-center gap-3 border-b border-[#e5e5ea] px-4">
             <label htmlFor="compose-to" className="w-12 shrink-0 text-[12px] font-medium text-ink-soft">{t('Кому')}</label>
             <input id="compose-to" required type="text" inputMode="email" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} placeholder="user@company.local" className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-ink-soft text-ink" />
             {!showCc && <button type="button" onClick={() => setShowCc(true)} className="shrink-0 text-[11px] font-medium text-ink-soft hover:text-ink">{t('Копия')}</button>}
           </div>
           {showCc && (
-            <div className="flex h-11 shrink-0 items-center gap-3 border-b border-[#E5E5EA] px-4">
+            <div className="flex h-11 shrink-0 items-center gap-3 border-b border-[#e5e5ea] px-4">
               <label htmlFor="compose-cc" className="w-12 shrink-0 text-[12px] font-medium text-ink-soft">{t('Копия')}</label>
               <input id="compose-cc" type="text" inputMode="email" value={draft.cc ?? ''} onChange={(e) => setDraft({ ...draft, cc: e.target.value })} placeholder="user@company.local" className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-ink-soft text-ink" />
             </div>
           )}
-          <div className="flex h-11 shrink-0 items-center gap-3 border-b border-[#E5E5EA] px-4">
+          <div className="flex h-11 shrink-0 items-center gap-3 border-b border-[#e5e5ea] px-4">
             <label htmlFor="compose-subject" className="w-12 shrink-0 text-[12px] font-medium text-ink-soft">{t('Тема')}</label>
             <input id="compose-subject" required value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder={t('О чём письмо?')} className="min-w-0 flex-1 border-0 bg-transparent text-sm font-medium outline-none placeholder:font-normal placeholder:text-ink-soft text-ink" />
           </div>
@@ -1020,13 +1020,13 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
           />
           {files.length > 0 && (
             <div className="flex shrink-0 flex-wrap gap-2 px-4 pb-3">
-              {files.map((file, index) => <span key={`${file.name}-${index}`} className="chip"><Paperclip size={11} strokeWidth={1.5} />{file.name}<button type="button" className="ml-1 rounded-full p-0 hover:bg-[#F2F2F7] hover:text-red-600 transition" aria-label={`${t('Удалить вложение')}: ${file.name}`} onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}><X size={11} strokeWidth={1.5} /></button></span>)}
+              {files.map((file, index) => <span key={`${file.name}-${index}`} className="chip"><Paperclip size={11} strokeWidth={1.5} />{file.name}<button type="button" className="ml-1 rounded-full p-0 hover:bg-[#f2f2f7] hover:text-[#ff3b30] transition" aria-label={`${t('Удалить вложение')}: ${file.name}`} onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}><X size={11} strokeWidth={1.5} /></button></span>)}
             </div>
           )}
           {sendError && (
-            <div className="mx-4 mb-3 shrink-0 rounded-xl border border-[#E5E5EA] bg-[#F2F2F7] px-4 py-3 text-sm text-ink" role="alert">{sendError}</div>
+            <div className="mx-4 mb-3 shrink-0 rounded-xl border border-[#e5e5ea] bg-[#f2f2f7] px-4 py-3 text-sm text-ink" role="alert">{sendError}</div>
           )}
-          <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-[#E5E5EA] px-4 py-3 bg-[#F2F2F7]">
+          <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-[#e5e5ea] px-4 py-3 bg-[#f2f2f7]">
             <div className="flex items-center gap-2">
               <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => { const picked = Array.from(e.target.files ?? []); setFiles((previous) => [...previous, ...picked]); e.target.value = ''; }} />
               <IconButton icon={Paperclip} label={t('Прикрепить файлы')} onClick={() => fileRef.current?.click()} size={17} strokeWidth={1.6} />
