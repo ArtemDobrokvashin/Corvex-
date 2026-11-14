@@ -913,6 +913,8 @@ const EN: Record<string, string> = {
   // Calendar
   'Календарь': 'Calendar',
   'Текущее время': 'Current time',
+  'Локальный календарь без серверных событий.': 'Local calendar without server events.',
+  'Открыть календарь': 'Open calendar',
   'Предыдущий месяц': 'Previous month',
   'Следующий месяц': 'Next month',
   'Локальный календарь без серверных событий. Создание и сохранение встреч появятся после подключения сервера календаря.': 'Local calendar without server events. Creating and saving meetings will appear after connecting the calendar server.',

@@ -506,9 +506,26 @@
   color: var(--corvex-accent);
 }
 
-/* ===== Акцентный цвет: светлая тема =====
+/* Поверхности существующих экранов, не покрытые токенами. */
+[data-theme="dark"] .bg-white,
+[data-theme="dark"] .bg-surface { background-color: var(--corvex-surface) !important; }
+[data-theme="dark"] .bg-gray-50,
+[data-theme="dark"] .bg-amber-50,
+[data-theme="dark"] .bg-red-50,
+[data-theme="dark"] .bg-emerald-50 { background-color: var(--corvex-chrome) !important; }
+[data-theme="dark"] .text-faint { color: var(--corvex-muted) !important; }
+[data-theme="dark"] .border-line { border-color: var(--corvex-line) !important; }
+[data-theme="dark"] .shadow-soft { box-shadow: var(--corvex-shadow-soft) !important; }
+html[data-theme="dark"] .mail-workspace,
+html[data-theme="dark"] [data-workspace-background="plain"] .mail-workspace {
+  background: var(--corvex-canvas);
+}
+[data-theme="dark"] .btn-ghost { color: var(--corvex-muted); }
+[data-theme="dark"] .btn-ghost:hover { background-color: rgba(255,255,255,.06); color: var(--corvex-ink); }
+
+/* ===== Акцентный цвет: реальное влияние в обеих темах =====
    Переопределяем Tailwind-токены accent через var(--corvex-accent),
-   чтобы выбранный цвет реально менял интерфейс в обеих темах. */
+   чтобы выбранный цвет акцента реально менял интерфейс в обеих темах. */
 
 html[data-theme="light"] .bg-accent {
   background-color: var(--corvex-accent) !important;

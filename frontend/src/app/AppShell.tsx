@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Calendar,
   Command,
   Globe,
   LogOut,
@@ -19,6 +18,7 @@ import { setAccessToken } from '../api/httpClient';
 import { LanguageSwitcher, systemGroupName, useI18n } from '../i18n';
 import { Avatar, Clock, LoadingScreen, LogoMark } from '../components/ui';
 import { AppearanceSettings } from '../components/AppearanceSettings';
+import { CalendarWidget } from '../components/CalendarWidget';
 import ChangePasswordModal from '../features/auth/ChangePasswordModal';
 import PersonalSettings, { readWorkspaceBackground, saveWorkspaceBackground, type WorkspaceBackground } from './PersonalSettings';
 import SecuritySettingsModal from '../features/auth/SecuritySettingsModal';
@@ -204,7 +204,7 @@ export default function AppShell() {
         <nav className="mt-8 flex w-full flex-col gap-1.5" aria-label={t('Основная навигация')}>
           {navItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
           {navItem('/chat', t('Чат'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
-          {navItem('/calendar', t('Календарь'), Calendar)}
+          <CalendarWidget />
           {canAdmin && navItem('/admin', t('Админ'), ShieldCheck)}
         </nav>
 
@@ -258,7 +258,7 @@ export default function AppShell() {
       <nav className="flex shrink-0 border-t border-corvex-line bg-corvex-surface px-2 pb-[env(safe-area-inset-bottom)] md:hidden" aria-label={t('Основная навигация')}>
         {mobileNavItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
         {mobileNavItem('/chat', t('Сообщения'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
-        {mobileNavItem('/calendar', t('Календарь'), Calendar)}
+        <CalendarWidget className="flex-1" />
         {canAdmin && mobileNavItem('/admin', t('Админ'), ShieldCheck)}
         <button type="button" onClick={() => setSettingsOpen(true)} className="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-muted" aria-label={t('Личные настройки')}><Settings2 size={21} strokeWidth={1.75} />{t('Настройки')}</button>
       </nav>
