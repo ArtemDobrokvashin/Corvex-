@@ -222,10 +222,6 @@ export default function AppShell() {
       <div className="flex-1 flex min-h-0">
         {/* Десктопный сайдбар слева */}
         <aside className="hidden w-[76px] shrink-0 flex-col items-center border-r border-line bg-chrome px-2.5 py-4 md:flex">
-          <button type="button" onClick={() => navigate('/mail')} className="rounded-[13px]" aria-label={t('Corvex — почта')}>
-            <LogoMark size={40} />
-          </button>
-
           <nav className="mt-8 flex w-full flex-col gap-1.5" aria-label={t('Основная навигация')}>
             {navItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
             {navItem('/chat', t('Чат'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
@@ -245,10 +241,6 @@ export default function AppShell() {
 
           <div className="mt-auto flex flex-col items-center gap-3">
             {demoMode && <span className="rounded-full bg-amber-100 px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-amber-800">{t('Демо')}</span>}
-            <Clock className="mt-1" />
-            <button type="button" onClick={() => setProfileOpen(!profileOpen)} className="rounded-full ring-accent/30 transition hover:ring-4" aria-label={t('Профиль пользователя')}>
-              <Avatar name={user.displayName} size={40} presence />
-            </button>
           </div>
         </aside>
 
