@@ -40,6 +40,8 @@ public class ClamAvClient {
     private static final int MAX_REPLY_SIZE = 1_024 * 1_024;
     /** clamd завершает ответ на zINSTREAM NUL-байтом. */
     private static final char NUL = '\0';
+    /** read() == 0 более 100 раз подряд считается застывшим потоком. */
+    private static final int MAX_CONSECUTIVE_ZERO_READS = 100;
 
     private final String host;
     private final int port;
@@ -72,19 +74,27 @@ public class ClamAvClient {
             var out = new DataOutputStream(socket.getOutputStream());
             out.write("zINSTREAM\0".getBytes(StandardCharsets.US_ASCII));
 
-            // Читаем весь входной поток до конца. read() может вернуть 0 (нет данных
-            // сейчас, но поток не закрыт) — это не конец, продолжаем читать.
-            // read() возвращает -1 только при достижении конца потока.
+            // Читаем весь входной поток до конца. read() возвращает -1 только при
+            // достижении конца потока. read() == 0 означает "нет данных сейчас",
+            // но если это повторяется много раз подряд — поток застрял, и мы
+            // безопасно завершаем сканирование с ERROR, чтобы не уйти в бесконечный цикл.
             byte[] buf = new byte[CHUNK];
             int n;
+            int consecutiveZeros = 0;
             while (true) {
                 n = in.read(buf);
                 if (n < 0) {
                     break; // конец потока — всё отправлено
                 }
                 if (n == 0) {
+                    consecutiveZeros++;
+                    if (consecutiveZeros > MAX_CONSECUTIVE_ZERO_READS) {
+                        return new ScanResult(Result.ERROR,
+                                "входной поток не передаёт данные (read() == 0)");
+                    }
                     continue; // не конец потока, пробуем ещё
                 }
+                consecutiveZeros = 0;
                 out.writeInt(n);
                 out.write(buf, 0, n);
             }

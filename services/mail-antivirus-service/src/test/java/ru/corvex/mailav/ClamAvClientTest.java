@@ -1,9 +1,6 @@
 package ru.corvex.mailav;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.TestPropertySource;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -22,7 +19,6 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ClamAvClientTest {
@@ -209,6 +205,23 @@ class ClamAvClientTest {
 
             assertEquals(ClamAvClient.Result.CLEAN, result.result());
             assertArrayEquals(payload, clamd.payload());
+        }
+    }
+
+    /**
+     * InputStream, который постоянно возвращает 0 (имитация застывшего потока).
+     * Клиент должен безопасно завершить сканирование с ERROR, а не уйти в
+     * бесконечный цикл.
+     */
+    @Test
+    void inputStreamAlwaysReturningZeroProducesError() throws Exception {
+        try (FakeClamd clamd = new FakeClamd("stream: OK\0")) {
+            ClamAvClient client = new ClamAvClient("127.0.0.1", clamd.port());
+
+            ClamAvClient.ScanResult result = client.scan(new AlwaysZeroInputStream());
+
+            assertEquals(ClamAvClient.Result.ERROR, result.result());
+            assertNotNull(result.signature());
         }
     }
 
@@ -412,26 +425,20 @@ class ClamAvClientTest {
             return toCopy;
         }
     }
-}
 
-/**
- * Проверка создания бина ClamAvClient через реальный Spring-контекст.
- * Убеждается, что @Autowired конструктор выбирается корректно при наличии
- * второго конструктора с настраиваемыми таймаутами.
- */
-@SpringBootTest(classes = ClamAvClient.class)
-@TestPropertySource(properties = {
-    "corvex.clamd.host=clamav",
-    "corvex.clamd.port=3310"
-})
-class ClamAvClientContextTest {
+    /**
+     * InputStream, который постоянно возвращает 0 (имитация застывшего потока).
+     * Никогда не возвращает -1 (конец) и никогда не отдаёт реальных данных.
+     */
+    private static final class AlwaysZeroInputStream extends InputStream {
+        @Override
+        public int read() {
+            return 0;
+        }
 
-    @Autowired
-    private ClamAvClient clam;
-
-    @Test
-    void springContextCreatesClamAvClientBean() {
-        assertNotNull(clam);
-        assertSame(ClamAvClient.class, clam.getClass());
+        @Override
+        public int read(byte[] b, int off, int len) {
+            return 0;
+        }
     }
 }

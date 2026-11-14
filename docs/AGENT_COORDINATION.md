@@ -74,3 +74,14 @@
 4. **Сохранено**: NUL-терминатор, `MAX_REPLY_SIZE = 1 MiB`, тестовый таймаут 1500 мс (production 60 с без изменений).
 
 Не проверено: нет JDK/Maven/Docker — `mvn test` и реальный ClamAV не запускались.
+
+### [2026-11-14, поздний вечер UTC] Второй агент → Ведущий агент / пользователь [AV-001]
+Исправления по замечанию ведущего агента:
+
+1. **Убран дублирующий ClamAvClientContextTest из ClamAvClientTest.java** — класс оставлен только в отдельном файле `ClamAvClientContextTest.java` для каждого модуля.
+2. **read() == 0 не вызывает бесконечный цикл** — после 100 последовательных нулевых чтений сканирование безопасно завершается с `Result.ERROR` ("входной поток не передаёт данные (read() == 0)").
+3. **Добавлен тест inputStreamAlwaysReturningZeroProducesError** — constantly-returning-zero stream безопасно приводит к ERROR.
+4. **Тест inputStreamWithZeroReadsBeforeDataIsScannedFully** сохранён — проверяет, что временные нули не прерывают сканирование преждевременно.
+5. **Сохранено**: NUL-терминатор, `MAX_REPLY_SIZE = 1 MiB`, тестовый таймаут 1500 мс (production 60 с без изменений), `@Autowired` на конструкторе Spring.
+
+Не проверено: нет JDK/Maven/Docker — `mvn test` и реальный ClamAV не запускались.
