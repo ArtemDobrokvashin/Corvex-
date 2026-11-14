@@ -8,6 +8,8 @@ class GuardSourceInstallTest(unittest.TestCase):
         text = (Path(__file__).resolve().parents[1] / 'install-av-guard-sources.ps1').read_bytes().decode('ascii')
         for required in ("3e208a549fbfd7bb02f7d3ee8d5fc4489f3dd134", "$candidate = 'eda8c7d'",
                          '$wantedTree = Read-Tree $candidate', '$baseTree = Read-Tree $base',
+                         '0856e37bdcc6701dbd955f58272d6a05015f84d4',
+                         '$knownLaptop.ContainsKey($path) -and $current -ceq $knownLaptop[$path]',
                          'Source has independent edits; preserve and inspect',
                          'Extra source file; preserve and inspect',
                          'Reparse points are not supported', 'if (-not $Apply)',

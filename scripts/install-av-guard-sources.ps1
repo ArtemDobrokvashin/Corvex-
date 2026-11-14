@@ -13,6 +13,11 @@ $base = '3e208a549fbfd7bb02f7d3ee8d5fc4489f3dd134'
 $candidate = 'eda8c7d'
 $prefix = 'services/mail-antivirus-service/'
 $srcPrefix = $prefix + 'src/'
+# Precisely identified on the laptop by the read-only history inventory. These
+# blobs are historical project versions, not permission to overwrite other edits.
+$knownLaptop = @{
+    'services/mail-antivirus-service/src/main/java/ru/corvex/mailav/ClamAvClient.java' = '0856e37bdcc6701dbd955f58272d6a05015f84d4'
+}
 $tag = [guid]::NewGuid().ToString('N')
 $work = Join-Path ([IO.Path]::GetTempPath()) ('corvex-av-source-backup-' + $tag)
 $stage = 'preflight'
@@ -89,7 +94,9 @@ try {
             if ($exists) {
                 $current = File-Oid $local
                 if ($current -ceq $wantedTree[$path]) { continue }
-                if (-not $baseTree.ContainsKey($path) -or $current -cne $baseTree[$path]) {
+                $baseMatch = $baseTree.ContainsKey($path) -and $current -ceq $baseTree[$path]
+                $laptopMatch = $knownLaptop.ContainsKey($path) -and $current -ceq $knownLaptop[$path]
+                if (-not $baseMatch -and -not $laptopMatch) {
                     throw "Source has independent edits; preserve and inspect: $path"
                 }
             } else {
