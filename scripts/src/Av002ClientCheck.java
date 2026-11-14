@@ -1,5 +1,6 @@
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
@@ -187,7 +188,7 @@ public class Av002ClientCheck {
         private final Thread handler;
 
         private FakeEndpoint(int port, int expectedConnections) throws Exception {
-            this.server = new ServerSocket(port);
+            this.server = new ServerSocket(port, 50, InetAddress.getByName("127.0.0.1"));
             this.server.setReuseAddress(true);
             this.server.setSoTimeout(60_000);
             this.handler = new Thread(() -> serve(expectedConnections), "av002-fake-endpoint");

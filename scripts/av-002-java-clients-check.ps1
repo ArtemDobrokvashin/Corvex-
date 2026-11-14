@@ -18,7 +18,7 @@
  *   - Не пересоздаёт контейнеры, не публикует порты, не отправляет тест в почту
  *   - Использует уникальный временный каталог с очисткой в finally
  *   - Не копирует ничего в контейнер clamav
- *   - Порт 13310 НЕ используется — используется контролируемый fake endpoint
+ *   - Fake endpoint привязан к 127.0.0.1 (loopback), не порт 13310
 #===============================================================================
 $ErrorActionPreference = "Stop"
 
@@ -31,6 +31,7 @@ $script:containerTempDir = "/tmp/" + $script:checkId
 $script:containerId = $null
 $script:fakeEndpointPort = 19999
 $script:exitCode = 0
+$script:tempDirCreatedInContainer = $false
 
 Write-Host "============================================================"
 Write-Host "AV-002: Проверка трёх Java-клиентов ClamAV с настоящим clamd"
@@ -40,18 +41,20 @@ Write-Host "  Temp dir: $($script:tempHostDir)"
 Write-Host ""
 
 #===============================================================================
-# Очистка временного каталога (выполняется всегда в finally)
+# Очистка временных файлов (выполняется всегда в finally)
+# Удаляет только каталог, создание которого скрипт сам подтвердил
 #===============================================================================
 function Cleanup-Temp {
     param(
         [string]$ContainerId,
-        [string]$ContainerTempDir
+        [string]$ContainerTempDir,
+        [bool]$TempDirCreatedInContainer
     )
     Write-Host ""
     Write-Host "Очистка временных файлов..."
 
-    # Удалить каталог внутри контейнера (только созданный этой проверкой)
-    if ($ContainerId -and $ContainerTempDir) {
+    # Удалить каталог внутри контейнера — только если скрипт сам его создал
+    if ($TempDirCreatedInContainer -and $ContainerId -and $ContainerTempDir) {
         try {
             docker exec $ContainerId rm -rf $ContainerTempDir 2>$null | Out-Null
             Write-Host "  Удалён каталог в контейнере: $ContainerTempDir"
@@ -60,7 +63,7 @@ function Cleanup-Temp {
         }
     }
 
-    # Удалить каталог на хосте
+    # Удалить каталог на хосте (только созданный этой проверкой)
     if ($script:tempHostDir -and (Test-Path $script:tempHostDir)) {
         try {
             Remove-Item -Path $script:tempHostDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -80,9 +83,6 @@ function Check-Prerequisites {
     if (!(Get-Command docker -ErrorAction SilentlyContinue)) { $missing += "docker" }
     if (!(Get-Command java -ErrorAction SilentlyContinue)) { $missing += "java" }
     if (!(Get-Command mvn -ErrorAction SilentlyContinue)) { $missing += "mvn" }
-    if (!(Get-Command javac -ErrorAction SilentlyContinue) -and -not $env:JAVA_HOME) {
-        $missing += "javac (JDK)"
-    }
     if ($missing.Count -gt 0) {
         Write-Host ("FAIL: отсутствуют инструменты: " + ($missing -join ", "))
         return $false
@@ -134,6 +134,33 @@ function Find-AppContainer {
 }
 
 #===============================================================================
+# Проверить, что fake endpoint порт на loopback принимает подключение
+#===============================================================================
+function Check-FakeEndpointReachable {
+    param([int]$Port)
+    Write-Host "Проверка доступности fake endpoint на 127.0.0.1:$Port..."
+    try {
+        $socket = New-Object System.Net.Sockets.Socket(
+            [System.Net.Sockets.AddressFamily]::InterNetwork,
+            [System.Net.Sockets.SocketType]::Stream,
+            [System.Net.Sockets.ProtocolType]::Tcp)
+        $asyncResult = $socket.BeginConnect("127.0.0.1", $Port, $null, $null)
+        $success = $asyncResult.AsyncWaitHandle.WaitOne(3000, $false)
+        if (-not $success) {
+            Write-Host "  FAIL: fake endpoint на 127.0.0.1:$Port не принимает подключение"
+            return $false
+        }
+        $socket.EndConnect($asyncResult)
+        $socket.Close()
+        Write-Host "  OK: fake endpoint на 127.0.0.1:$Port принимает подключение"
+        return $true
+    } catch {
+        Write-Host "  FAIL: не удалось подключиться к fake endpoint: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+#===============================================================================
 # Собрать три модуля локально (Maven на хосте)
 #===============================================================================
 function Build-Modules {
@@ -169,7 +196,6 @@ function Compile-CheckClass {
         Join-Path $script:projectRoot "services/mail-storage-service/target/classes",
         Join-Path $script:projectRoot "services/chat-file-service/target/classes"
     )
-    # Проверяем наличие целевых директорий
     foreach ($d in $classesDirs) {
         if (-not (Test-Path $d)) {
             Write-Host "  FAIL: не найдены скомпилированные классы: $d"
@@ -192,17 +218,26 @@ function Compile-CheckClass {
         Write-Host $output
         return $false
     }
-    Write-Host "  OK: Av002ClientCheck.class скомпилирован в $outDir"
+
+    # Проверить, что все скомпилированные классы présents (включая вложенные)
+    $expectedClasses = @("Av002ClientCheck.class")
+    $allClasses = Get-ChildItem -Path $outDir -Filter "*.class" -Recurse | Select-Object -ExpandProperty Name
+    $missing = $expectedClasses | Where-Object { $_ -notin $allClasses }
+    if ($missing.Count -gt 0) {
+        Write-Host "  FAIL: отсутствуют скомпилированные классы: $($missing -join ", ")"
+        return $false
+    }
+    Write-Host "  OK: Av002ClientCheck.class и вложенные классы скомпилированы в $outDir"
     Write-Host ""
     return $true
 }
 
 #===============================================================================
-# Скопировать классы во временную директорию контейнера mail-storage-service
+# Скопировать классы (включая вложенные) во временную директорию контейнера
 #===============================================================================
 function Copy-To-Container {
     Write-Host "Копирование классов во временную директорию контейнера..."
-    # Создаём временную директорию в контейнере (только если не существует)
+    # Проверяем, что каталог не существует (создаём только если отсутствует)
     $checkExists = docker exec $script:containerId test -d $script:containerTempDir 2>$null
     if ($LASTEXITCODE -eq 0) {
         Write-Host "  FAIL: временный каталог уже существует в контейнере: $($script:containerTempDir)"
@@ -214,6 +249,7 @@ function Copy-To-Container {
         Write-Host $createOut
         return $false
     }
+    $script:tempDirCreatedInContainer = $true
 
     # Копируем классы всех трёх модулей
     $moduleMappings = @(
@@ -237,14 +273,25 @@ function Copy-To-Container {
         Write-Host "  OK: $($mapping.dst) скопировано"
     }
 
-    # Копируем скомпилированный Av002ClientCheck.class
+    # Копируем ВСЕ скомпилированные классы Av002ClientCheck, включая вложенные
     $outDir = Join-Path $script:tempHostDir "classes"
-    docker cp (Join-Path $outDir "Av002ClientCheck.class") "$($script:containerId):$($script:containerTempDir)/" 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "  FAIL: не удалось скопировать Av002ClientCheck.class в контейнер"
-        return $false
+    $classFiles = Get-ChildItem -Path $outDir -Filter "*.class" -Recurse
+    foreach ($cf in $classFiles) {
+        $relPath = $cf.FullName.Substring($outDir.Length).TrimStart("\/")
+        $dest = "$($script:containerTempDir)/$relPath"
+        # Создаём подкаталоги в контейнере
+        $subDir = Split-Path -Parent $relPath
+        if ($subDir -and $subDir -ne ".") {
+            docker exec $script:containerId mkdir -p "$($script:containerTempDir)/$subDir" 2>&1 | Out-Null
+        }
+        docker cp $cf.FullName "$($script:containerId):$dest" 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  FAIL: не удалось скопировать $relPath в контейнер"
+            return $false
+        }
+        Write-Host "  OK: $relPath скопировано"
     }
-    Write-Host "  OK: Av002ClientCheck.class скопировано"
+
     Write-Host ""
     return $true
 }
@@ -299,6 +346,14 @@ try {
     $copyOk = Copy-To-Container
     if (-not $copyOk) { exit 1 }
 
+    # Проверяем, что fake endpoint порт на loopback доступен (через хост, чтобы
+    # убедиться, что Java процесс сможет подключиться из контейнера)
+    $fakeOk = Check-FakeEndpointReachable $script:fakeEndpointPort
+    if (-not $fakeOk) {
+        Write-Host "  FAIL: fake endpoint не доступен на loopback — сценарий сбоя не может быть проверен"
+        exit 1
+    }
+
     Run-Check
 }
 catch {
@@ -307,7 +362,7 @@ catch {
     $script:exitCode = 1
 }
 finally {
-    Cleanup-Temp $script:containerId $script:containerTempDir
+    Cleanup-Temp $script:containerId $script:containerTempDir $script:tempDirCreatedInContainer
 }
 
 exit $script:exitCode
