@@ -217,11 +217,16 @@ backup manifest `C:\Users\Dobrokvashin_A_E\AppData\Local\Temp\corvex-av-source-b
 статически проверены, но ещё не запускались на Windows/Docker; в частности,
 **полный rollback не испытан**. Их нельзя считать доказательством crash recovery.
 Восстановление старого образа также возвращает его прежние недостатки.
+На ноутбуке `9e33cfa` кандидат запущен, AV healthy, после запуска четыре
+очереди показали ready=0/unacked=0, рабочие consumers=1. Manifest:
+`C:\Users\Dobrokvashin_A_E\AppData\Local\Temp\corvex-av-deploy-ea42f64d0df84ac0bcf7184e3367258b\deployment-manifest.json`, резервный tag
+`corvex-av-guard:previous-ea42f64d0df84ac0bcf7184e3367258b`. Это не live
+проверка EICAR/outage и не испытание отката.
 
 Даже после замены образа AlertExceedsMax не включён, а false CLEAN остаётся:
 кандидат один не устраняет его. До включения James AV и переноса реальной почты
-необходимы устранение этого ограничения и live EICAR/outage/recovery. Пока
-runtime-изменения AV не развёрнуты.
+необходимы устранение этого ограничения и live EICAR/outage/recovery. James
+AV overlay остаётся выключенным; развёрнут только кандидат отдельного AV-сервиса.
 
 Исходники ClamAV 1.5.4 уточняют описание примера конфигурации: код также вызывает
 limit-alert для некоторых случаев MaxFiles и MaxScanTime ([others.c](https://github.com/Cisco-Talos/clamav/blob/clamav-1.5.4/libclamav/others.c),
