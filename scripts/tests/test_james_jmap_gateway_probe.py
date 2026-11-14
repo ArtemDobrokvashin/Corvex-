@@ -39,6 +39,16 @@ class GatewayProbeGuards(unittest.TestCase):
         self.assertIn('Request rejected', PROBE)
         self.assertNotIn('BodyPublishers.ofFile', PROBE)
 
+    def test_installed_probe_does_not_recreate_services_or_modify_mail(self):
+        script = (ROOT / 'scripts/test-james-jmap-installed.ps1').read_text(encoding='utf-8')
+        self.assertIn('corvex-james-jmap-read-gateway:local', script)
+        self.assertIn("Probe 'tls'", script)
+        self.assertIn("Probe 'gateway'", script)
+        self.assertIn('acknowledged-and-jmap-verified', script)
+        for forbidden in ('docker @Base up', 'docker build', 'docker network', 'force-recreate', 'docker compose down'):
+            self.assertNotIn(forbidden, script)
+        self.assertIn("$Remote -match '^/tmp/corvex-jmap-guard-[0-9a-f]{32}$'", script)
+
     def test_image_build_runs_unit_tests(self):
         self.assertIn('RUN node --test gateway.test.cjs', DOCKERFILE)
         self.assertIn('COPY --from=checked /app/gateway.cjs', DOCKERFILE)
