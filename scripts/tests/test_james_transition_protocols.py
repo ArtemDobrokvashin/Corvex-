@@ -15,7 +15,10 @@ class TransitionProtocolsTests(unittest.TestCase):
                 tree = ET.parse(ROOT / 'infra/james/protocols' / filename)
                 self.assertEqual(tree.getroot().tag, root)
                 self.assertEqual(len(tree.getroot()), 0)
-                self.assertIn('source: ./infra/james/protocols/' + filename, compose)
+                if filename == 'smtpserver.xml':
+                    self.assertIn('source: ${CORVEX_JAMES_SMTP_CONFIG_FILE:-./infra/james/protocols/smtpserver.xml}', compose)
+                else:
+                    self.assertIn('source: ./infra/james/protocols/' + filename, compose)
                 self.assertIn('target: /root/conf/' + filename, compose)
 
 if __name__ == '__main__': unittest.main()

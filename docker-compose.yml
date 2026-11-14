@@ -236,7 +236,7 @@ services:
         read_only: true
         bind: { create_host_path: false }
       - type: bind
-        source: ./infra/james/protocols/smtpserver.xml
+        source: ${CORVEX_JAMES_SMTP_CONFIG_FILE:-./infra/james/protocols/smtpserver.xml}
         target: /root/conf/smtpserver.xml
         read_only: true
         bind: { create_host_path: false }
