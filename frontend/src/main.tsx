@@ -11,6 +11,7 @@ import './index.css';
 const MailPage = lazy(() => import('./features/mail/MailPage'));
 const ChatPage = lazy(() => import('./features/chat/ChatPage'));
 const AdminPage = lazy(() => import('./features/admin/AdminPage'));
+const CalendarPage = lazy(() => import('./features/calendar/CalendarPage'));
 
 function RouteLoading({ source }: { source: string }) {
   const t = useT();
@@ -26,6 +27,7 @@ const router = createBrowserRouter([
       { index: true, element: <Navigate to="/mail" replace /> },
       { path: 'mail', element: <Suspense fallback={<RouteLoading source="Загружаем почту…" />}><MailPage /></Suspense> },
       { path: 'chat', element: <Suspense fallback={<RouteLoading source="Загружаем сообщения…" />}><ChatPage /></Suspense> },
+      { path: 'calendar', element: <Suspense fallback={<RouteLoading source="Загружаем календарь…" />}><CalendarPage /></Suspense> },
       { path: 'admin/:section?', element: <Suspense fallback={<RouteLoading source="Загружаем администрирование…" />}><AdminPage /></Suspense> },
     ],
   },

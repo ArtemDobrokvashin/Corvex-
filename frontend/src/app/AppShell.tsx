@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
+  Calendar,
   Command,
   Globe,
   LogOut,
@@ -15,7 +16,7 @@ import { logout as apiLogout, restoreSession } from '../api/authApi';
 import { DEMO_MAILS, DEMO_ROOMS, getDemoUser } from '../api/demoData';
 import { setAccessToken } from '../api/httpClient';
 import { LanguageSwitcher, systemGroupName, useI18n } from '../i18n';
-import { Avatar, LoadingScreen, LogoMark } from '../components/ui';
+import { Avatar, Clock, LoadingScreen, LogoMark } from '../components/ui';
 import ChangePasswordModal from '../features/auth/ChangePasswordModal';
 import SecuritySettingsModal from '../features/auth/SecuritySettingsModal';
 import { canAccessAdmin } from '../features/admin/adminAccess';
@@ -173,6 +174,7 @@ export default function AppShell() {
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-surface/95 px-4 md:hidden">
         <LogoMark size={34} />
         <span className="text-[17px] font-semibold tracking-[-0.02em]">Corvex</span>
+        <Clock className="shrink-0 ml-2 text-[11px]" />
         <div className="ml-auto flex items-center gap-1">
           <button type="button" onClick={() => setPaletteOpen(true)} className="icon-btn" aria-label={t('Быстрый переход')}><Search size={19} /></button>
           <button type="button" onClick={() => setProfileOpen(!profileOpen)} className="rounded-full" aria-label={t('Профиль')}>
@@ -190,6 +192,7 @@ export default function AppShell() {
         <nav className="mt-8 flex w-full flex-col gap-1.5" aria-label={t('Основная навигация')}>
           {navItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
           {navItem('/chat', t('Чат'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
+          {navItem('/calendar', t('Календарь'), Calendar)}
           {canAdmin && navItem('/admin', t('Админ'), Settings2)}
         </nav>
 
@@ -216,6 +219,7 @@ export default function AppShell() {
 
         <div className="mt-auto flex flex-col items-center gap-3">
           {demoMode && <span className="rounded-full bg-amber-100 px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-amber-800">{t('Демо')}</span>}
+          <Clock className="mt-1" />
           <button type="button" onClick={() => setProfileOpen(!profileOpen)} className="rounded-full ring-accent/30 transition hover:ring-4" aria-label={t('Профиль пользователя')}>
             <Avatar name={user.displayName} size={40} presence />
           </button>
@@ -238,6 +242,7 @@ export default function AppShell() {
       <nav className="flex shrink-0 border-t border-line bg-surface px-2 pb-[env(safe-area-inset-bottom)] md:hidden" aria-label={t('Основная навигация')}>
         {mobileNavItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
         {mobileNavItem('/chat', t('Сообщения'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
+        {mobileNavItem('/calendar', t('Календарь'), Calendar)}
         {canAdmin && mobileNavItem('/admin', t('Админ'), Settings2)}
       </nav>
 
