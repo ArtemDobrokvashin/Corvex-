@@ -71,7 +71,7 @@ try {
 } finally {
     if ($RemoteOwned -and $Container -and $Remote -match '^/tmp/corvex-av002-[0-9a-f]{32}$') {
         try {
-            & docker exec $Container sh -c 'find "$1" -depth -delete' sh $Remote
+            & docker exec -u 0 $Container sh -c 'find "$1" -depth -delete' sh $Remote
             if ($LASTEXITCODE -ne 0) { Write-Warning 'Container temporary cleanup failed.' }
         } catch { Write-Warning 'Container temporary cleanup failed.' }
     }
