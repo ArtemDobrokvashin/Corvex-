@@ -14,6 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -150,6 +151,21 @@ class ExternalOutboundWorkerTest {
         assertTrue(retries().isEmpty());
         verify(smtp).appendSent(config, EML);
         verify(raw).delete(RAW_REF);
+    }
+
+    @Test
+    void cleanupFailureAfterProviderAcceptanceEscapesWithoutAnotherSend() throws Exception {
+        when(raw.download(RAW_REF)).thenReturn(EML);
+        when(configs.fetch(ACCOUNT_ID)).thenReturn(config);
+        var recipients = List.of("a@example.com");
+        when(smtp.send(config, EML, FROM, recipients))
+                .thenReturn(List.of(result("a@example.com", SmtpRelayClient.Status.SENT, "250 OK")));
+        doThrow(new IllegalStateException("cleanup failed")).when(raw).delete(RAW_REF);
+
+        assertThrows(IllegalStateException.class,
+                () -> worker.onExternalQueued(payload(event(recipients, Instant.now(), 1))));
+        verify(smtp).send(config, EML, FROM, recipients);
+        assertTrue(retries().isEmpty());
     }
 
     @Test

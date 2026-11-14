@@ -1,6 +1,8 @@
 package ru.corvex.mailstorage.pipeline;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.aopalliance.aop.Advice;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.Declarables;
@@ -61,7 +63,13 @@ class StoragePipelineAmqpConfigTest {
         assertInstanceOf(SimpleMessageConverter.class, config.simpleMessageConverter());
         var factory = config.mailListenerFactory(mock(ConnectionFactory.class));
         assertNotNull(factory);
-        assertNotNull(config.bounceListenerFactory(mock(ConnectionFactory.class)));
+        var bounceFactory = config.bounceListenerFactory(mock(ConnectionFactory.class));
+        assertNotNull(bounceFactory);
+        var container = bounceFactory.createListenerContainer(null);
+        assertEquals(Boolean.FALSE, ReflectionTestUtils.getField(container, "defaultRequeueRejected"));
+        Advice[] advice = (Advice[]) ReflectionTestUtils.getField(container, "adviceChain");
+        assertNotNull(advice);
+        assertEquals(0, advice.length);
     }
 
     @Test

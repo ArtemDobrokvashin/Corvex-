@@ -1,6 +1,5 @@
 package ru.corvex.mailsmtp.outbound;
 
-import org.aopalliance.aop.Advice;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.Declarable;
@@ -8,10 +7,8 @@ import org.springframework.amqp.core.Declarables;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.core.TopicExchange;
-import org.springframework.amqp.rabbit.config.RetryInterceptorBuilder;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
-import org.springframework.amqp.rabbit.retry.RejectAndDontRequeueRecoverer;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.amqp.support.converter.SimpleMessageConverter;
 import org.springframework.context.annotation.Bean;
@@ -120,16 +117,10 @@ public class OutboundAmqpConfig {
         SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
         factory.setConnectionFactory(connectionFactory);
         factory.setMessageConverter(new SimpleMessageConverter());
+        // Retrying the entire listener after SMTP may resend to recipients who
+        // already accepted the message. Unhandled errors go to the DLQ instead.
+        // Explicit TTL retries and broker redelivery remain separate risks.
         factory.setDefaultRequeueRejected(false);
-        factory.setAdviceChain(mailRetryAdvice());
         return factory;
-    }
-
-    private Advice mailRetryAdvice() {
-        return RetryInterceptorBuilder.stateless()
-                .maxAttempts(3)
-                .backOffOptions(1_000, 2.0, 5_000)
-                .recoverer(new RejectAndDontRequeueRecoverer())
-                .build();
     }
 }

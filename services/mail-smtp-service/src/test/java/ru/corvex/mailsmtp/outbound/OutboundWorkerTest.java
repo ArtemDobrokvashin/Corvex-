@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -155,6 +156,21 @@ class OutboundWorkerTest {
 
         assertTrue(retries().isEmpty());
         verify(raw).delete(RAW_REF);
+    }
+
+    @Test
+    void cleanupFailureAfterSuccessfulSmtpEscapesWithoutAnotherSend() throws Exception {
+        when(raw.download(RAW_REF)).thenReturn(EML);
+        when(dkim.signIfConfigured(EML, FROM)).thenReturn(SIGNED);
+        var recipients = List.of("a@example.com");
+        when(relay.sendToDomain(SIGNED, FROM, "example.com", recipients))
+                .thenReturn(List.of(result("a@example.com", SmtpRelayClient.Status.SENT, "250 OK")));
+        doThrow(new IllegalStateException("cleanup failed")).when(raw).delete(RAW_REF);
+
+        assertThrows(IllegalStateException.class,
+                () -> worker.onOutboundQueued(payload(event(recipients, Instant.now(), 1))));
+        verify(relay).sendToDomain(SIGNED, FROM, "example.com", recipients);
+        assertTrue(retries().isEmpty());
     }
 
     @Test
