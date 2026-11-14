@@ -461,6 +461,7 @@ public class ExternalMailSyncService {
         }
 
         ExternalMailImportedMessage record = retryRecord;
+        boolean persistenceMayHaveStarted = false;
         boolean publicationMayHaveStarted = false;
         try {
             if (imported.existsByAccount_IdAndRemoteFolderAndSha256AndStatusIn(
@@ -477,6 +478,9 @@ public class ExternalMailSyncService {
             record.setRawRef(stored.rawRef());
             record.setStatus(ExternalMailImportedMessage.Status.QUEUED);
             record.setError(null);
+            // A database commit may succeed even if the client loses its reply.
+            // From this point the record may already refer to these bytes.
+            persistenceMayHaveStarted = true;
             record = imported.saveAndFlush(record);
             // From this point the broker may accept the event even if the
             // publisher confirm is lost. Never delete its referenced bytes or
@@ -493,7 +497,7 @@ public class ExternalMailSyncService {
             advanceCursor(account, envelope, lastSuccessfulUid);
             return ExternalMailClient.HandleResult.QUEUED;
         } catch (Exception e) {
-            if (!publicationMayHaveStarted) {
+            if (!persistenceMayHaveStarted) {
                 try {
                     spool.delete(stored.rawRef());
                 } catch (Exception ignored) {
@@ -506,10 +510,11 @@ public class ExternalMailSyncService {
                     imported.saveAndFlush(record);
                 }
             } else {
-                // Do not overwrite the record: a consumer may already have
-                // marked it DELIVERED. QUEUED without an event still requires
-                // reconciliation; this is not a transactional outbox.
-                log.warn("External mail publish outcome uncertain; retaining spool for reconciliation, account={}, folder={}, uid={}",
+                // The write may have committed even if the response was lost.
+                // If publishing started, a consumer may already have delivered.
+                // Never overwrite either state or remove the spool blindly.
+                log.warn("External mail {} outcome uncertain; retaining spool for reconciliation, account={}, folder={}, uid={}",
+                        publicationMayHaveStarted ? "publish" : "persistence",
                         account.getId(), envelope.remoteFolder(), envelope.remoteUid());
             }
             counters.failed.incrementAndGet();

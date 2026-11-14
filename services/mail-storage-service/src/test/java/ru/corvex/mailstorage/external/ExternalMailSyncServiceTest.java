@@ -635,6 +635,52 @@ class ExternalMailSyncServiceTest {
     }
 
     @Test
+    void uncertainDatabaseCommitRetainsReferencedSpoolAndDoesNotPublishOrRetry() throws Exception {
+        remoteFolders = List.of(remoteFolder("INBOX", "INBOX", 7L, 10, 1));
+        var envelope = envelope("INBOX", "1", 7L, null, "a@x", false);
+        fetchEnvelopes.put("INBOX", List.of(envelope));
+        doAnswer(inv -> {
+            ExternalMailImportedMessage record = inv.getArgument(0);
+            record.setId(UUID.randomUUID());
+            importedRecords.add(record);
+            importedByKey.put(key(record.getRemoteFolder(), record.getUIDValidity(), record.getRemoteUid()), record);
+            throw new IllegalStateException("commit reply lost");
+        }).when(imported).saveAndFlush(any(ExternalMailImportedMessage.class));
+
+        execute(ExternalMailSyncRun.Trigger.SCHEDULED);
+
+        assertEquals(ExternalMailSyncRun.Status.PARTIAL, run.getStatus());
+        assertEquals(ExternalMailImportedMessage.Status.QUEUED, importedRecords.get(0).getStatus());
+        assertTrue(spool.exists(importedRecords.get(0).getRawRef()));
+        assertEquals(0, stateByFolder.get("INBOX").getLastSeenUid());
+        verify(events, never()).publishConfirmed(anyString(), any(), anyString());
+        execute(ExternalMailSyncRun.Trigger.SCHEDULED);
+        verify(imported, times(1)).saveAndFlush(any(ExternalMailImportedMessage.class));
+        verify(events, never()).publishConfirmed(anyString(), any(), anyString());
+    }
+
+    @Test
+    void failedDatabaseWriteWithUnknownOutcomeKeepsOrphanForReconciliation() throws Exception {
+        remoteFolders = List.of(remoteFolder("INBOX", "INBOX", 7L, 10, 1));
+        fetchEnvelopes.put("INBOX", List.of(envelope("INBOX", "1", 7L, null, "a@x", false)));
+        AtomicReference<String> rawRef = new AtomicReference<>();
+        doAnswer(inv -> {
+            ExternalMailImportedMessage record = inv.getArgument(0);
+            rawRef.set(record.getRawRef());
+            throw new IllegalStateException("write failed before commit");
+        }).when(imported).saveAndFlush(any(ExternalMailImportedMessage.class));
+
+        execute(ExternalMailSyncRun.Trigger.SCHEDULED);
+
+        assertEquals(ExternalMailSyncRun.Status.PARTIAL, run.getStatus());
+        assertNotNull(rawRef.get());
+        assertTrue(spool.exists(rawRef.get()));
+        assertTrue(importedRecords.isEmpty());
+        assertEquals(0, stateByFolder.get("INBOX").getLastSeenUid());
+        verify(events, never()).publishConfirmed(anyString(), any(), anyString());
+    }
+
+    @Test
     void publisherTimeoutDoesNotOverwriteDeliveryAlreadyCompletedByConsumer() throws Exception {
         remoteFolders = List.of(remoteFolder("INBOX", "INBOX", 7L, 10, 1));
         fetchEnvelopes.put("INBOX", List.of(envelope("INBOX", "1", 7L, null, "a@x", false)));
