@@ -24,12 +24,23 @@ try {
         if ($LASTEXITCODE -ne 0 -or $mountJson.Count -ne 1) { throw 'Cannot inspect mounts.' }
         $mounts = @(ConvertFrom-Json -InputObject $mountJson[0])
         if ($mounts.Count -eq 1 -and $mounts[0] -is [array]) { $mounts = @($mounts[0]) }
+        $relevantMounts = @()
         foreach ($mount in $mounts) {
-            if ($mount.Destination -ceq '/root' -or $mount.Destination -ceq '/root/conf' -or
-                $mount.Destination -ceq '/root/conf/mailetcontainer.xml' -or $mount.Destination -like '/root/extensions-jars*') {
-                throw 'Custom mailet config or extension mount already exists; inspect before enabling.'
+            $destination = $mount.Destination
+            $kind = $mount.Type
+            if ($destination -ceq '/root' -or $destination -ceq '/root/conf' -or
+                $destination -ceq '/root/conf/mailetcontainer.xml' -or $destination -ceq '/root/extensions-jars' -or
+                $destination.StartsWith('/root/extensions-jars/')) {
+                if ($destination -notmatch '^/root(?:/[A-Za-z0-9._-]+)*$' -or $kind -notin @('volume', 'bind', 'tmpfs')) {
+                    throw 'Unsupported mount metadata; inspect locally.'
+                }
+                $relevantMounts += [pscustomobject]@{ destination = $destination; type = $kind }
+                Write-Host "Relevant James mount: destination=$destination type=$kind"
             }
         }
+        if ($relevantMounts.Count -gt 0) {
+            Write-Host 'Existing mounts detected. Preparation is read-only; do not overwrite or replace them without inspection.'
+        } else { Write-Host 'No mailet configuration or extension directory mounts detected.' }
         $stage = 'archive'
         if (Test-Path -LiteralPath $work) { throw 'Workspace already exists.' }
         New-Item -ItemType Directory -Path $work | Out-Null
@@ -73,13 +84,14 @@ try {
         if ($code -ne 0 -or (Get-FileHash -LiteralPath $confirm -Algorithm SHA256).Hash.ToLowerInvariant() -cne $before) { throw 'Running mailet config changed during preparation.' }
         $state = [ordered]@{
             candidateCommit = $fullCommit; composeDir = (Get-Location).Path; jamesContainerId = $container; jamesImageId = $image[0]
+            relevantMounts = @($relevantMounts)
             originalConfig = $backup; originalConfigSha256 = $before
             candidateXml = $xml; candidateXmlSha256 = (Get-FileHash -LiteralPath $xml -Algorithm SHA256).Hash.ToLowerInvariant()
             candidateJar = $jar; candidateJarSha256 = (Get-FileHash -LiteralPath $jar -Algorithm SHA256).Hash.ToLowerInvariant()
             parentJar = $parent; parentJarSha256 = (Get-FileHash -LiteralPath $parent -Algorithm SHA256).Hash.ToLowerInvariant()
         }
         $manifest = Join-Path $work 'preparation-manifest.json'
-        [IO.File]::WriteAllText($manifest, ($state | ConvertTo-Json), [Text.Encoding]::UTF8)
+        [IO.File]::WriteAllText($manifest, ($state | ConvertTo-Json -Depth 5), [Text.Encoding]::UTF8)
         Write-Host "James AV preparation manifest: $manifest"
         Write-Host "Original mailet configuration SHA256: $before"
         $upstreamSample = '2158891b662abcd527f56f24a92b10d5404d875fad6e83ed3d57135a3386884f'

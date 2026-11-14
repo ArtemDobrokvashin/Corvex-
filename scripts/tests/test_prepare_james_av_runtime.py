@@ -6,7 +6,8 @@ import unittest
 class JamesAvPreparationTest(unittest.TestCase):
     def test_prepares_without_runtime_mutation(self):
         text = (Path(__file__).resolve().parents[1] / 'prepare-james-av-runtime.ps1').read_bytes().decode('ascii')
-        for item in ('9e33cfa^{commit}', 'apache/james:postgres-3.9.1', 'Custom mailet config or extension mount already exists',
+        for item in ('9e33cfa^{commit}', 'apache/james:postgres-3.9.1', 'Relevant James mount: destination=',
+                     'do not overwrite or replace them without inspection', 'relevantMounts = @($relevantMounts)',
                      'original-mailetcontainer.xml', 'test-real-dependencies.ps1',
                      'Running mailet config changed during preparation.', 'preparation-manifest.json',
                      'networks, queues and mail were not changed'):
