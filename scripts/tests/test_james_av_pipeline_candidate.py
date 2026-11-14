@@ -47,6 +47,20 @@ class JamesAvPipelineCandidateTests(unittest.TestCase):
         compose = (ROOT / 'docker-compose.yml').read_text(encoding='utf-8')
         self.assertNotIn('mailetcontainer.candidate.xml', compose)
         self.assertNotIn('james-av-gate', compose)
+        self.assertNotIn('av-runtime.compose.yml', compose)
+
+    def test_runtime_overlay_is_explicit_and_uses_read_only_file_mounts(self):
+        # Text guards only; they do not simulate Docker Compose merge/runtime.
+        overlay = (ROOT / 'infra/james/candidates/av-runtime.compose.yml').read_text(encoding='utf-8')
+        self.assertIn('source: ./experiments/james-av-gate/mailetcontainer.candidate.xml', overlay)
+        self.assertIn('target: /root/conf/mailetcontainer.xml', overlay)
+        self.assertIn('target: /root/extensions-jars/corvex-av-gate.jar', overlay)
+        self.assertIn('target: /root/extensions-jars/apache-james-clamav-3.9.1.jar', overlay)
+        self.assertEqual(overlay.count('read_only: true'), 3)
+        self.assertEqual(overlay.count('create_host_path: false'), 3)
+        self.assertIn('  clamav:\n    networks:\n      - james-av-candidate', overlay)
+        self.assertIn('  james-av-candidate:\n    internal: true', overlay)
+        self.assertNotIn('ports:', overlay)
 
 
 if __name__ == '__main__':
