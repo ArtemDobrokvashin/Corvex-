@@ -35,6 +35,17 @@ function Id([string]$Service) {
     if ($LASTEXITCODE -ne 0 -or $list.Count -ne 1 -or $list[0] -notmatch '^[0-9a-f]{12,64}$') { throw "FAIL: expected one running $Service." }
     return $list[0].Trim()
 }
+function ProxyHash([string]$Id) {
+    # Avoid quoted Go-template string literals: Windows PowerShell can strip
+    # their quotes when invoking native docker.exe. JSON carries labels without
+    # printing them; only the Compose config hash is returned.
+    $lines = @(& docker inspect --format '{{json .Config.Labels}}' $Id)
+    if ($LASTEXITCODE -ne 0 -or $lines.Count -ne 1) { throw 'FAIL: could not inspect proxy labels.' }
+    $labels = $lines[0] | ConvertFrom-Json
+    $hash = $labels.'com.docker.compose.config-hash'
+    if ($hash -notmatch '^[0-9a-f]{64}$') { throw 'FAIL: proxy configuration hash missing or invalid.' }
+    return $hash
+}
 function Probe([string]$Mode) {
     if ($Mode -eq 'tls') {
         $output = @(& docker exec $Container java -cp "$Remote`:$Remote/lib/*" JamesTransitionTlsProbe)
@@ -57,7 +68,7 @@ try {
         $Jmap = Id 'james-jmap'
         $image = (& docker inspect --format '{{.Config.Image}}' $Jmap)
         if ($LASTEXITCODE -ne 0 -or "$image".Trim() -ne 'nginx:1.31-alpine') { throw 'FAIL: running JMAP proxy is not the expected nginx baseline.' }
-        $actualHash = (& docker inspect --format '{{index .Config.Labels "com.docker.compose.config-hash"}}' $Jmap)
+        $actualHash = ProxyHash $Jmap
         $expected = @(& docker @Base config --hash james-jmap)
         if ($LASTEXITCODE -ne 0 -or $expected.Count -ne 1) { throw 'FAIL: could not determine baseline Compose hash.' }
         if ($expected[0] -match '^james-jmap\s+([0-9a-f]{64})\s*$') { $expectedHash = $Matches[1] }
@@ -129,8 +140,8 @@ try {
                 if ($RestoreOk) { Start-Sleep -Seconds 2 }
                 if ($RestoreOk) {
                     $restored = Id 'james-jmap'
-                    $restoredHash = (& docker inspect --format '{{index .Config.Labels "com.docker.compose.config-hash"}}' $restored)
-                    if ($LASTEXITCODE -ne 0 -or "$restoredHash".Trim() -ne "$actualHash".Trim()) { $RestoreOk = $false }
+                    $restoredHash = ProxyHash $restored
+                    if ($restoredHash -ne $actualHash) { $RestoreOk = $false }
                 }
                 if ($RestoreOk -and -not (Probe 'tls')) { $RestoreOk = $false }
                 if ($RestoreOk -and -not (Probe 'read-only')) { $RestoreOk = $false }
@@ -139,8 +150,10 @@ try {
             else { Write-Warning 'FAIL: proxy restoration not verified. Do not retry; inspect current container.' }
         }
         if ($OwnedRemote -and $Container -and $Remote -match '^/tmp/corvex-jmap-guard-[0-9a-f]{32}$') {
-            try { & docker exec -u 0 $Container sh -c 'find "$1" -depth -delete' sh $Remote }
-            catch { Write-Warning 'Temporary probe cleanup failed.' }
+            try {
+                & docker exec -u 0 $Container find $Remote -depth -delete
+                if ($LASTEXITCODE -ne 0) { Write-Warning 'Temporary probe cleanup failed.' }
+            } catch { Write-Warning 'Temporary probe cleanup failed.' }
         }
         Pop-Location
     }

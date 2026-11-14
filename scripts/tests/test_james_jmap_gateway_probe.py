@@ -18,6 +18,14 @@ class GatewayProbeGuards(unittest.TestCase):
         self.assertNotIn('down -v', SCRIPT)
         self.assertNotIn('docker network connect', SCRIPT)
 
+    def test_docker_inspect_uses_windows_safe_template_for_both_hash_checks(self):
+        self.assertIn("--format '{{json .Config.Labels}}'", SCRIPT)
+        self.assertNotIn('{{index .Config.Labels', SCRIPT)
+        self.assertIn('$actualHash = ProxyHash $Jmap', SCRIPT)
+        self.assertIn('$restoredHash = ProxyHash $restored', SCRIPT)
+        self.assertIn("$labels.'com.docker.compose.config-hash'", SCRIPT)
+        self.assertIn('if ($LASTEXITCODE -ne 0 -or $lines.Count -ne 1)', SCRIPT)
+
     def test_intent_before_proxy_recreation_and_no_retry(self):
         self.assertIn('prior gateway probe intent exists', SCRIPT)
         self.assertLess(SCRIPT.index("[IO.FileMode]::CreateNew"), SCRIPT.index('$Changed = $true'))
