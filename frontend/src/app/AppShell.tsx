@@ -172,9 +172,13 @@ export default function AppShell() {
 
   return (
     <div className="flex h-full flex-col bg-canvas">
-      {/* Горизонтальная панель поиска вверху */}
-      <header className="flex shrink-0 items-center justify-between border-b border-line bg-surface px-4 py-2.5">
-        <div className="flex items-center gap-3 flex-1 min-w-0 max-w-[700px]">
+      {/* Топбар — на всю ширину: логотип, поиск, время, аватар */}
+      <header className="flex shrink-0 items-center justify-between border-b border-line bg-surface px-4 py-3">
+        <div className="flex items-center gap-4 shrink-0">
+          <LogoMark size={30} />
+          <span className="text-[17px] font-semibold tracking-[-0.02em]">Corvex</span>
+        </div>
+        <div className="flex items-center gap-2 flex-1 min-w-0 max-w-[700px]">
           <Search size={18} className="shrink-0 text-faint" />
           <input
             type="text"
@@ -191,81 +195,74 @@ export default function AppShell() {
           />
         </div>
         <div className="flex items-center gap-3 shrink-0">
-          <Clock className="text-[11px] shrink-0" />
-          <button type="button" onClick={() => setProfileOpen(!profileOpen)} className="rounded-full" aria-label={t('Профиль')}>
-            <Avatar name={user.displayName} size={32} presence />
+          <button
+            type="button"
+            className="p-1 text-faint hover:text-ink transition rounded-md"
+            aria-label={t('Уведомления')}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          </button>
+          <button
+            type="button"
+            onClick={() => setLocale(nextLocale)}
+            className="p-1 text-faint hover:text-ink transition rounded-md"
+            aria-label={t('Язык интерфейса')}
+            title={t('Язык интерфейса')}
+          >
+            <Globe size={16} strokeWidth={1.8} />
+          </button>
+          <Clock className="text-[11px] shrink-0 hidden sm:flex" />
+          <button type="button" onClick={() => setProfileOpen(!profileOpen)} className="flex items-center gap-1.5 rounded-full border border-line px-2 py-1 text-sm font-medium text-ink hover:bg-black/[0.04] transition" aria-label={t('Профиль')}>
+            <Avatar name={user.displayName} size={28} presence />
+            <span className="truncate hidden sm:inline">{user.displayName}</span>
           </button>
         </div>
       </header>
 
-      <div className="flex-1 flex md:flex-row min-h-0">
-        {/* Мобильная шапка */}
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-surface/95 px-4 md:hidden">
-          <LogoMark size={34} />
-          <span className="text-[17px] font-semibold tracking-[-0.02em]">Corvex</span>
-          <Clock className="shrink-0 ml-2 text-[11px]" />
-          <div className="ml-auto flex items-center gap-1">
-            <button type="button" onClick={() => setPaletteOpen(true)} className="icon-btn" aria-label={t('Быстрый переход')}><Search size={19} /></button>
-            <button type="button" onClick={() => setProfileOpen(!profileOpen)} className="rounded-full" aria-label={t('Профиль')}>
-              <Avatar name={user.displayName} size={34} presence />
+      <div className="flex-1 flex min-h-0">
+        {/* Десктопный сайдбар слева */}
+        <aside className="hidden w-[76px] shrink-0 flex-col items-center border-r border-line bg-chrome px-2.5 py-4 md:flex">
+          <button type="button" onClick={() => navigate('/mail')} className="rounded-[13px]" aria-label={t('Corvex — почта')}>
+            <LogoMark size={40} />
+          </button>
+
+          <nav className="mt-8 flex w-full flex-col gap-1.5" aria-label={t('Основная навигация')}>
+            {navItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
+            {navItem('/chat', t('Чат'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
+            <CalendarWidget className="mt-1" />
+            {canAdmin && navItem('/admin', t('Админ'), Settings2)}
+          </nav>
+
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            className="mt-5 flex min-h-[58px] w-full flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium text-muted transition hover:bg-black/[0.04] hover:text-ink"
+          >
+            <Search size={20} strokeWidth={1.75} />
+            {t('Перейти')}
+            <span className="flex items-center gap-0.5 text-[9px] text-faint"><Command size={9} />K</span>
+          </button>
+
+          <div className="mt-auto flex flex-col items-center gap-3">
+            {demoMode && <span className="rounded-full bg-amber-100 px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-amber-800">{t('Демо')}</span>}
+            <Clock className="mt-1" />
+            <button type="button" onClick={() => setProfileOpen(!profileOpen)} className="rounded-full ring-accent/30 transition hover:ring-4" aria-label={t('Профиль пользователя')}>
+              <Avatar name={user.displayName} size={40} presence />
             </button>
           </div>
-        </header>
+        </aside>
 
-      {/* Десктопный rail */}
-      <aside className="hidden w-[76px] shrink-0 flex-col items-center border-r border-line bg-chrome px-2.5 py-4 md:flex">
-        <button type="button" onClick={() => navigate('/mail')} className="rounded-[13px]" aria-label={t('Corvex — почта')}>
-          <LogoMark size={40} />
-        </button>
-
-        <nav className="mt-8 flex w-full flex-col gap-1.5" aria-label={t('Основная навигация')}>
-          {navItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
-          {navItem('/chat', t('Чат'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
-          <CalendarWidget className="mt-1" />
-          {canAdmin && navItem('/admin', t('Админ'), Settings2)}
-        </nav>
-
-        <button
-          type="button"
-          onClick={() => setPaletteOpen(true)}
-          className="mt-5 flex min-h-[58px] w-full flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium text-muted transition hover:bg-black/[0.04] hover:text-ink"
-        >
-          <Search size={20} strokeWidth={1.75} />
-          {t('Перейти')}
-          <span className="flex items-center gap-0.5 text-[9px] text-faint"><Command size={9} />K</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setLocale(nextLocale)}
-          className="mt-1.5 flex min-h-[52px] w-full flex-col items-center justify-center gap-0.5 rounded-xl px-1 text-[10px] font-semibold text-muted transition hover:bg-black/[0.04] hover:text-ink"
-          aria-label={`${t('Язык интерфейса')}: ${locale === 'ru' ? t('Русский') : t('Английский')}`}
-          title={t('Язык интерфейса')}
-        >
-          <Globe size={18} strokeWidth={1.75} />
-          {locale.toUpperCase()}
-        </button>
-
-        <div className="mt-auto flex flex-col items-center gap-3">
-          {demoMode && <span className="rounded-full bg-amber-100 px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-amber-800">{t('Демо')}</span>}
-          <Clock className="mt-1" />
-          <button type="button" onClick={() => setProfileOpen(!profileOpen)} className="rounded-full ring-accent/30 transition hover:ring-4" aria-label={t('Профиль пользователя')}>
-            <Avatar name={user.displayName} size={40} presence />
-          </button>
+        {/* Контент */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {demoMode && (
+            <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-100 bg-amber-50/90 px-4 py-1.5 text-center text-xs text-amber-900">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+              <span>{t('Демо-режим: сервер не подключён, данные учебные.')}</span>
+              <button onClick={onLogout} className="font-semibold underline decoration-amber-300 underline-offset-2">{t('Выйти')}</button>
+            </div>
+          )}
+          <div className="min-h-0 min-w-0 flex-1"><Outlet /></div>
         </div>
-      </aside>
-
-      {/* Контент */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {demoMode && (
-          <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-100 bg-amber-50/90 px-4 py-1.5 text-center text-xs text-amber-900">
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-            <span>{t('Демо-режим: сервер не подключён, данные учебные.')}</span>
-            <button onClick={onLogout} className="font-semibold underline decoration-amber-300 underline-offset-2">{t('Выйти')}</button>
-          </div>
-        )}
-        <div className="min-h-0 min-w-0 flex-1"><Outlet /></div>
-      </div>
       </div>
 
       {/* Мобильная нижняя навигация */}
