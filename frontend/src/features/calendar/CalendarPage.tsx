@@ -208,37 +208,37 @@ export default function CalendarPage() {
     <section className="flex flex-col h-full gap-4 p-5 sm:p-6">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-[17px] font-semibold tracking-[-0.02em] text-ink">
+          <h2 className="text-[16px] font-semibold tracking-tight text-ink">
             {t('Календарь')}
           </h2>
-          <p className="text-[13px] text-muted">{monthName}</p>
+          <p className="text-[12.5px] text-ink-soft">{monthName}</p>
         </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setOpenForm(true)}
-            className="flex items-center gap-2 rounded-xl px-3 py-2 bg-accent text-white hover:bg-blue-700 transition text-sm font-medium"
+            className="flex items-center gap-2 rounded-xl px-3 py-1.5 bg-accent text-white text-sm font-medium hover:bg-accent-900 transition shadow-sm"
             aria-label={t('Добавить событие')}
           >
             <Plus size={16} strokeWidth={1.75} />
             <span>{t('Добавить событие')}</span>
           </button>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <button
               type="button"
               onClick={prevMonth}
-              className="icon-btn h-8 w-8"
+              className="icon-btn-sm h-8 w-8"
               aria-label={t('Предыдущий месяц')}
             >
-              <ChevronLeft size={16} />
+              <ChevronLeft size={16} strokeWidth={1.75} />
             </button>
             <button
               type="button"
               onClick={nextMonth}
-              className="icon-btn h-8 w-8"
+              className="icon-btn-sm h-8 w-8"
               aria-label={t('Следующий месяц')}
             >
-              <ChevronRight size={16} />
+              <ChevronRight size={16} strokeWidth={1.75} />
             </button>
           </div>
         </div>
@@ -250,15 +250,15 @@ export default function CalendarPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-center border-collapse">
               <thead>
-                <tr className="text-[11px] uppercase tracking-[0.08em] text-faint">
+                <tr className="text-[10px] uppercase tracking-[0.1em] text-ink-soft">
                   {weekdayNames.map((name, i) => (
-                    <th key={i} className="px-2 py-2">{name}</th>
+                    <th key={i} className="px-2 py-2.5">{name}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {weeks.map((week, wi) => (
-                  <tr key={wi} className="min-h-[60px]">
+                  <tr key={wi} className="min-h-[56px]">
                     {week.map((day, di) => {
                       const dayKey = `${year}-${month}-${day}`;
                       const isToday = day !== 0 && todayKey === dayKey;
@@ -267,12 +267,12 @@ export default function CalendarPage() {
                       return (
                         <td
                           key={di}
-                          className={`px-2 py-2 rounded-lg transition cursor-pointer ${
+                          className={`px-2 py-2.5 rounded-xl transition cursor-pointer ${
                             day === 0
                               ? 'bg-transparent'
                               : isToday
-                                ? 'ring-2 ring-accent bg-accent-soft/30 text-accent-dark font-medium'
-                                : 'text-ink-soft hover:bg-black/[0.02]'
+                                ? 'bg-[#F2F2F7] text-accent font-medium ring-1 ring-accent'
+                                : 'text-ink-soft hover:bg-[#F2F2F7]'
                           }`}
                           onClick={
                             day !== 0
@@ -284,7 +284,7 @@ export default function CalendarPage() {
                           }
                         >
                           <div className="flex flex-col items-center h-full">
-                            <span className="text-[12px]">{day || ''}</span>
+                            <span className="text-[12px] font-medium">{day || ''}</span>
                             {hasEvents && (
                               <span className="mt-1 flex h-2 w-2 items-center justify-center">
                                 <span className="h-1 w-1 rounded-full bg-accent" />
@@ -302,11 +302,11 @@ export default function CalendarPage() {
         </div>
 
         {/* Панель событий */}
-        <div className="lg:w-[320px] flex-shrink-0 border-l border-line pl-4">
+        <div className="lg:w-[300px] flex-shrink-0 border-l border-[#E5E5EA] pl-4 bg-white">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-ink">{t('Предстоящие события')}</h3>
+            <h3 className="text-sm font-semibold text-ink tracking-tight">{t('Предстоящие события')}</h3>
             {upcomingEvents.length === 0 && (
-              <span className="text-[11px] text-faint">{t('Нет запланированных событий')}</span>
+              <span className="text-[11px] text-ink-soft">{t('Нет запланированных событий')}</span>
             )}
           </div>
 
@@ -315,34 +315,34 @@ export default function CalendarPage() {
                 {upcomingEvents.map((e) => (
                 <div
                   key={e.id}
-                  className="flex items-center gap-3 rounded-lg p-2.5 border border-line bg-chrome hover:bg-slate-50 transition group"
+                  className="flex items-center gap-3 rounded-xl p-2.5 border border-[#E5E5EA] bg-white hover:bg-[#F2F2F7] transition group shadow-sm"
                 >
                   <div className="flex flex-col items-center justify-center gap-1 shrink-0">
-                    <span className="text-[10px] font-semibold text-muted">
+                    <span className="text-[10px] font-semibold text-ink-soft">
                       {new Date(e.date).toLocaleDateString(locale === 'ru' ? 'ru-RU' : 'en-US', { day: 'numeric' })}
                     </span>
-                    <span className="text-[10px] text-faint">{e.time || t('Весь день')}</span>
+                    <span className="text-[10px] text-ink-soft">{e.time || t('Весь день')}</span>
                   </div>
-                  <div className="h-5 w-[1px] bg-line shrink-0" />
+                  <div className="h-5 w-[1px] bg-[#E5E5EA] shrink-0" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className={`text-sm font-medium text-ink truncate ${e.priority === 'high' ? 'font-bold' : ''}`}>{e.title}</span>
+                      <span className={`text-sm font-medium text-ink truncate ${e.priority === 'high' ? 'font-semibold' : ''}`}>{e.title}</span>
                       {e.source === 'email' && (
-                        <span className="h-2 w-2 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
+                        <span className="h-2 w-2 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
                           <Mail size={10} strokeWidth={1.5} />
                         </span>
                       )}
                       {e.priority && (
-                        <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${PRIORITY_COLORS[e.priority]}`}>
+                        <span className={`text-[9px] px-2 py-0.5 rounded font-bold ${PRIORITY_COLORS[e.priority]}`}>
                           {PRIORITY_LABELS[e.priority]}
                         </span>
                       )}
                     </div>
                     {e.description && (
-                      <p className="mt-0.5 text-[11px] text-muted line-clamp-1 truncate">{e.description}</p>
+                      <p className="mt-0.5 text-[11px] text-ink-soft line-clamp-1 truncate">{e.description}</p>
                     )}
                     {e.sourceTitle && (
-                      <p className="mt-0.5 text-[10px] text-faint truncate">
+                      <p className="mt-0.5 text-[10px] text-ink-soft truncate">
                         {t('Из письма')}: {e.sourceTitle}
                       </p>
                     )}
@@ -351,18 +351,18 @@ export default function CalendarPage() {
                     <button
                       type="button"
                       onClick={() => { setEditingEvent(e); setOpenForm(true); }}
-                      className="p-1 text-faint hover:text-accent-dark transition"
+                      className="p-1 text-ink-soft hover:text-accent transition hover:bg-[#F2F2F7] rounded-lg"
                       aria-label={t('Редактировать событие')}
                     >
-                      <Pencil size={14} strokeWidth={1.75} />
+                      <Pencil size={13} strokeWidth={1.75} />
                     </button>
                     <button
                       type="button"
                       onClick={() => deleteEvent(e.id)}
-                      className="p-1 text-faint hover:text-red-500 transition"
+                      className="p-1 text-ink-soft hover:text-red-600 transition hover:bg-[#F2F2F7] rounded-lg"
                       aria-label={t('Удалить событие')}
                     >
-                      <X size={14} strokeWidth={1.75} />
+                      <X size={13} strokeWidth={1.75} />
                     </button>
                   </div>
                 </div>
@@ -370,8 +370,8 @@ export default function CalendarPage() {
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-8 text-center">
-              <CalendarIcon size={32} strokeWidth={1.75} className="text-faint" />
-              <p className="mt-2 text-sm text-muted">{t('Нет запланированных событий')}</p>
+              <CalendarIcon size={30} strokeWidth={1.75} className="text-ink-soft" />
+              <p className="mt-2 text-sm text-ink-soft">{t('Нет запланированных событий')}</p>
             </div>
           )}
         </div>
@@ -379,13 +379,13 @@ export default function CalendarPage() {
 
       {/* Форма добавления события */}
       {openForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/25 backdrop-blur-sm" onClick={() => setOpenForm(false)}>
-          <div className="w-full max-w-md animate-scale-in overflow-hidden rounded-2xl border border-line bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-line px-4 py-3">
-              <h3 className="text-sm font-semibold text-ink">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-md" onClick={() => setOpenForm(false)}>
+          <div className="w-full max-w-md animate-scale-in overflow-hidden rounded-2xl border border-[#E5E5EA] bg-white shadow-[0_20px_50px_rgba(23,24,28,0.15)]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-[#E5E5EA] px-4 py-3">
+              <h3 className="text-[14px] font-semibold text-ink tracking-tight">
                 {editingEvent ? t('Редактирование события') : selectedDate ? t('Новое событие на {date}', { date: formatEventDate(selectedDate) }) : t('Новое событие')}
               </h3>
-              <button type="button" onClick={() => setOpenForm(false)} className="icon-btn-sm p-1 hover:bg-slate-50 rounded-md" aria-label={t('Закрыть')}>
+              <button type="button" onClick={() => setOpenForm(false)} className="icon-btn-sm p-1 hover:bg-[#F2F2F7] rounded-lg" aria-label={t('Закрыть')}>
                 <X size={16} strokeWidth={1.75} />
               </button>
             </div>
@@ -407,42 +407,42 @@ export default function CalendarPage() {
               }}>
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs font-medium text-muted mb-1">{t('Название')}</label>
+                    <label className="block text-[12px] font-medium text-ink-soft mb-1">{t('Название')}</label>
                     <input
                       name="title"
                       type="text"
                       required
                       defaultValue={editingEvent?.title ?? formDefaults.title ?? ''}
-                      className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-accent/20 focus:border-transparent outline-none"
+                      className="w-full border border-[#E5E5EA] rounded-xl px-3 py-2 text-sm text-ink shadow-[0_1px_0_rgba(23,24,28,0.04)] outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10"
                       placeholder={t('Например, Встреча с клиентом')}
                     />
                   </div>
                   <div className="grid gap-3 grid-cols-2">
                     <div>
-                      <label className="block text-xs font-medium text-muted mb-1">{t('Дата')}</label>
+                      <label className="block text-[12px] font-medium text-ink-soft mb-1">{t('Дата')}</label>
                       <input
                         name="date"
                         type="date"
                         required
                         defaultValue={editingEvent?.date ?? formDefaults.date ?? selectedDate ?? ''}
-                        className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-accent/20 focus:border-transparent outline-none"
+                        className="w-full border border-[#E5E5EA] rounded-xl px-3 py-2 text-sm text-ink shadow-[0_1px_0_rgba(23,24,28,0.04)] outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-muted mb-1">{t('Время')}</label>
+                      <label className="block text-[12px] font-medium text-ink-soft mb-1">{t('Время')}</label>
                       <input
                         name="time"
                         type="time"
                         defaultValue={editingEvent?.time ?? ''}
-                        className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-accent/20 focus:border-transparent outline-none"
+                        className="w-full border border-[#E5E5EA] rounded-xl px-3 py-2 text-sm text-ink shadow-[0_1px_0_rgba(23,24,28,0.04)] outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10"
                       />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-muted mb-1">{t('Приоритет')}</label>
+                    <label className="block text-[12px] font-medium text-ink-soft mb-1">{t('Приоритет')}</label>
                     <select
                       name="priority"
-                      className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-accent/20 focus:border-transparent outline-none"
+                      className="w-full border border-[#E5E5EA] rounded-xl px-3 py-2 text-sm text-ink shadow-[0_1px_0_rgba(23,24,28,0.04)] outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10"
                     >
                       <option value="low">{PRIORITY_LABELS.low}</option>
                       <option value="medium">{PRIORITY_LABELS.medium}</option>
@@ -450,12 +450,12 @@ export default function CalendarPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-muted mb-1">{t('Описание')}</label>
+                    <label className="block text-[12px] font-medium text-ink-soft mb-1">{t('Описание')}</label>
                     <textarea
                       name="description"
                       rows={2}
                       defaultValue={editingEvent?.description ?? formDefaults.description ?? ''}
-                      className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-accent/20 focus:border-transparent outline-none"
+                      className="w-full border border-[#E5E5EA] rounded-xl px-3 py-2 text-sm text-ink shadow-[0_1px_0_rgba(23,24,28,0.04)] outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10"
                       placeholder={t('Что нужно сделать')}
                     />
                   </div>
@@ -464,11 +464,11 @@ export default function CalendarPage() {
                   <button
                     type="button"
                     onClick={() => setOpenForm(false)}
-                    className="text-sm font-medium text-muted hover:text-ink"
+                    className="text-sm font-medium text-ink-soft hover:text-ink"
                   >
                     {t('Отмена')}
                   </button>
-                  <button type="submit" className="text-sm font-medium text-white bg-accent px-3 py-1.5 rounded-lg hover:bg-blue-700 transition">
+                  <button type="submit" className="text-sm font-medium text-white bg-accent px-3 py-1.5 rounded-xl hover:bg-accent-900 transition shadow-sm">
                     {editingEvent ? t('Сохранить изменения') : t('Сохранить')}
                   </button>
                 </div>

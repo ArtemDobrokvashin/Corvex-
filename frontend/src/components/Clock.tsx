@@ -21,12 +21,12 @@ export function Clock({ className = '' }: { className?: string }) {
   const time = formatTime(locale, now);
   return (
     <div
-      className={`flex items-center gap-1 ${className}`}
+      className={`flex items-center gap-1.5 ${className}`}
       aria-label={t('Текущее время')}
       title={t('Текущее время')}
     >
-      <ClockIcon size={12} strokeWidth={1.6} />
-      <span className="text-[12px] font-medium text-muted">{time}</span>
+      <ClockIcon size={13} strokeWidth={1.6} />
+      <span className="text-[13px] font-semibold text-ink tracking-tight">{time}</span>
     </div>
   );
 }

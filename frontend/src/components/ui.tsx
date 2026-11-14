@@ -137,11 +137,12 @@ export function IconButton({
   label,
   className = '',
   size = 18,
+  strokeWidth = 1.8,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { icon: LucideIcon; label: string; size?: number }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { icon: LucideIcon; label: string; size?: number; strokeWidth?: number }) {
   return (
     <button type="button" title={label} aria-label={label} className={`icon-btn ${className}`} {...props}>
-      <Icon size={size} strokeWidth={1.8} />
+      <Icon size={size} strokeWidth={strokeWidth} />
     </button>
   );
 }

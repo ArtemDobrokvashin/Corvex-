@@ -146,11 +146,11 @@ export default function AppShell() {
     <NavLink
       key={to}
       to={to}
-      className={({ isActive }) => `group relative flex min-h-[58px] w-full flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium transition duration-150 ${isActive ? 'bg-accent-soft text-accent-dark' : 'text-muted hover:bg-black/[0.04] hover:text-ink'}`}
+      className={({ isActive }) => `group relative flex min-h-[56px] w-full flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium transition duration-150 ${isActive ? 'bg-[#F2F2F7] text-ink font-medium' : 'text-ink-soft hover:bg-[#F2F2F7] hover:text-ink'}`}
     >
       <span className="relative">
-        <Icon size={21} strokeWidth={1.75} />
-        {badge ? <span className="absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-semibold text-white">{badge}</span> : null}
+        <Icon size={20} strokeWidth={1.6} />
+        {badge ? <span className="absolute -right-2 -top-1.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-accent px-0.5 text-[8px] font-semibold text-white">{badge}</span> : null}
       </span>
       <span>{label}</span>
     </NavLink>
@@ -160,11 +160,11 @@ export default function AppShell() {
     <NavLink
       key={to}
       to={to}
-      className={({ isActive }) => `relative flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium ${isActive ? 'text-accent-dark' : 'text-muted'}`}
+      className={({ isActive }) => `relative flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium ${isActive ? 'text-ink' : 'text-ink-soft'}`}
     >
       <span className="relative">
-        <Icon size={21} strokeWidth={1.75} />
-        {badge ? <span className="absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-semibold text-white">{badge}</span> : null}
+        <Icon size={20} strokeWidth={1.6} />
+        {badge ? <span className="absolute -right-2 -top-1.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-accent px-0.5 text-[8px] font-semibold text-white">{badge}</span> : null}
       </span>
       {label}
     </NavLink>
@@ -173,14 +173,14 @@ export default function AppShell() {
   return (
     <div className="flex h-full flex-col bg-canvas">
       {/* Топбар — на всю ширину: логотип, поиск, время, аватар */}
-      <header className="flex shrink-0 items-center justify-between border-b border-line bg-surface px-4 py-3">
-        <div className="flex items-center gap-6 shrink-0">
-          <LogoMark size={32} />
-          <span className="text-[17px] font-semibold tracking-[-0.02em]">Corvex</span>
+      <header className="flex shrink-0 items-center justify-between border-b border-[#E5E5EA] bg-white px-5 py-2.5 shadow-[0_1px_0_rgba(23,24,28,0.06)]">
+        <div className="flex items-center gap-7 shrink-0">
+          <LogoMark size={30} />
+          <span className="text-[16px] font-semibold tracking-tight text-ink">Corvex</span>
         </div>
-        <div className="flex items-center justify-center flex-1 min-w-0 max-w-[700px]">
-          <div className="flex items-center gap-2 rounded-full border border-line bg-white px-3 py-1.5 min-w-[280px] shadow-soft">
-            <Search size={18} className="shrink-0 text-faint" />
+        <div className="flex items-center justify-center flex-1 min-w-0 max-w-[720px]">
+          <div className="flex items-center gap-2 rounded-full border border-[#E5E5EA] bg-[#F2F2F7] px-3 py-1.5 min-w-[280px] shadow-sm">
+            <Search size={17} className="shrink-0 text-ink-soft" />
             <input
               type="text"
               placeholder={t('Поиск по почте…')}
@@ -192,14 +192,14 @@ export default function AppShell() {
                   navigate(`/mail?mailSearch=${encodeURIComponent(topSearch)}`);
                 }
               }}
-              className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none focus:ring-0 placeholder:text-faint"
+              className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none focus:ring-0 placeholder:text-ink-soft"
             />
           </div>
         </div>
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-2.5 shrink-0">
           <button
             type="button"
-            className="h-9 w-9 rounded-full flex items-center justify-center text-faint hover:text-ink transition hover:bg-black/[0.04]"
+            className="h-9 w-9 rounded-full flex items-center justify-center text-ink-soft hover:text-ink transition hover:bg-[#F2F2F7]"
             aria-label={t('Уведомления')}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
@@ -207,14 +207,14 @@ export default function AppShell() {
           <button
             type="button"
             onClick={() => setLocale(nextLocale)}
-            className="h-9 w-9 rounded-full flex items-center justify-center text-faint hover:text-ink transition hover:bg-black/[0.04]"
+            className="h-9 w-9 rounded-full flex items-center justify-center text-ink-soft hover:text-ink transition hover:bg-[#F2F2F7]"
             aria-label={t('Язык интерфейса')}
             title={t('Язык интерфейса')}
           >
-            <Globe size={18} strokeWidth={1.8} />
+            <Globe size={17} strokeWidth={1.8} />
           </button>
           <Clock className="text-[13px] font-medium text-ink shrink-0 hidden sm:flex" />
-          <button type="button" onClick={() => setProfileOpen(!profileOpen)} className="h-9 flex items-center gap-1.5 rounded-full border border-line px-2 py-1 text-sm font-medium text-ink hover:bg-black/[0.04] transition" aria-label={t('Профиль')}>
+          <button type="button" onClick={() => setProfileOpen(!profileOpen)} className="flex items-center gap-1.5 rounded-full border border-[#E5E5EA] bg-white px-2 py-1 text-sm font-medium text-ink hover:bg-[#F2F2F7] transition shadow-sm" aria-label={t('Профиль')}>
             <Avatar name={user.displayName} size={28} presence />
             <span className="truncate hidden sm:inline">{user.displayName}</span>
           </button>
@@ -223,7 +223,7 @@ export default function AppShell() {
 
       <div className="flex-1 flex min-h-0">
         {/* Десктопный сайдбар слева */}
-        <aside className="hidden w-[76px] shrink-0 flex-col items-center border-r border-line bg-chrome px-2.5 py-4 md:flex">
+        <aside className="hidden w-[80px] shrink-0 flex-col items-center border-r border-[#E5E5EA] bg-white px-2 py-4 md:flex shadow-[0_1px_0_rgba(23,24,28,0.06)]">
           <nav className="mt-8 flex w-full flex-col gap-1.5" aria-label={t('Основная навигация')}>
             {navItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
             {navItem('/chat', t('Чат'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
@@ -234,25 +234,25 @@ export default function AppShell() {
           <button
             type="button"
             onClick={() => setPaletteOpen(true)}
-            className="mt-5 flex min-h-[58px] w-full flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium text-muted transition hover:bg-black/[0.04] hover:text-ink"
+            className="mt-5 flex min-h-[56px] w-full flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium text-ink-soft transition hover:bg-[#F2F2F7] hover:text-ink"
           >
-            <Search size={20} strokeWidth={1.75} />
+            <Search size={19} strokeWidth={1.75} />
             {t('Перейти')}
-            <span className="flex items-center gap-0.5 text-[9px] text-faint"><Command size={9} />K</span>
+            <span className="flex items-center gap-0.5 text-[9px] text-ink-soft"><Command size={9} />K</span>
           </button>
 
           <div className="mt-auto flex flex-col items-center gap-3">
-            {demoMode && <span className="rounded-full bg-amber-100 px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-amber-800">{t('Демо')}</span>}
+            {demoMode && <span className="rounded-full border border-[#E5E5EA] bg-white px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-ink">{t('Демо')}</span>}
           </div>
         </aside>
 
         {/* Контент */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {demoMode && (
-            <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-100 bg-amber-50/90 px-4 py-1.5 text-center text-xs text-amber-900">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+            <div className="flex shrink-0 items-center justify-center gap-2 border-b border-[#E5E5EA] bg-[#FEF3E7] px-4 py-1.5 text-center text-xs text-amber-800">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
               <span>{t('Демо-режим: сервер не подключён, данные учебные.')}</span>
-              <button onClick={onLogout} className="font-semibold underline decoration-amber-300 underline-offset-2">{t('Выйти')}</button>
+              <button onClick={onLogout} className="font-medium text-accent underline decoration-accent/30 underline-offset-2">{t('Выйти')}</button>
             </div>
           )}
           <div className="min-h-0 min-w-0 flex-1"><Outlet /></div>
@@ -260,7 +260,7 @@ export default function AppShell() {
       </div>
 
       {/* Мобильная нижняя навигация */}
-      <nav className="flex shrink-0 border-t border-line bg-surface px-2 pb-[env(safe-area-inset-bottom)] md:hidden" aria-label={t('Основная навигация')}>
+      <nav className="flex shrink-0 border-t border-[#E5E5EA] bg-white px-3 pb-[env(safe-area-inset-bottom)] md:hidden shadow-[0_-1px_0_rgba(23,24,28,0.06)]" aria-label={t('Основная навигация')}>
         {mobileNavItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
         {mobileNavItem('/chat', t('Сообщения'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
         <CalendarWidget className="mt-0.5 mb-0.5" />
@@ -271,7 +271,7 @@ export default function AppShell() {
       {profileOpen && (
         <>
           <button type="button" aria-label={t('Закрыть меню')} className="fixed inset-0 z-40 cursor-default" onClick={() => setProfileOpen(false)} />
-          <div className="fixed right-3 top-16 z-50 w-[300px] animate-scale-in rounded-2xl border border-line bg-surface p-2 shadow-pop md:bottom-4 md:left-[86px] md:right-auto md:top-auto">
+          <div className="fixed right-3 top-16 z-50 w-[280px] animate-scale-in rounded-2xl border border-[#E5E5EA] bg-white p-2 shadow-[0_10px_40px_rgba(23,24,28,0.12)] md:bottom-4 md:left-[86px] md:right-auto md:top-auto">
             <div className="flex items-center gap-3 px-3 py-3">
               <Avatar name={user.displayName} size={42} presence />
               <div className="min-w-0">
@@ -299,10 +299,10 @@ export default function AppShell() {
 
       {/* Command palette */}
       {paletteOpen && (
-        <div className="fixed inset-0 z-[60] flex items-start justify-center bg-ink/35 px-4 pt-[10vh] backdrop-blur-[2px]" onClick={() => setPaletteOpen(false)}>
-          <section className="w-full max-w-xl animate-scale-in overflow-hidden rounded-2xl border border-line bg-surface shadow-pop" onClick={(e) => e.stopPropagation()} aria-label={t('Быстрый переход')}>
-            <div className="flex items-center gap-3 border-b border-line px-4">
-              <Search size={19} className="shrink-0 text-faint" />
+        <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/25 px-4 pt-[10vh] backdrop-blur-md" onClick={() => setPaletteOpen(false)}>
+          <section className="w-full max-w-xl animate-scale-in overflow-hidden rounded-2xl border border-[#E5E5EA] bg-white shadow-[0_20px_50px_rgba(23,24,28,0.2)]" onClick={(e) => e.stopPropagation()} aria-label={t('Быстрый переход')}>
+            <div className="flex items-center gap-3 border-b border-[#E5E5EA] px-4 py-3">
+              <Search size={18} className="shrink-0 text-ink-soft" />
               <input
                 autoFocus
                 value={paletteQuery}
@@ -315,27 +315,27 @@ export default function AppShell() {
                 }}
                 placeholder={t('Перейти или выполнить действие…')}
                 aria-label={t('Быстрый переход')}
-                className="h-14 min-w-0 flex-1 border-0 bg-transparent text-[15px] outline-none placeholder:text-faint focus:ring-0"
+                className="h-10 min-w-0 flex-1 border-0 bg-transparent text-[14px] outline-none placeholder:text-ink-soft focus:ring-0"
               />
               <span className="kbd">Esc</span>
             </div>
-            <div className="max-h-[52vh] overflow-y-auto p-2">
+            <div className="max-h-[52vh] overflow-y-auto p-1">
               {visibleActions.map((action) => (
                 <button
                   key={action.id}
                   type="button"
                   onClick={() => { setPaletteOpen(false); action.run(); }}
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-accent-soft/70"
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition hover:bg-[#F2F2F7] hover:text-ink"
                 >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-black/[0.04] text-muted"><action.icon size={17} strokeWidth={1.8} /></span>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#F2F2F7] text-ink-soft"><action.icon size={17} strokeWidth={1.7} /></span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium text-ink">{action.label}</span>
-                    <span className="block truncate text-xs text-muted">{action.description}</span>
+                    <span className="block truncate text-xs text-ink-soft">{action.description}</span>
                   </span>
                   {action.shortcut && <span className="kbd">{action.shortcut}</span>}
                 </button>
               ))}
-              {visibleActions.length === 0 && <p className="px-4 py-10 text-center text-sm text-muted">{t('Ничего не найдено')}</p>}
+              {visibleActions.length === 0 && <p className="px-4 py-10 text-center text-sm text-ink-soft">{t('Ничего не найдено')}</p>}
             </div>
           </section>
         </div>

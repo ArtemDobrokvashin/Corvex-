@@ -715,9 +715,9 @@ export default function MailPage() {
                 )}
               </div>
             </div>
-            <div className="mt-3 flex rounded-full bg-black/[0.04] p-1" role="tablist" aria-label={t('Фильтр писем')}>
+            <div className="mt-3 flex rounded-full border border-[#E5E5EA] bg-white p-0.5" role="tablist" aria-label={t('Фильтр писем')}>
               {(['all', 'unread', 'read'] as const).map((value) => (
-                <button key={value} type="button" role="tab" aria-selected={filter === value} onClick={() => setFilter(value)} className={`h-8 min-w-0 flex-1 truncate rounded-full px-1 text-xs font-medium transition sm:text-[13px] ${filter === value ? 'bg-surface text-ink shadow-soft' : 'text-muted hover:text-ink'}`}>
+                <button key={value} type="button" role="tab" aria-selected={filter === value} onClick={() => setFilter(value)} className={`h-8 min-w-0 flex-1 truncate rounded-lg px-1 text-xs font-medium transition sm:text-[12.5px] ${filter === value ? 'bg-[#F2F2F7] text-ink font-medium shadow-sm' : 'text-ink-soft hover:text-ink hover:bg-[#F2F2F7]'}`}>
                   {value === 'all' ? t('Все') : value === 'unread' ? t('Непрочитанные') : t('Прочитанные')}
                 </button>
               ))}
@@ -761,30 +761,30 @@ export default function MailPage() {
                   // screen-reader путь — настоящая кнопка темы ниже: role=button на
                   // контейнере создал бы недопустимую вложенную интерактивность со звездой.
                   onClick={() => open(m)}
-                  className={`group relative flex cursor-pointer gap-3 border-b border-line/70 px-4 py-3.5 transition duration-150 ${selected ? 'bg-accent-soft/70' : 'hover:bg-chrome'}`}
+                  className={`group relative flex cursor-pointer gap-3 border-b border-[#E5E5EA] px-4 py-3 transition duration-150 ${selected ? 'bg-[#F2F2F7]' : 'hover:bg-[#F2F2F7]'}`}
                 >
                   {selected && <span className="absolute inset-y-3 left-0 w-[3px] rounded-full bg-accent" />}
                   <Avatar name={m.from} size={38} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       {!m.seen && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-label={t('Непрочитано')} />}
-                      <span className={`min-w-0 flex-1 truncate text-sm ${m.seen ? 'font-medium text-ink-soft' : 'font-semibold text-ink'}`}>{cleanPersonName(m.from)}</span>
-                      <span className="shrink-0 text-[11px] text-faint">{m.date}</span>
+                      <span className={`min-w-0 flex-1 truncate text-sm ${m.seen ? 'font-medium text-ink-soft' : 'font-semibold text-ink'} tracking-tight`}>{cleanPersonName(m.from)}</span>
+                      <span className="shrink-0 text-[11px] text-ink-soft">{m.date}</span>
                     </div>
                     <div className="mt-1 flex items-center gap-1.5">
-                      <button type="button" onClick={(e) => { e.stopPropagation(); open(m); }} className={`min-w-0 flex-1 truncate rounded text-left text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${m.seen ? 'text-ink-soft' : 'font-medium text-ink'}`}>{m.subject}</button>
-                      {m.hasAttachments && <Paperclip size={13} className="shrink-0 text-faint" />}
+                      <button type="button" onClick={(e) => { e.stopPropagation(); open(m); }} className={`min-w-0 flex-1 truncate text-left text-sm ${m.seen ? 'text-ink-soft' : 'font-semibold text-ink'} tracking-tight`}>{m.subject}</button>
+                      {m.hasAttachments && <Paperclip size={13} className="shrink-0 text-ink-soft" />}
                       <button
                         type="button"
                         title={m.flagged ? t('Убрать из важных') : t('Отметить важным')}
                         aria-label={m.flagged ? t('Убрать из важных') : t('Отметить важным')}
                         onClick={(e) => { e.stopPropagation(); toggleFlag(m); }}
-                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition ${m.flagged ? 'text-amber-500' : 'text-faint opacity-0 hover:bg-black/[0.05] hover:text-ink group-hover:opacity-100'}`}
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition ${m.flagged ? 'text-accent bg-[#FDF2F2]' : 'text-ink-soft hover:bg-[#F2F2F7]'}`}
                       >
-                        <Star size={14} fill={m.flagged ? 'currentColor' : 'none'} />
+                        <Star size={13} fill={m.flagged ? 'currentColor' : 'none'} strokeWidth={m.flagged ? 0 : undefined} />
                       </button>
                     </div>
-                    <p className="mt-0.5 line-clamp-2 text-[13px] leading-snug text-muted">{m.snippet}</p>
+                    <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-snug text-ink-soft">{m.snippet}</p>
                   </div>
                 </div>
               );
@@ -803,18 +803,18 @@ export default function MailPage() {
         <main className={`${mobileReading ? 'flex' : 'hidden md:flex'} min-w-0 flex-1 flex-col bg-surface`}>
           {active ? (
             <>
-              <header className="flex h-14 shrink-0 items-center gap-1 border-b border-line px-3 sm:px-4">
-                <button type="button" onClick={() => setMobileReading(false)} className="btn-ghost px-2 md:hidden"><ArrowLeft size={16} /> {t('К списку')}</button>
-                <IconButton icon={Archive} label={t('В архив')} onClick={() => moveActive('ARCHIVE')} />
-                <IconButton icon={Trash2} label={t('Удалить')} onClick={() => moveActive('TRASH')} />
-                <button type="button" onClick={() => toggleFlag(active)} className={`icon-btn ${active.flagged ? 'text-amber-500 hover:text-amber-600' : ''}`} aria-label={t('Важное')}>
-                  <Star size={18} fill={active.flagged ? 'currentColor' : 'none'} />
+              <header className="flex h-14 shrink-0 items-center gap-1 border-b border-[#E5E5EA] bg-white px-4 sm:px-5 shadow-[0_1px_0_rgba(23,24,28,0.06)]">
+                <button type="button" onClick={() => setMobileReading(false)} className="btn-ghost px-2 md:hidden"><ArrowLeft size={16} strokeWidth={1.6} /> {t('К списку')}</button>
+                <IconButton icon={Archive} label={t('В архив')} onClick={() => moveActive('ARCHIVE')} size={17} strokeWidth={1.6} />
+                <IconButton icon={Trash2} label={t('Удалить')} onClick={() => moveActive('TRASH')} size={17} strokeWidth={1.6} />
+                <button type="button" onClick={() => toggleFlag(active)} className={`icon-btn ${active.flagged ? 'text-accent bg-[#FDF2F2]' : ''}`} aria-label={t('Важное')}>
+                  <Star size={17} fill={active.flagged ? 'currentColor' : 'none'} strokeWidth={active.flagged ? 0 : undefined} />
                 </button>
-                <IconButton icon={MoreHorizontal} label={t('Ещё действия')} />
+                <IconButton icon={MoreHorizontal} label={t('Ещё действия')} size={17} strokeWidth={1.6} />
                 <div className="ml-auto hidden items-center gap-1 sm:flex">
-                  <span className="mr-1 hidden text-xs text-faint xl:inline">{t('{current} из {total}', { current: Math.max(activeIndex + 1, 1), total: visible.length })}</span>
-                  <IconButton icon={ChevronUp} label={t('Предыдущее письмо')} onClick={() => step(-1)} disabled={activeIndex <= 0} />
-                  <IconButton icon={ChevronDown} label={t('Следующее письмо')} onClick={() => step(1)} disabled={activeIndex < 0 || activeIndex >= visible.length - 1} />
+                  <span className="mr-1 hidden text-[11px] text-ink-soft xl:inline font-medium">{t('{current} из {total}', { current: Math.max(activeIndex + 1, 1), total: visible.length })}</span>
+                  <IconButton icon={ChevronUp} label={t('Предыдущее письмо')} onClick={() => step(-1)} disabled={activeIndex <= 0} size={17} strokeWidth={1.6} />
+                  <IconButton icon={ChevronDown} label={t('Следующее письмо')} onClick={() => step(1)} disabled={activeIndex < 0 || activeIndex >= visible.length - 1} size={17} strokeWidth={1.6} />
                 </div>
               </header>
 
@@ -822,23 +822,23 @@ export default function MailPage() {
                 <article className="mx-auto w-full max-w-[760px] animate-fade-in px-5 py-7 sm:px-8 sm:py-9">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="chip chip-accent">{currentFolder?.name ?? active.folder}</span>
-                    {active.flagged && <span className="chip border-amber-200 bg-amber-50 text-amber-800">{t('Важное')}</span>}
+                    {active.flagged && <span className="chip">{t('Важное')}</span>}
                   </div>
-                  <h2 className="mt-4 text-[27px] font-semibold leading-tight tracking-[-0.025em] text-ink sm:text-[31px]">{active.subject}</h2>
+                  <h2 className="mt-5 text-[26px] font-semibold leading-tight tracking-[-0.03em] text-ink sm:text-[30px]">{active.subject}</h2>
 
-                  <div className="mt-7 flex items-start gap-3 border-b border-line pb-6">
+                  <div className="mt-8 flex items-start gap-3 border-b border-[#E5E5EA] pb-6">
                     <Avatar name={active.from} size={44} />
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-[15px] font-semibold">{cleanPersonName(active.from)}</div>
+                      <div className="truncate text-[15px] font-semibold text-ink tracking-tight">{cleanPersonName(active.from)}</div>
                       <div
-                        className="mt-0.5 truncate text-[13px] text-muted"
+                        className="mt-0.5 truncate text-[12.5px] text-ink-soft"
                         title={`${t('Кому')}: ${recipientText}${ccText ? ` · ${t('Копия')}: ${ccText}` : ''}`}
                       >
                         {emailFromHeader(active.from) || t('внутренний отправитель')} · {t('Кому')}: {recipientText}
                         {ccText ? ` · ${t('Копия')}: ${ccText}` : ''}
                       </div>
                     </div>
-                    <time className="shrink-0 text-[13px] text-faint">{active.date}</time>
+                    <time className="shrink-0 text-[12.5px] text-ink-soft">{active.date}</time>
                   </div>
 
                   {active.hasAttachments && <MailAttachments
@@ -848,30 +848,30 @@ export default function MailPage() {
                     onDownload={(attachment) => void downloadAttachment(active.id, attachment)}
                   />}
 
-                  {activeHtml && <div className="mt-5 flex flex-wrap items-center gap-3 text-xs text-muted">
+                  {activeHtml && <div className="mt-5 flex flex-wrap items-center gap-2 text-[11px] text-ink-soft">
                     <span>{t('Внешние изображения и ссылки отключены для безопасности.')}</span>
-                    <button type="button" className="font-medium text-accent-dark underline" onClick={() => setShowPlainText(!showPlainText)}>{t(showPlainText ? 'Показать HTML' : 'Показать обычный текст')}</button>
+                    <button type="button" className="font-medium text-accent underline decoration-accent/30" onClick={() => setShowPlainText(!showPlainText)}>{t(showPlainText ? 'Показать HTML' : 'Показать обычный текст')}</button>
                   </div>}
-                  {activeHtml && !showPlainText ? <iframe title={t('Содержимое HTML-письма')} sandbox="" referrerPolicy="no-referrer" srcDoc={mailHtmlDocument(activeHtml)} className="mt-4 h-[420px] w-full rounded-xl border border-line bg-white" />
-                    : <div className="mt-7 text-[15.5px] leading-[1.75] text-ink-soft">
+                  {activeHtml && !showPlainText ? <iframe title={t('Содержимое HTML-письма')} sandbox="" referrerPolicy="no-referrer" srcDoc={mailHtmlDocument(activeHtml)} className="mt-4 h-[420px] w-full rounded-xl border border-[#E5E5EA] bg-white" />
+                    : <div className="mt-7 text-[15px] leading-[1.7] text-ink-soft">
                       {activeBody.split('\n').map((paragraph, i) => paragraph.trim() ? <p key={i} className="mb-4 whitespace-pre-wrap">{paragraph}</p> : null)}
                     </div>}
 
-                  <div className="mt-9 flex flex-wrap gap-2 border-t border-line pt-5">
+                  <div className="mt-10 flex flex-wrap gap-2 border-t border-[#E5E5EA] pt-6">
                     <button type="button" className="btn-primary" onClick={() => setComposeDraft({ to: emailFromHeader(active.from), subject: `Re: ${active.subject}`, body: '' })}>
-                      <Reply size={16} /> {t('Ответить')}
+                      <Reply size={17} strokeWidth={1.6} /> {t('Ответить')}
                     </button>
                     <button type="button" className="btn-secondary" onClick={() => setComposeDraft({ to: '', subject: `Fwd: ${active.subject}`, body: `\n\n--- ${t('Пересылаемое письмо')} ---\n${activeBody}` })}>
-                      <Forward size={16} /> {t('Переслать')}
+                      <Forward size={17} strokeWidth={1.6} /> {t('Переслать')}
                     </button>
                     <button type="button" className="btn-ghost" onClick={() => {
                       const date = new Date(active.timestamp).toISOString().split('T')[0];
                       navigate(`/calendar?createEvent=1&title=${encodeURIComponent(active.subject)}&date=${date}&description=${encodeURIComponent(active.body)}`);
                     }}>
-                      <Calendar size={16} /> {t('Создать событие')}
+                      <Calendar size={17} strokeWidth={1.6} /> {t('Создать событие')}
                     </button>
                     <button type="button" className="btn-ghost ml-auto" onClick={() => moveActive('ARCHIVE')}>
-                      <Archive size={16} /> {t('В архив')}
+                      <Archive size={17} strokeWidth={1.6} /> {t('В архив')}
                     </button>
                   </div>
                 </article>
@@ -880,7 +880,7 @@ export default function MailPage() {
           ) : (
             <div className="flex min-h-0 flex-1 flex-col">
               <EmptyState icon={Inbox} title={t('Выберите письмо')} description={t('Откройте письмо из списка или двигайтесь по нему клавишами J и K.')} />
-              <div className="-mt-16 flex items-center justify-center gap-4 pb-10 text-xs text-faint">
+              <div className="-mt-20 flex items-center justify-center gap-4 pb-12 text-[11px] text-ink-soft">
                 <span className="flex items-center gap-1.5"><span className="kbd">J</span><span className="kbd">K</span> {t('навигация')}</span>
                 <span className="flex items-center gap-1.5"><span className="kbd">C</span> {t('написать')}</span>
                 <span className="flex items-center gap-1.5"><span className="kbd">/</span> {t('поиск')}</span>
@@ -959,33 +959,34 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
   };
 
   return (
-    <section className="fixed inset-x-0 bottom-0 z-50 flex max-h-[94dvh] animate-rise-in flex-col overflow-hidden border border-line bg-surface shadow-composer sm:inset-x-auto sm:bottom-4 sm:right-4 sm:h-[min(640px,92dvh)] sm:w-[min(590px,calc(100vw-2rem))] sm:rounded-2xl" aria-label={t('Новое письмо')}>
-      <header className="flex h-11 shrink-0 items-center bg-ink px-4 text-white">
-        <h3 className="flex-1 text-sm font-medium">{initial.subject ? t('Ответ / пересылка') : t('Новое письмо')}</h3>
-        <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white" aria-label={t('Свернуть черновик')}><Minus size={16} /></button>
-        <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white" aria-label={t('Закрыть черновик')}><X size={16} /></button>
+    <section className="fixed inset-x-0 bottom-0 z-50 flex max-h-[94dvh] animate-rise-in flex-col overflow-hidden border border-[#E5E5EA] bg-white shadow-[0_10px_40px_rgba(23,24,28,0.16)] sm:inset-x-auto sm:bottom-4 sm:right-4 sm:h-[min(640px,92dvh)] sm:w-[min(590px,calc(100vw-2rem))] sm:rounded-2xl" aria-label={t('Новое письмо')}>
+      <header className="flex h-12 shrink-0 items-center justify-between border-b border-[#E5E5EA] bg-white px-4 py-2">
+        <h3 className="text-[14px] font-medium text-ink tracking-tight">{initial.subject ? t('Ответ / пересылка') : t('Новое письмо')}</h3>
+        <button type="button" onClick={onClose} className="h-8 w-8 flex items-center justify-center rounded-lg text-ink-soft hover:bg-[#F2F2F7] hover:text-ink transition" aria-label={t('Закрыть черновик')}>
+          <X size={15} strokeWidth={1.7} />
+        </button>
       </header>
 
       {sent ? (
         <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
-          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600"><CheckCircle2 size={27} /></span>
-          <h4 className="mt-4 text-lg font-semibold">{t('Письмо отправлено')}</h4>
-          <p className="mt-1 text-sm text-muted">{t('Копия сохранена в папке «Отправленные».')}</p>
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#F2F2F7] text-accent"><CheckCircle2 size={27} strokeWidth={2} /></span>
+          <h4 className="mt-4 text-lg font-semibold text-ink">{t('Письмо отправлено')}</h4>
+          <p className="mt-1 text-sm text-ink-soft">{t('Копия сохранена в папке «Отправленные».')}</p>
         </div>
       ) : (
         <form onSubmit={submit} className={`flex min-h-0 flex-1 flex-col ${draggingFiles ? 'ring-2 ring-inset ring-accent' : ''}`}
           onDragOver={(event) => { if (Array.from(event.dataTransfer.types).includes('Files')) { event.preventDefault(); setDraggingFiles(true); } }}
           onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDraggingFiles(false); }}
           onDrop={(event) => { event.preventDefault(); setDraggingFiles(false); const dropped = Array.from(event.dataTransfer.files); if (dropped.length) setFiles((previous) => [...previous, ...dropped]); }}>
-          {draggingFiles && <div className="bg-accent-soft px-4 py-2 text-sm text-accent-dark">{t('Отпустите файлы, чтобы прикрепить')}</div>}
+          {draggingFiles && <div className="bg-[#F2F2F7] px-4 py-2 text-sm text-accent">{t('Отпустите файлы, чтобы прикрепить')}</div>}
           {sendAsAccounts.length > 0 && (
-            <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
-              <label htmlFor="compose-from" className="w-12 shrink-0 text-[13px] text-faint">{t('От кого')}</label>
+            <div className="flex h-11 shrink-0 items-center gap-3 border-b border-[#E5E5EA] px-4">
+              <label htmlFor="compose-from" className="w-12 shrink-0 text-[12px] font-medium text-ink-soft">{t('От кого')}</label>
               <select
                 id="compose-from"
                 value={draft.externalAccountId ?? ''}
                 onChange={(e) => setDraft({ ...draft, externalAccountId: e.target.value || null })}
-                className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none focus:ring-0"
+                className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none focus:ring-0 text-ink"
               >
                 <option value="">{currentEmail} · Corvex</option>
                 {sendAsAccounts.map((account) => (
@@ -994,20 +995,20 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
               </select>
             </div>
           )}
-          <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
-            <label htmlFor="compose-to" className="w-12 shrink-0 text-[13px] text-faint">{t('Кому')}</label>
-            <input id="compose-to" required type="text" inputMode="email" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} placeholder="user@company.local" className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-faint focus:ring-0" />
-            {!showCc && <button type="button" onClick={() => setShowCc(true)} className="shrink-0 text-xs font-medium text-muted hover:text-ink">{t('Копия')}</button>}
+          <div className="flex h-11 shrink-0 items-center gap-3 border-b border-[#E5E5EA] px-4">
+            <label htmlFor="compose-to" className="w-12 shrink-0 text-[12px] font-medium text-ink-soft">{t('Кому')}</label>
+            <input id="compose-to" required type="text" inputMode="email" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} placeholder="user@company.local" className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-ink-soft text-ink" />
+            {!showCc && <button type="button" onClick={() => setShowCc(true)} className="shrink-0 text-[11px] font-medium text-ink-soft hover:text-ink">{t('Копия')}</button>}
           </div>
           {showCc && (
-            <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
-              <label htmlFor="compose-cc" className="w-12 shrink-0 text-[13px] text-faint">{t('Копия')}</label>
-              <input id="compose-cc" type="text" inputMode="email" value={draft.cc ?? ''} onChange={(e) => setDraft({ ...draft, cc: e.target.value })} placeholder="user@company.local" className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-faint focus:ring-0" />
+            <div className="flex h-11 shrink-0 items-center gap-3 border-b border-[#E5E5EA] px-4">
+              <label htmlFor="compose-cc" className="w-12 shrink-0 text-[12px] font-medium text-ink-soft">{t('Копия')}</label>
+              <input id="compose-cc" type="text" inputMode="email" value={draft.cc ?? ''} onChange={(e) => setDraft({ ...draft, cc: e.target.value })} placeholder="user@company.local" className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-ink-soft text-ink" />
             </div>
           )}
-          <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
-            <label htmlFor="compose-subject" className="w-12 shrink-0 text-[13px] text-faint">{t('Тема')}</label>
-            <input id="compose-subject" required value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder={t('О чём письмо?')} className="min-w-0 flex-1 border-0 bg-transparent text-sm font-medium outline-none placeholder:font-normal placeholder:text-faint focus:ring-0" />
+          <div className="flex h-11 shrink-0 items-center gap-3 border-b border-[#E5E5EA] px-4">
+            <label htmlFor="compose-subject" className="w-12 shrink-0 text-[12px] font-medium text-ink-soft">{t('Тема')}</label>
+            <input id="compose-subject" required value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder={t('О чём письмо?')} className="min-w-0 flex-1 border-0 bg-transparent text-sm font-medium outline-none placeholder:font-normal placeholder:text-ink-soft text-ink" />
           </div>
           <textarea
             ref={bodyRef}
@@ -1015,22 +1016,24 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
             value={draft.body}
             onChange={(e) => setDraft({ ...draft, body: e.target.value })}
             placeholder={t('Напишите сообщение…')}
-            className="min-h-[180px] flex-1 resize-none border-0 bg-transparent px-4 py-4 text-[15px] leading-relaxed outline-none placeholder:text-faint focus:ring-0"
+            className="min-h-[160px] flex-1 resize-none border-0 bg-transparent px-4 py-4 text-[14px] leading-relaxed outline-none placeholder:text-ink-soft text-ink focus:ring-0"
           />
           {files.length > 0 && (
             <div className="flex shrink-0 flex-wrap gap-2 px-4 pb-3">
-              {files.map((file, index) => <span key={`${file.name}-${index}`} className="chip"><Paperclip size={12} />{file.name}<button type="button" className="ml-1 rounded p-0.5 hover:text-danger" aria-label={`${t('Удалить вложение')}: ${file.name}`} onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}><X size={13} /></button></span>)}
+              {files.map((file, index) => <span key={`${file.name}-${index}`} className="chip"><Paperclip size={11} strokeWidth={1.5} />{file.name}<button type="button" className="ml-1 rounded-full p-0 hover:bg-[#F2F2F7] hover:text-red-600 transition" aria-label={`${t('Удалить вложение')}: ${file.name}`} onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}><X size={11} strokeWidth={1.5} /></button></span>)}
             </div>
           )}
           {sendError && (
-            <div className="mx-4 mb-3 shrink-0 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">{sendError}</div>
+            <div className="mx-4 mb-3 shrink-0 rounded-xl border border-[#E5E5EA] bg-[#F2F2F7] px-4 py-3 text-sm text-ink" role="alert">{sendError}</div>
           )}
-          <footer className="flex shrink-0 items-center gap-2 border-t border-line px-3 py-3">
-            <button className="btn-accent" disabled={sending}><Send size={15} /> {t('Отправить')}</button>
-            <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => { const picked = Array.from(e.target.files ?? []); setFiles((previous) => [...previous, ...picked]); e.target.value = ''; }} />
-            <IconButton icon={Paperclip} label={t('Прикрепить файлы')} onClick={() => fileRef.current?.click()} />
-            <span className="ml-1 hidden text-[11px] text-faint sm:inline">{t('Подпись добавится автоматически')}</span>
-            <IconButton icon={Trash2} label={t('Удалить черновик')} className="ml-auto" onClick={onClose} />
+          <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-[#E5E5EA] px-4 py-3 bg-[#F2F2F7]">
+            <div className="flex items-center gap-2">
+              <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => { const picked = Array.from(e.target.files ?? []); setFiles((previous) => [...previous, ...picked]); e.target.value = ''; }} />
+              <IconButton icon={Paperclip} label={t('Прикрепить файлы')} onClick={() => fileRef.current?.click()} size={17} strokeWidth={1.6} />
+              <span className="hidden sm:inline text-[11px] text-ink-soft">{t('Подпись добавится автоматически')}</span>
+            </div>
+            <button className="btn-accent" disabled={sending}><Send size={15} strokeWidth={1.7} /> {t('Отправить')}</button>
+            <IconButton icon={Trash2} label={t('Удалить черновик')} className="ml-auto" onClick={onClose} size={17} strokeWidth={1.6} />
           </footer>
         </form>
       )}

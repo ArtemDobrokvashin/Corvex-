@@ -78,18 +78,18 @@ export function CalendarWidget({ className = '' }: { className?: string }) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="icon-btn h-9 w-9"
+        className="icon-btn h-10 w-10"
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-label={t('Календарь')}
       >
-        <CalendarIcon size={21} strokeWidth={1.75} />
+        <CalendarIcon size={19} strokeWidth={1.75} />
       </button>
-      <span className="text-[10px] text-muted">{t('Календарь')}</span>
+      <span className="text-[10px] font-medium text-ink-soft tracking-tight">{t('Календарь')}</span>
 
       {open && (
         <div
-          className="absolute left-0 mt-2 w-64 max-w-[calc(100vw-32px)] panel p-3 shadow-pop z-50"
+          className="absolute left-0 mt-3 w-64 max-w-[calc(100vw-32px)] rounded-2xl border border-[#E5E5EA] bg-white shadow-[0_10px_40px_rgba(23,24,28,0.15)] p-3 z-50"
           role="dialog"
           aria-modal="true"
           aria-label={t('Календарь')}
@@ -99,7 +99,7 @@ export function CalendarWidget({ className = '' }: { className?: string }) {
             <button
               type="button"
               onClick={() => { setOpen(false); navigate('/calendar'); }}
-              className="flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
+              className="flex items-center gap-1 text-[11px] font-medium text-accent hover:bg-[#F2F2F7] hover:text-accent-900 rounded-lg px-2 py-1"
             >
               <ExternalLink size={12} strokeWidth={1.75} />
               {t('Открыть календарь')}
@@ -114,7 +114,7 @@ export function CalendarWidget({ className = '' }: { className?: string }) {
             >
               <ChevronLeft size={14} strokeWidth={1.75} />
             </button>
-            <p className="text-[13px] font-medium text-ink">{monthName}</p>
+            <p className="text-[13px] font-medium text-ink tracking-tight">{monthName}</p>
             <button
               type="button"
               onClick={nextMonth}
@@ -127,7 +127,7 @@ export function CalendarWidget({ className = '' }: { className?: string }) {
           <div className="overflow-x-auto">
             <table className="w-full text-center border-collapse">
               <thead>
-                <tr className="text-[10px] uppercase tracking-[0.08em] text-faint">
+                <tr className="text-[10px] uppercase tracking-[0.1em] text-ink-soft">
                   {weekdayNames.map((name, i) => (
                     <th key={i} className="px-1 py-1.5">{name}</th>
                   ))}
@@ -145,8 +145,8 @@ export function CalendarWidget({ className = '' }: { className?: string }) {
                             day === 0
                               ? 'bg-transparent'
                               : isToday
-                                ? 'bg-accent-soft text-accent-dark font-medium'
-                                : 'text-ink-soft hover:bg-black/[0.04]'
+                                ? 'bg-[#F2F2F7] text-accent font-medium ring-1 ring-accent'
+                                : 'text-ink-soft hover:bg-[#F2F2F7]'
                           }`}
                         >
                           {day || ''}

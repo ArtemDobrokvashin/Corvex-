@@ -10,9 +10,10 @@
   }
 
   body {
-    @apply bg-canvas font-sans text-ink antialiased;
+    @apply bg-white font-sans text-ink antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "ss01";
     text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
   }
 
   ::selection {
@@ -42,7 +43,7 @@
   @media (pointer: coarse) {
     button,
     [role="button"] {
-      min-height: 40px;
+      min-height: 44px;
     }
   }
 
@@ -56,138 +57,141 @@
       transition-duration: 0.01ms !important;
     }
   }
+
+  /* Prevent horizontal overflow on mobile */
+  body {
+    overflow-x: hidden;
+  }
+
+  #root {
+    overflow-x: hidden;
+  }
 }
 
 @layer components {
   .btn-primary {
-    @apply inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-ink px-4 text-sm font-medium text-white shadow-soft transition duration-150 hover:bg-ink-soft active:translate-y-px disabled:cursor-not-allowed disabled:opacity-55 disabled:active:translate-y-0;
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-ink px-5 text-sm font-medium text-white shadow-sm transition duration-150 hover:bg-[#000000] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100;
   }
 
   .btn-accent {
-    @apply inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-white shadow-soft transition duration-150 hover:bg-accent-dark active:translate-y-px disabled:cursor-not-allowed disabled:opacity-55 disabled:active:translate-y-0;
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-accent px-5 text-sm font-medium text-white shadow-sm transition duration-150 hover:bg-[#3157D5] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100;
   }
 
   .btn-secondary {
-    @apply inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 text-sm font-medium text-ink-soft shadow-soft transition duration-150 hover:border-[#D8D6CF] hover:bg-chrome active:translate-y-px disabled:cursor-not-allowed disabled:opacity-55 disabled:active:translate-y-0;
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#E5E5EA] bg-white px-5 text-sm font-medium text-ink shadow-sm transition duration-150 hover:bg-[#F2F2F7] hover:border-[#D1D1D6] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100;
   }
 
   .btn-ghost {
-    @apply inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-muted transition duration-150 hover:bg-black/[0.045] hover:text-ink disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex h-9 items-center justify-center gap-2 rounded-xl px-3 text-sm font-medium text-ink-soft transition duration-150 hover:bg-[#F2F2F7] hover:text-ink disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-danger-ghost {
-    @apply inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-danger transition duration-150 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex h-9 items-center justify-center gap-2 rounded-xl px-3 text-sm font-medium text-red-600 transition duration-150 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .icon-btn {
-    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted transition duration-150 hover:bg-black/[0.045] hover:text-ink disabled:cursor-not-allowed disabled:opacity-45;
+    @apply inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-ink-soft transition duration-150 hover:bg-[#F2F2F7] hover:text-ink disabled:cursor-not-allowed disabled:opacity-45;
   }
 
   .icon-btn-sm {
-    @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted transition duration-150 hover:bg-black/[0.045] hover:text-ink disabled:cursor-not-allowed disabled:opacity-45;
+    @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-ink-soft transition duration-150 hover:bg-[#F2F2F7] hover:text-ink disabled:cursor-not-allowed disabled:opacity-45;
   }
 
   .field {
-    @apply h-11 w-full rounded-lg border border-line bg-surface px-3.5 text-sm text-ink shadow-[inset_0_1px_2px_rgba(23,24,28,0.025)] outline-none transition duration-150 placeholder:text-faint hover:border-[#D9D7D0] focus:border-accent focus:ring-4 focus:ring-accent/10 disabled:cursor-not-allowed disabled:bg-chrome disabled:text-muted;
+    @apply h-11 w-full rounded-xl border border-[#E5E5EA] bg-white px-4 text-sm text-ink shadow-[0_1px_0_rgba(23,24,28,0.04)] outline-none transition duration-150 placeholder:text-ink-soft hover:border-[#D1D1D6] focus:border-accent focus:ring-4 focus:ring-accent/10 disabled:cursor-not-allowed disabled:bg-[#F2F2F7] disabled:text-muted;
   }
 
   .field-sm {
-    @apply h-9 rounded-lg px-3 text-sm;
+    @apply h-9 rounded-xl px-3 text-sm;
   }
 
   textarea.field {
-    @apply h-auto py-3 leading-relaxed;
+    @apply h-auto py-3.5 leading-relaxed;
   }
 
   .field-label {
-    @apply mb-1.5 block text-[13px] font-medium text-ink-soft;
+    @apply mb-1.5 block text-[12px] font-medium text-ink-soft tracking-tight;
   }
 
   .search-field {
-    @apply h-10 w-full rounded-full border border-transparent bg-black/[0.045] pl-10 pr-10 text-sm text-ink outline-none transition duration-150 placeholder:text-faint hover:bg-black/[0.06] focus:border-accent/35 focus:bg-surface focus:ring-4 focus:ring-accent/10;
+    @apply h-10 w-full rounded-full border-transparent bg-[#F2F2F7] pl-10 pr-10 text-sm text-ink outline-none transition duration-150 placeholder:text-ink-soft hover:bg-[#E5E5EA] focus:border-accent/35 focus:bg-white focus:ring-4 focus:ring-accent/10;
   }
 
   .panel {
-    @apply rounded-2xl border border-line bg-surface shadow-soft;
+    @apply rounded-2xl border border-[#E5E5EA] bg-white shadow-[0_1px_0_rgba(23,24,28,0.06),0_0_0_1px_rgba(23,24,28,0.03)];
   }
 
   .section-label {
-    @apply px-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-faint;
+    @apply px-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-soft;
   }
 
   .nav-row {
-    @apply flex min-h-9 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-muted transition duration-150 hover:bg-black/[0.04] hover:text-ink;
+    @apply flex min-h-10 w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-ink-soft transition duration-150 hover:bg-[#F2F2F7] hover:text-ink;
   }
 
   .nav-row-active {
-    @apply bg-accent-soft font-medium text-accent-dark hover:bg-accent-soft hover:text-accent-dark;
+    @apply bg-[#F2F2F7] font-medium text-ink hover:bg-[#F2F2F7] hover:text-ink;
   }
 
   .chip {
-    @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-chrome px-2.5 py-1 text-xs font-medium text-muted;
+    @apply inline-flex items-center gap-1.5 rounded-full border border-[#E5E5EA] bg-white px-2.5 py-1 text-[11px] font-medium text-ink-soft shadow-sm;
   }
 
   .chip-accent {
-    @apply border-accent/20 bg-accent-soft text-accent-dark;
+    @apply border-[#E5E5EA] bg-white text-ink shadow-sm;
   }
 
   .kbd {
-    @apply inline-flex h-5 min-w-5 items-center justify-center rounded border border-line bg-surface px-1 font-mono text-[10px] font-medium text-faint shadow-[0_1px_0_rgba(23,24,28,0.06)];
+    @apply inline-flex h-5 min-w-5 items-center justify-center rounded border border-[#E5E5EA] bg-white px-1 font-mono text-[10px] font-medium text-ink-soft shadow-[0_1px_0_rgba(23,24,28,0.06)];
   }
 
   .notice {
-    @apply flex items-start gap-2.5 rounded-xl border px-3.5 py-3 text-sm leading-relaxed;
+    @apply flex items-start gap-2.5 rounded-xl border border-[#E5E5EA] bg-white px-3.5 py-3 text-sm leading-relaxed shadow-sm;
   }
 
   .notice-error {
-    @apply border-red-100 bg-red-50/80 text-red-800;
+    @apply border-red-100 bg-red-50 text-red-800;
   }
 
   .notice-success {
-    @apply border-emerald-100 bg-emerald-50/80 text-emerald-900;
+    @apply border-emerald-100 bg-emerald-50 text-emerald-900;
   }
 
   .notice-warning {
-    @apply border-amber-100 bg-amber-50/90 text-amber-900;
+    @apply border-amber-100 bg-amber-50 text-amber-900;
   }
 
   .hairline-t {
-    @apply border-t border-line;
+    @apply border-t border-[#E5E5EA];
   }
 
   .hairline-b {
-    @apply border-b border-line;
+    @apply border-b border-[#E5E5EA];
   }
 
   .scroll-area {
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: thin;
-    scrollbar-color: rgba(23, 24, 28, 0.18) transparent;
+    scrollbar-color: rgba(23, 24, 28, 0.16) transparent;
   }
 
   .scroll-area::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
   }
 
   .scroll-area::-webkit-scrollbar-thumb {
-    background: rgba(23, 24, 28, 0.16);
-    border: 2px solid transparent;
+    background: rgba(23, 24, 28, 0.14);
     border-radius: 999px;
-    background-clip: padding-box;
   }
 
   .scroll-area::-webkit-scrollbar-thumb:hover {
-    background: rgba(23, 24, 28, 0.28);
-    border: 2px solid transparent;
-    background-clip: padding-box;
+    background: rgba(23, 24, 28, 0.24);
   }
 
   .message-markdown {
     min-width: 0;
-    /* Длинные URL и строки без пробелов должны переноситься внутри колонки,
-       а не создавать горизонтальную прокрутку всего чата. */
     overflow-wrap: anywhere;
   }
 
@@ -210,7 +214,7 @@
   }
 
   .message-markdown code {
-    @apply rounded bg-black/[0.055] px-1 py-0.5 font-mono text-[0.86em];
+    @apply rounded border border-[#E5E5EA] bg-[#F2F2F7] px-1.5 py-0.5 font-mono text-[0.86em] text-ink;
   }
 
   .emoji-text {
