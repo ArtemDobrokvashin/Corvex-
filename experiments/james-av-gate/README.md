@@ -5,7 +5,9 @@ Compose, не входит в образ и не является готовым
 под API Apache James 3.9.1: он наследует `ClamAVScan` для штатного подключения к
 clamd, но не использует его fail-open `service` и разбор ответа. Сканирует
 сообщение заново, не доверяя пользовательским заголовкам и старым атрибутам;
-только точный `stream: OK\0` оставляет исходный state. Инфицированный и
+только точный `stream: OK\0` оставляет исходный state. MIME сериализуется
+непосредственно в ограниченный по числу байт INSTREAM, без использования
+`MimeMessageInputStream` с его потенциальной полной материализацией в памяти. Инфицированный и
 неизвестный результаты отправляются в отдельные состояния, которые **пока не
 сконфигурированы**. При отсутствии процессоров нельзя включать mailet.
 
@@ -50,6 +52,20 @@ fake scanner и проверяет маршрутизацию результат
 его опубликованные классы имеют версию 65. Попытка на ПК с Java 17 для исходного
 POM завершилась `BUILD FAILURE` из-за несовместимой версии классов. Артефакты
 были загружены, но компиляция и тесты против них не прошли; POM исправлен на 21,
-повтор с JDK 21 пока не проводился. Синтетический stub runner по-прежнему можно
+повтор с JDK 21 для версии `d8e27cc` на ПК: 2 теста, 0 ошибок,
+BUILD SUCCESS. **После этого код изменён**: потоковая сериализация и новые
+тесты с настоящими зависимостями пока не запускались. Синтетический stub runner по-прежнему можно
 запускать с JDK 17 — он не использует настоящие зависимости. Даже успешная Maven-сборка не
 проверит загрузку класса внутри образа James, реальные clamd, карантин или ingress.
+
+Важные ограничения, обнаруженные по исходникам 3.9.1: если состояние доходит до
+конца processor без смены, `MailetProcessorImpl` может перевести письмо в GHOST;
+пустой quarantine processor не является удержанием. У default error processor
+есть Bounce. Postgres repository сначала сохраняет MIME blob, затем метаданные
+с upsert по URL/ключу; атомарность между blob/БД и поведение при падении не
+доказаны. Поэтому для INFECTED/UNKNOWN требуются реальная конфигурация
+удержания, проверка обработки ошибок и recovery, без bounce с вложением.
+[MailetProcessorImpl](https://github.com/apache/james-project/blob/james-project-3.9.1/server/mailet/mailetcontainer-impl/src/main/java/org/apache/james/mailetcontainer/impl/MailetProcessorImpl.java),
+[PostgresMailRepositoryContentDAO](https://github.com/apache/james-project/blob/james-project-3.9.1/server/data/data-postgres/src/main/java/org/apache/james/mailrepository/postgres/PostgresMailRepositoryContentDAO.java).
+Лимит собственного INSTREAM не гарантирует ограничения памяти внутри самой
+реализации MIME, таймаута источника, настроек clamd или размера входа SMTP.

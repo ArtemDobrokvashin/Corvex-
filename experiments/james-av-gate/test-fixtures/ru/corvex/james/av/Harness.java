@@ -39,6 +39,54 @@ public class Harness {
             check(!thread.isAlive() && error.get() == null && message.state.equals(expected));
         }
     }
+    static void framingAndLimit(boolean oversize) throws Exception {
+        try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            configure(server);
+            java.util.concurrent.atomic.AtomicReference<Throwable> error = new java.util.concurrent.atomic.AtomicReference<>();
+            java.util.concurrent.atomic.AtomicLong received = new java.util.concurrent.atomic.AtomicLong();
+            java.util.concurrent.atomic.AtomicBoolean terminated = new java.util.concurrent.atomic.AtomicBoolean();
+            Thread thread = new Thread(() -> {
+                try (Socket socket = server.accept()) {
+                    DataInputStream in = new DataInputStream(socket.getInputStream());
+                    check(java.util.Arrays.equals(in.readNBytes(10), "zINSTREAM\0".getBytes(StandardCharsets.US_ASCII)));
+                    while (true) {
+                        int n = in.readInt();
+                        if (n == 0) { terminated.set(true); break; }
+                        check(n > 0 && n <= 16384);
+                        byte[] chunk = in.readNBytes(n);
+                        check(chunk.length == n);
+                        for (byte value : chunk) check(value == 42);
+                        received.addAndGet(n);
+                    }
+                    socket.getOutputStream().write("stream: OK\0".getBytes(StandardCharsets.US_ASCII));
+                } catch (EOFException e) {
+                    if (!oversize) error.set(e);
+                } catch (Throwable e) { error.set(e); }
+            });
+            thread.start();
+            InputStream input = new InputStream() {
+                long left = oversize ? 25L * 1024 * 1024 + 1 : 33000;
+                public int read() { if (left == 0) return -1; left--; return 42; }
+                public int read(byte[] b, int off, int len) {
+                    if (left == 0) return -1;
+                    int count = (int) Math.min(left, len);
+                    java.util.Arrays.fill(b, off, off + count, (byte) 42);
+                    left -= count;
+                    return count;
+                }
+            };
+            try {
+                boolean result = new CorvexClamAVGate().scan(input, TimeUnit.SECONDS.toNanos(10));
+                check(!oversize && !result);
+            } catch (IOException e) {
+                check(oversize && e.getMessage().contains("limit"));
+            }
+            thread.join(3000);
+            check(!thread.isAlive() && error.get() == null);
+            if (oversize) check(!terminated.get() && received.get() <= 25L * 1024 * 1024);
+            else check(terminated.get() && received.get() == 33000);
+        }
+    }
     static void timeout(boolean writeStall) throws Exception {
         try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
             server.setReceiveBufferSize(4096);
@@ -89,6 +137,7 @@ public class Harness {
         ClamAVScan.addresses = null; m = new Message();
         new CorvexClamAVGate().service(m);
         check(m.state.equals(CorvexClamAVGate.UNKNOWN));
+        framingAndLimit(false); framingAndLimit(true);
         timeout(false); timeout(true);
         System.out.println("PASS: synthetic James stubs and fake scanner, including stalled read/write");
     }

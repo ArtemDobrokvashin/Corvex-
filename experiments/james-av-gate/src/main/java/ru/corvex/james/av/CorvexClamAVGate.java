@@ -2,9 +2,11 @@ package ru.corvex.james.av;
 
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
+import java.io.BufferedOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.ConnectException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -15,7 +17,6 @@ import java.util.concurrent.TimeUnit;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import org.apache.james.clamav.ClamAVScan;
-import org.apache.james.server.core.MimeMessageInputStream;
 import org.apache.mailet.Mail;
 
 /**
@@ -54,9 +55,7 @@ public final class CorvexClamAVGate extends ClamAVScan {
                 mail.setState(UNKNOWN);
                 return;
             }
-            try (InputStream input = new MimeMessageInputStream(message)) {
-                if (hasVirus(input)) mail.setState(INFECTED);
-            }
+            if (scanMessage(message)) mail.setState(INFECTED);
         } catch (IOException | MessagingException | RuntimeException e) {
             // Never trust sender headers or cached scan attributes; on any
             // failure do not allow LocalDelivery or RemoteDelivery to run.
@@ -96,9 +95,33 @@ public final class CorvexClamAVGate extends ClamAVScan {
         return scan(input, SCAN_BUDGET_NANOS);
     }
 
+    @FunctionalInterface
+    private interface ContentWriter {
+        void write(OutputStream out) throws IOException, MessagingException;
+    }
+
     // The watchdog bounds stalled socket writes and trickle responses. It cannot
-    // interrupt a MIME input stream that itself hangs; that remains a blocker.
+    // interrupt MIME serialization or a source stream that itself hangs.
     boolean scan(InputStream input, long budgetNanos) throws IOException {
+        try {
+            return scanContent(out -> {
+                byte[] buffer = new byte[16384];
+                int count;
+                while ((count = input.read(buffer)) != -1) {
+                    if (count == 0) throw new IOException("Input stream did not progress");
+                    out.write(buffer, 0, count);
+                }
+            }, budgetNanos);
+        } catch (MessagingException e) {
+            throw new IOException("Unexpected MIME error", e);
+        }
+    }
+
+    private boolean scanMessage(MimeMessage message) throws IOException, MessagingException {
+        return scanContent(message::writeTo, SCAN_BUDGET_NANOS);
+    }
+
+    private boolean scanContent(ContentWriter content, long budgetNanos) throws IOException, MessagingException {
         if (budgetNanos <= 0) throw new IOException("Invalid scan deadline");
         try (Socket socket = getClamdSocket()) {
             long start = System.nanoTime();
@@ -107,20 +130,13 @@ public final class CorvexClamAVGate extends ClamAVScan {
             }, budgetNanos, TimeUnit.NANOSECONDS);
             try {
                 socket.setSoTimeout(READ_TIMEOUT_MS);
-                DataOutputStream out = new DataOutputStream(socket.getOutputStream());
-                out.write("zINSTREAM\0".getBytes(StandardCharsets.US_ASCII));
-                byte[] buffer = new byte[16384];
-                long total = 0;
-                int count;
-                while ((count = input.read(buffer)) != -1) {
-                    if (count == 0) throw new IOException("Input stream did not progress");
-                    total += count;
-                    if (total > MAX_BYTES) throw new IOException("Scan size limit exceeded");
-                    out.writeInt(count);
-                    out.write(buffer, 0, count);
-                }
-                out.writeInt(0);
-                out.flush();
+                DataOutputStream protocol = new DataOutputStream(socket.getOutputStream());
+                protocol.write("zINSTREAM\0".getBytes(StandardCharsets.US_ASCII));
+                OutputStream chunks = new BufferedOutputStream(new ChunkOutput(protocol), 16384);
+                content.write(chunks);
+                chunks.flush();
+                protocol.writeInt(0);
+                protocol.flush();
                 boolean infected = parseReply(socket.getInputStream());
                 if (System.nanoTime() - start >= budgetNanos) throw new IOException("Scan deadline exceeded");
                 return infected;
@@ -128,6 +144,26 @@ public final class CorvexClamAVGate extends ClamAVScan {
                 deadline.cancel(false);
             }
         }
+    }
+
+    /** Limit bytes before framing; never close the socket through the MIME writer. */
+    private static final class ChunkOutput extends OutputStream {
+        private final DataOutputStream protocol;
+        private long total;
+        private ChunkOutput(DataOutputStream protocol) { this.protocol = protocol; }
+        @Override public void write(int value) throws IOException {
+            byte[] one = {(byte) value};
+            write(one, 0, 1);
+        }
+        @Override public void write(byte[] bytes, int offset, int length) throws IOException {
+            java.util.Objects.checkFromIndexSize(offset, length, bytes.length);
+            if (length == 0) return;
+            if (length > MAX_BYTES - total) throw new IOException("Scan size limit exceeded");
+            total += length;
+            protocol.writeInt(length);
+            protocol.write(bytes, offset, length);
+        }
+        @Override public void flush() throws IOException { protocol.flush(); }
     }
 
     static boolean parseReply(InputStream input) throws IOException {
