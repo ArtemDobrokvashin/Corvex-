@@ -588,7 +588,7 @@ export default function MailPage() {
     <div className="h-full lg:p-3 xl:p-4">
       <div className="flex h-full min-h-0 overflow-hidden bg-white lg:rounded-[18px] lg:border lg:border-[#e5e5ea] lg:shadow-soft">
         {/* Папки */}
-        <aside className="hidden w-[238px] shrink-0 flex-col border-r border-[#e5e5ea] bg-chrome p-3 xl:flex">
+        <aside className="hidden w-[238px] shrink-0 flex-col border-r border-[#e5e5ea] bg-[#f3f6f6] p-3 xl:flex">
           <div className="flex shrink-0 items-center justify-between px-2 pb-3 pt-1">
             <h1 className="text-[17px] font-semibold tracking-[-0.02em]">{t('Почта')}</h1>
             <span className="text-xs text-ink-soft">{countLabel(locale, folderCounts.INBOX ?? 0, ['новое', 'новых', 'новых'], ['new', 'new'])}</span>
@@ -609,7 +609,12 @@ export default function MailPage() {
                 <button key={f.id} type="button" onClick={() => selectFolder(f.id)} className={`nav-row shrink-0 ${folder === f.id ? 'nav-row-active' : ''}`}>
                   <Icon size={16} strokeWidth={1.8} />
                   <span className="min-w-0 flex-1 truncate">{f.name}</span>
-                  {count > 0 && <span className={`text-xs ${folder === f.id ? 'font-semibold text-[#0071e3]' : 'font-medium text-ink-soft'}`}>{count}</span>}
+                  {count > 0 && (
+                    <>
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#0071e3]" />
+                      <span className={`text-xs ${folder === f.id ? 'font-semibold text-[#0071e3]' : 'font-medium text-ink-soft'}`}>{count}</span>
+                    </>
+                  )}
                 </button>
               );
             })}
@@ -790,7 +795,7 @@ export default function MailPage() {
               );
             })}
             {visible.length === 0 && (
-              <EmptyState icon={MailOpen} title={t('Здесь пока тихо')} description={search ? t('По этому запросу писем не нашлось. Попробуйте другое слово или сбросьте фильтр.') : t('В этой папке нет писем для выбранного фильтра.')} />
+              <EmptyState icon={MailOpen} title={t('Здесь пока тихо')} description={search ? t('По этому запросу писем не нашлось. Попробуйте другое слово или сбросьте фильтр.') : t('В этой папке нет писем для выбранного фильтра.')} colorClass="text-[#0071e3]" />
             )}
           </div>
 
@@ -850,7 +855,7 @@ export default function MailPage() {
 
                   {activeHtml && <div className="mt-5 flex flex-wrap items-center gap-2 text-[11px] text-ink-soft">
                     <span>{t('Внешние изображения и ссылки отключены для безопасности.')}</span>
-                    <button type="button" className="font-medium text-[#0071e3] underline decoration-accent/30" onClick={() => setShowPlainText(!showPlainText)}>{t(showPlainText ? 'Показать HTML' : 'Показать обычный текст')}</button>
+                    <button type="button" className="font-medium text-[#0071e3] underline decoration-[#0071e3]/30" onClick={() => setShowPlainText(!showPlainText)}>{t(showPlainText ? 'Показать HTML' : 'Показать обычный текст')}</button>
                   </div>}
                   {activeHtml && !showPlainText ? <iframe title={t('Содержимое HTML-письма')} sandbox="" referrerPolicy="no-referrer" srcDoc={mailHtmlDocument(activeHtml)} className="mt-4 h-[420px] w-full rounded-xl border border-[#e5e5ea] bg-white" />
                     : <div className="mt-7 text-[15px] leading-[1.7] text-ink-soft">
@@ -879,7 +884,7 @@ export default function MailPage() {
             </>
           ) : (
             <div className="flex min-h-0 flex-1 flex-col">
-              <EmptyState icon={Inbox} title={t('Выберите письмо')} description={t('Откройте письмо из списка или двигайтесь по нему клавишами J и K.')} />
+              <EmptyState icon={Inbox} title={t('Выберите письмо')} description={t('Откройте письмо из списка или двигайтесь по нему клавишами J и K.')} colorClass="text-[#0071e3]" />
               <div className="-mt-20 flex items-center justify-center gap-4 pb-12 text-[11px] text-ink-soft">
                 <span className="flex items-center gap-1.5"><span className="kbd">J</span><span className="kbd">K</span> {t('навигация')}</span>
                 <span className="flex items-center gap-1.5"><span className="kbd">C</span> {t('написать')}</span>
@@ -974,7 +979,7 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
           <p className="mt-1 text-sm text-ink-soft">{t('Копия сохранена в папке «Отправленные».')}</p>
         </div>
       ) : (
-        <form onSubmit={submit} className={`flex min-h-0 flex-1 flex-col ${draggingFiles ? 'ring-2 ring-inset ring-accent' : ''}`}
+        <form onSubmit={submit} className={`flex min-h-0 flex-1 flex-col ${draggingFiles ? 'ring-2 ring-inset ring-[#0071e3]' : ''}`}
           onDragOver={(event) => { if (Array.from(event.dataTransfer.types).includes('Files')) { event.preventDefault(); setDraggingFiles(true); } }}
           onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDraggingFiles(false); }}
           onDrop={(event) => { event.preventDefault(); setDraggingFiles(false); const dropped = Array.from(event.dataTransfer.files); if (dropped.length) setFiles((previous) => [...previous, ...dropped]); }}>

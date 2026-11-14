@@ -114,15 +114,17 @@ export function EmptyState({
   title,
   description,
   action,
+  colorClass = 'text-ink-soft',
 }: {
   icon: LucideIcon;
   title: string;
   description?: string;
   action?: ReactNode;
+  colorClass?: string;
 }) {
   return (
     <div className="flex h-full flex-col items-center justify-center px-6 py-16 text-center">
-      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#000000]/04 text-ink-soft">
+      <div className={`mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#000000]/04 ${colorClass}`}>
         <Icon size={25} strokeWidth={1.6} />
       </div>
       <h3 className="text-[15px] font-semibold text-ink-soft">{title}</h3>

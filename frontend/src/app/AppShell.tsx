@@ -249,10 +249,10 @@ export default function AppShell() {
         {/* Контент */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {demoMode && (
-            <div className="flex shrink-0 items-center justify-center gap-2 border-b border-[#e5e5ea] bg-[#fef3e7] px-4 py-1.5 text-center text-xs text-amber-800">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+            <div className="flex shrink-0 items-center justify-center gap-2 border-b border-[#e5e5ea] bg-[#fef3e7] px-4 py-1.5 text-center text-xs text-[#9a3412]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#fb923c]" />
               <span>{t('Демо-режим: сервер не подключён, данные учебные.')}</span>
-              <button onClick={onLogout} className="font-medium text-accent underline decoration-accent/30 underline-offset-2">{t('Выйти')}</button>
+              <button onClick={onLogout} className="font-medium text-[#0071e3] underline decoration-[#0071e3]/30 underline-offset-2">{t('Выйти')}</button>
             </div>
           )}
           <div className="min-h-0 min-w-0 flex-1"><Outlet /></div>

@@ -33,10 +33,16 @@ const PRIORITY_LABELS: Record<CalendarPriority, string> = {
   high: 'Высокий',
 };
 
-const PRIORITY_COLORS: Record<CalendarPriority, string> = {
-  low: 'bg-blue-100 text-blue-700',
-  medium: 'bg-[#fff7ed] text-[#9a3412]',
-  high: 'bg-[#fef2f2] text-[#dc2626]',
+const PRIORITY_BADGE: Record<CalendarPriority, string> = {
+  low: 'badge-low',
+  medium: 'badge-medium',
+  high: 'badge-high',
+};
+
+const PRIORITY_DOT: Record<CalendarPriority, string> = {
+  low: 'event-dot-low',
+  medium: 'event-dot-medium',
+  high: 'event-dot-high',
 };
 
 const STORAGE_KEY = 'corvex.calendar.events';
@@ -287,7 +293,7 @@ export default function CalendarPage() {
                             <span className="text-[12px] font-medium">{day || ''}</span>
                             {hasEvents && (
                               <span className="mt-1 flex h-2 w-2 items-center justify-center">
-                                <span className="h-1 w-1 rounded-full bg-[#0071e3]" />
+                                <span className={`h-1 w-1 rounded-full ${dayEvents.some((e) => e.priority === 'high') ? 'event-dot-high' : dayEvents.some((e) => e.priority === 'medium') ? 'event-dot-medium' : dayEvents.some((e) => e.priority === 'low') ? 'event-dot-low' : 'event-dot-low'}`} />
                               </span>
                             )}
                           </div>
@@ -328,12 +334,12 @@ export default function CalendarPage() {
                     <div className="flex items-center gap-2">
                       <span className={`text-sm font-medium text-ink truncate ${e.priority === 'high' ? 'font-semibold' : ''}`}>{e.title}</span>
                       {e.source === 'email' && (
-                        <span className="h-2 w-2 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
+                        <span className="source-mail">
                           <Mail size={10} strokeWidth={1.5} />
                         </span>
                       )}
                       {e.priority && (
-                        <span className={`text-[9px] px-2 py-0.5 rounded font-bold ${PRIORITY_COLORS[e.priority]}`}>
+                        <span className={`text-[9px] px-2 py-0.5 rounded font-bold ${PRIORITY_BADGE[e.priority]}`}>
                           {PRIORITY_LABELS[e.priority]}
                         </span>
                       )}

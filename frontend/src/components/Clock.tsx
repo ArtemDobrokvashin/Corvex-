@@ -25,7 +25,7 @@ export function Clock({ className = '' }: { className?: string }) {
       aria-label={t('Текущее время')}
       title={t('Текущее время')}
     >
-      <ClockIcon size={13} strokeWidth={1.6} />
+      <ClockIcon size={13} strokeWidth={1.6} className="text-[#0071e3]" />
       <span className="text-[13px] font-semibold text-ink tracking-tight">{time}</span>
     </div>
   );

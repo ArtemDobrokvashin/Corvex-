@@ -164,6 +164,50 @@
     @apply border-[#e5e5ea] bg-white text-ink shadow-sm;
   }
 
+  /* ---------- Semantic colors (Apple HIG: цвет с смыслом, не декоративно) ---------- */
+
+  .badge-low {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-[#d1fae5] bg-[#f0fdf4] px-2.5 py-0.5 text-[10px] font-semibold text-[#059669] shadow-sm;
+  }
+
+  .badge-medium {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-[#fef3c7] bg-[#fffbeb] px-2.5 py-0.5 text-[10px] font-semibold text-[#d97706] shadow-sm;
+  }
+
+  .badge-high {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-[#fee2e2] bg-[#fef2f2] px-2.5 py-0.5 text-[10px] font-semibold text-[#dc2626] shadow-sm;
+  }
+
+  .btn-success {
+    @apply inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#34c759] px-6 text-sm font-medium text-white transition duration-150 hover:bg-[#28a745] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 shadow-[0_1px_0_rgba(52,199,89,0.35)];
+  }
+
+  .btn-danger {
+    @apply inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#ff3b30] px-6 text-sm font-medium text-white transition duration-150 hover:bg-[#d70015] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 shadow-[0_1px_0_rgba(255,59,48,0.35)];
+  }
+
+  .event-dot-low {
+    @apply h-1.5 w-1.5 rounded-full bg-[#34c759] shadow-[0_0_0_1px_rgba(52,199,89,0.2)];
+  }
+
+  .event-dot-medium {
+    @apply h-1.5 w-1.5 rounded-full bg-[#ff9f0a] shadow-[0_0_0_1px_rgba(255,159,10,0.2)];
+  }
+
+  .event-dot-high {
+    @apply h-1.5 w-1.5 rounded-full bg-[#ff3b30] shadow-[0_0_0_1px_rgba(255,59,48,0.2)];
+  }
+
+  .source-mail {
+    @apply h-2 w-2 rounded-full border border-[#dbeafe] bg-[#eff6ff] flex items-center justify-center text-blue-600;
+  }
+
+  .text-success { color: #059669; }
+  .text-warning { color: #d97706; }
+  .text-danger { color: #dc2626; }
+  .text-accent { color: #0071e3; }
+  .text-muted { color: #8e8e93; }
+
   .kbd {
     @apply inline-flex h-5 min-w-5 items-center justify-center rounded border border-[#e5e5ea] bg-white px-1 font-mono text-[10px] font-medium text-ink-soft shadow-[0_1px_0_rgba(23,24,28,0.06)];
   }
