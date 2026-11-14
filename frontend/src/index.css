@@ -23,10 +23,46 @@
   }
 
   body {
-    @apply bg-white font-sans text-ink antialiased;
+    @apply bg-[#ffffff] font-sans text-ink antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "ss01";
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
+    /* Prevent horizontal overflow on mobile */
+    overflow-x: hidden;
+  }
+
+  #root {
+    /* Use dvh so mobile browser chrome doesn't clip content */
+    min-height: 100dvh;
+    overflow-x: hidden;
+  }
+
+  /* Safe-area aware canvas background */
+  .bg-canvas {
+    background-color: #ffffff;
+  }
+
+  /* ---------- Mobile: respect safe areas (notch, Dynamic Island, home indicator) ---------- */
+
+  /* Top safe area for status bar / Dynamic Island */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  /* Bottom safe area for home indicator */
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* 44x44 pt minimum touch target — pad small icons so hit area meets Apple HIG */
+  .touch-target {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Glass tab bar — translucent surface floating above content */
+  .tab-bar-glass {
+    @apply backdrop-blur-md bg-white/80 border-t border-[#e5e5ea]/40 shadow-[0_-1px_0_rgba(0,0,0,0.04)];
   }
 
   ::selection {

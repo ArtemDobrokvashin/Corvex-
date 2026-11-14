@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  Calendar as CalendarIcon,
   Command,
   Globe,
   LogOut,
@@ -160,7 +161,7 @@ export default function AppShell() {
     <NavLink
       key={to}
       to={to}
-      className={({ isActive }) => `relative flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium ${isActive ? 'text-[#0071e3]' : 'text-ink-soft'}`}
+      className={({ isActive }) => `relative flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-2 text-[10px] font-medium transition ${isActive ? 'bg-[#0071e3]/10 text-[#0071e3]' : 'text-ink-soft hover:bg-[#f2f2f7] hover:text-ink'}`}
     >
       <span className="relative">
         <Icon size={20} strokeWidth={1.6} />
@@ -170,10 +171,24 @@ export default function AppShell() {
     </NavLink>
   );
 
+  /* Календарь как навигационная вкладка (таб-бар — только навигация по HIG, поповер — только на десктопе) */
+  const CalendarTabItem = () => (
+    <NavLink
+      key="/calendar"
+      to="/calendar"
+      className={({ isActive }) => `relative flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-2 text-[10px] font-medium transition ${isActive ? 'bg-[#0071e3]/10 text-[#0071e3]' : 'text-ink-soft hover:bg-[#f2f2f7] hover:text-ink'}`}
+    >
+      <span className="relative">
+        <CalendarIcon size={20} strokeWidth={1.6} />
+      </span>
+      {t('Календарь')}
+    </NavLink>
+  );
+
   return (
     <div className="flex h-full flex-col bg-canvas">
       {/* Топбар — на всю ширину: логотип, поиск, управление */}
-      <header className="flex shrink-0 items-center justify-between border-b border-[#e5e5ea] bg-white px-5 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.04)]">
+      <header className="flex shrink-0 items-center justify-between border-b border-[#e5e5ea] bg-white px-5 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.04)] safe-top">
         <div className="flex items-center gap-8 shrink-0">
           <LogoMark size={28} />
           <span className="text-[16px] font-semibold tracking-tight text-ink">Corvex</span>
@@ -199,19 +214,19 @@ export default function AppShell() {
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
-            className="h-9 w-9 rounded-full flex items-center justify-center text-ink-soft hover:text-ink transition hover:bg-[#f2f2f7]"
+            className="h-11 w-11 rounded-full flex items-center justify-center text-ink-soft hover:text-ink transition hover:bg-[#f2f2f7] touch-target"
             aria-label={t('Уведомления')}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
           </button>
           <button
             type="button"
             onClick={() => setLocale(nextLocale)}
-            className="h-9 w-9 rounded-full flex items-center justify-center text-ink-soft hover:text-ink transition hover:bg-[#f2f2f7]"
+            className="h-11 w-11 rounded-full flex items-center justify-center text-ink-soft hover:text-ink transition hover:bg-[#f2f2f7] touch-target"
             aria-label={t('Язык интерфейса')}
             title={t('Язык интерфейса')}
           >
-            <Globe size={17} strokeWidth={1.8} />
+            <Globe size={20} strokeWidth={1.8} />
           </button>
           <Clock className="text-[13px] font-medium text-ink shrink-0 hidden sm:flex" />
           <button type="button" onClick={() => setProfileOpen(!profileOpen)} className="flex items-center gap-1.5 rounded-full border border-[#e5e5ea] bg-white px-2 py-1 text-sm font-medium text-ink hover:bg-[#f2f2f7] transition shadow-[0_1px_0_rgba(0,0,0,0.04)]" aria-label={t('Профиль')}>
@@ -259,11 +274,11 @@ export default function AppShell() {
         </div>
       </div>
 
-      {/* Мобильная нижняя навигация */}
-      <nav className="flex shrink-0 border-t border-[#e5e5ea] bg-white px-3 pb-[env(safe-area-inset-bottom)] md:hidden shadow-[0_-1px_0_rgba(0,0,0,0.04)]" aria-label={t('Основная навигация')}>
+      {/* Мобильная нижняя навигация (Apple HIG: таб-бар снизу, стекло, без границ, 44px таргеты) */}
+      <nav className="tab-bar-glass flex shrink-0 px-3 pt-1.5 pb-[env(safe-area-inset-bottom)] md:hidden" aria-label={t('Основная навигация')}>
         {mobileNavItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
         {mobileNavItem('/chat', t('Сообщения'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
-        <CalendarWidget className="mt-0.5 mb-0.5" />
+        <CalendarTabItem />
         {canAdmin && mobileNavItem('/admin', t('Админ'), Settings2)}
       </nav>
 
