@@ -11,10 +11,21 @@ clamd, но не использует его fail-open `service` и разбор
 
 Не проверены реальные James зависимости/компиляция Maven, classloading в образе,
 привязка к живому ClamAV, отображение ошибок, безопасность state transitions и
-персистентность quarantine/recovery. Унаследованный getClamdSocket не имеет
-явного connect timeout, а синхронная запись не ограничена write timeout. Лимит
+персистентность quarantine/recovery. Кандидат ограничивает общее время TCP connect тремя секундами и числом
+адресов, но DNS в унаследованной инициализации и синхронная запись не имеют
+доказанного общего таймаута; эти изменения с настоящим James не проверены. Лимит
 сообщения и настройки ClamAV должны согласовываться с SMTP; пути JMAP import,
-APPEND, internal и outgoing могут обходить mailet, пока не доказано обратное.
+APPEND и internal могут обходить mailet. Согласно исходникам James 3.9.1,
+[`Email/import`](https://github.com/apache/james-project/blob/james-project-3.9.1/server/protocols/jmap-rfc-8621/src/main/scala/org/apache/james/jmap/method/EmailImportMethod.scala) вызывает `mailbox.appendMessageReactive` напрямую, минуя spool;
+[`EmailSubmission/set`](https://github.com/apache/james-project/blob/james-project-3.9.1/server/protocols/jmap-rfc-8621/src/main/scala/org/apache/james/jmap/method/EmailSubmissionSetMethod.scala) ставит письмо в spool. Это анализ исходников, не live test.
+
+Нынешний `jmap-nginx.conf` ограничивает HTTP-пути и методы, **не** JMAP-методы
+в JSON: любой обладатель bearer token и сетевого доступа к POST /jmap может
+попытаться выполнить операции записи. `JamesJmapReadClient` ограничивает свои
+собственные вызовы, но это не защита на границе сети. До включения путей импорта
+необходимо ограничить все записи и удостовериться, что каждый путь проходит
+политику AV/owner/RBAC; запрещать выдачу токенов браузерам недостаточно как
+единственную меру. Кандидат mailet сам по себе не защищает JMAP import.
 Не использовать этот класс, пока они не закрыты и пока реальные письма и
 вложения не проходят проверку. EICAR/недоступность/сбои/restart/rollback не
 проверены в James. `ToRepository` без потерь и без bounce пока лишь направление.

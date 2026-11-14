@@ -5,7 +5,11 @@ import jakarta.mail.internet.MimeMessage;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.ConnectException;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.util.concurrent.TimeUnit;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import org.apache.james.clamav.ClamAVScan;
@@ -17,7 +21,7 @@ import org.apache.mailet.Mail;
  * from normal processing; requires explicit quarantine processors and tests.
  * No MIME header or previously attached mail attribute is trusted as a result.
  * This is not a complete fail-closed system: pipeline coverage, durability,
- * ClamAV limits, connection/write timeouts and class loading remain unverified.
+ * ClamAV limits, write timeouts and class loading remain unverified.
  */
 public final class CorvexClamAVGate extends ClamAVScan {
     static final String INFECTED = "corvex-av-infected";
@@ -25,6 +29,8 @@ public final class CorvexClamAVGate extends ClamAVScan {
     private static final long MAX_BYTES = 25L * 1024 * 1024;
     private static final int REPLY_LIMIT = 4096;
     private static final int READ_TIMEOUT_MS = 5000;
+    private static final long CONNECT_BUDGET_NANOS = TimeUnit.SECONDS.toNanos(3);
+    private static final int MAX_ADDRESSES = 4;
 
     @Override
     public void service(Mail mail) throws MessagingException {
@@ -42,6 +48,32 @@ public final class CorvexClamAVGate extends ClamAVScan {
             // failure do not allow LocalDelivery or RemoteDelivery to run.
             mail.setState(UNKNOWN);
         }
+    }
+
+    /** Bounded TCP connect to resolved addresses. No name lookup or retry after a scan begins. */
+    @Override
+    protected Socket getClamdSocket() throws ConnectException {
+        InetAddress[] configured = getAddresses();
+        int port = getPort();
+        if (configured == null || configured.length == 0 || port < 1 || port > 65535) {
+            throw new ConnectException("ClamAV is not configured");
+        }
+        InetAddress[] addresses = Arrays.copyOf(configured, Math.min(configured.length, MAX_ADDRESSES));
+        long deadline = System.nanoTime() + CONNECT_BUDGET_NANOS;
+        for (InetAddress address : addresses) {
+            if (address == null) continue;
+            long remaining = deadline - System.nanoTime();
+            if (remaining <= 0) break;
+            int timeout = (int) Math.max(1, TimeUnit.NANOSECONDS.toMillis(remaining));
+            Socket socket = new Socket();
+            try {
+                socket.connect(new InetSocketAddress(address, port), timeout);
+                return socket;
+            } catch (IOException e) {
+                try { socket.close(); } catch (IOException ignored) { }
+            }
+        }
+        throw new ConnectException("ClamAV connection unavailable");
     }
 
     /** ClamAV INSTREAM; false only for the exact, NUL-framed clean response. */
