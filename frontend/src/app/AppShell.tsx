@@ -174,13 +174,13 @@ export default function AppShell() {
     <div className="flex h-full flex-col bg-canvas">
       {/* Топбар — на всю ширину: логотип, поиск, время, аватар */}
       <header className="flex shrink-0 items-center justify-between border-b border-line bg-surface px-4 py-3">
-        <div className="flex items-center gap-4 shrink-0">
-          <LogoMark size={30} />
+        <div className="flex items-center gap-6 shrink-0">
+          <LogoMark size={32} />
           <span className="text-[17px] font-semibold tracking-[-0.02em]">Corvex</span>
         </div>
-        <div className="flex items-center gap-1 flex-1 min-w-0 max-w-[700px]">
-          <div className="flex items-center gap-2 rounded-full border border-line bg-white px-3 py-1.5 min-w-[260px] shadow-soft">
-            <Search size={16} className="shrink-0 text-faint" />
+        <div className="flex items-center justify-center flex-1 min-w-0 max-w-[700px]">
+          <div className="flex items-center gap-2 rounded-full border border-line bg-white px-3 py-1.5 min-w-[280px] shadow-soft">
+            <Search size={18} className="shrink-0 text-faint" />
             <input
               type="text"
               placeholder={t('Поиск по почте…')}
@@ -199,7 +199,7 @@ export default function AppShell() {
         <div className="flex items-center gap-3 shrink-0">
           <button
             type="button"
-            className="p-1 text-faint hover:text-ink transition rounded-md"
+            className="h-9 w-9 rounded-full flex items-center justify-center text-faint hover:text-ink transition hover:bg-black/[0.04]"
             aria-label={t('Уведомления')}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
@@ -207,14 +207,14 @@ export default function AppShell() {
           <button
             type="button"
             onClick={() => setLocale(nextLocale)}
-            className="p-1 text-faint hover:text-ink transition rounded-md"
+            className="h-9 w-9 rounded-full flex items-center justify-center text-faint hover:text-ink transition hover:bg-black/[0.04]"
             aria-label={t('Язык интерфейса')}
             title={t('Язык интерфейса')}
           >
-            <Globe size={16} strokeWidth={1.8} />
+            <Globe size={18} strokeWidth={1.8} />
           </button>
-          <Clock className="text-[12px] font-medium text-ink shrink-0 hidden sm:flex" />
-          <button type="button" onClick={() => setProfileOpen(!profileOpen)} className="flex items-center gap-1.5 rounded-full border border-line px-2 py-1 text-sm font-medium text-ink hover:bg-black/[0.04] transition" aria-label={t('Профиль')}>
+          <Clock className="text-[13px] font-medium text-ink shrink-0 hidden sm:flex" />
+          <button type="button" onClick={() => setProfileOpen(!profileOpen)} className="h-9 flex items-center gap-1.5 rounded-full border border-line px-2 py-1 text-sm font-medium text-ink hover:bg-black/[0.04] transition" aria-label={t('Профиль')}>
             <Avatar name={user.displayName} size={28} presence />
             <span className="truncate hidden sm:inline">{user.displayName}</span>
           </button>
