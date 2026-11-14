@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Command,
   Globe,
@@ -45,6 +45,8 @@ export default function AppShell() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
+  const [searchParams] = useSearchParams();
+  const [topSearch, setTopSearch] = useState(searchParams.get('mailSearch') ?? '');
 
   useEffect(() => {
     if (restoreStarted.current || bootstrapped) return;
@@ -169,19 +171,46 @@ export default function AppShell() {
   );
 
   return (
-    <div className="flex h-full flex-col bg-canvas md:flex-row">
-      {/* Мобильная шапка */}
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-surface/95 px-4 md:hidden">
-        <LogoMark size={34} />
-        <span className="text-[17px] font-semibold tracking-[-0.02em]">Corvex</span>
-        <Clock className="shrink-0 ml-2 text-[11px]" />
-        <div className="ml-auto flex items-center gap-1">
-          <button type="button" onClick={() => setPaletteOpen(true)} className="icon-btn" aria-label={t('Быстрый переход')}><Search size={19} /></button>
+    <div className="flex h-full flex-col bg-canvas">
+      {/* Горизонтальная панель поиска вверху */}
+      <header className="flex shrink-0 items-center justify-between border-b border-line bg-surface px-4 py-2.5">
+        <div className="flex items-center gap-3 flex-1 min-w-0 max-w-[700px]">
+          <Search size={18} className="shrink-0 text-faint" />
+          <input
+            type="text"
+            placeholder={t('Поиск по почте (отправитель, тема, текст)…')}
+            value={topSearch}
+            onChange={(e) => setTopSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                navigate(`/mail?mailSearch=${encodeURIComponent(topSearch)}`);
+              }
+            }}
+            className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none focus:ring-0 placeholder:text-faint"
+          />
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          <Clock className="text-[11px] shrink-0" />
           <button type="button" onClick={() => setProfileOpen(!profileOpen)} className="rounded-full" aria-label={t('Профиль')}>
-            <Avatar name={user.displayName} size={34} presence />
+            <Avatar name={user.displayName} size={32} presence />
           </button>
         </div>
       </header>
+
+      <div className="flex-1 flex md:flex-row min-h-0">
+        {/* Мобильная шапка */}
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-surface/95 px-4 md:hidden">
+          <LogoMark size={34} />
+          <span className="text-[17px] font-semibold tracking-[-0.02em]">Corvex</span>
+          <Clock className="shrink-0 ml-2 text-[11px]" />
+          <div className="ml-auto flex items-center gap-1">
+            <button type="button" onClick={() => setPaletteOpen(true)} className="icon-btn" aria-label={t('Быстрый переход')}><Search size={19} /></button>
+            <button type="button" onClick={() => setProfileOpen(!profileOpen)} className="rounded-full" aria-label={t('Профиль')}>
+              <Avatar name={user.displayName} size={34} presence />
+            </button>
+          </div>
+        </header>
 
       {/* Десктопный rail */}
       <aside className="hidden w-[76px] shrink-0 flex-col items-center border-r border-line bg-chrome px-2.5 py-4 md:flex">
@@ -236,6 +265,7 @@ export default function AppShell() {
           </div>
         )}
         <div className="min-h-0 min-w-0 flex-1"><Outlet /></div>
+      </div>
       </div>
 
       {/* Мобильная нижняя навигация */}

@@ -155,6 +155,14 @@ export default function MailPage() {
   const filtersPanelRef = useRef<HTMLDivElement>(null);
   const seenPendingRef = useRef<Set<string>>(new Set());
 
+  // Синхронизация поиска из верхней панели (?mailSearch=...)
+  useEffect(() => {
+    const urlSearch = searchParams.get('mailSearch');
+    if (urlSearch && urlSearch !== search) {
+      setSearch(urlSearch);
+    }
+  }, [searchParams, search]);
+
   const visible = useMemo(() => applyMailListControls(mails, {
     folder,
     search,
