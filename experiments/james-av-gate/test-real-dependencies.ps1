@@ -30,9 +30,14 @@ try {
     Write-Host "JDK: $jdk"
     & javac --version
     if ($LASTEXITCODE -ne 0) { throw 'FAIL: javac version.' }
-    & mvn -B -f (Join-Path $PSScriptRoot 'pom.xml') test
+    & mvn -B -f (Join-Path $PSScriptRoot 'pom.xml') package
     if ($LASTEXITCODE -ne 0) { throw 'FAIL: Maven compile or unit tests.' }
-    Write-Host 'PASS: Maven real James dependencies and synthetic unit tests; no James runtime, no real ClamAV.'
+    $jar = Join-Path $PSScriptRoot 'target/james-av-gate-0.0.1-SNAPSHOT.jar'
+    $parentJar = Join-Path $PSScriptRoot 'target/extension-deps/apache-james-clamav-3.9.1.jar'
+    if (-not (Test-Path -LiteralPath $jar -PathType Leaf) -or -not (Test-Path -LiteralPath $parentJar -PathType Leaf)) {
+        throw 'FAIL: extension artifacts missing.'
+    }
+    Write-Host 'PASS: Maven real James dependencies, synthetic unit tests and extension packaging; no James runtime or real ClamAV.'
 } finally {
     $env:JAVA_HOME = $oldJavaHome
     $env:PATH = $oldPath
