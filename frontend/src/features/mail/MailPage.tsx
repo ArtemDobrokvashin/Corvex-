@@ -20,7 +20,6 @@ import {
   Paperclip,
   PenSquare,
   Reply,
-  Search,
   Send,
   Settings2,
   SlidersHorizontal,
@@ -150,7 +149,6 @@ export default function MailPage() {
   const [loadedAttachments, setLoadedAttachments] = useState<Record<string, MailAttachmentView[]>>({});
   const [downloadBusy, setDownloadBusy] = useState<string | null>(null);
   const [loadedRecipients, setLoadedRecipients] = useState<Record<string, { to: string[]; cc: string[] }>>({});
-  const searchRef = useRef<HTMLInputElement>(null);
   const sortPanelRef = useRef<HTMLDivElement>(null);
   const filtersPanelRef = useRef<HTMLDivElement>(null);
   const seenPendingRef = useRef<Set<string>>(new Set());
@@ -532,7 +530,6 @@ export default function MailPage() {
       const key = e.key.toLowerCase();
       if (key === '/' ) {
         e.preventDefault();
-        searchRef.current?.focus();
       } else if (key === 'j' || key === 'о' || e.key === 'ArrowDown') {
         e.preventDefault();
         step(1);
@@ -717,11 +714,6 @@ export default function MailPage() {
                   </div>
                 )}
               </div>
-            </div>
-            <div className="relative mt-3">
-              <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-faint" />
-              <input ref={searchRef} value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('Поиск по теме, отправителю, тексту')} aria-label={t('Поиск по теме, отправителю, тексту')} className="search-field" />
-              <span className="kbd absolute right-3 top-1/2 hidden -translate-y-1/2 sm:inline-flex">/</span>
             </div>
             <div className="mt-3 flex rounded-full bg-black/[0.04] p-1" role="tablist" aria-label={t('Фильтр писем')}>
               {(['all', 'unread', 'read'] as const).map((value) => (
