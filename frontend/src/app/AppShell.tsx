@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Calendar,
   Command,
   Globe,
   LogOut,
@@ -17,6 +16,7 @@ import { DEMO_MAILS, DEMO_ROOMS, getDemoUser } from '../api/demoData';
 import { setAccessToken } from '../api/httpClient';
 import { LanguageSwitcher, systemGroupName, useI18n } from '../i18n';
 import { Avatar, Clock, LoadingScreen, LogoMark } from '../components/ui';
+import { CalendarWidget } from '../components/CalendarWidget';
 import ChangePasswordModal from '../features/auth/ChangePasswordModal';
 import SecuritySettingsModal from '../features/auth/SecuritySettingsModal';
 import { canAccessAdmin } from '../features/admin/adminAccess';
@@ -192,7 +192,7 @@ export default function AppShell() {
         <nav className="mt-8 flex w-full flex-col gap-1.5" aria-label={t('Основная навигация')}>
           {navItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
           {navItem('/chat', t('Чат'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
-          {navItem('/calendar', t('Календарь'), Calendar)}
+          <CalendarWidget className="mt-1" />
           {canAdmin && navItem('/admin', t('Админ'), Settings2)}
         </nav>
 
@@ -242,7 +242,7 @@ export default function AppShell() {
       <nav className="flex shrink-0 border-t border-line bg-surface px-2 pb-[env(safe-area-inset-bottom)] md:hidden" aria-label={t('Основная навигация')}>
         {mobileNavItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
         {mobileNavItem('/chat', t('Сообщения'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
-        {mobileNavItem('/calendar', t('Календарь'), Calendar)}
+        <CalendarWidget className="mt-0.5 mb-0.5" />
         {canAdmin && mobileNavItem('/admin', t('Админ'), Settings2)}
       </nav>
 
