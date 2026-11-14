@@ -4,6 +4,7 @@ import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom'
 import AppShell from './app/AppShell';
 import LoginPage from './features/auth/LoginPage';
 import { useT } from './i18n';
+import { ThemeProvider } from './components/ThemeProvider';
 import '@fontsource-variable/inter';
 import './index.css';
 
@@ -35,5 +36,8 @@ const router = createBrowserRouter([
 ]);
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode><RouterProvider router={router} /></React.StrictMode>,
+  <React.StrictMode>
+    <ThemeProvider />
+    <RouterProvider router={router} />
+  </React.StrictMode>,
 );

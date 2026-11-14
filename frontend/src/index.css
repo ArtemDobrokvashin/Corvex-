@@ -3,6 +3,99 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    /* Светлая тема по умолчанию (Quiet Work). Значения совпадают с токенами Tailwind. */
+    --corvex-canvas: #F7F7F4;
+    --corvex-chrome: #FBFBF9;
+    --corvex-surface: #FFFFFF;
+    --corvex-ink: #17181C;
+    --corvex-ink-soft: #2B2D33;
+    --corvex-muted: #6F7280;
+    --corvex-faint: #A5A8B3;
+    --corvex-line: #E8E7E2;
+    --corvex-accent: #3157D5;
+    --corvex-accent-dark: #2446B6;
+    --corvex-accent-soft: #EEF2FF;
+    --corvex-shadow-soft: 0 1px 2px rgba(23, 24, 28, 0.05), 0 1px 3px rgba(23, 24, 28, 0.04);
+    --corvex-radius: 12px;
+  }
+
+  [data-theme="dark"] {
+    /* Тёмная тема: контрастная, но без чёрной «стены» sidebar — приглушённая графитовая гамма. */
+    --corvex-canvas: #0E0F12;
+    --corvex-chrome: #141518;
+    --corvex-surface: #1B1C1F;
+    --corvex-ink: #F2F2F0;
+    --corvex-ink-soft: #E4E4E0;
+    --corvex-muted: #A5A8B3;
+    --corvex-faint: #6F7280;
+    --corvex-line: #2A2B30;
+    --corvex-accent: #5B6FF5;
+    --corvex-accent-dark: #3E53C9;
+    --corvex-accent-soft: #1B1A2B;
+    --corvex-shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.35);
+    --corvex-radius: 12px;
+  }
+
+  /* ===== Базовые элементы: тёмная тема переопределяет Tailwind-токены =====
+     Body, html, #root используют Tailwind-классы bg-canvas/text-ink с фиксированными
+     значениями. Ниже — переопределения через data-theme с более высокой специфичностью,
+     чтобы в тёмной теме фон и текст были читаемыми. */
+
+  html[data-theme="dark"] body,
+  html[data-theme="dark"] #root,
+  html[data-theme="dark"] body.bg-canvas {
+    background-color: var(--corvex-canvas) !important;
+    color: var(--corvex-ink) !important;
+  }
+
+  html[data-theme="dark"] .text-ink,
+  html[data-theme="dark"] .text-ink-soft {
+    color: var(--corvex-ink) !important;
+  }
+
+  html[data-theme="dark"] .text-muted {
+    color: var(--corvex-muted) !important;
+  }
+
+  html[data-theme="dark"] .bg-canvas,
+  html[data-theme="dark"] .bg-chrome,
+  html[data-theme="dark"] .bg-surface {
+    background-color: var(--corvex-surface) !important;
+  }
+
+  /* ===== Акцентный цвет: реальное влияние в обеих темах =====
+     Tailwind-токены accent (bg-accent, text-accent-dark, border-accent) имеют
+     фиксированные значения. Ниже — переопределения через var(--corvex-accent),
+     чтобы выбранный цвет акцента реально менял интерфейс. */
+
+  .accent-dynamic {
+    background-color: var(--corvex-accent);
+    border-color: var(--corvex-accent);
+    color: #FFFFFF;
+  }
+
+  .accent-dynamic:hover {
+    background-color: var(--corvex-accent-dark);
+    border-color: var(--corvex-accent-dark);
+  }
+
+  .accent-dynamic-text {
+    color: var(--corvex-accent);
+  }
+
+  .accent-dynamic-border {
+    border-color: var(--corvex-accent);
+  }
+
+  html[data-theme="dark"] .accent-dynamic-text {
+    color: var(--corvex-accent);
+  }
+
+  [data-theme="system"] {
+    /* Системная тема подставляется через media-query в ThemeProvider. */
+  }
+
   html,
   body,
   #root {
@@ -20,7 +113,7 @@
   }
 
   :focus-visible {
-    outline: 2px solid rgba(49, 87, 213, 0.55);
+    outline: 2px solid var(--corvex-accent);
     outline-offset: 2px;
   }
 
@@ -237,4 +330,266 @@
 [data-workspace-background="plain"] .mail-workspace { background: #f1f5f6; }
 @media (forced-colors: active) {
   .mail-workspace, [data-workspace-background="plain"] .mail-workspace { background: Canvas; }
+}
+/* Тема-ависимые утилиты. Используются в оболочке и ключевых компонентах,
+   чтобы светлая и тёмная тема переключались через data-theme на <html>. */
+.bg-corvex-canvas {
+  background-color: var(--corvex-canvas);
+}
+.bg-corvex-chrome {
+  background-color: var(--corvex-chrome);
+}
+.bg-corvex-surface {
+  background-color: var(--corvex-surface);
+}
+.text-corvex-ink {
+  color: var(--corvex-ink);
+}
+.text-corvex-ink-soft {
+  color: var(--corvex-ink-soft);
+}
+.text-corvex-muted {
+  color: var(--corvex-muted);
+}
+.text-corvex-faint {
+  color: var(--corvex-faint);
+}
+.border-corvex-line {
+  border-color: var(--corvex-line);
+}
+.shadow-corvex-soft {
+  box-shadow: var(--corvex-shadow-soft);
+}
+
+/* ===== Тёмная тема: переопределение общих компонентов =====
+   Применяются только когда data-theme="dark" на <html>.
+   Не затрагивают светлую тему и не ломают существующие экраны. */
+
+[data-theme="dark"] .panel {
+  border-color: var(--corvex-line);
+  background-color: var(--corvex-surface);
+  box-shadow: var(--corvex-shadow-soft);
+}
+
+[data-theme="dark"] .field {
+  border-color: var(--corvex-line);
+  background-color: var(--corvex-surface);
+  color: var(--corvex-ink);
+}
+[data-theme="dark"] .field::placeholder {
+  color: var(--corvex-muted);
+}
+[data-theme="dark"] .field:hover {
+  border-color: #5A5C62;
+}
+[data-theme="dark"] .field:focus {
+  border-color: var(--corvex-accent);
+  box-shadow: 0 0 0 4px rgba(49, 87, 213, 0.2);
+}
+
+[data-theme="dark"] .btn-secondary {
+  border-color: var(--corvex-line);
+  background-color: var(--corvex-surface);
+  color: var(--corvex-ink-soft);
+}
+[data-theme="dark"] .btn-secondary:hover {
+  border-color: #5A5C62;
+  background-color: var(--corvex-chrome);
+  color: var(--corvex-ink);
+}
+
+[data-theme="dark"] .icon-btn {
+  color: var(--corvex-muted);
+}
+[data-theme="dark"] .icon-btn:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--corvex-ink);
+}
+
+[data-theme="dark"] .nav-row {
+  color: var(--corvex-muted);
+}
+[data-theme="dark"] .nav-row:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--corvex-ink);
+}
+
+[data-theme="dark"] .chip {
+  border-color: var(--corvex-line);
+  background-color: var(--corvex-chrome);
+  color: var(--corvex-muted);
+}
+
+[data-theme="dark"] .notice {
+  border-color: var(--corvex-line);
+  background-color: var(--corvex-surface);
+  color: var(--corvex-ink);
+}
+
+[data-theme="dark"] .btn-primary {
+  background-color: var(--corvex-accent);
+  border-color: var(--corvex-accent);
+}
+[data-theme="dark"] .btn-primary:hover {
+  background-color: var(--corvex-accent-dark);
+  border-color: var(--corvex-accent-dark);
+}
+
+[data-theme="dark"] .btn-accent {
+  background-color: var(--corvex-accent);
+  border-color: var(--corvex-accent);
+}
+[data-theme="dark"] .btn-accent:hover {
+  background-color: var(--corvex-accent-dark);
+  border-color: var(--corvex-accent-dark);
+}
+
+[data-theme="dark"] .search-field {
+  background-color: rgba(255, 255, 255, 0.06);
+  border-color: var(--corvex-line);
+  color: var(--corvex-ink);
+}
+[data-theme="dark"] .search-field::placeholder {
+  color: var(--corvex-muted);
+}
+[data-theme="dark"] .search-field:hover {
+  background-color: rgba(255, 255, 255, 0.10);
+}
+[data-theme="dark"] .search-field:focus {
+  border-color: var(--corvex-accent);
+  box-shadow: 0 0 0 4px rgba(49, 87, 213, 0.2);
+}
+
+[data-theme="dark"] .scroll-area::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.16);
+}
+
+[data-theme="dark"] .scroll-area::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.28);
+}
+
+/* ===== Дополнительные компоненты: тёмная тема ===== */
+
+[data-theme="dark"] .badge {
+  background-color: var(--corvex-accent);
+  color: #FFFFFF;
+}
+
+[data-theme="dark"] .kbd {
+  background-color: var(--corvex-chrome);
+  border-color: var(--corvex-line);
+  color: var(--corvex-ink);
+}
+
+[data-theme="dark"] fieldset {
+  border-color: var(--corvex-line);
+}
+
+[data-theme="dark"] legend {
+  color: var(--corvex-ink);
+}
+
+[data-theme="dark"] table {
+  color: var(--corvex-ink);
+}
+
+[data-theme="dark"] th {
+  color: var(--corvex-ink-soft);
+}
+
+[data-theme="dark"] td {
+  color: var(--corvex-ink-soft);
+  border-color: var(--corvex-line);
+}
+
+[data-theme="dark"] .animate-spin {
+  color: var(--corvex-accent);
+}
+
+/* ===== Акцентный цвет: светлая тема =====
+   Переопределяем Tailwind-токены accent через var(--corvex-accent),
+   чтобы выбранный цвет реально менял интерфейс в обеих темах. */
+
+html[data-theme="light"] .bg-accent {
+  background-color: var(--corvex-accent) !important;
+}
+
+html[data-theme="light"] .text-accent-dark {
+  color: var(--corvex-accent) !important;
+}
+
+html[data-theme="light"] .border-accent {
+  border-color: var(--corvex-accent) !important;
+}
+
+html[data-theme="light"] .bg-accent-soft {
+  background-color: var(--corvex-accent-soft) !important;
+}
+
+html[data-theme="dark"] .bg-accent {
+  background-color: var(--corvex-accent) !important;
+}
+
+html[data-theme="dark"] .text-accent-dark {
+  color: var(--corvex-accent-on-dark) !important;
+}
+
+html[data-theme="dark"] .border-accent {
+  border-color: var(--corvex-accent) !important;
+}
+
+html[data-theme="dark"] .bg-accent-soft {
+  background-color: var(--corvex-accent-soft) !important;
+}
+
+/* ===== Плотность интерфейса =====
+   data-density="comfortable" увеличивает отступы и размеры интерактивных элементов. */
+
+[data-density="comfortable"] .field {
+  min-height: 3rem; /* h-12 — не фиксированная высота, чтобы контент мог расти */
+  padding-left: 1rem; /* px-4 */
+  padding-right: 1rem;
+}
+
+[data-density="comfortable"] .field-sm {
+  height: 2.5rem; /* h-10 */
+  padding-left: 0.875rem; /* px-3.5 */
+  padding-right: 0.875rem;
+}
+
+[data-density="comfortable"] .nav-row {
+  min-height: 2.5rem; /* min-h-10 */
+  padding-top: 0.625rem; /* py-2.5 */
+  padding-bottom: 0.625rem;
+}
+
+[data-density="comfortable"] .icon-btn {
+  height: 2.5rem; /* h-10 */
+  width: 2.5rem; /* w-10 */
+}
+
+[data-density="comfortable"] .icon-btn-sm {
+  height: 2.25rem; /* h-9 */
+  width: 2.25rem; /* w-9 */
+}
+
+[data-density="comfortable"] .btn-primary,
+[data-density="comfortable"] .btn-accent,
+[data-density="comfortable"] .btn-secondary {
+  height: 2.75rem; /* h-11 */
+  padding-left: 1.25rem; /* px-5 */
+  padding-right: 1.25rem;
+}
+
+/* ===== Акцентный цвет =====
+   --corvex-accent задаётся ThemeProvider через inline-стиль на <html>.
+   Компоненты, которые хотят реагировать на акцент, могут использовать
+   var(--corvex-accent) напрямую. */
+
+/* Existing component classes use @apply, so utility overrides alone do not reach them. */
+.btn-accent { background-color: var(--corvex-accent); }
+.btn-accent:hover, [data-theme="dark"] .btn-accent:hover { background-color: var(--corvex-accent); filter: brightness(0.88); }
+.nav-row-active, .chip-accent { color: var(--corvex-accent); }
+[data-theme="dark"] .nav-row-active, [data-theme="dark"] .chip-accent {
+  color: var(--corvex-accent-on-dark);
 }

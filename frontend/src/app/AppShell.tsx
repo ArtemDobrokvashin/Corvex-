@@ -7,6 +7,7 @@ import {
   LogOut,
   Mail,
   MessageSquare,
+  Palette,
   PenSquare,
   Search,
   Settings2,
@@ -17,6 +18,7 @@ import { DEMO_MAILS, DEMO_ROOMS, getDemoUser } from '../api/demoData';
 import { setAccessToken } from '../api/httpClient';
 import { LanguageSwitcher, systemGroupName, useI18n } from '../i18n';
 import { Avatar, Clock, LoadingScreen, LogoMark } from '../components/ui';
+import { AppearanceSettings } from '../components/AppearanceSettings';
 import ChangePasswordModal from '../features/auth/ChangePasswordModal';
 import PersonalSettings, { readWorkspaceBackground, saveWorkspaceBackground, type WorkspaceBackground } from './PersonalSettings';
 import SecuritySettingsModal from '../features/auth/SecuritySettingsModal';
@@ -51,6 +53,7 @@ export default function AppShell() {
     return () => { delete document.documentElement.dataset.workspaceBackground; };
   }, [background]);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
 
@@ -178,9 +181,9 @@ export default function AppShell() {
   );
 
   return (
-    <div className="flex h-full flex-col bg-canvas md:flex-row">
+    <div className="flex h-full flex-col bg-corvex-canvas md:flex-row">
       {/* Мобильная шапка */}
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-surface/95 px-4 md:hidden">
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-corvex-line bg-corvex-surface/95 px-4 md:hidden">
         <LogoMark size={34} />
         <span className="text-[17px] font-semibold tracking-[-0.02em]">Corvex</span>
         <Clock className="shrink-0 ml-2 text-[11px]" />
@@ -193,7 +196,7 @@ export default function AppShell() {
       </header>
 
       {/* Десктопный rail */}
-      <aside className="hidden w-[76px] shrink-0 flex-col items-center border-r border-line bg-chrome px-2.5 py-4 md:flex">
+      <aside className="hidden w-[76px] shrink-0 flex-col items-center border-r border-corvex-line bg-corvex-chrome px-2.5 py-4 md:flex">
         <button type="button" onClick={() => navigate('/mail')} className="rounded-[13px]" aria-label={t('Corvex — почта')}>
           <LogoMark size={40} />
         </button>
@@ -252,7 +255,7 @@ export default function AppShell() {
       </div>
 
       {/* Мобильная нижняя навигация */}
-      <nav className="flex shrink-0 border-t border-line bg-surface px-2 pb-[env(safe-area-inset-bottom)] md:hidden" aria-label={t('Основная навигация')}>
+      <nav className="flex shrink-0 border-t border-corvex-line bg-corvex-surface px-2 pb-[env(safe-area-inset-bottom)] md:hidden" aria-label={t('Основная навигация')}>
         {mobileNavItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
         {mobileNavItem('/chat', t('Сообщения'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
         {mobileNavItem('/calendar', t('Календарь'), Calendar)}
@@ -283,10 +286,22 @@ export default function AppShell() {
               <button type="button" onClick={() => { setProfileOpen(false); setSecurityOpen(true); }} className="nav-row">
                 <ShieldCheck size={17} strokeWidth={1.8} /> {t('Безопасность')}
               </button>
+              <button type="button" onClick={() => { setProfileOpen(false); setAppearanceOpen(true); }} className="nav-row">
+                <Palette size={17} strokeWidth={1.8} /> {t('Внешний вид')}
+              </button>
               <button type="button" onClick={onLogout} className="nav-row text-danger hover:bg-red-50 hover:text-danger">
                 <LogOut size={17} strokeWidth={1.8} /> {demoMode ? t('Выйти из демо') : t('Выйти')}
               </button>
             </div>
+          </div>
+        </>
+      )}
+
+      {appearanceOpen && (
+        <>
+          <button type="button" aria-label={t('Закрыть')} className="fixed inset-0 z-40 cursor-default" onClick={() => setAppearanceOpen(false)} />
+          <div className="fixed left-3 right-3 top-16 z-50 max-w-[440px] max-h-[85vh] overflow-y-auto animate-scale-in rounded-2xl border border-corvex-line bg-corvex-surface p-2 shadow-pop md:left-auto md:right-3 md:top-16 md:bottom-auto md:w-[440px]">
+            <AppearanceSettings onClose={() => setAppearanceOpen(false)} />
           </div>
         </>
       )}

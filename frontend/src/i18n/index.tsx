@@ -916,6 +916,25 @@ const EN: Record<string, string> = {
   'Предыдущий месяц': 'Previous month',
   'Следующий месяц': 'Next month',
   'Локальный календарь без серверных событий. Создание и сохранение встреч появятся после подключения сервера календаря.': 'Local calendar without server events. Creating and saving meetings will appear after connecting the calendar server.',
+  // Внешний вид / кастомизация интерфейса
+  'Настройки применяются только в этом браузере и не отправляются на сервер.': 'Settings apply only in this browser and are not sent to the server.',
+  'Тема оформления': 'Theme',
+  'Светлая': 'Light',
+  'Тёмная': 'Dark',
+  'По системе': 'System',
+  'Акцентный цвет': 'Accent color',
+  'Индиго': 'Indigo',
+  'Розовый': 'Rose',
+  'Изумрудный': 'Emerald',
+  'Янтарный': 'Amber',
+  'Графит': 'Slate',
+  'Плотность элементов': 'Density',
+  'Компактная': 'Compact',
+  'Свободная': 'Comfortable',
+  'Компактная плотность подходит для больших списков писем и сообщений.': 'Compact density suits large mail and message lists.',
+  'Хранится локально в браузере.': 'Stored locally in the browser.',
+  'Сбросить к умолчанию': 'Reset to defaults',
+  'Сбросить настройки внешнего вида': 'Reset appearance settings',
 };
 
 const API_PATTERNS: Array<{ pattern: RegExp; en: string; ru?: string }> = [
