@@ -17,7 +17,7 @@ foreach ($key in $keys) { $values[$key] = $null }
 
 try {
     if (-not (Test-Path -LiteralPath $ComposeDir -PathType Container)) {
-        throw 'Каталог Compose не найден.'
+        throw 'Compose directory not found.'
     }
     Push-Location -LiteralPath $ComposeDir
     try {
@@ -37,44 +37,44 @@ try {
     } finally {
         Pop-Location
     }
-    if ($exitCode -ne 0) { throw "Не удалось прочитать конфигурацию (Docker exit $exitCode)." }
+    if ($exitCode -ne 0) { throw "Unable to read configuration (Docker exit $exitCode)." }
     $totalLength = 0
     foreach ($item in $lines) {
         $line = [string]$item
         $totalLength += $line.Length
-        if ($totalLength -gt 262144) { throw 'Конфигурация слишком велика.' }
+        if ($totalLength -gt 262144) { throw 'Configuration exceeds size limit.' }
         $line = ($line -split '#', 2)[0].Trim()
         if ($line.Length -eq 0) { continue }
         $parts = @($line -split '\s+')
         $key = $parts[0]
         if (-not ($keys -ccontains $key)) { continue }
         if ($seen.ContainsKey($key) -or $parts.Count -ne 2) {
-            throw "Повторная или некорректная настройка $key."
+            throw "Duplicate or malformed setting $key."
         }
         $seen[$key] = $true
         $value = $parts[1]
         if ($booleanKeys -ccontains $key) {
-            if ($value -notmatch '^(?i:yes|no|true|false)$') { throw "Неизвестное значение настройки $key." }
+            if ($value -notmatch '^(?i:yes|no|true|false)$') { throw "Unsupported setting value for $key." }
         } elseif ($value -notmatch '^[0-9]+(?:[kKmMgG](?:[bB])?)?$') {
-            throw "Неизвестное значение настройки $key."
+            throw "Unsupported setting value for $key."
         }
         $values[$key] = $value
     }
-    Write-Host 'Только явно заданные значения в /etc/clamav/clamd.conf:'
+    Write-Host 'Explicit settings in /etc/clamav/clamd.conf:'
     foreach ($key in $keys) {
-        if ($null -eq $values[$key]) { $value = 'не задано явно' } else { $value = $values[$key] }
+        if ($null -eq $values[$key]) { $value = 'not explicitly set' } else { $value = $values[$key] }
         Write-Host "${key}: $value"
     }
-    Write-Host 'Отсутствие строки НЕ означает отключение: применяются значения по умолчанию.'
-    Write-Host 'Файл не подтверждает runtime-настройки, полное сканирование или готовность AV.'
-    Write-Host 'Ничего не изменено; почта и содержимое очередей не читались.'
+    Write-Host 'An unset setting does NOT mean disabled: defaults apply.'
+    Write-Host 'File values do not prove runtime settings, complete scanning or AV readiness.'
+    Write-Host 'No changes made; mail and queue contents were not read.'
 } catch {
     # Only our own validated messages or a generic startup error are emitted.
     $message = $_.Exception.Message
-    if ($message -match '^(Каталог Compose не найден\.|Не удалось прочитать конфигурацию \(Docker exit [0-9]+\)\.|Конфигурация слишком велика\.|Повторная или некорректная настройка (AlertExceedsMax|ScanMail|MaxScanSize|MaxFileSize|MaxRecursion|MaxFiles|MaxScanTime|StreamMaxLength)\.|Неизвестное значение настройки (AlertExceedsMax|ScanMail|MaxScanSize|MaxFileSize|MaxRecursion|MaxFiles|MaxScanTime|StreamMaxLength)\.)$') {
+    if ($message -match '^(Compose directory not found\.|Unable to read configuration \(Docker exit [0-9]+\)\.|Configuration exceeds size limit\.|Duplicate or malformed setting (AlertExceedsMax|ScanMail|MaxScanSize|MaxFileSize|MaxRecursion|MaxFiles|MaxScanTime|StreamMaxLength)\.|Unsupported setting value for (AlertExceedsMax|ScanMail|MaxScanSize|MaxFileSize|MaxRecursion|MaxFiles|MaxScanTime|StreamMaxLength)\.)$') {
         [Console]::Error.WriteLine("ERROR: $message")
     } else {
-        [Console]::Error.WriteLine('ERROR: невозможно выполнить проверку конфигурации.')
+        [Console]::Error.WriteLine('ERROR: unable to run configuration check.')
     }
     exit 2
 }

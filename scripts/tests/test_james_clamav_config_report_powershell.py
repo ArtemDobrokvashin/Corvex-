@@ -5,7 +5,8 @@ import unittest
 
 class PowerShellClamavReportTest(unittest.TestCase):
     def test_only_fixed_read_only_container_command(self):
-        text = (Path(__file__).resolve().parents[1] / 'james-clamav-config-report.ps1').read_text(encoding='utf-8')
+        # Windows PowerShell 5.1 may parse UTF-8 without BOM as the local codepage.
+        text = (Path(__file__).resolve().parents[1] / 'james-clamav-config-report.ps1').read_bytes().decode('ascii')
         self.assertIn("@('exec', '-T', 'clamav', 'cat', '/etc/clamav/clamd.conf')", text)
         self.assertIn('$exitCode = $LASTEXITCODE', text)
         self.assertIn('2>$null', text)
@@ -13,8 +14,8 @@ class PowerShellClamavReportTest(unittest.TestCase):
         self.assertNotIn('Set-Content', text)
         self.assertNotIn('Remove-Item', text)
         self.assertIn('$keys -ccontains $key', text)
-        self.assertIn('не задано явно', text)
-        self.assertIn('не подтверждает runtime-настройки', text)
+        self.assertIn('not explicitly set', text)
+        self.assertIn('do not prove runtime settings', text)
 
 
 if __name__ == '__main__':
