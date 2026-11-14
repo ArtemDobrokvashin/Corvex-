@@ -22,17 +22,18 @@
 
   [data-theme="dark"] {
     /* Тёмная тема: контрастная, но без чёрной «стены» sidebar — приглушённая графитовая гамма. */
-    --corvex-canvas: #0E0F12;
-    --corvex-chrome: #141518;
-    --corvex-surface: #1B1C1F;
+    color-scheme: dark;
+    --corvex-canvas: #0A0B0D;
+    --corvex-chrome: #121316;
+    --corvex-surface: #1A1B1E;
     --corvex-ink: #F2F2F0;
     --corvex-ink-soft: #E4E4E0;
-    --corvex-muted: #A5A8B3;
-    --corvex-faint: #6F7280;
+    --corvex-muted: #B8BCC6;
+    --corvex-faint: #9498A4;
     --corvex-line: #2A2B30;
     --corvex-accent: #5B6FF5;
     --corvex-accent-dark: #3E53C9;
-    --corvex-accent-soft: #1B1A2B;
+    --corvex-accent-soft: #2A2838;
     --corvex-shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.35);
     --corvex-radius: 12px;
   }
@@ -609,4 +610,11 @@ html[data-theme="dark"] .bg-accent-soft {
 .nav-row-active, .chip-accent { color: var(--corvex-accent); }
 [data-theme="dark"] .nav-row-active, [data-theme="dark"] .chip-accent {
   color: var(--corvex-accent-on-dark);
+}
+/* @apply in nav-row-active is not affected by .bg-accent-soft overrides. */
+[data-theme="dark"] .nav-row-active,
+[data-theme="dark"] .nav-row-active:hover {
+  background-color: var(--corvex-accent-soft);
+  color: var(--corvex-accent-on-dark);
+  box-shadow: inset 3px 0 var(--corvex-accent-on-dark);
 }

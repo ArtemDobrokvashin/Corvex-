@@ -68,7 +68,9 @@ try {
         $sources = @((Join-Path $package 'JamesMailboxBinding.java'), (Join-Path $package 'JamesReadTokenIssuer.java'),
             (Join-Path $package 'JamesJmapReadClient.java'), (Join-Path $PSScriptRoot 'JamesJmapGatewayLiveProbe.java'),
             (Join-Path $PSScriptRoot 'JamesTransitionTlsProbe.java'))
-        foreach ($source in $sources) { if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw 'FAIL: probe source missing.' } }
+        foreach ($source in $sources) {
+            if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "FAIL: probe source missing: $source" }
+        }
         & javac --release 17 -cp ($jars -join [IO.Path]::PathSeparator) -d $out @sources
         if ($LASTEXITCODE -ne 0) { throw 'FAIL: probe compilation; no recreation.' }
         & docker exec $Container mkdir $Remote
