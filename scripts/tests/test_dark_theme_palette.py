@@ -28,7 +28,7 @@ class DarkPaletteTest(unittest.TestCase):
             self.assertGreaterEqual(contrast(tokens[text], tokens['surface']), 4.5, text)
         accents = STORE.split('const ACCENT_ON_DARK:', 1)[1].split('};', 1)[0]
         colors = re.findall(r'#[\da-fA-F]{6}', accents)
-        self.assertEqual(len(colors), 5)
+        self.assertEqual(len(colors), 6)
         for color in colors:
             self.assertGreaterEqual(contrast(color, tokens['accent-soft']), 4.5, color)
 

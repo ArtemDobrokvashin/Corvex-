@@ -4,7 +4,7 @@ import { persist, type PersistStorage, type StorageValue } from 'zustand/middlew
 const STORAGE_KEY = 'corvex.ui';
 
 export type Theme = 'light' | 'dark' | 'system';
-export type Accent = 'indigo' | 'rose' | 'emerald' | 'amber' | 'slate';
+export type Accent = 'indigo' | 'rose' | 'emerald' | 'amber' | 'slate' | 'green';
 export type Density = 'compact' | 'comfortable';
 
 const ACCENT_DEFINITIONS: Record<Accent, { label: string; value: string }> = {
@@ -13,6 +13,7 @@ const ACCENT_DEFINITIONS: Record<Accent, { label: string; value: string }> = {
   emerald: { label: 'Изумрудный', value: '#16835F' },
   amber: { label: 'Янтарный', value: '#A16207' },
   slate: { label: 'Графит', value: '#474C56' },
+  green: { label: 'Зелёный', value: '#10B981' },
 };
 
 export function accentDefinitions() {
@@ -24,11 +25,20 @@ export function accentValue(accent: Accent) {
 }
 
 const ACCENT_ON_DARK: Record<Accent, string> = {
-  indigo: '#AFC0FF', rose: '#FFABCA', emerald: '#8BE2BD', amber: '#F8CF83', slate: '#C6CEDB',
+  indigo: '#AFC0FF', rose: '#FFABCA', emerald: '#8BE2BD', amber: '#F8CF83', slate: '#C6CEDB', green: '#8BE2BD',
 };
 
 export function accentOnDark(accent: Accent) {
   return ACCENT_ON_DARK[accent];
+}
+
+/** Green needs darker text on light surfaces and on its bright button background. */
+export function accentOnLight(accent: Accent) {
+  return accent === 'green' ? '#056746' : accentValue(accent);
+}
+
+export function accentButtonText(accent: Accent) {
+  return accent === 'green' ? '#092E20' : '#FFFFFF';
 }
 
 export function accentLabel(accent: Accent) {

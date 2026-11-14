@@ -928,6 +928,7 @@ const EN: Record<string, string> = {
   'Индиго': 'Indigo',
   'Розовый': 'Rose',
   'Изумрудный': 'Emerald',
+  'Зелёный': 'Green',
   'Янтарный': 'Amber',
   'Графит': 'Slate',
   'Плотность элементов': 'Density',

@@ -111,6 +111,18 @@ describe('ThemeProvider', () => {
     container.remove();
   });
 
+  it('applies green with readable text and retains it across theme changes', () => {
+    useUIStore.setState({ theme: 'light', accent: 'green' });
+    const { root, container } = renderProvider();
+    expect(document.documentElement.style.getPropertyValue('--corvex-accent')).toBe('#10B981');
+    expect(document.documentElement.style.getPropertyValue('--corvex-accent-on-light')).toBe('#056746');
+    expect(document.documentElement.style.getPropertyValue('--corvex-accent-button-text')).toBe('#092E20');
+    act(() => useUIStore.setState({ theme: 'dark' }));
+    expect(document.documentElement.style.getPropertyValue('--corvex-accent-on-dark')).toBe('#8BE2BD');
+    act(() => root.unmount());
+    container.remove();
+  });
+
   it('uses a readable dark-mode accent for each selected colour', () => {
     useUIStore.setState({ theme: 'dark', accent: 'rose' });
     const { root, container } = renderProvider();

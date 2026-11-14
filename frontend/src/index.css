@@ -533,7 +533,7 @@ html[data-theme="light"] .bg-accent {
 }
 
 html[data-theme="light"] .text-accent-dark {
-  color: var(--corvex-accent) !important;
+  color: var(--corvex-accent-on-light, var(--corvex-accent)) !important;
 }
 
 html[data-theme="light"] .border-accent {
@@ -605,9 +605,10 @@ html[data-theme="dark"] .bg-accent-soft {
    var(--corvex-accent) напрямую. */
 
 /* Existing component classes use @apply, so utility overrides alone do not reach them. */
-.btn-accent { background-color: var(--corvex-accent); }
+.btn-accent { background-color: var(--corvex-accent); color: var(--corvex-accent-button-text, #fff); }
 .btn-accent:hover, [data-theme="dark"] .btn-accent:hover { background-color: var(--corvex-accent); filter: brightness(0.88); }
-.nav-row-active, .chip-accent { color: var(--corvex-accent); }
+[data-theme="dark"] .btn-primary { color: var(--corvex-accent-button-text, #fff); }
+.nav-row-active, .chip-accent { color: var(--corvex-accent-on-light, var(--corvex-accent)); }
 [data-theme="dark"] .nav-row-active, [data-theme="dark"] .chip-accent {
   color: var(--corvex-accent-on-dark);
 }
@@ -659,3 +660,14 @@ html[data-theme="dark"] .mail-sidebar .nav-row-active:hover {
   box-shadow: inset 3px 0 #8bf0c2;
 }
 html[data-theme="dark"] .mail-sidebar form { color: #f8fafc; }
+
+/* Decorative file categories, not a trust or scan indicator. */
+.mail-file-icon { background: #edf1f7; color: #40526a; }
+.mail-file-icon-pdf { background: #fce8e8; color: #a52424; }
+.mail-file-icon-document { background: #e7efff; color: #254f9b; }
+.mail-file-icon-sheet { background: #e0f5e9; color: #176442; }
+.mail-file-icon-image { background: #f1e9fc; color: #69419a; }
+.mail-file-icon-archive { background: #fff2d9; color: #865600; }
+.mail-file-icon-audio { background: #e8e9ff; color: #434c9f; }
+.mail-file-icon-video { background: #ffeadf; color: #9a481b; }
+.mail-file-icon-code { background: #f4efd9; color: #6d590e; }

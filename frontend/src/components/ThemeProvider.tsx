@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useUIStore, accentValue, accentOnDark } from '../store/uiStore';
+import { useUIStore, accentValue, accentOnDark, accentOnLight, accentButtonText } from '../store/uiStore';
 
 /**
  * Применяет выбранную тему, акцентный цвет и плотность к документу.
@@ -21,6 +21,8 @@ export function ThemeProvider() {
       html.setAttribute('data-density', density);
       html.style.setProperty('--corvex-accent', accentValue(accent));
       html.style.setProperty('--corvex-accent-on-dark', accentOnDark(accent));
+      html.style.setProperty('--corvex-accent-on-light', accentOnLight(accent));
+      html.style.setProperty('--corvex-accent-button-text', accentButtonText(accent));
     };
 
     if (theme === 'system') {
