@@ -461,6 +461,7 @@ public class ExternalMailSyncService {
         }
 
         ExternalMailImportedMessage record = retryRecord;
+        boolean publicationMayHaveStarted = false;
         try {
             if (imported.existsByAccount_IdAndRemoteFolderAndSha256AndStatusIn(
                     account.getId(), envelope.remoteFolder(), stored.sha256(), DONE_STATUSES)) {
@@ -477,6 +478,10 @@ public class ExternalMailSyncService {
             record.setStatus(ExternalMailImportedMessage.Status.QUEUED);
             record.setError(null);
             record = imported.saveAndFlush(record);
+            // From this point the broker may accept the event even if the
+            // publisher confirm is lost. Never delete its referenced bytes or
+            // mark it retryable merely because the result is unknown.
+            publicationMayHaveStarted = true;
             events.publishConfirmed("mail.inbound.received", new MailPipelineEvents.InboundReceivedEvent(
                             stored.rawRef(),
                             envelope.from() == null || envelope.from().isBlank() ? account.getEmailAddress() : envelope.from(),
@@ -488,16 +493,24 @@ public class ExternalMailSyncService {
             advanceCursor(account, envelope, lastSuccessfulUid);
             return ExternalMailClient.HandleResult.QUEUED;
         } catch (Exception e) {
-            try {
-                spool.delete(stored.rawRef());
-            } catch (Exception ignored) {
-                // Spool cleanup failure must not hide the real queueing error.
-            }
-            if (record != null && record.getId() != null) {
-                record.setStatus(ExternalMailImportedMessage.Status.FAILED);
-                record.setRawRef(null);
-                record.setError(safeError(e));
-                imported.saveAndFlush(record);
+            if (!publicationMayHaveStarted) {
+                try {
+                    spool.delete(stored.rawRef());
+                } catch (Exception ignored) {
+                    // Spool cleanup failure must not hide the queueing error.
+                }
+                if (record != null && record.getId() != null) {
+                    record.setStatus(ExternalMailImportedMessage.Status.FAILED);
+                    record.setRawRef(null);
+                    record.setError(safeError(e));
+                    imported.saveAndFlush(record);
+                }
+            } else {
+                // Do not overwrite the record: a consumer may already have
+                // marked it DELIVERED. QUEUED without an event still requires
+                // reconciliation; this is not a transactional outbox.
+                log.warn("External mail publish outcome uncertain; retaining spool for reconciliation, account={}, folder={}, uid={}",
+                        account.getId(), envelope.remoteFolder(), envelope.remoteUid());
             }
             counters.failed.incrementAndGet();
             counters.errors.add(envelope.remoteFolder() + "/" + envelope.remoteUid() + ": " + safeError(e));

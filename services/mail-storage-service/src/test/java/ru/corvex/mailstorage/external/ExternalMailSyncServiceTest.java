@@ -59,6 +59,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -614,7 +615,7 @@ class ExternalMailSyncServiceTest {
     }
 
     @Test
-    void queuePublishFailureMarksImportedRecordFailedAndDeletesSpoolCopy() throws Exception {
+    void uncertainQueuePublishRetainsSpoolAndDoesNotMarkRetryable() throws Exception {
         remoteFolders = List.of(remoteFolder("INBOX", "INBOX", 7L, 10, 1));
         fetchEnvelopes.put("INBOX", List.of(envelope("INBOX", "1", 7L, null, "a@x", false)));
         doThrow(new IllegalStateException("broker unavailable"))
@@ -624,10 +625,32 @@ class ExternalMailSyncServiceTest {
 
         assertEquals(ExternalMailSyncRun.Status.PARTIAL, run.getStatus());
         assertEquals(1, importedRecords.size());
-        assertEquals(ExternalMailImportedMessage.Status.FAILED, importedRecords.get(0).getStatus());
-        assertNull(importedRecords.get(0).getRawRef());
-        assertTrue(importedRecords.get(0).getError().contains("broker unavailable"));
+        assertEquals(ExternalMailImportedMessage.Status.QUEUED, importedRecords.get(0).getStatus());
+        assertNotNull(importedRecords.get(0).getRawRef());
+        assertTrue(spool.exists(importedRecords.get(0).getRawRef()));
         assertEquals(0, run.getQueuedCount());
+        assertEquals(0, stateByFolder.get("INBOX").getLastSeenUid());
+        execute(ExternalMailSyncRun.Trigger.SCHEDULED);
+        verify(events, times(1)).publishConfirmed(anyString(), any(), anyString());
+    }
+
+    @Test
+    void publisherTimeoutDoesNotOverwriteDeliveryAlreadyCompletedByConsumer() throws Exception {
+        remoteFolders = List.of(remoteFolder("INBOX", "INBOX", 7L, 10, 1));
+        fetchEnvelopes.put("INBOX", List.of(envelope("INBOX", "1", 7L, null, "a@x", false)));
+        doAnswer(inv -> {
+            // Simulate a broker accepting the event and a concurrent consumer
+            // marking it delivered before the publisher loses its confirmation.
+            importedRecords.get(0).setStatus(ExternalMailImportedMessage.Status.DELIVERED);
+            throw new IllegalStateException("publisher confirm lost");
+        }).when(events).publishConfirmed(anyString(), any(), anyString());
+
+        execute(ExternalMailSyncRun.Trigger.SCHEDULED);
+
+        assertEquals(ExternalMailImportedMessage.Status.DELIVERED, importedRecords.get(0).getStatus());
+        assertNotNull(importedRecords.get(0).getRawRef());
+        assertTrue(spool.exists(importedRecords.get(0).getRawRef()));
+        verify(imported, times(1)).saveAndFlush(any(ExternalMailImportedMessage.class));
     }
 
     @Test
