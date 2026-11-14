@@ -9,6 +9,8 @@ import java.net.ConnectException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -21,7 +23,7 @@ import org.apache.mailet.Mail;
  * from normal processing; requires explicit quarantine processors and tests.
  * No MIME header or previously attached mail attribute is trusted as a result.
  * This is not a complete fail-closed system: pipeline coverage, durability,
- * ClamAV limits, write timeouts and class loading remain unverified.
+ * ClamAV limits, MIME input stalls and class loading remain unverified.
  */
 public final class CorvexClamAVGate extends ClamAVScan {
     static final String INFECTED = "corvex-av-infected";
@@ -31,6 +33,18 @@ public final class CorvexClamAVGate extends ClamAVScan {
     private static final int READ_TIMEOUT_MS = 5000;
     private static final long CONNECT_BUDGET_NANOS = TimeUnit.SECONDS.toNanos(3);
     private static final int MAX_ADDRESSES = 4;
+    private static final long SCAN_BUDGET_NANOS = TimeUnit.SECONDS.toNanos(30);
+    private static final ScheduledThreadPoolExecutor DEADLINES = createDeadlineExecutor();
+
+    private static ScheduledThreadPoolExecutor createDeadlineExecutor() {
+        ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1, task -> {
+            Thread thread = new Thread(task, "corvex-clamd-deadline");
+            thread.setDaemon(true);
+            return thread;
+        });
+        executor.setRemoveOnCancelPolicy(true);
+        return executor;
+    }
 
     @Override
     public void service(Mail mail) throws MessagingException {
@@ -79,23 +93,40 @@ public final class CorvexClamAVGate extends ClamAVScan {
     /** ClamAV INSTREAM; false only for the exact, NUL-framed clean response. */
     @Override
     public boolean hasVirus(InputStream input) throws IOException {
+        return scan(input, SCAN_BUDGET_NANOS);
+    }
+
+    // The watchdog bounds stalled socket writes and trickle responses. It cannot
+    // interrupt a MIME input stream that itself hangs; that remains a blocker.
+    boolean scan(InputStream input, long budgetNanos) throws IOException {
+        if (budgetNanos <= 0) throw new IOException("Invalid scan deadline");
         try (Socket socket = getClamdSocket()) {
-            socket.setSoTimeout(READ_TIMEOUT_MS);
-            DataOutputStream out = new DataOutputStream(socket.getOutputStream());
-            out.write("zINSTREAM\0".getBytes(StandardCharsets.US_ASCII));
-            byte[] buffer = new byte[16384];
-            long total = 0;
-            int count;
-            while ((count = input.read(buffer)) != -1) {
-                if (count == 0) throw new IOException("Input stream did not progress");
-                total += count;
-                if (total > MAX_BYTES) throw new IOException("Scan size limit exceeded");
-                out.writeInt(count);
-                out.write(buffer, 0, count);
+            long start = System.nanoTime();
+            ScheduledFuture<?> deadline = DEADLINES.schedule(() -> {
+                try { socket.close(); } catch (IOException ignored) { }
+            }, budgetNanos, TimeUnit.NANOSECONDS);
+            try {
+                socket.setSoTimeout(READ_TIMEOUT_MS);
+                DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+                out.write("zINSTREAM\0".getBytes(StandardCharsets.US_ASCII));
+                byte[] buffer = new byte[16384];
+                long total = 0;
+                int count;
+                while ((count = input.read(buffer)) != -1) {
+                    if (count == 0) throw new IOException("Input stream did not progress");
+                    total += count;
+                    if (total > MAX_BYTES) throw new IOException("Scan size limit exceeded");
+                    out.writeInt(count);
+                    out.write(buffer, 0, count);
+                }
+                out.writeInt(0);
+                out.flush();
+                boolean infected = parseReply(socket.getInputStream());
+                if (System.nanoTime() - start >= budgetNanos) throw new IOException("Scan deadline exceeded");
+                return infected;
+            } finally {
+                deadline.cancel(false);
             }
-            out.writeInt(0);
-            out.flush();
-            return parseReply(socket.getInputStream());
         }
     }
 
