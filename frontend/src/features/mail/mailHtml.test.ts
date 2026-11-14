@@ -15,6 +15,17 @@ describe('mail HTML isolation', () => {
     expect(html).not.toContain('evil.test'); expect(html).not.toContain('height="700"'); expect(html).not.toContain('cid:foo');
     expect(html).toContain('data:image/png;base64,YWJj');
   });
+  it('does not retain remote image sources, srcset, or navigation when HTML is hostile', () => {
+    const clean = sanitizeMailHtml('<img src="https://tracker.invalid/a" srcset="https://tracker.invalid/b 2x" alt="x"><img src="data:image/svg+xml;base64,PHN2Zz4="><a href="https://tracker.invalid/go" target="_blank">open</a><button onclick="alert(1)">click</button>', 'Blocked');
+    expect(clean).not.toContain('tracker.invalid');
+    expect(clean).not.toContain('srcset');
+    expect(clean).not.toContain('image/svg');
+    expect(clean).not.toContain('href=');
+    expect(clean).not.toContain('onclick');
+    const container = document.createElement('div');
+    container.innerHTML = clean;
+    expect(container.querySelector('button')?.disabled).toBe(true);
+  });
   it('keeps the network offline and allows only its nonce-bearing resize script', () => {
     const html = mailHtmlDocument('<img src="https://evil.test/tracking"><style>@import url(https://evil.test)</style><iframe src="https://evil.test"></iframe><script>alert(1)</script>', nonce, 'Blocked');
     expect(html).toContain("default-src 'none'; img-src data:"); expect(html).toContain(`script-src 'nonce-${nonce}'`);

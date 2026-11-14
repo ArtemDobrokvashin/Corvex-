@@ -43,7 +43,6 @@ import {
 import { formatMailRecipients } from './mailRecipients';
 import MailHtmlFrame from './MailHtmlFrame';
 import { activeMailAfterRefresh, replaceFolderMessages } from './mailRefresh';
-import { EmojiPickerButton } from '../../components/EmojiPicker';
 import { Avatar, EmptyState, IconButton, cleanPersonName, emailFromHeader } from '../../components/ui';
 import { countLabel, formatDateTime, useI18n } from '../../i18n';
 import { truncateGraphemes } from '../../lib/text';
@@ -1047,8 +1046,6 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
   }, [draft, files, sent]);
 
 
-  const insertEmoji = (emoji: string) => bodyRef.current?.insertText(emoji);
-
   const closeComposer = () => {
     if (sending) return;
     if (!sent && (draft.to || draft.cc || draft.subject || draft.body || files.length) &&
@@ -1138,7 +1135,6 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
             <button className="btn-accent" disabled={sending}><Send size={15} /> {t('Отправить')}</button>
             <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => { const picked = Array.from(e.target.files ?? []); setFiles((previous) => [...previous, ...picked]); e.target.value = ''; }} />
             <IconButton icon={Paperclip} label={t('Прикрепить файлы')} onClick={() => fileRef.current?.click()} />
-            <EmojiPickerButton onPick={insertEmoji} />
             <span className="ml-1 hidden text-[11px] text-faint sm:inline">{t('Подпись добавится автоматически')}</span>
             <IconButton icon={Trash2} label={t('Удалить черновик')} className="ml-auto" onClick={closeComposer} />
           </footer>

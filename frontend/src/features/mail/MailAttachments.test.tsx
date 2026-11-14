@@ -20,6 +20,20 @@ describe('mail attachment display', () => {
     expect(document.body.textContent).toContain('Antivirus scan not verified');
     expect(document.body.textContent).not.toContain('safe to open');
   });
+  it('uses decorative file-type icons without treating extensions as scan verdicts', () => {
+    useLocaleStore.setState({ locale: 'en' });
+    const names = ['report.PDF', 'table.xlsx', 'photo.png', 'archive.zip', 'track.mp3', 'clip.mp4', 'code.ts', 'README'];
+    document.body.innerHTML = renderToStaticMarkup(<MailAttachments demoMode={false} busy={false}
+      attachments={names.map((fileName, index) => ({ ...attachment('UNVERIFIED', index), fileName }))} onDownload={() => undefined} />);
+    const icons = [...document.querySelectorAll('svg')];
+    const types = ['file-text', 'file-spreadsheet', 'file-image', 'file-archive', 'file-audio', 'file-video', 'file-code', 'file'];
+    expect(icons.map((icon) => types.some((type) => icon.classList.contains(`lucide-${type}`)))).toEqual(types.map(() => true));
+    icons.forEach((icon, index) => {
+      expect(icon.classList.contains(`lucide-${types[index]}`)).toBe(true);
+      expect(icon.getAttribute('aria-hidden')).toBe('true');
+    });
+    expect([...document.querySelectorAll('button')].every((button) => button.textContent?.includes('Scan and download'))).toBe(true);
+  });
   it('supports English and unknown status fails closed', () => {
     useLocaleStore.setState({ locale: 'en' });
     document.body.innerHTML = renderToStaticMarkup(<MailAttachments demoMode={false} busy={false}
