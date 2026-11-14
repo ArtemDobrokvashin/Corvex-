@@ -1,9 +1,10 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Archive,
   ArrowLeft,
   ArrowUpDown,
+  Calendar,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -44,10 +45,9 @@ import {
 import { formatMailRecipients } from './mailRecipients';
 import { mailHtmlDocument } from './mailHtml';
 import { activeMailAfterRefresh, replaceFolderMessages } from './mailRefresh';
-import { EmojiPickerButton } from '../../components/EmojiPicker';
 import { Avatar, EmptyState, IconButton, cleanPersonName, emailFromHeader } from '../../components/ui';
 import { countLabel, formatDateTime, useI18n } from '../../i18n';
-import { insertTextAtSelection, truncateGraphemes } from '../../lib/text';
+import { truncateGraphemes } from '../../lib/text';
 import { useSession } from '../../store/sessionStore';
 
 interface ComposeDraft {
@@ -96,6 +96,7 @@ const MAIL_REFRESH_INTERVAL_MS = 15_000;
 /** Почта Quiet Work: папки → сканируемый список → письмо как документ, composer поверх контекста. */
 export default function MailPage() {
   const { locale, t } = useI18n();
+  const navigate = useNavigate();
   const demoMode = useSession((s) => s.demoMode);
   const sessionUser = useSession((s) => s.user);
   const demoReadMailIds = useSession((s) => s.demoReadMailIds);
@@ -863,6 +864,12 @@ export default function MailPage() {
                     <button type="button" className="btn-secondary" onClick={() => setComposeDraft({ to: '', subject: `Fwd: ${active.subject}`, body: `\n\n--- ${t('Пересылаемое письмо')} ---\n${activeBody}` })}>
                       <Forward size={16} /> {t('Переслать')}
                     </button>
+                    <button type="button" className="btn-ghost" onClick={() => {
+                      const date = new Date(active.timestamp).toISOString().split('T')[0];
+                      navigate(`/calendar?createEvent=1&title=${encodeURIComponent(active.subject)}&date=${date}&description=${encodeURIComponent(active.body)}`);
+                    }}>
+                      <Calendar size={16} /> {t('Создать событие')}
+                    </button>
                     <button type="button" className="btn-ghost ml-auto" onClick={() => moveActive('ARCHIVE')}>
                       <Archive size={16} /> {t('В архив')}
                     </button>
@@ -933,16 +940,6 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
   const fileRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const sendAsAccounts = externalAccounts.filter((account) => account.enabled && account.sendEnabled && account.smtpEnabled);
-
-  const insertEmoji = (emoji: string) => {
-    const element = bodyRef.current;
-    const next = insertTextAtSelection(draft.body, emoji, element?.selectionStart ?? null, element?.selectionEnd ?? null);
-    setDraft({ ...draft, body: next.value });
-    requestAnimationFrame(() => {
-      element?.focus();
-      element?.setSelectionRange(next.cursor, next.cursor);
-    });
-  };
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -1032,7 +1029,6 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
             <button className="btn-accent" disabled={sending}><Send size={15} /> {t('Отправить')}</button>
             <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => { const picked = Array.from(e.target.files ?? []); setFiles((previous) => [...previous, ...picked]); e.target.value = ''; }} />
             <IconButton icon={Paperclip} label={t('Прикрепить файлы')} onClick={() => fileRef.current?.click()} />
-            <EmojiPickerButton onPick={insertEmoji} />
             <span className="ml-1 hidden text-[11px] text-faint sm:inline">{t('Подпись добавится автоматически')}</span>
             <IconButton icon={Trash2} label={t('Удалить черновик')} className="ml-auto" onClick={onClose} />
           </footer>

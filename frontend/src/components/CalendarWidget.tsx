@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, ExternalLink } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { localeTag, useI18n } from '../i18n';
 
 /**
@@ -9,6 +10,7 @@ import { localeTag, useI18n } from '../i18n';
  */
 export function CalendarWidget({ className = '' }: { className?: string }) {
   const { locale, t } = useI18n();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [viewMonth, setViewMonth] = useState(new Date());
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -76,12 +78,12 @@ export function CalendarWidget({ className = '' }: { className?: string }) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="icon-btn h-8 w-8"
+        className="icon-btn h-9 w-9"
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-label={t('Календарь')}
       >
-        <CalendarIcon size={16} strokeWidth={1.75} />
+        <CalendarIcon size={21} strokeWidth={1.75} />
       </button>
       <span className="text-[10px] text-muted">{t('Календарь')}</span>
 
@@ -94,6 +96,16 @@ export function CalendarWidget({ className = '' }: { className?: string }) {
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between mb-2">
+            <button
+              type="button"
+              onClick={() => { setOpen(false); navigate('/calendar'); }}
+              className="flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
+            >
+              <ExternalLink size={12} strokeWidth={1.75} />
+              {t('Открыть календарь')}
+            </button>
+          </div>
+          <div className="flex items-center justify-between mt-2 mb-1">
             <button
               type="button"
               onClick={prevMonth}
@@ -146,9 +158,6 @@ export function CalendarWidget({ className = '' }: { className?: string }) {
               </tbody>
             </table>
           </div>
-          <p className="mt-2 text-[10px] text-faint">
-            {t('Локальный календарь без серверных событий.')}
-          </p>
         </div>
       )}
     </div>
