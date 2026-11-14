@@ -15,7 +15,7 @@ import java.util.concurrent.TimeoutException;
 
 /**
  * Второе звено конвейера. Неопределённый результат не публикуется как проверенное письмо:
- * повторная попытка запускает сканирование заново; после исчерпания попыток событие уходит в DLQ.
+ * повторная попытка запускает сканирование заново; при исчерпании попыток оно возвращается в очередь.
  */
 @Component
 public class AntivirusCheckListener {
@@ -44,7 +44,7 @@ public class AntivirusCheckListener {
                 && scan.result() != ClamAvClient.Result.INFECTED)) {
             // The spool must remain available for retry or operator-led recovery.
             // Do not publish an ERROR event which an older storage service may deliver.
-            throw new IOException("Antivirus verdict unavailable; message retained for retry");
+            throw new AvVerdictUnavailableException();
         }
         var checked = new MailPipelineEvents.AvCheckedEvent(
                 event.rawRef(), event.mailFrom(), event.recipients(), event.remoteAddress(),

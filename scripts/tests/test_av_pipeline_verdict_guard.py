@@ -11,7 +11,7 @@ class VerdictGuards(unittest.TestCase):
         self.assertLess(AV.index('scan == null'), AV.index('var checked ='))
         self.assertIn('scan.result() != ClamAvClient.Result.CLEAN', AV)
         self.assertIn('scan.result() != ClamAvClient.Result.INFECTED', AV)
-        self.assertIn('throw new IOException("Antivirus verdict unavailable', AV)
+        self.assertIn('throw new AvVerdictUnavailableException()', AV)
 
     def test_storage_refuses_unknown_before_delivery_or_delete(self):
         check = STORAGE.index('!"CLEAN".equalsIgnoreCase(event.avStatus())')
