@@ -89,7 +89,7 @@ export function CalendarWidget({ className = '' }: { className?: string }) {
 
       {open && (
         <div
-          className="absolute left-0 mt-3 w-64 max-w-[calc(100vw-32px)] rounded-2xl border border-[#E5E5EA] bg-white shadow-[0_10px_40px_rgba(23,24,28,0.15)] p-3 z-50"
+          className="absolute left-0 mt-3 w-64 max-w-[calc(100vw-32px)] rounded-2xl border border-[#e5e5ea] bg-white shadow-[0_10px_40px_rgba(0,0,0,0.10)] p-3 z-50"
           role="dialog"
           aria-modal="true"
           aria-label={t('Календарь')}
@@ -99,7 +99,7 @@ export function CalendarWidget({ className = '' }: { className?: string }) {
             <button
               type="button"
               onClick={() => { setOpen(false); navigate('/calendar'); }}
-              className="flex items-center gap-1 text-[11px] font-medium text-accent hover:bg-[#F2F2F7] hover:text-accent-900 rounded-lg px-2 py-1"
+              className="flex items-center gap-1 text-[11px] font-medium text-[#0071e3] hover:bg-[#f2f2f7] hover:text-[#004c9a] rounded-lg px-2 py-1"
             >
               <ExternalLink size={12} strokeWidth={1.75} />
               {t('Открыть календарь')}
@@ -145,8 +145,8 @@ export function CalendarWidget({ className = '' }: { className?: string }) {
                             day === 0
                               ? 'bg-transparent'
                               : isToday
-                                ? 'bg-[#F2F2F7] text-accent font-medium ring-1 ring-accent'
-                                : 'text-ink-soft hover:bg-[#F2F2F7]'
+                                ? 'bg-[#f2f2f7] text-[#0071e3] font-medium ring-1 ring-[#0071e3]'
+                                : 'text-ink-soft hover:bg-[#f2f2f7]'
                           }`}
                         >
                           {day || ''}

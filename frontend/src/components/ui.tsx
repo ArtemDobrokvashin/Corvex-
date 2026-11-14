@@ -55,7 +55,7 @@ export function Avatar({
         {initials(clean)}
       </span>
       {presence !== undefined && (
-        <span className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white ${presence ? 'bg-emerald-500' : 'bg-zinc-300'}`} />
+        <span className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white ${presence ? 'bg-[#34c759]' : 'bg-[#e5e5ea]'}`} />
       )}
     </span>
   );
@@ -100,7 +100,7 @@ export function Notice({
   className?: string;
 }) {
   const Icon = tone === 'error' ? AlertCircle : tone === 'success' ? CheckCircle2 : Info;
-  const toneClass = tone === 'error' ? 'notice-error' : tone === 'success' ? 'notice-success' : tone === 'warning' ? 'notice-warning' : 'border-line bg-chrome text-muted';
+  const toneClass = tone === 'error' ? 'notice-error' : tone === 'success' ? 'notice-success' : tone === 'warning' ? 'notice-warning' : 'border-[#e5e5ea] bg-[#f2f2f7] text-ink-soft';
   return (
     <div role={tone === 'error' ? 'alert' : 'status'} className={`notice ${toneClass} ${className}`}>
       <Icon size={17} strokeWidth={1.9} className="mt-0.5 shrink-0" />
@@ -122,7 +122,7 @@ export function EmptyState({
 }) {
   return (
     <div className="flex h-full flex-col items-center justify-center px-6 py-16 text-center">
-      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-black/[0.04] text-faint">
+      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#000000]/04 text-ink-soft">
         <Icon size={25} strokeWidth={1.6} />
       </div>
       <h3 className="text-[15px] font-semibold text-ink-soft">{title}</h3>
