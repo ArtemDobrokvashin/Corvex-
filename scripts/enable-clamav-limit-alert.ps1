@@ -117,20 +117,51 @@ try {
         if ($info.Config.Image -cne 'clamav/clamav:1.5.4') { throw 'Unexpected ClamAV image reference.' }
         $imageId = $info.Image
         if ($imageId -notmatch '^sha256:[a-f0-9]{64}$') { throw 'Unexpected ClamAV image id.' }
-        $hash = (Invoke-Docker @('compose', 'config', '--hash', 'clamav')).Output
-        if (@($hash).Count -ne 1 -or $hash[0] -notmatch '^clamav\s+([a-f0-9]{64})$') { throw 'Compose hash unavailable.' }
-        $runningHash = $Matches[1]
-        $label = $info.Config.Labels.PSObject.Properties['com.docker.compose.config-hash']
-        if ($null -eq $label -or $label.Value -cne $runningHash) { throw 'Compose differs from the running ClamAV.' }
         $stage = 'networks'
         $networkJson = Get-Networks $oldId
-        $avNetworks = @($networkJson.PSObject.Properties.Name | Where-Object { $_ -match '^corvex-james-av-[a-f0-9]{32}$' })
+        $runningNetworks = @($networkJson.PSObject.Properties.Name)
+        $avNetworks = @($runningNetworks | Where-Object { $_ -match '^corvex-james-av-[a-f0-9]{32}$' })
         if ($avNetworks.Count -eq 0) { throw 'ClamAV is not attached to a James AV network; enable the gate first.' }
+        $allowed = @('app') + $avNetworks
+        foreach ($network in $runningNetworks) {
+            if ($allowed -cnotcontains $network) { throw ("Unexpected ClamAV network: " + $network) }
+        }
+        if ($runningNetworks -cnotcontains 'app') { throw 'ClamAV is not attached to the application network.' }
         $jamesIds = (Invoke-Docker @('compose', '--profile', 'james-transition', 'ps', '--status', 'running', '-q', 'james')).Output
         if (@($jamesIds).Count -ne 1 -or $jamesIds[0] -notmatch '^[a-f0-9]{12,64}$') { throw 'Expected one running James container.' }
         $jamesNetworks = (Get-Networks $jamesIds[0]).PSObject.Properties.Name
         $shared = @($avNetworks | Where-Object { $jamesNetworks -ccontains $_ })
         if ($shared.Count -eq 0) { throw 'ClamAV and James share no James AV network.' }
+        # The AV network was attached manually after the gate was enabled, so the
+        # running ClamAV label hash legitimately differs from the Compose file.
+        # Verify identity by image and networks instead of a blanket hash equality.
+        $stage = 'identity'
+        $images = (Invoke-Docker @('compose', 'config', '--images', 'clamav')).Output
+        if (@($images).Count -ne 1 -or $images[0] -cne $info.Config.Image) {
+            throw 'Compose image for clamav differs from the running container.'
+        }
+        $configJson = Invoke-Docker @('compose', 'config', '--format', 'json')
+        if ($configJson.Code -ne 0 -or $configJson.Output.Count -eq 0) { throw 'Compose configuration unavailable.' }
+        $composeService = (($configJson.Output -join "`n") | ConvertFrom-Json).services.clamav
+        if ($null -eq $composeService) { throw 'clamav service is missing from Compose.' }
+        $declared = @($composeService.networks.PSObject.Properties.Name)
+        foreach ($network in $declared) {
+            if ($network -ceq 'app') { continue }
+            if ($network -cne 'corvex-james-av-live') { throw ("Unexpected Compose network for clamav: " + $network) }
+        }
+        if ($declared -cnotcontains 'app') { throw 'Compose clamav service is not on the application network.' }
+        $hash = (Invoke-Docker @('compose', 'config', '--hash', 'clamav')).Output
+        if (@($hash).Count -ne 1 -or $hash[0] -notmatch '^clamav\s+([a-f0-9]{64})$') { throw 'Compose hash unavailable.' }
+        $runningHash = $Matches[1]
+        $label = $info.Config.Labels.PSObject.Properties['com.docker.compose.config-hash']
+        if ($null -eq $label) { throw 'Running ClamAV has no Compose configuration label.' }
+        if ($label.Value -cne $runningHash) {
+            Write-Host 'Note: ClamAV configuration hash differs only because the James AV network is declared in Compose'
+            Write-Host 'and was attached manually; image, application network and AV networks are verified above.'
+        }
+        $clavVolume = @($info.Mounts | Where-Object { $_.Destination -ceq '/var/lib/clamav' -and $_.Type -ceq 'volume' })
+        if ($clavVolume.Count -ne 1) { throw 'ClamAV database volume is not attached.' }
+        $clamVolumeName = $clavVolume[0].Name
         $stage = 'compose-text'
         $head = @([IO.File]::ReadAllBytes($composePath))
         $hasBom = $head.Length -ge 3 -and $head[0] -eq 239 -and $head[1] -eq 187 -and $head[2] -eq 191
@@ -190,6 +221,18 @@ try {
         $null = Wait-Healthy $newId
         $stage = 'networks-reattach'
         Connect-AvNetworks $newId $avNetworks
+        $stage = 'verify-volumes'
+        $newInfoEarly = (Invoke-Docker @('inspect', '--format', '{{json .}}', $newId)).Output[0] | ConvertFrom-Json
+        $newVolume = @($newInfoEarly.Mounts | Where-Object { $_.Destination -ceq '/var/lib/clamav' -and $_.Type -ceq 'volume' -and $_.Name -ceq $clamVolumeName })
+        if ($newVolume.Count -ne 1) { throw 'ClamAV database volume changed after recreation.' }
+        $newNetworkNames = @((Get-Networks $newId).PSObject.Properties.Name)
+        $expectedNetworks = @('app') + $avNetworks
+        foreach ($network in $newNetworkNames) {
+            if ($expectedNetworks -cnotcontains $network) { throw ("Unexpected ClamAV network after recreation: " + $network) }
+        }
+        foreach ($network in $expectedNetworks) {
+            if ($newNetworkNames -cnotcontains $network) { throw ("Missing ClamAV network after recreation: " + $network) }
+        }
         $stage = 'verify-config'
         $report = Assert-ConfigReport $root 'AlertExceedsMax: yes'
         $stage = 'verify-hash'

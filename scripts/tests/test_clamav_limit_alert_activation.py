@@ -24,6 +24,17 @@ class ClamavLimitAlertTest(unittest.TestCase):
         self.assertIn('Connect-AvNetworks', self.enable)
         self.assertIn('corvex-james-av-', self.enable)
 
+    def test_manual_av_network_drift_is_explained_not_fatal(self):
+        self.assertNotIn("throw 'Compose differs from the running ClamAV.'", self.enable)
+        self.assertIn('configuration hash differs only because the James AV network is declared in Compose', self.enable)
+        self.assertIn("'config', '--images', 'clamav'", self.enable)
+        self.assertIn('Compose image for clamav differs from the running container.', self.enable)
+
+    def test_database_volume_and_networks_are_preserved(self):
+        self.assertIn('ClamAV database volume changed after recreation.', self.enable)
+        self.assertIn("$expectedNetworks = @('app') + $avNetworks", self.enable)
+        self.assertIn('Missing ClamAV network after recreation: ', self.enable)
+
     def test_activation_verifies_both_config_and_compose_identity(self):
         self.assertIn("Assert-ConfigReport $root 'AlertExceedsMax: yes'", self.enable)
         self.assertIn('New ClamAV does not match the edited Compose.', self.enable)
