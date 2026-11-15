@@ -521,7 +521,9 @@ Corvex-пути это смягчено: `ProtocolMailService.append` помеч
 ПК должна подтвердить именно поведение, а не факт наличия кода:
 
 1. `mvn -pl services/mail-storage-service test` и `-pl services/mail-smtp-service`
-   — модульные тесты и `MailDomainStorePostgresIT` (Docker).
+   — модульные тесты. **Статус: оба BUILD SUCCESS на ПК, 2026-10-19.** Отдельно
+   подтвердить `MailDomainStorePostgresIT` (Testcontainers/Docker): в этом
+   прогоне его результат не проверялся.
 2. `POST /api/v1/mail/admin/domains` с `ADMIN_MAIL_POLICY` → 201; повтор → 409;
    домен вида `company.local/../x` → 400 и никаких запросов в James.
 3. `POST /{domain}/james` при выключенном `corvex.james.provision.enabled` → 503
