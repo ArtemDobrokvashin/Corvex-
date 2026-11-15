@@ -80,6 +80,13 @@ import { SelectMessage, SelectVisibleMessages } from './BulkSelection';
 import { ComposePanel, type ComposeDraft } from './ComposePanel';
 import DraftsPanel from './DraftsPanel';
 import { moveSequentially } from './bulkMail';
+import {
+  buildForwardBody,
+  forwardBlockLabelKey,
+  forwardSubject,
+  planForwardAttachments,
+  type ForwardBlocked,
+} from './forwardMail';
 
 type FolderTab = ReturnType<typeof demoFolders>[number];
 
@@ -196,6 +203,8 @@ export default function MailPage() {
   // Каждое открытие композера — своя сессия: иначе повторное «Написать» с теми же
   // адресатом и темой переиспользовало бы старый экземпляр с прежним текстом.
   const [composeSession, setComposeSession] = useState(0);
+  // Вложения групповой пересылки: их нельзя положить в ComposeDraft (там только текст).
+  const [composeFiles, setComposeFiles] = useState<File[]>([]);
 
   useEffect(() => {
     if (!composeDraft) setResumeDraft(null);
@@ -338,6 +347,7 @@ export default function MailPage() {
 
   const openDraft = (draft: ComposeDraft, kind: 'new' | 'reply' | 'forward') => {
     setComposeSession((session) => session + 1);
+    setComposeFiles([]);
     setResumeDraft(null);
     setComposeDraft({ ...draft, body: bodyWithSignature(draft.body, preferences, kind) });
   };
@@ -1018,6 +1028,84 @@ export default function MailPage() {
     setBulkBusy(false);
   };
 
+  /**
+   * Групповая пересылка оригиналов: тексты писем целиком, вложения — только
+   * проверенные антивирусом и в пределах лимитов. Отказ по каждому файлу
+   * показывается пользователю, а не проглатывается.
+   */
+  const forwardSelected = async () => {
+    if (bulkBusyRef.current || bulkSelection.length === 0) return;
+    const snapshot = [...bulkSelection];
+    bulkBusyRef.current = true;
+    setBulkBusy(true);
+    setBulkNotice('');
+    try {
+      const details = demoMode
+        ? snapshot
+            .map((id) => mails.find((mail) => mail.id === id))
+            .filter((mail): mail is DemoMail => Boolean(mail))
+            .map((mail) => ({ id: mail.id, sender: mail.from, subject: mail.subject, date: mail.date, bodyText: mail.body, attachments: [] }))
+        : await Promise.all(snapshot.map(async (id) => {
+            const detail = await mailApi.message(id);
+            return {
+              id,
+              sender: detail.summary.sender,
+              subject: detail.summary.subject,
+              date: formatDateTime(locale, detail.summary.date),
+              bodyText: detail.bodyText,
+              attachments: detail.attachments,
+            };
+          }));
+
+      if (details.length === 0) {
+        setBulkNotice(t('Не удалось загрузить выбранные письма для пересылки.'));
+        return;
+      }
+
+      const plan = planForwardAttachments(details.map((detail) => ({ id: detail.id, attachments: detail.attachments })));
+      const files: File[] = [];
+      const blocked: ForwardBlocked[] = [...plan.blocked];
+      for (const candidate of plan.candidates) {
+        try {
+          const blob = await mailApi.downloadAttachment(candidate.messageId, candidate.attachment.partIndex);
+          files.push(new File([blob], candidate.attachment.fileName || 'attachment',
+            { type: candidate.attachment.contentType || 'application/octet-stream' }));
+        } catch (error) {
+          // 403 — антивирус запретил файл, 503 — проверка недоступна. В обоих
+          // случаях файл не пересылается; причину покажем явно.
+          const status = error instanceof ApiError ? error.status : 0;
+          blocked.push({
+            messageId: candidate.messageId,
+            fileName: candidate.attachment.fileName,
+            reason: status === 403 ? 'infected' : 'download-failed',
+          });
+        }
+      }
+
+      const body = buildForwardBody(
+        details.map(({ sender, subject, date, bodyText }) => ({ sender, subject, date, bodyText })),
+        t('Пересылаемое письмо'),
+      );
+      setComposeSession((session) => session + 1);
+      setComposeFiles(files);
+      setResumeDraft(null);
+      setComposeDraft({ to: '', subject: forwardSubject(details, 'Fwd:'), body });
+      setBulkSelection([]);
+
+      if (blocked.length > 0) {
+        const listed = blocked
+          .map((item) => `${item.fileName} — ${t(forwardBlockLabelKey(item.reason))}`)
+          .join('; ');
+        setBulkNotice(t('Письма пересылаются без части вложений: {files}', { files: listed }));
+      }
+    } catch (error) {
+      setBulkNotice(`${t('Не удалось загрузить выбранные письма для пересылки.')} ${errorMessage(error)}`);
+    } finally {
+      bulkBusyRef.current = false;
+      setBulkBusy(false);
+    }
+  };
+
   const toggleFlag = (mail: DemoMail) => {
     if (movingMailIdsRef.current.has(mail.id)) return;
     const flagged = !mail.flagged;
@@ -1469,6 +1557,8 @@ export default function MailPage() {
                 <option key={item.id} value={item.id}>{item.name}</option>
               ))}
             </select>
+            <button type="button" disabled={bulkBusy} className="btn-secondary h-8 px-2 text-xs"
+              onClick={() => void forwardSelected()}>{t('Переслать выбранные')}</button>
             <button type="button" disabled={bulkBusy} className="text-xs text-muted hover:text-ink"
               onClick={() => setBulkSelection([])}>{t('Снять выбор')}</button>
           </div>
@@ -1985,6 +2075,7 @@ export default function MailPage() {
           key={`compose-${composeSession}`}
           initial={composeDraft}
           initialDraft={resumeDraft}
+          initialFiles={composeFiles}
           autoSave={!demoMode}
           currentEmail={sessionUser?.email ?? ''}
           externalAccounts={externalAccounts}
