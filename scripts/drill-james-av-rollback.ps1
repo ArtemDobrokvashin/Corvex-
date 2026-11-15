@@ -249,7 +249,7 @@ try {
     Write-Journal "Retained networks: $($m.network), $($newDeployment.network). Do not delete while in use."
 } catch {
     $message = $_.Exception.Message
-    if ($null -ne $stream) { Write-Journal "FAILED at stage $stage: $message" }
+    if ($null -ne $stream) { Write-Journal "FAILED at stage ${stage}: $message" }
     [Console]::Error.WriteLine("ERROR: rollback drill failed at stage $stage. State: rollbackVerified=$rollbackVerified applyVerified=$applyVerified. Journal: $journal")
     [Console]::Error.WriteLine('James may be pre-gate. Do not retry blindly; inspect the journal, Compose file and containers first.')
     throw
