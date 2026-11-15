@@ -481,13 +481,35 @@ dry-run и apply. ClamAV пересоздан, healthy, сети `corvex_app` и
 Покрытие остальных причин неполного сканирования не доказано; это не допуск AV
 и не разрешение cutover.
 
-### Карантин на живом письме: подготовлено, не выполнено
+### Карантин на живом письме: подтверждено (`5c0d3c2`)
 
-`scripts/test-james-av-quarantine.ps1` + `scripts/JamesAvQuarantineProbe.java` +
-выключенный кандидат `infra/james/candidates/smtp-quarantine-proof.xml`
-(loopback `127.0.0.1:2525`, `authorizedAddresses 127.0.0.1/32`, без публикации
-порта). Один синтетический конверт с вложением — ZIP глубины 25 с EICAR;
-ожидается: письмо не появляется в ящике через JMAP, `mail_repository_content`
-для `corvex-av-unknown` растёт ровно на одну запись, после чего выключенный SMTP
-восстанавливается. Маркер `infra/secrets/james-av-quarantine-probe` запрещает
-автоматический повтор. На ноутбуке сценарий ещё не запускался.
+`scripts/test-james-av-quarantine.ps1` (Compose `C:\Corvex-test`) прошёл целиком,
+`QUARANTINE EXIT=0`:
+
+- `Synthetic account: cvx-ffc91d11…@localhost`, `Baseline: quarantine=0 total=0`;
+- `Confirmed: James runs the loopback-only candidate listener` — `smtpserver.xml`
+  внутри контейнера содержит `synthetic-quarantine-smtp` и `127.0.0.1:2525`,
+  порт наружу не публикуется;
+- одна отправка: `PASS: one synthetic message with a 25-level archive accepted by local James SMTP`;
+- `PASS: synthetic nested-archive message never appeared in the mailbox` (проверка через JMAP);
+- `Delta: quarantine=1 total=1` — письмо остановлено гейтом и сохранено в
+  репозитории `postgres://var/mail/corvex-av-unknown/`;
+- `PASS: disabled SMTP configuration restored` — выключенный листенер возвращён,
+  nginx-прокси подняты.
+
+Маркер `infra/secrets/james-av-quarantine-probe/` (`intent.txt`, `completed.txt`)
+сохранить: он запрещает автоматический повтор отправки. Это доказательство
+маршрута SMTP → gate → карантин для одного синтетического письма; это не
+доказательство обнаружения вредоносного ПО, полноты проверки архивов и не допуск
+cutover.
+
+### Остаточные ограничения AV-маршрута
+
+`JMAP Email/import` и `IMAP APPEND` не проходят mailet-цепочку James. Для
+Corvex-пути это смягчено: `ProtocolMailService.append` помечает письмо
+`AvStatus.PENDING`, а выдача вложения в `MailApiService` для любого статуса, кроме
+`CLEAN`, пересканирует именно CAS-файл и при `INFECTED` отвечает 403, при
+недоступном/неполном сканировании — 503 (fail-closed). Сам JMAP-порт James не
+публикуется и доступен только внутри `app`/`james-internal`; внешний JMAP-шлюз
+работает в режиме только чтения. Прямой `Email/import` в James остаётся
+внутренним риском и требует отдельного сетевого/административного ограничения.
