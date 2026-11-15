@@ -146,10 +146,10 @@ describe('mail settings', () => {
     expect(firstRow.className).toContain('py-1.5');
     expect(firstRow.querySelector('p')).toBeNull();
     await click([...container.querySelectorAll('button')].find((item) => item.textContent?.includes('Compose')));
-    expect((container.querySelector('textarea[aria-label="Message body"]') as HTMLTextAreaElement).value).toBe('\n\nBest, Alice');
+    expect(container.querySelector('[aria-label="Message body"]')?.textContent).toContain('Best, Alice');
     await click(container.querySelector('button[aria-label="Close draft"]'));
     await click(container.querySelector('button[aria-label="Reply"]'));
-    expect((container.querySelector('textarea[aria-label="Message body"]') as HTMLTextAreaElement).value).toBe('\n\nBest, Alice');
+    expect(container.querySelector('[aria-label="Message body"]')?.textContent).toContain('Best, Alice');
   });
 
   it('preserves explicit unread state for an originally read demo message after reopening Mail', async () => {

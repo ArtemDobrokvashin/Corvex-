@@ -1,11 +1,12 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { CheckCircle2, Maximize2, Minimize2, Paperclip, Send, Trash2, X } from 'lucide-react';
 import type { ExternalMailAccount } from '../../api/externalMailApi';
+import { ApiError } from '../../api/httpClient';
 import { mailApi, type SavedDraft } from '../../api/mailApi';
 import { IconButton } from '../../components/ui';
 import { useI18n } from '../../i18n';
 import ComposeEditor, { type ComposeEditorHandle } from './ComposeEditor';
-import { buildDraftPayload, draftSizeProblem, draftStatusKey } from './drafts';
+import { attachmentToFile, buildDraftPayload, draftSizeProblem, draftStatusKey } from './drafts';
 
 export interface ComposeDraft {
   to: string;
@@ -25,7 +26,8 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
   currentEmail: string;
   externalAccounts: ExternalMailAccount[];
   onClose: () => void;
-  onSend: (draft: ComposeDraft, files: File[]) => Promise<void>;
+  /** false — письмо ушло, но копию в «Отправленные» сохранить не удалось. */
+  onSend: (draft: ComposeDraft, files: File[]) => Promise<boolean | void>;
   /** Демо-режим не пишет на сервер. */
   autoSave?: boolean;
   initialDraft?: SavedDraft | null;
@@ -33,10 +35,12 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
   const { t } = useI18n();
   const [draft, setDraft] = useState(initial);
   const [showCc, setShowCc] = useState(Boolean(initial.cc));
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<File[]>(() =>
+    (initialDraft?.payload.attachments ?? []).map((attachment) => attachmentToFile(attachment)));
   const [draggingFiles, setDraggingFiles] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [sent, setSent] = useState(false);
+  const [sentCopySaved, setSentCopySaved] = useState(true);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(initialDraft?.id ?? null);
@@ -44,6 +48,8 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
   const [draftStatus, setDraftStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [draftNote, setDraftNote] = useState('');
   const savingDraft = useRef(false);
+  // Двойной submit (клик + Enter, двойной клик) не должен отправить письмо дважды.
+  const sendingRef = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<ComposeEditorHandle>(null);
   const sendAsAccounts = externalAccounts.filter((account) => account.enabled && account.sendEnabled && account.smtpEnabled);
@@ -122,18 +128,27 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (sendingRef.current) return;
     if (!draft.body.trim()) { setSendError(t('Введите текст письма.')); return; }
+    sendingRef.current = true;
     void (async () => {
       setSending(true);
       setSendError(null);
       try {
-        await onSend(draft, files);
+        const copySaved = await onSend(draft, files);
+        setSentCopySaved(copySaved !== false);
         await dropSavedDraft();
         setSent(true);
         window.setTimeout(onClose, 900);
       } catch (error) {
-        setSendError(errorMessage(error));
+        // Сервер мог поставить письмо в очередь до ошибки. Повторять отправку
+        // вслепую нельзя, поэтому обещаем только то, что знаем наверняка.
+        const rejected = error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 408;
+        setSendError(rejected
+          ? errorMessage(error)
+          : `${t('Не удалось подтвердить отправку. Письмо могло попасть в очередь; перед повтором уточните статус у администратора или получателей.')} ${errorMessage(error)}`);
       } finally {
+        sendingRef.current = false;
         setSending(false);
       }
     })();
@@ -151,7 +166,11 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
         <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
           <span className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600"><CheckCircle2 size={27} /></span>
           <h4 className="mt-4 text-lg font-semibold">{t('Письмо отправлено')}</h4>
-          <p className="mt-1 text-sm text-muted">{t('Копия сохранена в папке «Отправленные».')}</p>
+          <p className={`mt-1 text-sm ${sentCopySaved ? 'text-muted' : 'text-danger'}`} role={sentCopySaved ? undefined : 'alert'}>
+            {sentCopySaved
+              ? t('Копия сохранена в папке «Отправленные».')
+              : t('Копию не удалось сохранить в папке «Отправленные». Повторно отправлять письмо не нужно.')}
+          </p>
         </div>
       ) : (
         <form onSubmit={submit} className={`flex min-h-0 flex-1 flex-col ${draggingFiles ? 'ring-2 ring-inset ring-accent' : ''}`}
@@ -197,7 +216,7 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
             <label htmlFor="compose-subject" className="w-12 shrink-0 text-[13px] text-faint">{t('Тема')}</label>
             <input id="compose-subject" required value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder={t('О чём письмо?')} className="min-w-0 flex-1 border-0 bg-transparent text-sm font-medium outline-none placeholder:font-normal placeholder:text-faint focus:ring-0" />
           </div>
-          <ComposeEditor ref={bodyRef} initialText={initial.body} onChange={(body, bodyHtml) => setDraft((current) => ({ ...current, body, bodyHtml }))} />
+          <ComposeEditor ref={bodyRef} initialText={initial.body} initialHtml={initial.bodyHtml} onChange={(body, bodyHtml) => setDraft((current) => ({ ...current, body, bodyHtml }))} />
           {files.length > 0 && (
             <div className="flex shrink-0 flex-wrap gap-2 px-4 pb-3">
               {files.map((file, index) => <span key={`${file.name}-${index}`} className="chip"><Paperclip size={12} />{file.name}<button type="button" className="ml-1 rounded p-0.5 hover:text-danger" aria-label={`${t('Удалить вложение')}: ${file.name}`} onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}><X size={13} /></button></span>)}

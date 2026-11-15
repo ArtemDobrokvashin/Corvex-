@@ -7,7 +7,6 @@ import {
   Calendar as CalendarIcon,
   CalendarPlus,
   Check,
-  CheckCircle2,
   ChevronDown,
   ChevronUp,
   FilePenLine,
@@ -39,18 +38,18 @@ import { ApiError } from '../../api/httpClient';
 import {
   mailApi,
   MailboxQuota,
+  type SavedDraft,
   MailFolderView,
   MailMessageListItem,
   MailAttachmentView,
   SendAttachment,
 } from '../../api/mailApi';
 import { CORVEX_MAIL_DND_MIME } from '../../components/CalendarSidebarWidget';
-import { EmojiPickerButton } from '../../components/EmojiPicker';
 import SidebarSlot, { useSidebarSlotContext } from '../../components/SidebarSlot';
 import { Avatar, EmptyState, IconButton, cleanPersonName, emailFromHeader } from '../../components/ui';
 import WorkspaceUtilityBar from '../../components/WorkspaceUtilityBar';
 import { formatDateTime, useI18n } from '../../i18n';
-import { insertTextAtSelection, truncateGraphemes } from '../../lib/text';
+import { truncateGraphemes } from '../../lib/text';
 import {
   buildEventDraftFromMail,
   CalendarEventDraft,
@@ -78,15 +77,9 @@ import { formatMailRecipients, replyAllCc } from './mailRecipients';
 import { activeMailAfterRefresh, replaceFolderMessages } from './mailRefresh';
 import MailSidebarActions from './MailSidebarActions';
 import { SelectMessage, SelectVisibleMessages } from './BulkSelection';
+import { ComposePanel, type ComposeDraft } from './ComposePanel';
+import DraftsPanel from './DraftsPanel';
 import { moveSequentially } from './bulkMail';
-
-export interface ComposeDraft {
-  to: string;
-  cc?: string;
-  subject: string;
-  body: string;
-  externalAccountId?: string | null;
-}
 
 type FolderTab = ReturnType<typeof demoFolders>[number];
 
@@ -197,6 +190,16 @@ export default function MailPage() {
   const [activeId, setActiveId] = useState<string>(demoMode ? 'm1' : '');
   const [mobileReading, setMobileReading] = useState(false);
   const [composeDraft, setComposeDraft] = useState<ComposeDraft | null>(null);
+  // Черновик, открытый из списка: композер продолжает его, а не создаёт новый.
+  const [resumeDraft, setResumeDraft] = useState<SavedDraft | null>(null);
+  const [draftsOpen, setDraftsOpen] = useState(false);
+  // Каждое открытие композера — своя сессия: иначе повторное «Написать» с теми же
+  // адресатом и темой переиспользовало бы старый экземпляр с прежним текстом.
+  const [composeSession, setComposeSession] = useState(0);
+
+  useEffect(() => {
+    if (!composeDraft) setResumeDraft(null);
+  }, [composeDraft]);
   const [externalAccounts, setExternalAccounts] = useState<ExternalMailAccount[]>([]);
   const [externalOpen, setExternalOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -334,7 +337,29 @@ export default function MailPage() {
   };
 
   const openDraft = (draft: ComposeDraft, kind: 'new' | 'reply' | 'forward') => {
+    setComposeSession((session) => session + 1);
+    setResumeDraft(null);
     setComposeDraft({ ...draft, body: bodyWithSignature(draft.body, preferences, kind) });
+  };
+
+  /** Открыть серверный черновик: он продолжается с той же ревизией и вложениями. */
+  const openServerDraft = async (draftId: string) => {
+    try {
+      const saved = await mailApi.draft(draftId);
+      setDraftsOpen(false);
+      setComposeSession((session) => session + 1);
+      setResumeDraft(saved);
+      setComposeDraft({
+        to: saved.payload.to,
+        cc: saved.payload.cc,
+        subject: saved.payload.subject,
+        body: saved.payload.bodyText,
+        bodyHtml: saved.payload.bodyHtml || undefined,
+        externalAccountId: saved.payload.externalAccountId,
+      });
+    } catch (error) {
+      setLoadError(`${t('Не удалось открыть черновик.')} ${errorMessage(error)}`);
+    }
   };
 
   const active = mails.find((m) => m.id === activeId && m.folder === folder) ?? visible[0] ?? null;
@@ -1043,7 +1068,7 @@ export default function MailPage() {
         || target?.tagName === 'TEXTAREA'
         || target?.tagName === 'SELECT'
         || target?.isContentEditable;
-      if (externalOpen || eventModalDraft || settingsOpen || createFolderOpen) return;
+      if (externalOpen || eventModalDraft || settingsOpen || createFolderOpen || draftsOpen) return;
       if (e.key === 'Escape' && composeDraft) {
         setComposeDraft(null);
         return;
@@ -1147,6 +1172,7 @@ export default function MailPage() {
               externalAccountCount={externalAccounts.length}
               onCompose={() => { onCloseNavigation?.(); openDraft({ to: '', subject: '', body: '' }, 'new'); }}
               onOpenExternal={() => { onCloseNavigation?.(); setExternalOpen(true); }}
+              onOpenDrafts={demoMode ? undefined : () => { onCloseNavigation?.(); setDraftsOpen(true); }}
             />
 
             <div>
@@ -1164,6 +1190,7 @@ export default function MailPage() {
                       key={f.id}
                       type="button"
                       onClick={() => selectFolder(f.id)}
+                      aria-current={isCurrent ? 'page' : undefined}
                       className={`sidebar-subitem w-full ${isCurrent ? 'sidebar-subitem-active' : ''}`}
                     >
                       <Icon size={15} strokeWidth={1.85} className="shrink-0" />
@@ -1946,13 +1973,26 @@ export default function MailPage() {
         />
       )}
 
+      {draftsOpen && (
+        <DraftsPanel
+          onOpen={(draftId) => void openServerDraft(draftId)}
+          onClose={() => setDraftsOpen(false)}
+        />
+      )}
+
       {composeDraft && (
         <ComposePanel
-          key={`${composeDraft.to}-${composeDraft.subject}`}
+          key={`compose-${composeSession}`}
           initial={composeDraft}
+          initialDraft={resumeDraft}
+          autoSave={!demoMode}
           currentEmail={sessionUser?.email ?? ''}
           externalAccounts={externalAccounts}
-          onClose={() => setComposeDraft(null)}
+          onClose={() => {
+            // Старый композер мог завершить отправку уже после открытия нового:
+            // закрываем только собственный черновик.
+            setComposeDraft((current) => (current === composeDraft ? null : current));
+          }}
           onSend={addSentMail}
         />
       )}
@@ -1977,284 +2017,5 @@ export default function MailPage() {
         />
       )}
     </div>
-  );
-}
-
-export function ComposePanel({
-  initial,
-  currentEmail,
-  externalAccounts,
-  onClose,
-  onSend,
-}: {
-  initial: ComposeDraft;
-  currentEmail: string;
-  externalAccounts: ExternalMailAccount[];
-  onClose: () => void;
-  onSend: (draft: ComposeDraft, files: File[]) => Promise<boolean>;
-}) {
-  const { t } = useI18n();
-  const [draft, setDraft] = useState(initial);
-  const [showCc, setShowCc] = useState(Boolean(initial.cc));
-  const [files, setFiles] = useState<File[]>([]);
-  const [draggingFiles, setDraggingFiles] = useState(false);
-  const [sent, setSent] = useState(false);
-  const [sentCopySaved, setSentCopySaved] = useState(true);
-  const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
-  const sendingRef = useRef(false);
-  const mountedRef = useRef(false);
-  const closeTimerRef = useRef<number | null>(null);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
-    };
-  }, []);
-  const sendAsAccounts = externalAccounts.filter(
-    (account) => account.enabled && account.sendEnabled && account.smtpEnabled,
-  );
-
-  const insertEmoji = (emoji: string) => {
-    const element = bodyRef.current;
-    const next = insertTextAtSelection(
-      draft.body,
-      emoji,
-      element?.selectionStart ?? null,
-      element?.selectionEnd ?? null,
-    );
-    setDraft({ ...draft, body: next.value });
-    requestAnimationFrame(() => {
-      element?.focus();
-      element?.setSelectionRange(next.cursor, next.cursor);
-    });
-  };
-
-  const submit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (sendingRef.current) return;
-    sendingRef.current = true;
-    void (async () => {
-      setSending(true);
-      setSendError(null);
-      try {
-        const copySaved = await onSend(draft, files);
-        if (!mountedRef.current) return;
-        setSentCopySaved(copySaved);
-        setSent(true);
-        // Leave an unsaved-copy warning open until the user acknowledges it.
-        if (copySaved) closeTimerRef.current = window.setTimeout(onClose, 900);
-      } catch (error) {
-        if (mountedRef.current) {
-          // Network failures and server errors may occur after the server has
-          // already queued some or all recipients. There is no idempotency key.
-          const rejected = error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 408;
-          setSendError(rejected ? errorMessage(error) : `${t('Не удалось подтвердить отправку. Письмо могло попасть в очередь; перед повтором уточните статус у администратора или получателей.')} ${errorMessage(error)}`);
-        }
-      } finally {
-        sendingRef.current = false;
-        if (mountedRef.current) setSending(false);
-      }
-    })();
-  };
-
-  return (
-    <section
-      className="fixed inset-x-0 bottom-0 z-40 flex max-h-[94dvh] animate-slide-up flex-col overflow-hidden border border-line-control bg-surface shadow-composer sm:inset-x-auto sm:bottom-0 sm:right-4 sm:h-[min(620px,90dvh)] sm:w-[min(560px,calc(100vw-2rem))] sm:rounded-t-xl"
-      aria-label={t('Новое письмо')}
-    >
-      <header className="flex h-11 shrink-0 items-center bg-sidebar px-4 text-white">
-        <h3 className="flex-1 truncate text-[13.5px] font-semibold">
-          {initial.subject ? t('Ответ / пересылка') : t('Новое письмо')}
-        </h3>
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-sidebar-muted transition hover:bg-sidebar-hover hover:text-white"
-          aria-label={t('Свернуть черновик')}
-        >
-          <Minus size={15} />
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-sidebar-muted transition hover:bg-sidebar-hover hover:text-white"
-          aria-label={t('Закрыть черновик')}
-        >
-          <X size={15} />
-        </button>
-      </header>
-
-      {sent ? (
-        <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
-          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-success-soft text-success">
-            <CheckCircle2 size={24} />
-          </span>
-          <h4 className="mt-3 text-base font-semibold text-ink">{t('Письмо отправлено')}</h4>
-          <p className={`mt-1 text-xs ${sentCopySaved ? 'text-muted' : 'text-danger'}`} role={sentCopySaved ? undefined : 'alert'}>
-            {sentCopySaved ? t('Копия сохранена в папке «Отправленные».') : t('Копию не удалось сохранить в папке «Отправленные». Повторно отправлять письмо не нужно.')}
-          </p>
-        </div>
-      ) : (
-        <form
-          onSubmit={submit}
-          className={`flex min-h-0 flex-1 flex-col ${draggingFiles ? 'ring-2 ring-inset ring-accent' : ''}`}
-          onDragOver={(event) => {
-            if (Array.from(event.dataTransfer.types).includes('Files')) {
-              event.preventDefault();
-              setDraggingFiles(true);
-            }
-          }}
-          onDragLeave={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDraggingFiles(false);
-          }}
-          onDrop={(event) => {
-            event.preventDefault();
-            setDraggingFiles(false);
-            const dropped = Array.from(event.dataTransfer.files);
-            if (dropped.length) setFiles((previous) => [...previous, ...dropped]);
-          }}
-        >
-          {draggingFiles && (
-            <div className="bg-accent-soft px-4 py-2 text-xs font-medium text-accent-dark">
-              {t('Отпустите файлы, чтобы прикрепить')}
-            </div>
-          )}
-          {sendAsAccounts.length > 0 && (
-            <div className="flex h-11 shrink-0 items-center gap-3 border-b border-line-subtle px-4">
-              <label htmlFor="compose-from" className="w-14 shrink-0 text-xs font-medium text-muted">
-                {t('От кого')}
-              </label>
-              <select
-                id="compose-from"
-                value={draft.externalAccountId ?? ''}
-                onChange={(e) => setDraft({ ...draft, externalAccountId: e.target.value || null })}
-                className="min-w-0 flex-1 border-0 bg-transparent text-[13.5px] text-ink outline-none focus:ring-0"
-              >
-                <option value="">{currentEmail} · Corvex</option>
-                {sendAsAccounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.emailAddress} · {account.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          <div className="flex h-11 shrink-0 items-center gap-3 border-b border-line-subtle px-4">
-            <label htmlFor="compose-to" className="w-14 shrink-0 text-xs font-medium text-muted">
-              {t('Кому')}
-            </label>
-            <input
-              id="compose-to"
-              required
-              type="text"
-              inputMode="email"
-              value={draft.to}
-              onChange={(e) => setDraft({ ...draft, to: e.target.value })}
-              placeholder="user@company.local"
-              className="min-w-0 flex-1 border-0 bg-transparent text-[13.5px] text-ink outline-none placeholder:text-faint focus:ring-0"
-            />
-            {!showCc && (
-              <button
-                type="button"
-                onClick={() => setShowCc(true)}
-                className="shrink-0 text-xs font-medium text-muted hover:text-ink"
-              >
-                {t('Копия')}
-              </button>
-            )}
-          </div>
-          {showCc && (
-            <div className="flex h-11 shrink-0 items-center gap-3 border-b border-line-subtle px-4">
-              <label htmlFor="compose-cc" className="w-14 shrink-0 text-xs font-medium text-muted">
-                {t('Копия')}
-              </label>
-              <input
-                id="compose-cc"
-                type="text"
-                inputMode="email"
-                value={draft.cc ?? ''}
-                onChange={(e) => setDraft({ ...draft, cc: e.target.value })}
-                placeholder="user@company.local"
-                className="min-w-0 flex-1 border-0 bg-transparent text-[13.5px] text-ink outline-none placeholder:text-faint focus:ring-0"
-              />
-            </div>
-          )}
-          <div className="flex h-11 shrink-0 items-center gap-3 border-b border-line-subtle px-4">
-            <label htmlFor="compose-subject" className="w-14 shrink-0 text-xs font-medium text-muted">
-              {t('Тема')}
-            </label>
-            <input
-              id="compose-subject"
-              required
-              value={draft.subject}
-              onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
-              placeholder={t('О чём письмо?')}
-              className="min-w-0 flex-1 border-0 bg-transparent text-[13.5px] font-medium text-ink outline-none placeholder:font-normal placeholder:text-faint focus:ring-0"
-            />
-          </div>
-          <textarea
-            ref={bodyRef}
-            required
-            value={draft.body}
-            onChange={(e) => setDraft({ ...draft, body: e.target.value })}
-            placeholder={t('Напишите сообщение…')}
-            aria-label={t('Текст письма')}
-            className="min-h-[180px] flex-1 resize-none border-0 bg-transparent px-4 py-3.5 text-[14px] leading-relaxed text-ink outline-none placeholder:text-faint focus:ring-0"
-          />
-          {files.length > 0 && (
-            <div className="flex shrink-0 flex-wrap gap-1.5 border-t border-line-subtle bg-canvas px-4 py-2">
-              {files.map((file, index) => (
-                <span key={`${file.name}-${index}`} className="chip">
-                  <Paperclip size={12} />
-                  {file.name}
-                  <button
-                    type="button"
-                    className="ml-1 rounded p-0.5 hover:text-danger"
-                    aria-label={`${t('Удалить вложение')}: ${file.name}`}
-                    onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}
-                  >
-                    <X size={13} />
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-          {sendError && (
-            <div
-              className="mx-4 mb-3 shrink-0 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-800"
-              role="alert"
-            >
-              {sendError}
-            </div>
-          )}
-          <footer className="flex shrink-0 items-center gap-2 border-t border-line bg-canvas px-3.5 py-2.5">
-            <button className="btn-primary" disabled={sending}>
-              <Send size={14} /> {t('Отправить')}
-            </button>
-            <input
-              ref={fileRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                const picked = Array.from(e.target.files ?? []);
-                setFiles((previous) => [...previous, ...picked]);
-                e.target.value = '';
-              }}
-            />
-            <IconButton icon={Paperclip} label={t('Прикрепить файлы')} onClick={() => fileRef.current?.click()} />
-            <EmojiPickerButton onPick={insertEmoji} />
-            <span className="ml-1 hidden text-[11px] text-faint sm:inline">
-              {t('Подпись настраивается в почте')}
-            </span>
-            <IconButton icon={Trash2} label={t('Удалить черновик')} className="ml-auto" onClick={onClose} />
-          </footer>
-        </form>
-      )}
-    </section>
   );
 }

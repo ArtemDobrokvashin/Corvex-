@@ -53,13 +53,21 @@ function setInput(element: HTMLInputElement | HTMLTextAreaElement, value: string
   Object.getOwnPropertyDescriptor(prototype, 'value')!.set!.call(element, value);
   element.dispatchEvent(new Event('input', { bubbles: true }));
 }
+/** Композер — визуальный редактор, поэтому текст задаётся через поддерживаемый HTML-режим. */
+async function setBody(value: string) {
+  await click(container.querySelector('button[aria-label="HTML source"]'));
+  await act(async () => {
+    setInput(container.querySelector('textarea[aria-label="Message HTML source"]')!, `<p>${value}</p>`);
+    await Promise.resolve();
+  });
+}
 async function sendDraft() {
   await click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Compose'));
   await act(async () => {
     setInput(container.querySelector('#compose-to')!, 'alice@example.com');
     setInput(container.querySelector('#compose-subject')!, 'Hello');
-    setInput(container.querySelector('textarea[aria-label="Message body"]')!, 'Test message');
   });
+  await setBody('Test message');
   await act(async () => {
     container.querySelector('section[aria-label="New message"] form')!
       .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
@@ -81,6 +89,10 @@ beforeEach(() => {
   vi.spyOn(mailApi, 'flags').mockImplementation(async (_id, flags) => ({ ...message, ...flags }));
   vi.spyOn(mailApi, 'move').mockResolvedValue(moved);
   vi.spyOn(mailApi, 'send').mockResolvedValue({ messageIdHeader: '<sent@example.com>', sentMessageId: 'sent-1', localRecipients: [], externalRecipients: [] });
+  // Автосохранение черновиков в этих тестах не проверяется: сеть не нужна.
+  vi.spyOn(mailApi, 'createDraft').mockResolvedValue({ id: 'draft-1', revision: 1, payload: {} as never, updatedAt: '2026-01-01T00:00:00Z' });
+  vi.spyOn(mailApi, 'updateDraft').mockResolvedValue({ id: 'draft-1', revision: 2, payload: {} as never, updatedAt: '2026-01-01T00:00:10Z' });
+  vi.spyOn(mailApi, 'deleteDraft').mockResolvedValue();
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -425,8 +437,8 @@ describe('mail mutation concurrency', () => {
     await act(async () => {
       setInput(container.querySelector('#compose-to')!, 'alice@example.com');
       setInput(container.querySelector('#compose-subject')!, 'Hello');
-      setInput(container.querySelector('textarea[aria-label="Message body"]')!, 'Test message');
     });
+    await setBody('Test message');
     const form = container.querySelector('section[aria-label="New message"] form')!;
     await act(async () => {
       form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));

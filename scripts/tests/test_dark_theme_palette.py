@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 CSS = (ROOT / 'frontend/src/index.css').read_text(encoding='utf-8')
 STORE = (ROOT / 'frontend/src/store/uiStore.ts').read_text(encoding='utf-8')
+TAILWIND = (ROOT / 'frontend/tailwind.config.js').read_text(encoding='utf-8')
 
 
 def luminance(color):
@@ -33,13 +34,26 @@ class DarkPaletteTest(unittest.TestCase):
             self.assertGreaterEqual(contrast(color, tokens['accent-soft']), 4.5, color)
 
     def test_mail_sidebar_readability_and_scope(self):
-        for text, background in (('#a9bad0', '#0f172a'), ('#cbd5e1', '#0f172a'), ('#8bf0c2', '#183d37')):
-            self.assertGreaterEqual(contrast(text, background), 4.5)
-        sidebar = CSS.split('/* Dark navigation is confined', 1)[1]
-        self.assertIn('.mail-sidebar .nav-row-active:hover', sidebar)
-        self.assertIn('box-shadow: inset 3px 0 #8bf0c2', sidebar)
+        # Тёмный сайдбар задан фиксированными токенами Tailwind и не зависит от темы,
+        # поэтому читаемость считается по ним, а не по удалённому .mail-sidebar.
+        palette = TAILWIND.split("sidebar: {", 1)[1].split("},", 1)[0]
+        tokens = dict(re.findall(r"(\w+):\s*'(#[\da-fA-F]{6})'", palette))
+        self.assertGreaterEqual(contrast(tokens['text'], tokens['DEFAULT']), 4.5)
+        self.assertGreaterEqual(contrast(tokens['muted'], tokens['DEFAULT']), 4.5)
+        self.assertGreaterEqual(contrast(tokens['muted'], tokens['sub']), 4.5)
+        self.assertGreaterEqual(contrast('#FFFFFF', tokens['active']), 4.5)
+        self.assertGreaterEqual(contrast('#FFFFFF', tokens['sub']), 4.5)
+        # Активная папка отличается не только цветом: полоска слева у элемента списка.
+        self.assertIn('.sidebar-item-active::before', CSS)
+        self.assertIn('w-[3px] rounded-r bg-accent', CSS)
+        shell = (ROOT / 'frontend/src/app/AppShell.tsx').read_text(encoding='utf-8')
+        self.assertIn('bg-sidebar text-sidebar-text', shell)
         page = (ROOT / 'frontend/src/features/mail/MailPage.tsx').read_text(encoding='utf-8')
-        self.assertIn('<aside className="mail-sidebar ', page)
+        self.assertIn('sidebar-subitem w-full', page)
+        self.assertIn('sidebar-subitem-active', page)
+        self.assertIn("aria-current={isCurrent ? 'page' : undefined}", page)
+        # Старые правила для снятой раскладки не должны возвращаться.
+        self.assertNotIn('.mail-sidebar', CSS)
 
     def test_selected_component_has_background_and_non_color_indicator(self):
         self.assertIn('[data-theme="dark"] .nav-row-active:hover', CSS)

@@ -49,14 +49,16 @@ export function composePlainText(html: string): string {
   return Array.from(root.childNodes).map(walk).join('').replace(/\n+$/, '');
 }
 
-const ComposeEditor = forwardRef<ComposeEditorHandle, { initialText: string; onChange: (text: string, html: string) => void }>(function ComposeEditor({ initialText, onChange }, ref) {
+const ComposeEditor = forwardRef<ComposeEditorHandle, { initialText: string; initialHtml?: string; onChange: (text: string, html: string) => void }>(function ComposeEditor({ initialText, initialHtml, onChange }, ref) {
   const { t } = useI18n();
   const [source, setSource] = useState<string | null>(null);
   const [sourceEdited, setSourceEdited] = useState(false);
   const [preview, setPreview] = useState(false);
   const editor = useEditor({
     extensions: [StarterKit.configure({ link: { openOnClick: false, autolink: false, linkOnPaste: false }, codeBlock: false, code: false, horizontalRule: false, heading: { levels: [1, 2, 3] } }), TextStyle, Color],
-    content: { type: 'doc', content: initialText.split('\n').map((line) => ({ type: 'paragraph', ...(line ? { content: [{ type: 'text', text: line }] } : {}) })) },
+    // Черновик приходит с сервера уже с HTML: сохраняем форматирование при повторном открытии.
+    content: initialHtml ? cleanComposeHtml(initialHtml, true)
+      : { type: 'doc', content: initialText.split('\n').map((line) => ({ type: 'paragraph', ...(line ? { content: [{ type: 'text', text: line }] } : {}) })) },
     editorProps: {
       attributes: { role: 'textbox', 'aria-multiline': 'true', 'aria-label': t('Текст письма'), class: 'compose-editor min-h-[180px] h-full px-4 py-4 text-[15px] leading-relaxed outline-none' },
       transformPastedHTML: (html) => cleanComposeHtml(html),

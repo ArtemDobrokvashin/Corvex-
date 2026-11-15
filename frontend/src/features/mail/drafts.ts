@@ -22,6 +22,14 @@ export async function fileToAttachment(file: File): Promise<SendAttachment> {
   };
 }
 
+/** Обратное преобразование: черновик с сервера снова становится вложением в композере. */
+export function attachmentToFile(attachment: SendAttachment): File {
+  const binary = atob(attachment.contentBase64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new File([bytes], attachment.fileName, { type: attachment.contentType || 'application/octet-stream' });
+}
+
 export type DraftSizeProblem = 'count' | 'file' | 'total' | null;
 
 /** Проверка до кодирования: экономит память и даёт понятную причину отказа. */
