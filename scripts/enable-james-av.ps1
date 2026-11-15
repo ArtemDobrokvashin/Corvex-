@@ -1,0 +1,158 @@
+<# Enable the experimental James spool gate on the existing laptop. #>
+[CmdletBinding()]
+param([Parameter(Mandatory=$true)][string]$PreparationManifest, [switch]$ConfirmLaptop, [switch]$Apply)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+if (-not $ConfirmLaptop) { throw 'FAIL: -ConfirmLaptop required.' }
+$stage = 'manifest'
+$statePath = $null
+$runtimeChanged = $false
+try {
+    $m = Get-Content -Raw -LiteralPath $PreparationManifest | ConvertFrom-Json
+    if ($m.jamesContainerId -notmatch '^[a-f0-9]{12,64}$' -or $m.jamesImageId -notmatch '^sha256:[a-f0-9]{64}$' -or
+        $m.originalConfigSha256 -cne '2158891b662abcd527f56f24a92b10d5404d875fad6e83ed3d57135a3386884f') { throw 'Unexpected preparation manifest or mailet configuration.' }
+    foreach ($pair in @(@($m.originalConfig,$m.originalConfigSha256), @($m.candidateXml,$m.candidateXmlSha256), @($m.candidateJar,$m.candidateJarSha256), @($m.parentJar,$m.parentJarSha256))) {
+        if ($pair[1] -notmatch '^[a-f0-9]{64}$' -or -not (Test-Path -LiteralPath $pair[0] -PathType Leaf) -or
+            (Get-FileHash -LiteralPath $pair[0] -Algorithm SHA256).Hash.ToLowerInvariant() -cne $pair[1]) { throw 'Prepared artifact missing or changed.' }
+    }
+    Push-Location -LiteralPath $m.composeDir
+    try {
+        $root = (Get-Location).Path
+        $stage = 'container-check'
+        $jamesIds = @(& docker compose --profile james-transition ps --status running -q james 2>$null)
+        if ($LASTEXITCODE -ne 0 -or $jamesIds.Count -ne 1 -or $jamesIds[0] -cne $m.jamesContainerId) { throw 'James container changed since preparation.' }
+        $clamIds = @(& docker compose ps --status running -q clamav 2>$null)
+        if ($LASTEXITCODE -ne 0 -or $clamIds.Count -ne 1 -or $clamIds[0] -notmatch '^[a-f0-9]{12,64}$') { throw 'Expected one ClamAV container.' }
+        $clamId = $clamIds[0]
+        $infoJson = @(& docker inspect --format '{{json .}}' $m.jamesContainerId 2>$null)
+        if ($LASTEXITCODE -ne 0 -or $infoJson.Count -ne 1) { throw 'Cannot inspect James.' }
+        # Full inspect stays in memory: it can include environment values.
+        $info = $infoJson[0] | ConvertFrom-Json
+        if ($info.Image -cne $m.jamesImageId -or $info.State.Status -cne 'running') { throw 'James image or state changed.' }
+        $volumes = @{}
+        foreach ($mount in $info.Mounts) {
+            if (@('/root/conf','/root/extensions-jars','/root/var') -ccontains $mount.Destination) {
+                if ($mount.Type -cne 'volume' -or [string]::IsNullOrWhiteSpace($mount.Name)) { throw 'Unexpected James mount type.' }
+                $volumes[$mount.Destination] = $mount.Name
+            }
+        }
+        foreach ($dst in @('/root/conf','/root/extensions-jars','/root/var')) {
+            if (-not $volumes.ContainsKey($dst)) { throw "Required James volume missing: $dst" }
+        }
+        $status = @(& docker inspect --format '{{.State.Status}} {{.State.Health.Status}}' $clamId 2>$null)
+        if ($LASTEXITCODE -ne 0 -or $status.Count -ne 1 -or $status[0] -cne 'running healthy') { throw 'ClamAV not healthy.' }
+        $jarPaths = @(& docker exec $m.jamesContainerId sh -c 'test -d /root/extensions-jars && find /root/extensions-jars -maxdepth 1 -name "*.jar" -print -quit' 2>$null)
+        if ($LASTEXITCODE -ne 0 -or $jarPaths.Count -ne 0) { throw 'Existing extension jars found or not inspectable; do not mask them.' }
+        $liveHash = @(& docker exec $m.jamesContainerId sha256sum /root/conf/mailetcontainer.xml 2>$null)
+        if ($LASTEXITCODE -ne 0 -or $liveHash.Count -ne 1 -or $liveHash[0] -notmatch '^([a-f0-9]{64})\s' -or $Matches[1] -cne $m.originalConfigSha256) { throw 'Live mailet config changed.' }
+        $originalHashes = @{}
+        foreach ($service in @('james','clamav')) {
+            $id = if ($service -eq 'james') { $m.jamesContainerId } else { $clamId }
+            $actual = @(& docker inspect --format '{{index .Config.Labels "com.docker.compose.config-hash"}}' $id 2>$null)
+            $desired = @(& docker compose --profile james-transition config --hash $service 2>$null)
+            if ($LASTEXITCODE -ne 0 -or $actual.Count -ne 1 -or $actual[0] -notmatch '^[a-f0-9]{64}$' -or $desired.Count -ne 1 -or
+                $desired[0] -notmatch ("^" + $service + '\s+([a-f0-9]{64})$') -or $Matches[1] -cne $actual[0]) { throw "Compose differs from running $service." }
+            $originalHashes[$service] = $actual[0]
+        }
+        $stage = 'compose-check'
+        $composePath = Join-Path $root 'docker-compose.yml'
+        if (-not (Test-Path -LiteralPath $composePath -PathType Leaf)) { throw 'Compose file missing.' }
+        $bytes = [IO.File]::ReadAllBytes($composePath)
+        $bom = $bytes.Length -ge 3 -and $bytes[0] -eq 239 -and $bytes[1] -eq 187 -and $bytes[2] -eq 191
+        $utf8 = New-Object System.Text.UTF8Encoding($bom, $true)
+        $text = [IO.File]::ReadAllText($composePath, $utf8)
+        $nl = if ($text.Contains("`r`n")) { "`r`n" } else { "`n" }
+        $pattern = '(?ms)^  (james|clamav):[ \t]*(?:#.*)?\r?\n.*?(?=^  [A-Za-z0-9_-]+:[ \t]*(?:#.*)?\r?$|^[A-Za-z0-9_-]+:|\z)'
+        $blocks = @([regex]::Matches($text, $pattern))
+        $jamesBlock = @($blocks | Where-Object { $_.Groups[1].Value -ceq 'james' })
+        $clamBlock = @($blocks | Where-Object { $_.Groups[1].Value -ceq 'clamav' })
+        if ($jamesBlock.Count -ne 1 -or $clamBlock.Count -ne 1 -or
+            [regex]::Matches($jamesBlock[0].Value, '(?m)^    networks: \[james-internal\]\r?$').Count -ne 1 -or
+            [regex]::Matches($jamesBlock[0].Value, '(?m)^    volumes:[ \t]*\r?\n(?:(?!^    [A-Za-z0-9_-]+:).*\r?\n)*    networks: \[james-internal\]').Count -ne 1 -or
+            [regex]::Matches($clamBlock[0].Value, '(?m)^    networks: \[app\]\r?$').Count -ne 1 -or
+            [regex]::Matches($text, '(?m)^networks:[ \t]*\r?$').Count -ne 1 -or $text.Contains('corvex-james-av-live')) {
+            throw 'Compose layout differs or James AV already configured; preserve and inspect.'
+        }
+        if (-not $Apply) {
+            Write-Host 'Dry-run PASS: artifacts, original config, existing volumes, ClamAV and Compose verified.'
+            Write-Host 'No files, networks, containers or mail changed.'
+            return
+        }
+        $stage = 'stage-backup'
+        $suffix = [guid]::NewGuid().ToString('N')
+        $network = 'corvex-james-av-' + $suffix
+        $relDir = 'infra/james/artifacts/av-live-' + $suffix
+        $dir = Join-Path $root $relDir
+        if (Test-Path -LiteralPath $dir) { throw 'Artifact directory exists.' }
+        $backupDir = Join-Path ([IO.Path]::GetTempPath()) ('corvex-james-av-deploy-' + $suffix)
+        New-Item -ItemType Directory -Path $backupDir | Out-Null
+        $backup = Join-Path $backupDir 'docker-compose.yml.backup'
+        [IO.File]::WriteAllBytes($backup, $bytes)
+        if ((Get-FileHash -LiteralPath $backup -Algorithm SHA256).Hash -cne (Get-FileHash -LiteralPath $composePath -Algorithm SHA256).Hash) { throw 'Compose backup mismatch.' }
+        New-Item -ItemType Directory -Path $dir | Out-Null
+        foreach ($file in @(@($m.candidateJar,'gate.jar',$m.candidateJarSha256), @($m.parentJar,'clamav-parent.jar',$m.parentJarSha256), @($m.candidateXml,'mailetcontainer.xml',$m.candidateXmlSha256))) {
+            $dst = Join-Path $dir $file[1]
+            Copy-Item -LiteralPath $file[0] -Destination $dst
+            if ((Get-FileHash -LiteralPath $dst -Algorithm SHA256).Hash.ToLowerInvariant() -cne $file[2]) { throw 'Staged artifact mismatch.' }
+        }
+        $statePath = Join-Path $backupDir 'deployment-manifest.json'
+        $state = [ordered]@{ composeDir=$root; composeBackup=$backup; composeBeforeSha256=(Get-FileHash -LiteralPath $backup -Algorithm SHA256).Hash.ToLowerInvariant(); preparationManifest=$PreparationManifest; originalJamesId=$m.jamesContainerId; jamesImageId=$m.jamesImageId; clamavId=$clamId; network=$network; artifacts=$dir; originalVolumes=$volumes }
+        [IO.File]::WriteAllText($statePath, ($state | ConvertTo-Json -Depth 6), [Text.Encoding]::UTF8)
+        Write-Host "James AV deployment manifest: $statePath"
+        Write-Host "Original volume names saved in manifest; original Compose backup: $backup"
+        $newJames = $jamesBlock[0].Value.Replace('    networks: [james-internal]', ('      - type: bind' + $nl + '        source: ./' + $relDir + '/gate.jar' + $nl + '        target: /root/extensions-jars/corvex-av-gate-' + $suffix + '.jar' + $nl + '        read_only: true' + $nl + '        bind: { create_host_path: false }' + $nl + '      - type: bind' + $nl + '        source: ./' + $relDir + '/clamav-parent.jar' + $nl + '        target: /root/extensions-jars/corvex-av-parent-' + $suffix + '.jar' + $nl + '        read_only: true' + $nl + '        bind: { create_host_path: false }' + $nl + '      - type: bind' + $nl + '        source: ./' + $relDir + '/mailetcontainer.xml' + $nl + '        target: /root/conf/mailetcontainer.xml' + $nl + '        read_only: true' + $nl + '        bind: { create_host_path: false }' + $nl + '    networks: [james-internal, corvex-james-av-live]'))
+        $newClam = $clamBlock[0].Value.Replace('    networks: [app]', '    networks: [app, corvex-james-av-live]')
+        $modified = $text.Replace($jamesBlock[0].Value, $newJames).Replace($clamBlock[0].Value, $newClam)
+        $modified = [regex]::Replace($modified, '(?m)^networks:[ \t]*\r?$', ('networks:' + $nl + '  corvex-james-av-live:' + $nl + '    external: true' + $nl + '    name: ' + $network), 1)
+        $stage = 'network'
+        $runtimeChanged = $true
+        & docker network create --internal --label 'org.corvex.james-av=experimental' $network
+        if ($LASTEXITCODE -ne 0) { throw 'Could not create James AV network.' }
+        & docker network connect --alias clamav $network $clamId
+        if ($LASTEXITCODE -ne 0) { throw 'Could not connect ClamAV to James AV network.' }
+        $stage = 'compose-update'
+        if ((Get-FileHash -LiteralPath $composePath -Algorithm SHA256).Hash -cne (Get-FileHash -LiteralPath $backup -Algorithm SHA256).Hash) { throw 'Compose changed since backup.' }
+        [IO.File]::WriteAllText($composePath, $modified, $utf8)
+        $state['composeAfterSha256'] = (Get-FileHash -LiteralPath $composePath -Algorithm SHA256).Hash.ToLowerInvariant()
+        [IO.File]::WriteAllText($statePath, ($state | ConvertTo-Json -Depth 6), [Text.Encoding]::UTF8)
+        $saved = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try { $null = @(& docker compose --profile james-transition config -q 2>$null); $code = $LASTEXITCODE } finally { $ErrorActionPreference = $saved }
+        if ($code -ne 0) { throw 'Updated Compose invalid.' }
+        foreach ($service in @('james','clamav')) {
+            $changedHash = @(& docker compose --profile james-transition config --hash $service 2>$null)
+            if ($LASTEXITCODE -ne 0 -or $changedHash.Count -ne 1 -or
+                $changedHash[0] -notmatch ("^" + $service + '\s+([a-f0-9]{64})$') -or $Matches[1] -ceq $originalHashes[$service]) {
+                throw "Updated Compose is not active for $service."
+            }
+        }
+        $stage = 'recreate-james'
+        $saved = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try { & docker compose --profile james-transition up -d --no-deps --no-build --pull never --force-recreate james; $code = $LASTEXITCODE } finally { $ErrorActionPreference = $saved }
+        if ($code -ne 0) { throw 'James recreation failed.' }
+        $newIds = @(& docker compose --profile james-transition ps --status running -q james 2>$null)
+        if ($LASTEXITCODE -ne 0 -or $newIds.Count -ne 1) { throw 'James container not running.' }
+        $newJson = @(& docker inspect --format '{{json .}}' $newIds[0] 2>$null)
+        if ($LASTEXITCODE -ne 0 -or $newJson.Count -ne 1) { throw 'Cannot inspect new James.' }
+        $newInfo = $newJson[0] | ConvertFrom-Json
+        if ($newInfo.Image -cne $m.jamesImageId) { throw 'Unexpected James image.' }
+        foreach ($dst in $volumes.Keys) {
+            $found = @($newInfo.Mounts | Where-Object { $_.Destination -ceq $dst -and $_.Type -ceq 'volume' -and $_.Name -ceq $volumes[$dst] })
+            if ($found.Count -ne 1) { throw "Original volume not attached: $dst" }
+        }
+        $stage = 'startup-observation'
+        Start-Sleep -Seconds 20
+        $running = @(& docker inspect --format '{{.State.Status}}' $newIds[0] 2>$null)
+        if ($LASTEXITCODE -ne 0 -or $running.Count -ne 1 -or $running[0] -cne 'running') { throw 'James stopped during startup.' }
+        $xmlHash = @(& docker exec $newIds[0] sha256sum /root/conf/mailetcontainer.xml 2>$null)
+        if ($LASTEXITCODE -ne 0 -or $xmlHash.Count -ne 1 -or $xmlHash[0] -notmatch '^([a-f0-9]{64})\s' -or $Matches[1] -cne $m.candidateXmlSha256) { throw 'Mounted mailet config mismatch.' }
+        Write-Host 'James container running with candidate config; original James volumes preserved.'
+        Write-Host 'Startup is not proof that the gate loaded, scanned, quarantined or protected JMAP/APPEND.'
+        Write-Host 'Do not transfer real mail or delete backup, artifacts, volumes or network.'
+    } finally { Pop-Location }
+} catch {
+    [Console]::Error.WriteLine("ERROR at $stage. Deployment manifest: $statePath. Runtime or configuration may have changed: $runtimeChanged")
+    [Console]::Error.WriteLine('Do not retry or restore automatically; preserve all files, volumes and mail.')
+    throw
+}

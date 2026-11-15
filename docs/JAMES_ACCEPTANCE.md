@@ -233,11 +233,15 @@ mount пока неизвестен. Сохранены все существу�
 unit-тесты PASS; текущий `mailetcontainer.xml` совпадает с upstream sample по
 SHA-256. Пакет и backup сохранены в manifest
 `C:\Users\Dobrokvashin_A_E\AppData\Local\Temp\corvex-james-av-494ac4dea6ad42a1b492f579aa1adfa9\preparation-manifest.json`.
-Строки с mount destination/type в полученном фрагменте вывода отсутствуют, их
-нужно прочитать из manifest до изменения подключений. В исходном образе James
-PostgreSQL 3.9.1 `/root/conf` и `/root/extensions-jars` объявлены как Docker
-volumes; это объясняет возможные mounts, но не определяет фактические ПК mounts.
-Запуск James AV и класс-загрузчик пока не проверены.
+На ПК подтверждены volumes `/root/conf` и `/root/extensions-jars`; их нельзя
+затенять целиком или удалять. В исходном образе James PostgreSQL 3.9.1 они
+объявлены Docker volumes. `scripts/enable-james-av.ps1` подготовлен для точечных
+read-only bind mounts файлов поверх этих томов, сохранения Compose и добавления
+изолированной сети clamd без пересоздания ClamAV. Он откажется, если в каталоге
+extensions уже есть jar или файл Compose не совпадает с работающими контейнерами.
+Скрипт предусматривает dry-run и отдельный `rollback-james-av.ps1`; они пока
+проверены только статически, на Docker/Windows не запускались и откат не доказан.
+Запуск James AV и штатный класс-загрузчик пока не проверены.
 
 Даже после замены образа AlertExceedsMax не включён, а false CLEAN остаётся:
 кандидат один не устраняет его. До включения James AV и переноса реальной почты
