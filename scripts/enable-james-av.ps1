@@ -7,6 +7,12 @@ if (-not $ConfirmLaptop) { throw 'FAIL: -ConfirmLaptop required.' }
 $stage = 'manifest'
 $statePath = $null
 $runtimeChanged = $false
+$oldWebAdmin = $env:CORVEX_JAMES_WEBADMIN_FILE
+$webOverride = $false
+$pinWebAdmin = $false
+$webAdminSha = $null
+$webAdminRelative = './infra/secrets/james-provision/webadmin.properties'
+$webAdminExpression = '${CORVEX_JAMES_WEBADMIN_FILE:-${CORVEX_JAMES_CONFIG_DIR:-./infra/secrets/james}/webadmin.properties}'
 try {
     $m = Get-Content -Raw -LiteralPath $PreparationManifest | ConvertFrom-Json
     if ($m.jamesContainerId -notmatch '^[a-f0-9]{12,64}$' -or $m.jamesImageId -notmatch '^sha256:[a-f0-9]{64}$' -or
@@ -55,9 +61,29 @@ try {
             if ($LASTEXITCODE -ne 0 -or $labelsJson.Count -ne 1) { throw 'Container labels unavailable.' }
             $labels = $labelsJson[0] | ConvertFrom-Json
             $actual = $labels.PSObject.Properties['com.docker.compose.config-hash']
+            if ($null -eq $actual -or $actual.Value -notmatch '^[a-f0-9]{64}$') { throw "Container hash unavailable: $service." }
             $desired = @(& docker compose --profile james-transition config --hash $service 2>$null)
-            if ($LASTEXITCODE -ne 0 -or $null -eq $actual -or $actual.Value -notmatch '^[a-f0-9]{64}$' -or $desired.Count -ne 1 -or
-                $desired[0] -notmatch ("^" + $service + '\s+([a-f0-9]{64})$') -or $Matches[1] -cne $actual.Value) { throw "Compose differs from running $service." }
+            if ($LASTEXITCODE -ne 0 -or $desired.Count -ne 1 -or $desired[0] -notmatch ("^" + $service + '\s+([a-f0-9]{64})$')) { throw "Compose hash unavailable: $service." }
+            $desiredHash = $Matches[1]
+            if ($service -ceq 'james' -and $desiredHash -cne $actual.Value) {
+                # Prior provisioning ran James with this temporary Compose override.
+                # Accept it only when both file content and full service hash match.
+                $webAdminFile = Join-Path $root 'infra/secrets/james-provision/webadmin.properties'
+                if (-not (Test-Path -LiteralPath $webAdminFile -PathType Leaf)) { throw 'Running WebAdmin source unavailable; preserve and inspect.' }
+                $webAdminSha = (Get-FileHash -LiteralPath $webAdminFile -Algorithm SHA256).Hash.ToLowerInvariant()
+                $webRunning = @(& docker exec $m.jamesContainerId sha256sum /root/conf/webadmin.properties 2>$null)
+                if ($LASTEXITCODE -ne 0 -or $webRunning.Count -ne 1 -or $webRunning[0] -notmatch '^([a-f0-9]{64})\s' -or $Matches[1] -cne $webAdminSha) {
+                    throw 'Running WebAdmin differs from known source; preserve and inspect.'
+                }
+                $env:CORVEX_JAMES_WEBADMIN_FILE = $webAdminRelative
+                $webOverride = $true
+                $retryHash = @(& docker compose --profile james-transition config --hash james 2>$null)
+                if ($LASTEXITCODE -ne 0 -or $retryHash.Count -ne 1 -or $retryHash[0] -notmatch '^james\s+([a-f0-9]{64})$' -or $Matches[1] -cne $actual.Value) {
+                    throw 'Compose still differs with known WebAdmin source; preserve and inspect.'
+                }
+                $pinWebAdmin = $true
+                Write-Host 'Verified existing WebAdmin source and complete James service hash; preserve that source.'
+            } elseif ($desiredHash -cne $actual.Value) { throw "Compose differs from running $service." }
             $originalHashes[$service] = $actual.Value
         }
         $stage = 'compose-check'
@@ -78,6 +104,11 @@ try {
             [regex]::Matches($clamBlock[0].Value, '(?m)^    networks: \[app\]\r?$').Count -ne 1 -or
             [regex]::Matches($text, '(?m)^networks:[ \t]*\r?$').Count -ne 1 -or $text.Contains('corvex-james-av-live')) {
             throw 'Compose layout differs or James AV already configured; preserve and inspect.'
+        }
+        $webAdminLine = '        source: ' + $webAdminExpression
+        $webAdminPinnedLine = '        source: ' + $webAdminRelative
+        if ($pinWebAdmin -and [regex]::Matches($jamesBlock[0].Value, [regex]::Escape($webAdminLine)).Count -ne 1) {
+            throw 'WebAdmin Compose source layout differs; preserve and inspect.'
         }
         if (-not $Apply) {
             Write-Host 'Dry-run PASS: artifacts, original config, existing volumes, ClamAV and Compose verified.'
@@ -101,12 +132,20 @@ try {
             Copy-Item -LiteralPath $file[0] -Destination $dst
             if ((Get-FileHash -LiteralPath $dst -Algorithm SHA256).Hash.ToLowerInvariant() -cne $file[2]) { throw 'Staged artifact mismatch.' }
         }
+        $rollbackCompose = Join-Path $backupDir 'rollback-compose.yml'
+        $rollbackText = $text
+        if ($pinWebAdmin) {
+            if ((Get-FileHash -LiteralPath $webAdminFile -Algorithm SHA256).Hash.ToLowerInvariant() -cne $webAdminSha) { throw 'WebAdmin source changed during preflight.' }
+            $rollbackText = $rollbackText.Replace($webAdminLine, $webAdminPinnedLine)
+        }
+        [IO.File]::WriteAllText($rollbackCompose, $rollbackText, $utf8)
         $statePath = Join-Path $backupDir 'deployment-manifest.json'
-        $state = [ordered]@{ composeDir=$root; composeBackup=$backup; composeBeforeSha256=(Get-FileHash -LiteralPath $backup -Algorithm SHA256).Hash.ToLowerInvariant(); preparationManifest=$PreparationManifest; originalJamesId=$m.jamesContainerId; jamesImageId=$m.jamesImageId; clamavId=$clamId; network=$network; artifacts=$dir; originalVolumes=$volumes }
+        $state = [ordered]@{ composeDir=$root; composeBackup=$backup; composeBeforeSha256=(Get-FileHash -LiteralPath $backup -Algorithm SHA256).Hash.ToLowerInvariant(); rollbackCompose=$rollbackCompose; rollbackComposeSha256=(Get-FileHash -LiteralPath $rollbackCompose -Algorithm SHA256).Hash.ToLowerInvariant(); webAdminPinned=$pinWebAdmin; webAdminRelative=$webAdminRelative; webAdminSha256=$webAdminSha; preparationManifest=$PreparationManifest; originalJamesId=$m.jamesContainerId; jamesImageId=$m.jamesImageId; clamavId=$clamId; network=$network; artifacts=$dir; originalVolumes=$volumes }
         [IO.File]::WriteAllText($statePath, ($state | ConvertTo-Json -Depth 6), [Text.Encoding]::UTF8)
         Write-Host "James AV deployment manifest: $statePath"
         Write-Host "Original volume names saved in manifest; original Compose backup: $backup"
         $newJames = $jamesBlock[0].Value.Replace('    networks: [james-internal]', ('      - type: bind' + $nl + '        source: ./' + $relDir + '/gate.jar' + $nl + '        target: /root/extensions-jars/corvex-av-gate-' + $suffix + '.jar' + $nl + '        read_only: true' + $nl + '        bind: { create_host_path: false }' + $nl + '      - type: bind' + $nl + '        source: ./' + $relDir + '/clamav-parent.jar' + $nl + '        target: /root/extensions-jars/corvex-av-parent-' + $suffix + '.jar' + $nl + '        read_only: true' + $nl + '        bind: { create_host_path: false }' + $nl + '      - type: bind' + $nl + '        source: ./' + $relDir + '/mailetcontainer.xml' + $nl + '        target: /root/conf/mailetcontainer.xml' + $nl + '        read_only: true' + $nl + '        bind: { create_host_path: false }' + $nl + '    networks: [james-internal, corvex-james-av-live]'))
+        if ($pinWebAdmin) { $newJames = $newJames.Replace($webAdminLine, $webAdminPinnedLine) }
         $newClam = $clamBlock[0].Value.Replace('    networks: [app]', '    networks: [app, corvex-james-av-live]')
         $modified = $text.Replace($jamesBlock[0].Value, $newJames).Replace($clamBlock[0].Value, $newClam)
         $modified = [regex]::Replace($modified, '(?m)^networks:[ \t]*\r?$', ('networks:' + $nl + '  corvex-james-av-live:' + $nl + '    external: true' + $nl + '    name: ' + $network), 1)
@@ -133,6 +172,7 @@ try {
             }
         }
         $stage = 'recreate-james'
+        if ($pinWebAdmin -and (Get-FileHash -LiteralPath $webAdminFile -Algorithm SHA256).Hash.ToLowerInvariant() -cne $webAdminSha) { throw 'WebAdmin source changed before recreation.' }
         $saved = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try { & docker compose --profile james-transition up -d --no-deps --no-build --pull never --force-recreate james; $code = $LASTEXITCODE } finally { $ErrorActionPreference = $saved }
@@ -153,10 +193,18 @@ try {
         if ($LASTEXITCODE -ne 0 -or $running.Count -ne 1 -or $running[0] -cne 'running') { throw 'James stopped during startup.' }
         $xmlHash = @(& docker exec $newIds[0] sha256sum /root/conf/mailetcontainer.xml 2>$null)
         if ($LASTEXITCODE -ne 0 -or $xmlHash.Count -ne 1 -or $xmlHash[0] -notmatch '^([a-f0-9]{64})\s' -or $Matches[1] -cne $m.candidateXmlSha256) { throw 'Mounted mailet config mismatch.' }
+        if ($pinWebAdmin) {
+            $mountedWeb = @(& docker exec $newIds[0] sha256sum /root/conf/webadmin.properties 2>$null)
+            if ($LASTEXITCODE -ne 0 -or $mountedWeb.Count -ne 1 -or $mountedWeb[0] -notmatch '^([a-f0-9]{64})\s' -or $Matches[1] -cne $webAdminSha) { throw 'Mounted WebAdmin config mismatch.' }
+            Write-Host 'Running WebAdmin source preserved and checked.'
+        }
         Write-Host 'James container running with candidate config; original James volumes preserved.'
         Write-Host 'Startup is not proof that the gate loaded, scanned, quarantined or protected JMAP/APPEND.'
         Write-Host 'Do not transfer real mail or delete backup, artifacts, volumes or network.'
-    } finally { Pop-Location }
+    } finally {
+        if ($webOverride) { [Environment]::SetEnvironmentVariable('CORVEX_JAMES_WEBADMIN_FILE', $oldWebAdmin, 'Process') }
+        Pop-Location
+    }
 } catch {
     [Console]::Error.WriteLine("ERROR at $stage. Deployment manifest: $statePath. Runtime or configuration may have changed: $runtimeChanged")
     [Console]::Error.WriteLine('Do not retry or restore automatically; preserve all files, volumes and mail.')

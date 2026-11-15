@@ -16,7 +16,12 @@ class JamesAvEnableTest(unittest.TestCase):
                        'docker network create --internal', 'docker network connect --alias clamav',
                        '--no-deps --no-build --pull never --force-recreate james',
                        'Original volume not attached:', 'Mounted mailet config mismatch.',
-                       'not proof that the gate loaded'):
+                       'not proof that the gate loaded',
+                       'Running WebAdmin differs from known source',
+                       'Compose still differs with known WebAdmin source',
+                       '$newJames.Replace($webAdminLine, $webAdminPinnedLine)',
+                       'Mounted WebAdmin config mismatch.', 'rollback-compose.yml',
+                       "SetEnvironmentVariable('CORVEX_JAMES_WEBADMIN_FILE', $oldWebAdmin, 'Process')"):
             self.assertIn(marker, text)
         self.assertLess(text.index("$stage = 'stage-backup'"), text.index("$stage = 'network'"))
         self.assertLess(text.index("$stage = 'network'"), text.index("$stage = 'recreate-james'"))
@@ -33,10 +38,16 @@ class JamesAvEnableTest(unittest.TestCase):
         self.assertEqual(len(re.findall(r'(?m)^    volumes:[ \t]*\r?\n(?:(?!^    [A-Za-z0-9_-]+:).*\r?\n)*    networks: \[james-internal\]', blocks['james'])), 1)
         self.assertEqual(blocks['clamav'].count('    networks: [app]'), 1)
         self.assertEqual(len(re.findall(r'(?m)^networks:[ \t]*\r?$', compose)), 1)
+        source = '        source: ${CORVEX_JAMES_WEBADMIN_FILE:-${CORVEX_JAMES_CONFIG_DIR:-./infra/secrets/james}/webadmin.properties}'
+        self.assertEqual(blocks['james'].count(source), 1)
+        rollback = compose.replace(source, '        source: ./infra/secrets/james-provision/webadmin.properties')
+        self.assertEqual(rollback.replace('        source: ./infra/secrets/james-provision/webadmin.properties', source), compose)
 
     def test_rollback_preserves_mail_and_volumes(self):
         text = (ROOT / 'scripts/rollback-james-av.ps1').read_bytes().decode('ascii')
         for marker in ('Compose changed independently', 'Compose backup unavailable',
+                       'WebAdmin source changed; preserve it.', 'Restored WebAdmin config mismatch.',
+                       'ReadAllBytes($m.rollbackCompose)',
                        '--no-deps --no-build --pull never --force-recreate james',
                        'Original volume not attached:', 'Messages processed or quarantined are not undone'):
             self.assertIn(marker, text)
