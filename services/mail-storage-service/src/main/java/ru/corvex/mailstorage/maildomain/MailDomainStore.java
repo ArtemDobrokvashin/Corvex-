@@ -75,7 +75,7 @@ public class MailDomainStore {
     /** Завершение запроса допустимо только из REQUESTING. */
     public boolean completeRequest(UUID id, String state, boolean confirmed) {
         int changed = jdbc.update("UPDATE mail_domains SET james_state = ?, "
-                        + "james_confirmed_at = CASE WHEN ? THEN now() ELSE james_confirmed_at END, "
+                        + "james_confirmed_at = CASE WHEN ?::boolean THEN now() ELSE james_confirmed_at END, "
                         + "updated_at = now() WHERE id = ? AND james_state = 'REQUESTING'",
                 state, confirmed, id);
         return changed == 1;

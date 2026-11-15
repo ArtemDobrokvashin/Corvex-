@@ -97,8 +97,8 @@ class MailDomainStorePostgresIT {
         assertTrue(store.delete(domain));
         Integer events = jdbc.queryForObject("SELECT count(*) FROM mail_domain_events WHERE domain = ?",
                 Integer.class, domain);
-        assertEquals(2, events);
+        assertEquals(2, events.intValue());
         assertEquals(0, jdbc.queryForObject(
-                "SELECT count(*) FROM mail_domain_events WHERE domain_id = ?", Integer.class, row.id()));
+                "SELECT count(*) FROM mail_domain_events WHERE domain_id = ?", Integer.class, row.id()).intValue());
     }
 }
