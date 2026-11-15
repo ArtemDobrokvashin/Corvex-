@@ -553,3 +553,6 @@ PC f5cf7b8 activation PASS: matched running WebAdmin source + Compose service ha
 - Следующий шаг: запустить только пробу на действующем clamd (без пересоздания ClamAV).
 - PC 6fa3d5c `-ProbeOnly`: EXIT=0, `RESULT: PASS - ... deep synthetic samples were no longer reported CLEAN`. Лимит-алерт закрыт на уровне clamd; контекста пробе не меняли, ClamAV не пересоздавался.
 - Остаётся: точный вывод вердиктов и путь run.log (пользователь прислал усечённый хвост); проверка на принимающей стороне — deep-образец должен получать LIMIT_ALERT и уходить в quarantine/unknown через gate (класс ClamdAddressCache уже в 16bb805), это ещё не проверено на живом письме.
+- PC a180acee (6fa3d5c `-ProbeOnly`): `raw_eicar=EICAR_FOUND`, `zip_depth_1=EICAR_FOUND`, `mime_zip_depth_1=EICAR_FOUND`, `zip_depth_25=LIMIT_ALERT bytes=2573`, `mime_zip_depth_25=LIMIT_ALERT`, `EXIT=0`. Ложный CLEAN закрыт на clamd.
+- a9e0236: подготовлен одноразовый harness карантина (`test-james-av-quarantine.ps1`, `JamesAvQuarantineProbe.java`, кандидат `smtp-quarantine-proof.xml`, 8 статических тестов, 210 Python PASS). На ПК не запускался; JVM-компиляция не проверена локально (нет JDK/Maven).
+- Ограничение остаётся: JMAP import и IMAP APPEND идут мимо mailet-цепочки, поэтому карантин доказуем только для SMTP-пути.
