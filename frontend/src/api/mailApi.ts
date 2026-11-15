@@ -80,6 +80,11 @@ export interface SendMessageResult {
 export const mailApi = {
   quota: () => apiFetch<MailboxQuota>('/api/v1/mail/quota'),
   folders: () => apiFetch<MailFolderView[]>('/api/v1/mail/folders'),
+  createFolder: (name: string, parentId: string | null = null) =>
+    apiFetch<MailFolderView>('/api/v1/mail/folders', {
+      method: 'POST',
+      body: JSON.stringify({ name, parentId }),
+    }),
   messages: (folderId: string, cursorUid?: number, limit = 50) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (cursorUid != null) params.set('cursorUid', String(cursorUid));

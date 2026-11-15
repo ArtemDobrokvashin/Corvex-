@@ -27,6 +27,7 @@ import ru.corvex.mailstorage.repository.ExternalMailImportedMessageRepository;
 import ru.corvex.mailstorage.repository.ExternalMailSyncRunRepository;
 import ru.corvex.mailstorage.repository.MailFolderRepository;
 import ru.corvex.mailstorage.service.MailDeliveryService;
+import ru.corvex.mailstorage.service.ProtocolMailService;
 import ru.corvex.mailstorage.storage.RawMessageSpool;
 
 import java.io.InputStream;
@@ -75,6 +76,7 @@ public class ExternalMailSyncService {
     private final ExternalMailSecretCipher cipher;
     private final AuthUserClient auth;
     private final MailDeliveryService delivery;
+    private final ProtocolMailService protocolMail;
     private final RawMessageSpool spool;
     private final MailEventPublisher events;
     private final JdbcTemplate jdbc;
@@ -92,6 +94,7 @@ public class ExternalMailSyncService {
                                    ExternalMailSecretCipher cipher,
                                    AuthUserClient auth,
                                    MailDeliveryService delivery,
+                                   ProtocolMailService protocolMail,
                                    RawMessageSpool spool,
                                    MailEventPublisher events,
                                    JdbcTemplate jdbc) {
@@ -106,6 +109,7 @@ public class ExternalMailSyncService {
         this.cipher = cipher;
         this.auth = auth;
         this.delivery = delivery;
+        this.protocolMail = protocolMail;
         this.spool = spool;
         this.events = events;
         this.jdbc = jdbc;
@@ -574,27 +578,9 @@ public class ExternalMailSyncService {
         for (String rawPart : parts) {
             String name = sanitizeFolderSegment(rawPart);
             if (name.isBlank()) continue;
-            MailFolder found = null;
-            for (MailFolder candidate : folders.findAllByOwnerIdOrderBySpecialUseAscNameAsc(ownerId)) {
-                UUID parentId = candidate.getParent() == null ? null : candidate.getParent().getId();
-                UUID expectedParent = parent == null ? null : parent.getId();
-                if (java.util.Objects.equals(parentId, expectedParent) && candidate.getName().equalsIgnoreCase(name)) {
-                    found = candidate;
-                    break;
-                }
-            }
-            if (found == null) {
-                found = new MailFolder();
-                found.setOwnerId(ownerId);
-                found.setParent(parent);
-                found.setName(name);
-                found.setSpecialUse(null);
-                found.setUidNext(1);
-                found.setUidValidity(Math.max(1, Instant.now().getEpochSecond()));
-                found.setHighestModseq(1);
-                found = folders.saveAndFlush(found);
-            }
-            parent = found;
+            // Вызов через отдельный Spring bean открывает короткую транзакцию для
+            // каждого сегмента и сериализует импорт с web/IMAP CREATE, RENAME и DELETE.
+            parent = protocolMail.ensureImportedFolder(ownerId, parent == null ? null : parent.getId(), name);
         }
         if (parent == null) {
             return delivery.ensureFolder(ownerId, "INBOX", "INBOX");

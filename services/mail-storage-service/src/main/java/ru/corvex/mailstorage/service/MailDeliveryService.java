@@ -240,6 +240,12 @@ public class MailDeliveryService {
 
     @Transactional
     public MailFolder ensureFolder(UUID ownerId, String specialUse, String name) {
+        Optional<MailFolder> existing = folders.findFirstByOwnerIdAndSpecialUseIgnoreCase(ownerId, specialUse);
+        if (existing.isPresent()) return existing.get();
+
+        // Заблокировать только создание, не каждую доставку в уже существующий INBOX.
+        // После ожидания другой транзакции повторно проверяем наличие системной папки.
+        folders.lockFolderNames(ownerId.toString());
         return folders.findFirstByOwnerIdAndSpecialUseIgnoreCase(ownerId, specialUse)
                 .orElseGet(() -> {
                     MailFolder f = new MailFolder();

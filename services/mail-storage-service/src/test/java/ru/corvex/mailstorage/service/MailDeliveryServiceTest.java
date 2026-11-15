@@ -365,6 +365,19 @@ class MailDeliveryServiceTest {
         assertEquals(1, created.getUidNext());
         assertEquals(1, created.getHighestModseq());
         assertTrue(created.getUidValidity() >= 1);
+        // Existing INBOX needs no owner-wide lock; missing ARCHIVE does.
+        verify(folders).lockFolderNames(ownerId.toString());
+    }
+
+    @Test
+    void systemFolderCreationRechecksAfterAcquiringTheOwnerLock() {
+        MailFolder concurrent = folder("Archive", "ARCHIVE", 1, 1);
+        when(folders.findFirstByOwnerIdAndSpecialUseIgnoreCase(ownerId, "ARCHIVE"))
+                .thenReturn(Optional.empty(), Optional.of(concurrent));
+
+        assertEquals(concurrent, service.ensureFolder(ownerId, "ARCHIVE", "Archive"));
+        verify(folders).lockFolderNames(ownerId.toString());
+        verify(folders, never()).saveAndFlush(any(MailFolder.class));
     }
 
     @Test

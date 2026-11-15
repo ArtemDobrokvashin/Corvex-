@@ -7,8 +7,10 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.DigestInputStream;
@@ -203,21 +205,27 @@ public class MaildirStorage {
         }
     }
 
-    /** Рекурсивное удаление каталога папки (IMAP DELETE) после удаления строк БД. Best-effort. */
+    /**
+     * Убирает только пустые Maildir-каталоги после удаления известных файлов папки.
+     * Неизвестные файлы могут принадлежать другому логическому ящику со старой
+     * коллизией имени, поэтому рекурсивно удалять их нельзя.
+     */
     public void deleteFolderDir(String mailbox, String folder) throws IOException {
         Path rootAbs = mailRoot.toAbsolutePath().normalize();
         Path dir = rootAbs.resolve(sanitize(mailbox)).resolve(sanitize(folder)).normalize();
-        if (!Files.exists(dir) || !dir.startsWith(rootAbs)) {
-            return;
+        if (!Files.exists(dir) || !dir.startsWith(rootAbs)) return;
+        for (String child : new String[]{"tmp", "new", "cur"}) {
+            deleteIfEmpty(dir.resolve(child));
         }
-        try (var walk = Files.walk(dir)) {
-            walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
-                try {
-                    Files.deleteIfExists(p);
-                } catch (IOException ignored) {
-                    // best-effort: осиротевший каталог не должен блокировать удаление папки в БД
-                }
-            });
+        deleteIfEmpty(dir);
+    }
+
+    private static void deleteIfEmpty(Path path) throws IOException {
+        if (!Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) return;
+        try {
+            Files.deleteIfExists(path);
+        } catch (DirectoryNotEmptyException ignored) {
+            // Оставляем неучтённые файлы для проверки и восстановления.
         }
     }
 
@@ -234,6 +242,11 @@ public class MaildirStorage {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    /** Физический сегмент папки для проверки конфликтов с существующим Maildir. */
+    public static String folderPathSegment(String folder) {
+        return sanitize(folder);
     }
 
     /** Защита от path traversal: в путь попадают только безопасные сегменты. */

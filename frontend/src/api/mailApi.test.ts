@@ -20,3 +20,18 @@ describe('mailApi quota', () => {
     expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/mail/quota');
   });
 });
+
+describe('mail folder API', () => {
+  beforeEach(() => { apiFetchMock.mockReset().mockResolvedValue({ id: 'new-folder' }); });
+
+  it('posts the name and optional parent to the public folder endpoint', async () => {
+    await mailApi.createFolder('Projects');
+    expect(apiFetchMock).toHaveBeenLastCalledWith('/api/v1/mail/folders', {
+      method: 'POST', body: JSON.stringify({ name: 'Projects', parentId: null }),
+    });
+    await mailApi.createFolder('Child', 'parent-id');
+    expect(apiFetchMock).toHaveBeenLastCalledWith('/api/v1/mail/folders', {
+      method: 'POST', body: JSON.stringify({ name: 'Child', parentId: 'parent-id' }),
+    });
+  });
+});

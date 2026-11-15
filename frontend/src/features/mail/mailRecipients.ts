@@ -10,6 +10,26 @@ interface RecipientFallbacks {
   empty: string;
 }
 
+/** Preserve actual addresses, not display labels, when composing a reply-all. */
+export function replyAllCc(
+  sender: string,
+  originalTo: readonly string[],
+  originalCc: readonly string[],
+  currentEmail?: string,
+): string {
+  const seen = new Set([emailFromHeader(sender), currentEmail?.trim() ?? ''].filter(Boolean).map((value) => value.toLowerCase()));
+  const result: string[] = [];
+  for (const value of [...originalTo, ...originalCc]) {
+    const address = emailFromHeader(value);
+    if (!/^[^\s<>@]+@[^\s<>@]+$/.test(address)) continue;
+    const key = address.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(address);
+  }
+  return result.join(', ');
+}
+
 /**
  * Формирует видимый список получателей без подмены его на «мне».
  * API может вернуть либо адрес, либо RFC-строку с именем; для своего адреса

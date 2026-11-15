@@ -10,6 +10,7 @@ import './index.css';
 // Ленивая загрузка модулей (ТЗ §10.4): админка не тянется в бандл обычного пользователя
 const MailPage = lazy(() => import('./features/mail/MailPage'));
 const ChatPage = lazy(() => import('./features/chat/ChatPage'));
+const CalendarPage = lazy(() => import('./features/calendar/CalendarPage'));
 const AdminPage = lazy(() => import('./features/admin/AdminPage'));
 
 function RouteLoading({ source }: { source: string }) {
@@ -26,6 +27,7 @@ const router = createBrowserRouter([
       { index: true, element: <Navigate to="/mail" replace /> },
       { path: 'mail', element: <Suspense fallback={<RouteLoading source="Загружаем почту…" />}><MailPage /></Suspense> },
       { path: 'chat', element: <Suspense fallback={<RouteLoading source="Загружаем сообщения…" />}><ChatPage /></Suspense> },
+      { path: 'calendar', element: <Suspense fallback={<RouteLoading source="Загружаем календарь…" />}><CalendarPage /></Suspense> },
       { path: 'admin/:section?', element: <Suspense fallback={<RouteLoading source="Загружаем администрирование…" />}><AdminPage /></Suspense> },
     ],
   },

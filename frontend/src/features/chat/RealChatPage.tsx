@@ -10,6 +10,7 @@ import {
   Lock,
   LogOut,
   Megaphone,
+  MessageSquare,
   MoreHorizontal,
   Paperclip,
   PenSquare,
@@ -39,6 +40,10 @@ import { connectChat, newClientMessageId, sendChatMessage, sendRead, sendTyping 
 import { ApiError, getAccessToken } from '../../api/httpClient';
 import { EmojiPickerButton, ReactionPickerButton } from '../../components/EmojiPicker';
 import { Avatar, EmptyState, IconButton, LoadingScreen, Notice } from '../../components/ui';
+import ChatSidebar from '../../components/ChatSidebar';
+import ChatThreadPanel from '../../components/ChatThreadPanel';
+import SidebarSlot from '../../components/SidebarSlot';
+import WorkspaceUtilityBar from '../../components/WorkspaceUtilityBar';
 import {
   countLabel,
   formatDate,
@@ -272,8 +277,8 @@ export default function RealChatPage() {
   const [search, setSearch] = useState('');
   const [mobileConversation, setMobileConversation] = useState(false);
   const [roomsLoading, setRoomsLoading] = useState(true);
-  const [historyLoadingRoomId, setHistoryLoadingRoomId] = useState('');
-  const [olderLoadingRoomId, setOlderLoadingRoomId] = useState('');
+  const [historyLoadingRooms, setHistoryLoadingRooms] = useState<Set<string>>(() => new Set());
+  const [olderLoadingRooms, setOlderLoadingRooms] = useState<Set<string>>(() => new Set());
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
@@ -297,6 +302,11 @@ export default function RealChatPage() {
   const [searchResults, setSearchResults] = useState<ChatMessageView[]>([]);
   const [searchingMessages, setSearchingMessages] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [thread, setThread] = useState<{ roomId: string; rootId: string } | null>(null);
+  const [threadDraft, setThreadDraft] = useState('');
+  const [threadLoading, setThreadLoading] = useState(false);
+  const [threadError, setThreadError] = useState<string | null>(null);
+  const [threadPage, setThreadPage] = useState<HistoryState | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -307,9 +317,12 @@ export default function RealChatPage() {
   const pendingRef = useRef(new Map<string, PendingSend>());
   const fallbackTimersRef = useRef(new Map<string, number>());
   const loadedRoomsRef = useRef(new Set<string>());
+  const olderLoadingRoomsRef = useRef(new Set<string>());
   const lastTypingSentRef = useRef(0);
   const lastReadSentRef = useRef<Record<string, string>>({});
   const selectedRoomIdRef = useRef('');
+  const threadRef = useRef(thread);
+  const threadRequestRef = useRef(0);
   const localeRef = useRef(locale);
   const directoryRef = useRef<DirectoryUserView[]>([]);
 
@@ -598,7 +611,7 @@ export default function RealChatPage() {
   async function loadHistory(roomId: string) {
     if (!roomId || loadedRoomsRef.current.has(roomId)) return;
     loadedRoomsRef.current.add(roomId);
-    setHistoryLoadingRoomId(roomId);
+    setHistoryLoadingRooms((prev) => new Set(prev).add(roomId));
     try {
       const page = await chatApi.history(roomId, { limit: 50 });
       upsertMessages(roomId, page.items);
@@ -608,20 +621,21 @@ export default function RealChatPage() {
       }));
     } catch (error) {
       loadedRoomsRef.current.delete(roomId);
-      setActionError(formatError(error));
+      if (selectedRoomIdRef.current === roomId) setActionError(formatError(error));
     } finally {
-      setHistoryLoadingRoomId((prev) => (prev === roomId ? '' : prev));
+      setHistoryLoadingRooms((prev) => { const next = new Set(prev); next.delete(roomId); return next; });
     }
   }
 
   async function loadOlder() {
     const roomId = selectedRoomId;
     const page = historyByRoom[roomId];
-    if (!roomId || !page?.hasMore || !page.nextBefore || olderLoadingRoomId) return;
+    if (!roomId || !page?.hasMore || !page.nextBefore || olderLoadingRoomsRef.current.has(roomId)) return;
     const scroller = scrollRef.current;
     const previousHeight = scroller?.scrollHeight ?? 0;
     const previousTop = scroller?.scrollTop ?? 0;
-    setOlderLoadingRoomId(roomId);
+    olderLoadingRoomsRef.current.add(roomId);
+    setOlderLoadingRooms((prev) => new Set(prev).add(roomId));
     try {
       const next = await chatApi.history(roomId, { before: page.nextBefore, limit: 50 });
       upsertMessages(roomId, next.items);
@@ -630,12 +644,15 @@ export default function RealChatPage() {
         [roomId]: { hasMore: next.hasMore, nextBefore: next.nextBefore },
       }));
       requestAnimationFrame(() => {
-        if (scroller) scroller.scrollTop = previousTop + Math.max(0, scroller.scrollHeight - previousHeight);
+        if (scroller && selectedRoomIdRef.current === roomId && scrollRef.current === scroller) {
+          scroller.scrollTop = previousTop + Math.max(0, scroller.scrollHeight - previousHeight);
+        }
       });
     } catch (error) {
-      setActionError(formatError(error));
+      if (selectedRoomIdRef.current === roomId) setActionError(formatError(error));
     } finally {
-      setOlderLoadingRoomId('');
+      olderLoadingRoomsRef.current.delete(roomId);
+      setOlderLoadingRooms((prev) => { const next = new Set(prev); next.delete(roomId); return next; });
     }
   }
 
@@ -717,6 +734,15 @@ export default function RealChatPage() {
   }
 
   function selectRoom(id: string, highlightMessageId: string | null = null) {
+    if (id !== selectedRoomId) {
+      threadRef.current = null;
+      threadRequestRef.current += 1;
+      setThread(null);
+      setThreadDraft('');
+      setActionError(null);
+    }
+    // Update immediately so in-flight requests cannot report into the next room.
+    selectedRoomIdRef.current = id;
     setSelectedRoomId(id);
     setMobileConversation(true);
     setDetailsOpen(false);
@@ -861,6 +887,30 @@ export default function RealChatPage() {
     () => (messagesByRoom[selectedRoomId] ?? []).filter((message) => !message.threadRootId),
     [messagesByRoom, selectedRoomId],
   );
+  const threadRoot = thread?.roomId === selectedRoomId ? selectedMessages.find((message) => message.id === thread.rootId) ?? null : null;
+  const threadReplies = (messagesByRoom[selectedRoomId] ?? []).filter((message) => message.threadRootId === threadRoot?.id);
+
+  useEffect(() => {
+    if (!thread || thread.roomId !== selectedRoomId) return undefined;
+    const requestId = ++threadRequestRef.current;
+    threadRef.current = thread;
+    const isCurrent = () => requestId === threadRequestRef.current;
+    setThreadLoading(true);
+    setThreadError(null);
+    setThreadPage(null);
+    chatApi.history(thread.roomId, { threadRootId: thread.rootId, limit: 50 })
+      .then((page) => {
+        if (!isCurrent()) return;
+        upsertMessages(thread.roomId, page.items);
+        setThreadPage({ hasMore: page.hasMore, nextBefore: page.nextBefore });
+      })
+      .catch((error) => { if (isCurrent()) setThreadError(formatError(error)); })
+      .finally(() => { if (isCurrent()) setThreadLoading(false); });
+    return () => { if (isCurrent()) threadRequestRef.current += 1; };
+    // Requests are keyed by room and root; incoming realtime messages update the same store.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRoomId, thread?.roomId, thread?.rootId]);
+
   const lastSelectedMessage = selectedMessages[selectedMessages.length - 1] ?? null;
   const lastSelectedMessageId = lastSelectedMessage?.id ?? '';
   const selectedMembers = membersByRoom[selectedRoomId] ?? [];
@@ -1137,6 +1187,44 @@ export default function RealChatPage() {
     }
   }
 
+  async function loadOlderThread() {
+    if (!thread || !threadPage?.hasMore || !threadPage.nextBefore || threadLoading) return;
+    const current = thread;
+    const requestId = ++threadRequestRef.current;
+    const isCurrent = () => requestId === threadRequestRef.current
+      && selectedRoomIdRef.current === current.roomId
+      && threadRef.current?.roomId === current.roomId
+      && threadRef.current?.rootId === current.rootId;
+    setThreadLoading(true);
+    setThreadError(null);
+    try {
+      const page = await chatApi.history(current.roomId, { threadRootId: current.rootId, before: threadPage.nextBefore, limit: 50 });
+      if (!isCurrent()) return;
+      upsertMessages(current.roomId, page.items);
+      setThreadPage({ hasMore: page.hasMore, nextBefore: page.nextBefore });
+    } catch (error) {
+      if (isCurrent()) setThreadError(formatError(error));
+    } finally {
+      if (isCurrent()) setThreadLoading(false);
+    }
+  }
+
+  function sendThreadReply() {
+    const text = threadDraft.trim();
+    if (!thread || thread.roomId !== selectedRoomId || !threadRoot || !canWrite || !text) return;
+    const request: SendMessageRequest = {
+      bodyMarkdown: text,
+      threadRootId: thread.rootId,
+      clientMessageId: newClientMessageId(),
+      kind: 'TEXT',
+      mentionedUserIds: mentionedIdsFromText(text),
+    };
+    const temporary = temporaryMessage(request);
+    upsertMessage(temporary);
+    setThreadDraft('');
+    dispatchSend(thread.roomId, request, temporary.id);
+  }
+
   function onDraftChange(value: string) {
     updateDraft(value);
     if (!canWrite || !value || !selectedRoomId) return;
@@ -1334,9 +1422,18 @@ export default function RealChatPage() {
         : `${roomSubtitle(selectedRoom)}${socketConnected ? '' : ` · ${t('Нет realtime-соединения')}`}`;
 
   return (
-    <div className="h-full lg:p-3 xl:p-4">
-      <div className="flex h-full min-h-0 overflow-hidden bg-surface lg:rounded-[18px] lg:border lg:border-line lg:shadow-soft">
-        <aside className={`${mobileConversation ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-line bg-chrome md:w-[320px] xl:w-[344px]`}>
+    <div className="flex h-full min-h-0 min-w-0 flex-1 bg-surface">
+      <SidebarSlot>
+        <ChatSidebar
+          channels={rooms.filter((room) => room.kind !== 'DIRECT').map((room) => ({ id: room.id, title: roomTitle(room), unread: room.unreadCount }))}
+          direct={rooms.filter((room) => room.kind === 'DIRECT').map((room) => ({ id: room.id, title: roomTitle(room), unread: room.unreadCount, online: otherDirectUser(room)?.presence.toUpperCase() === 'ONLINE' }))}
+          selectedId={selectedRoomId}
+          onSelect={(id) => selectRoom(id)}
+          onNew={() => { setModalError(null); setNewChatOpen(true); }}
+        />
+      </SidebarSlot>
+      <div className="relative flex h-full min-h-0 min-w-0 flex-1 overflow-hidden bg-surface">
+        <aside className={`${mobileConversation ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-line bg-surface md:w-[356px]`}>
           <header className="shrink-0 px-4 pb-3 pt-5">
             <div className="flex items-center">
               <h1 className="flex-1 text-[19px] font-semibold tracking-[-0.025em]">{t('Сообщения')}</h1>
@@ -1494,7 +1591,7 @@ export default function RealChatPage() {
             />
           ) : (
             <>
-              <header className="flex min-h-[68px] shrink-0 items-center gap-3 border-b border-line px-4 py-3">
+              <header className="z-10 flex h-14 shrink-0 items-center gap-2 border-b border-line bg-surface px-4">
                 <button
                   type="button"
                   onClick={() => setMobileConversation(false)}
@@ -1507,7 +1604,7 @@ export default function RealChatPage() {
                   room={selectedRoom}
                   title={selectedTitle}
                   online={selectedOther?.presence.toUpperCase() === 'ONLINE'}
-                  size={42}
+                  size={34}
                 />
                 <div className="min-w-0 flex-1">
                   <h2 className="truncate text-[16px] font-semibold tracking-[-0.015em]">{selectedTitle}</h2>
@@ -1537,6 +1634,7 @@ export default function RealChatPage() {
                     aria-expanded={detailsOpen}
                   />
                 </div>
+                <WorkspaceUtilityBar className="hidden md:flex" />
               </header>
 
               {detailsOpen && (
@@ -1641,10 +1739,10 @@ export default function RealChatPage() {
                       <button
                         type="button"
                         onClick={() => void loadOlder()}
-                        disabled={olderLoadingRoomId === selectedRoomId}
+                        disabled={olderLoadingRooms.has(selectedRoomId)}
                         className="btn-secondary h-9 px-3 text-[13px]"
                       >
-                        {olderLoadingRoomId === selectedRoomId
+                        {olderLoadingRooms.has(selectedRoomId)
                           ? <Loader2 size={15} className="animate-spin" />
                           : null}
                         {t('Показать более ранние сообщения')}
@@ -1652,7 +1750,7 @@ export default function RealChatPage() {
                     </div>
                   )}
 
-                  {historyLoadingRoomId === selectedRoomId && selectedMessages.length === 0 && (
+                  {historyLoadingRooms.has(selectedRoomId) && selectedMessages.length === 0 && (
                     <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
                       <Loader2 size={17} className="animate-spin" /> {t('Загружаем сообщения…')}
                     </div>
@@ -1795,7 +1893,7 @@ export default function RealChatPage() {
                                       type="button"
                                       onClick={() => void toggleReaction(message, reaction.emoji)}
                                       disabled={Boolean(message.localStatus)}
-                                      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium transition disabled:opacity-50 ${reacted ? 'border-accent/25 bg-accent-soft text-accent-dark' : 'border-line bg-surface text-muted hover:border-accent/25'}`}
+                                      className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition disabled:opacity-50 ${reacted ? 'border-accent/25 bg-accent-soft text-accent-dark' : 'border-line bg-surface text-muted hover:border-accent/25'}`}
                                       aria-label={`${t('Реакция')} ${reaction.emoji}: ${reaction.count}`}
                                     >
                                       <span className="emoji-text text-[13px] leading-none">{reaction.emoji}</span>
@@ -1822,6 +1920,14 @@ export default function RealChatPage() {
                               >
                                 <Reply size={15} />
                               </button>
+                              <button
+                                type="button"
+                                onClick={() => { threadRequestRef.current += 1; threadRef.current = { roomId: message.roomId, rootId: message.id }; setThread(threadRef.current); setThreadDraft(''); }}
+                                disabled={Boolean(message.localStatus)}
+                                className="icon-btn-sm"
+                                title={t('Ответить в ветке')}
+                                aria-label={t('Ответить в ветке')}
+                              ><MessageSquare size={15} /></button>
                               {(canEdit || canDeleteOrPin) && (
                                 <button
                                   type="button"
@@ -1881,7 +1987,7 @@ export default function RealChatPage() {
                     );
                   })}
 
-                  {historyLoadingRoomId !== selectedRoomId && selectedMessages.length === 0 && (
+                  {!historyLoadingRooms.has(selectedRoomId) && selectedMessages.length === 0 && (
                     <EmptyState
                       icon={Hash}
                       title={t('Пока нет сообщений')}
@@ -1899,7 +2005,7 @@ export default function RealChatPage() {
                       <Lock size={16} className="shrink-0" /> {writeBlockedReason()}
                     </div>
                   ) : (
-                    <div className="rounded-[18px] border border-line bg-surface shadow-soft transition focus-within:border-accent/40 focus-within:ring-4 focus-within:ring-accent/10">
+                    <div className="rounded-xl border border-line bg-surface transition focus-within:border-accent/40 focus-within:ring-4 focus-within:ring-accent/10">
                       {pendingFiles.length > 0 && (
                         <div className="flex flex-wrap gap-2 px-4 pt-3">
                           {pendingFiles.map((file, index) => (
@@ -1967,7 +2073,7 @@ export default function RealChatPage() {
                           type="button"
                           onClick={() => void send()}
                           disabled={sending || (!draft.trim() && pendingFiles.length === 0)}
-                          className="ml-auto flex h-9 w-9 items-center justify-center rounded-full bg-ink text-white transition hover:bg-ink-soft disabled:cursor-not-allowed disabled:bg-black/[0.08] disabled:text-faint"
+                          className="ml-auto flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:bg-black/[0.08] disabled:text-faint"
                           aria-label={t('Отправить сообщение')}
                         >
                           {sending ? <Loader2 size={16} className="animate-spin" /> : <SendHorizontal size={16} />}
@@ -1980,6 +2086,36 @@ export default function RealChatPage() {
             </>
           )}
         </section>
+        {threadRoot && (
+          <ChatThreadPanel
+            root={<div className="flex gap-2.5"><Avatar name={authorName(threadRoot)} size={30} /><div className="min-w-0"><div className="text-sm font-semibold text-ink">{authorName(threadRoot)}</div><div className="message-markdown mt-1 text-sm text-ink-soft" dangerouslySetInnerHTML={renderChatMarkdown(threadRoot.bodyMarkdown ?? '')} />{threadRoot.fileRef && <FileAttachment message={threadRoot} onError={setActionError} />}</div></div>}
+            draft={threadDraft}
+            onDraftChange={setThreadDraft}
+            onSend={sendThreadReply}
+            onClose={() => { threadRequestRef.current += 1; threadRef.current = null; setThread(null); setThreadDraft(''); }}
+            canWrite={canWrite}
+          >
+            {threadPage?.hasMore && <button type="button" className="btn-secondary h-8 text-xs" disabled={threadLoading} onClick={() => void loadOlderThread()}>{t('Показать более ранние сообщения')}</button>}
+            {threadLoading && <p className="text-xs text-muted" role="status">{t('Загружаем сообщения…')}</p>}
+            {threadError && <p className="text-xs text-danger" role="alert">{threadError}</p>}
+            {!threadLoading && !threadError && threadReplies.length === 0 && <p className="text-xs text-muted">{t('Ответов пока нет')}</p>}
+            {threadReplies.map((message) => (
+              <article key={message.id} className="flex gap-2.5">
+                <Avatar name={authorName(message)} size={30} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2"><span className="truncate text-sm font-semibold text-ink">{authorName(message)}</span><time className="text-[11px] text-faint">{formatTime(locale, message.createdAt)}</time></div>
+                  {message.deleted ? <p className="text-sm italic text-muted">{t('Сообщение удалено')}</p> : <>
+                    {message.bodyMarkdown && <div className="message-markdown mt-1 text-sm text-ink-soft" dangerouslySetInnerHTML={renderChatMarkdown(message.bodyMarkdown)} />}
+                    {message.fileRef && <FileAttachment message={message} onError={setActionError} />}
+                    {message.reactions.length > 0 && <div className="mt-1 flex flex-wrap gap-1">{message.reactions.map((reaction) => <button key={reaction.emoji} type="button" onClick={() => void toggleReaction(message, reaction.emoji)} className="rounded-md border border-line px-1.5 py-0.5 text-xs" aria-label={`${t('Реакция')} ${reaction.emoji}: ${reaction.count}`}>{reaction.emoji} {reaction.count}</button>)}</div>}
+                  </>}
+                  {message.localStatus === 'sending' && <span className="text-xs text-muted">{t('Отправляется…')}</span>}
+                  {message.localStatus === 'failed' && <button type="button" className="text-xs font-medium text-danger" onClick={() => retryMessage(message)}>{t('Не отправлено')} · {t('Повторить')}</button>}
+                </div>
+              </article>
+            ))}
+          </ChatThreadPanel>
+        )}
       </div>
 
       {newChatOpen && (

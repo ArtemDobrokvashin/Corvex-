@@ -13,6 +13,9 @@ public final class MailDtos {
     public record FolderView(UUID id, String name, String specialUse, long total, long unread) {
     }
 
+    public record CreateFolderRequest(String name, UUID parentId) {
+    }
+
     public record QuotaView(long usedBytes, long quotaBytes, long messageCount) {
     }
 

@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import ru.corvex.mailstorage.api.dto.MailDtos;
+import ru.corvex.mailstorage.api.dto.ProtocolDtos;
 import ru.corvex.mailstorage.service.MailApiService;
 import ru.corvex.mailstorage.service.MailSendService;
 import ru.corvex.mailstorage.service.ProtocolMailService;
@@ -59,6 +60,15 @@ public class MailController {
     @PreAuthorize("hasAuthority('MAIL_READ_OWN')")
     List<MailDtos.FolderView> folders(@AuthenticationPrincipal Jwt jwt) {
         return mail.listFolders(userId(jwt));
+    }
+
+    @PostMapping("/folders")
+    @PreAuthorize("hasAuthority('MAIL_MANAGE_FOLDERS')")
+    ResponseEntity<MailDtos.FolderView> createFolder(@AuthenticationPrincipal Jwt jwt,
+                                                      @RequestBody MailDtos.CreateFolderRequest req) {
+        var created = protocol.createFolder(userId(jwt), new ProtocolDtos.CreateFolderRequest(req.name(), req.parentId()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(new MailDtos.FolderView(
+                created.id(), created.name(), created.specialUse(), created.messageCount(), created.unseenCount()));
     }
 
     @GetMapping("/folders/{folderId}/messages")

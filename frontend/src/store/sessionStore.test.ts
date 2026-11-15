@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEMO_READ_STATE_STORAGE_KEY, SessionUser, useSession } from './sessionStore';
+import { DEMO_READ_STATE_STORAGE_KEY, demoMailIsSeen, SessionUser, useSession } from './sessionStore';
 
 const user: SessionUser = {
   id: 'demo-user',
@@ -28,6 +28,7 @@ describe('demo read state', () => {
       demoMode: false,
       bootstrapped: false,
       demoReadMailIds: [],
+      demoUnreadMailIds: [],
       demoReadRoomIds: [],
       demoSentChatMessages: [],
     });
@@ -45,6 +46,25 @@ describe('demo read state', () => {
     markDemoMailRead('m2');
 
     expect(useSession.getState().demoReadMailIds).toEqual(['m1', 'm2']);
+  });
+
+  it('persists explicit unread and read overrides, including originally read messages', () => {
+    sessionStorage.setItem('corvex.demo', '1');
+    const { setSession, markDemoMailRead, markDemoMailUnread, clearSession } = useSession.getState();
+    setSession(user, true);
+    markDemoMailRead('m1');
+    markDemoMailUnread('m1');
+    markDemoMailUnread('m3');
+    markDemoMailUnread('m3');
+    expect(useSession.getState().demoReadMailIds).not.toContain('m1');
+    expect(useSession.getState().demoUnreadMailIds).toEqual(['m1', 'm3']);
+    expect(demoMailIsSeen({ id: 'm3', seen: true }, useSession.getState().demoReadMailIds, useSession.getState().demoUnreadMailIds)).toBe(false);
+    expect(JSON.parse(sessionStorage.getItem(DEMO_READ_STATE_STORAGE_KEY)!).demoUnreadMailIds).toEqual(['m1', 'm3']);
+    markDemoMailRead('m3');
+    expect(useSession.getState().demoUnreadMailIds).toEqual(['m1']);
+    expect(demoMailIsSeen({ id: 'm3', seen: true }, useSession.getState().demoReadMailIds, useSession.getState().demoUnreadMailIds)).toBe(true);
+    clearSession();
+    expect(useSession.getState().demoUnreadMailIds).toEqual([]);
   });
 
   it('keeps read ids for the same session and resets them for a new one', () => {
@@ -116,12 +136,29 @@ describe('demo read state', () => {
     expect(JSON.parse(sessionStorage.getItem(DEMO_READ_STATE_STORAGE_KEY) ?? 'null')).toEqual({
       userId: user.id,
       demoReadMailIds: ['m1'],
+      demoUnreadMailIds: [],
       demoReadRoomIds: ['r2'],
       demoSentChatMessages: [sentMessage],
     });
 
     clearSession();
     expect(sessionStorage.getItem(DEMO_READ_STATE_STORAGE_KEY)).toBeNull();
+  });
+
+  it('restores explicit unread overrides after a full page reload', async () => {
+    sessionStorage.setItem('corvex.demo', '1');
+    sessionStorage.setItem(DEMO_READ_STATE_STORAGE_KEY, JSON.stringify({
+      userId: user.id,
+      demoReadMailIds: ['m1'],
+      demoUnreadMailIds: ['m3'],
+      demoReadRoomIds: [],
+      demoSentChatMessages: [],
+    }));
+    vi.resetModules();
+    const { useSession: reloadedUseSession } = await import('./sessionStore');
+    reloadedUseSession.getState().setSession(user, true);
+    expect(reloadedUseSession.getState().demoUnreadMailIds).toEqual(['m3']);
+    expect(reloadedUseSession.getState().demoReadMailIds).toEqual(['m1']);
   });
 
   it('restores demo read ids after a full page reload', async () => {
@@ -137,6 +174,8 @@ describe('demo read state', () => {
     const { useSession: reloadedUseSession } = await import('./sessionStore');
 
     expect(reloadedUseSession.getState().demoReadMailIds).toEqual(['m1']);
+    // Sessions saved by older versions have no unread override field.
+    expect(reloadedUseSession.getState().demoUnreadMailIds).toEqual([]);
     expect(reloadedUseSession.getState().demoReadRoomIds).toEqual(['r2']);
     expect(reloadedUseSession.getState().demoSentChatMessages).toEqual([sentMessage]);
 

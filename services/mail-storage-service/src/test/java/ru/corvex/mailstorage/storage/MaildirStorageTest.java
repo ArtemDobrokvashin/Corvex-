@@ -186,14 +186,19 @@ class MaildirStorageTest {
     }
 
     @Test
-    void deletesFolderDirectoryRecursively() throws Exception {
-        storage.storeMessage("user@company.local", "Disposable", bytes("one"));
-        storage.storeMessage("user@company.local", "Disposable", bytes("two"), true);
+    void folderCleanupLeavesUnknownFilesAndRemovesOnlyEmptyDirectories() throws Exception {
+        Path first = storage.storeMessage("user@company.local", "Disposable", bytes("one"));
+        Path second = storage.storeMessage("user@company.local", "Disposable", bytes("two"), true);
         Path dir = mailRoot.resolve("user@company.local").resolve("Disposable");
 
         storage.deleteFolderDir("user@company.local", "Disposable");
-        storage.deleteFolderDir("user@company.local", "Disposable");
+        assertTrue(Files.exists(mailRoot.resolve(first)));
+        assertTrue(Files.exists(mailRoot.resolve(second)));
 
+        storage.deleteMessage(first.toString());
+        storage.deleteMessage(second.toString());
+        storage.deleteFolderDir("user@company.local", "Disposable");
+        storage.deleteFolderDir("user@company.local", "Disposable");
         assertFalse(Files.exists(dir));
     }
 

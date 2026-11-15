@@ -119,6 +119,91 @@ class ProtocolMailServiceAdditionalTest {
     }
 
     @Test
+    void rejectsNamesThatShareTheSamePhysicalMaildirEvenAcrossParents() throws Exception {
+        MailFolder existing = folder("Проекты", null);
+        existing.setParent(folder("Parent", null));
+        MailFolder current = folder("Working", null);
+        when(folders.findAllByOwnerIdOrderBySpecialUseAscNameAsc(ownerId)).thenReturn(List.of(existing, current));
+        when(folders.findByIdAndOwnerId(current.getId(), ownerId)).thenReturn(Optional.of(current));
+        assertEquals(MaildirStorage.folderPathSegment("Проекты"), MaildirStorage.folderPathSegment("Клиенты"));
+
+        assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
+                () -> service.createFolder(ownerId, new ProtocolDtos.CreateFolderRequest("Клиенты", null)))
+                .getStatusCode());
+        assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
+                () -> service.renameFolder(ownerId, current.getId(),
+                        new ProtocolDtos.RenameFolderRequest("Клиенты", null, false))).getStatusCode());
+        // Protect a system directory even before the default folder is provisioned.
+        assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
+                () -> service.createFolder(ownerId, new ProtocolDtos.CreateFolderRequest("Sent", null)))
+                .getStatusCode());
+        verify(folders, times(3)).lockFolderNames(ownerId.toString());
+        verify(folders, never()).saveAndFlush(any(MailFolder.class));
+        verify(auth, never()).findById(ownerId);
+    }
+
+    @Test
+    void importedFoldersReuseExistingPathsAndRejectNewStorageCollisions() {
+        MailFolder parent = folder("Parent", null);
+        MailFolder legacy = folder("old%name", null);
+        legacy.setParent(parent);
+        MailFolder projects = folder("Проекты", null);
+        when(folders.findByIdAndOwnerId(parent.getId(), ownerId)).thenReturn(Optional.of(parent));
+        when(folders.findAllByOwnerIdOrderBySpecialUseAscNameAsc(ownerId)).thenReturn(List.of(parent, legacy, projects));
+        when(folders.saveAndFlush(any(MailFolder.class))).thenAnswer(inv -> {
+            MailFolder created = inv.getArgument(0);
+            created.setId(UUID.randomUUID());
+            return created;
+        });
+
+        assertEquals(legacy, service.ensureImportedFolder(ownerId, parent.getId(), "old%name"));
+        assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
+                () -> service.ensureImportedFolder(ownerId, null, "Клиенты")).getStatusCode());
+        MailFolder safe = service.ensureImportedFolder(ownerId, parent.getId(), "Reports");
+        assertEquals("Reports", safe.getName());
+        assertEquals(parent, safe.getParent());
+        verify(folders, times(3)).lockFolderNames(ownerId.toString());
+        verify(folders).saveAndFlush(safe);
+    }
+
+    @Test
+    void legacySharedDirectoriesCannotBeRenamedOrDeleted() throws Exception {
+        MailFolder projects = folder("Проекты", null);
+        MailFolder clients = folder("Клиенты", null);
+        clients.setParent(folder("Parent", null));
+        String firstPath = maildir.storeMessage("user@company.local", projects.getName(), bytes("first")).toString();
+        String secondPath = maildir.storeMessage("user@company.local", clients.getName(), bytes("second")).toString();
+        when(folders.findByIdAndOwnerId(projects.getId(), ownerId)).thenReturn(Optional.of(projects));
+        when(folders.findAllByOwnerIdOrderBySpecialUseAscNameAsc(ownerId)).thenReturn(List.of(projects, clients));
+
+        assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
+                () -> service.renameFolder(ownerId, projects.getId(),
+                        new ProtocolDtos.RenameFolderRequest("Safe", null, false))).getStatusCode());
+        assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
+                () -> service.deleteFolder(ownerId, projects.getId())).getStatusCode());
+        assertTrue(Files.exists(tmp.resolve("mail").resolve(firstPath)));
+        assertTrue(Files.exists(tmp.resolve("mail").resolve(secondPath)));
+        verify(folders, times(2)).lockFolderNames(ownerId.toString());
+        verify(folders, never()).delete(projects);
+        verify(messages, never()).findAllByFolder_IdAndOwnerId(projects.getId(), ownerId);
+        verify(auth, never()).findById(ownerId);
+    }
+
+    @Test
+    void legacyReservedOrInvalidStorageSegmentsCannotBeDeleted() {
+        MailFolder reserved = folder("Sent", null);
+        MailFolder invalid = folder(".", null);
+        when(folders.findByIdAndOwnerId(reserved.getId(), ownerId)).thenReturn(Optional.of(reserved));
+        when(folders.findByIdAndOwnerId(invalid.getId(), ownerId)).thenReturn(Optional.of(invalid));
+
+        assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
+                () -> service.deleteFolder(ownerId, reserved.getId())).getStatusCode());
+        assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
+                () -> service.deleteFolder(ownerId, invalid.getId())).getStatusCode());
+        verify(folders, never()).delete(any(MailFolder.class));
+    }
+
+    @Test
     void renameActuallyRenamesDirectoryAndMessagePaths() throws Exception {
         MailFolder folder = folder("Projects", null);
         String rel = maildir.storeMessage("user@company.local", "Projects", bytes("body")).toString();
@@ -209,6 +294,25 @@ class ProtocolMailServiceAdditionalTest {
         verify(messages).delete(message);
         verify(folders).delete(disposable);
         assertFalse(Files.exists(tmp.resolve("mail/user@company.local/Disposable")));
+    }
+
+    @Test
+    void deletingAFolderDoesNotRecursivelyDeleteFilesFromACollidingMailbox() throws Exception {
+        MailFolder folder = folder("Work", null);
+        String ownPath = maildir.storeMessage("user+tag@company.local", "Work", bytes("own")).toString();
+        String otherPath = maildir.storeMessage("user_tag@company.local", "Work", bytes("other")).toString();
+        MessageMetadata own = message(folder, 1, ownPath);
+        when(folders.findByIdAndOwnerId(folder.getId(), ownerId)).thenReturn(Optional.of(folder));
+        when(messages.findAllByFolder_IdAndOwnerId(folder.getId(), ownerId)).thenReturn(List.of(own));
+        when(auth.findById(ownerId)).thenReturn(Optional.of(
+                new AuthUserClient.MailboxOwner(ownerId, "user+tag@company.local", "User", "ACTIVE", 0)));
+
+        service.deleteFolder(ownerId, folder.getId());
+
+        assertFalse(Files.exists(tmp.resolve("mail").resolve(ownPath)));
+        assertTrue(Files.exists(tmp.resolve("mail").resolve(otherPath)));
+        verify(messages).delete(own);
+        verify(folders).delete(folder);
     }
 
     @Test
@@ -398,7 +502,13 @@ class ProtocolMailServiceAdditionalTest {
         assertEquals(HttpStatus.BAD_REQUEST, assertThrows(ResponseStatusException.class,
                 () -> ProtocolMailService.validateFolderName("bad..name")).getStatusCode());
         assertEquals(HttpStatus.BAD_REQUEST, assertThrows(ResponseStatusException.class,
+                () -> ProtocolMailService.validateFolderName(".")).getStatusCode());
+        assertEquals(HttpStatus.BAD_REQUEST, assertThrows(ResponseStatusException.class,
                 () -> ProtocolMailService.validateFolderName("x".repeat(257))).getStatusCode());
+        assertEquals(HttpStatus.BAD_REQUEST, assertThrows(ResponseStatusException.class,
+                () -> ProtocolMailService.validateFolderName("x".repeat(256))).getStatusCode());
+        assertEquals("x".repeat(255), ProtocolMailService.validateFolderName("x".repeat(255)));
+        assertEquals("💙".repeat(128), ProtocolMailService.validateFolderName("💙".repeat(128)));
 
         MessageMetadata meta = message(folder("INBOX", "INBOX"), 12, "x");
         meta.setSeen(true);
