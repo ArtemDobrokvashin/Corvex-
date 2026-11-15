@@ -41,18 +41,24 @@ try {
         }
         $status = @(& docker inspect --format '{{.State.Status}} {{.State.Health.Status}}' $clamId 2>$null)
         if ($LASTEXITCODE -ne 0 -or $status.Count -ne 1 -or $status[0] -cne 'running healthy') { throw 'ClamAV not healthy.' }
-        $jarPaths = @(& docker exec $m.jamesContainerId sh -c 'test -d /root/extensions-jars && find /root/extensions-jars -maxdepth 1 -name "*.jar" -print -quit' 2>$null)
-        if ($LASTEXITCODE -ne 0 -or $jarPaths.Count -ne 0) { throw 'Existing extension jars found or not inspectable; do not mask them.' }
+        $extensionEntries = @(& docker exec $m.jamesContainerId find /root/extensions-jars -maxdepth 1 2>$null)
+        if ($LASTEXITCODE -ne 0 -or $extensionEntries.Count -eq 0) { throw 'Extension directory not inspectable.' }
+        foreach ($entry in $extensionEntries) {
+            if ($entry -cmatch '\.jar$') { throw 'Existing extension jars found or not inspectable; do not mask them.' }
+        }
         $liveHash = @(& docker exec $m.jamesContainerId sha256sum /root/conf/mailetcontainer.xml 2>$null)
         if ($LASTEXITCODE -ne 0 -or $liveHash.Count -ne 1 -or $liveHash[0] -notmatch '^([a-f0-9]{64})\s' -or $Matches[1] -cne $m.originalConfigSha256) { throw 'Live mailet config changed.' }
         $originalHashes = @{}
         foreach ($service in @('james','clamav')) {
             $id = if ($service -eq 'james') { $m.jamesContainerId } else { $clamId }
-            $actual = @(& docker inspect --format '{{index .Config.Labels "com.docker.compose.config-hash"}}' $id 2>$null)
+            $labelsJson = @(& docker inspect --format '{{json .Config.Labels}}' $id 2>$null)
+            if ($LASTEXITCODE -ne 0 -or $labelsJson.Count -ne 1) { throw 'Container labels unavailable.' }
+            $labels = $labelsJson[0] | ConvertFrom-Json
+            $actual = $labels.PSObject.Properties['com.docker.compose.config-hash']
             $desired = @(& docker compose --profile james-transition config --hash $service 2>$null)
-            if ($LASTEXITCODE -ne 0 -or $actual.Count -ne 1 -or $actual[0] -notmatch '^[a-f0-9]{64}$' -or $desired.Count -ne 1 -or
-                $desired[0] -notmatch ("^" + $service + '\s+([a-f0-9]{64})$') -or $Matches[1] -cne $actual[0]) { throw "Compose differs from running $service." }
-            $originalHashes[$service] = $actual[0]
+            if ($LASTEXITCODE -ne 0 -or $null -eq $actual -or $actual.Value -notmatch '^[a-f0-9]{64}$' -or $desired.Count -ne 1 -or
+                $desired[0] -notmatch ("^" + $service + '\s+([a-f0-9]{64})$') -or $Matches[1] -cne $actual.Value) { throw "Compose differs from running $service." }
+            $originalHashes[$service] = $actual.Value
         }
         $stage = 'compose-check'
         $composePath = Join-Path $root 'docker-compose.yml'
