@@ -52,10 +52,12 @@ try {
         $stubs = @()
         foreach ($entry in $extensionEntries) {
             if ($entry -notmatch '^([0-9]+) ([A-Za-z0-9._-]+)$') { throw 'Unexpected extension entry; do not mask it.' }
+            $size = [long]$Matches[1]
+            $name = $Matches[2]
             # A file bind mount under a volume leaves a zero-byte mount-point
             # stub after the container is recreated. It cannot be a loaded jar.
-            if ([long]$Matches[1] -eq 0 -and $Matches[2] -match '^corvex-(av-gate|av-parent)-[a-f0-9]{32}\.jar$') {
-                $stubs += $Matches[2]
+            if ($size -eq 0 -and $name -match '^corvex-(av-gate|av-parent)-[a-f0-9]{32}\.jar$') {
+                $stubs += $name
                 continue
             }
             throw 'Existing extension jars found or not inspectable; do not mask them.'

@@ -90,6 +90,14 @@ class RollbackDrillTest(unittest.TestCase):
         self.assertIn('Zero-byte mount-point stubs from earlier runs', enable)
         self.assertIn('Existing extension jars found or not inspectable', enable)
 
+    def test_stub_names_are_captured_before_other_matches(self):
+        enable = (SCRIPTS / 'enable-james-av.ps1').read_text(encoding='utf-8')
+        self.assertIn('$name = $Matches[2]', enable)
+        self.assertIn('$stubs += $name', enable)
+        self.assertNotIn('$stubs += $Matches[2]', enable)
+        drill = self.text
+        self.assertIn('$isOwnStub = $entry.Name -match', drill)
+
     def test_reads_status_without_printing_full_inspect(self):
         self.assertIn('$result.Output[0] | ConvertFrom-Json', self.text)
         self.assertNotIn('Write-Host $raw', self.text)
