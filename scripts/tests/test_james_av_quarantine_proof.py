@@ -52,7 +52,8 @@ class QuarantineProofTest(unittest.TestCase):
         self.assertIn('pass -Login', self.text)
         self.assertIn('JamesAvQuarantineProbe check', self.text)
         check = self.text.index('JamesAvQuarantineProbe check')
-        self.assertLess(check, self.text.index('force-recreate james'))
+        candidate = self.text.index("smtp-quarantine-proof.xml'")
+        self.assertLess(check, candidate)
 
     def test_absence_and_repository_delta_are_both_required(self):
         self.assertIn('JamesAvQuarantineProbe absent', self.text)
