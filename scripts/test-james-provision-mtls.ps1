@@ -1,11 +1,13 @@
 <# Read-only mTLS / route check from running mail-storage. No restart or user changes. #>
+param([string]$ComposeDir = (Join-Path $PSScriptRoot '..'))
 $ErrorActionPreference = 'Stop'
-$Repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$Repo = (Resolve-Path -LiteralPath $ComposeDir).Path
 $Source = Join-Path $PSScriptRoot 'JamesProvisionMtlsProbe.java'
 if (-not (Get-Command javac -ErrorAction SilentlyContinue)) { throw 'FAIL: JDK 17 javac required.' }
 $Temp = Join-Path ([IO.Path]::GetTempPath()) ('corvex-admin-probe-' + [guid]::NewGuid().ToString('N'))
 $Remote = '/tmp/corvex-admin-probe-' + [guid]::NewGuid().ToString('N')
 $Container = $null
+$OwnedRemote = $false
 try {
     New-Item -ItemType Directory -Path $Temp | Out-Null
     & javac --release 17 -d $Temp $Source
@@ -17,13 +19,14 @@ try {
         $Container = $ids[0].Trim()
         & docker exec $Container mkdir $Remote
         if ($LASTEXITCODE -ne 0) { throw 'FAIL: create probe directory' }
+        $OwnedRemote = $true
         & docker cp (Join-Path $Temp 'JamesProvisionMtlsProbe.class') "${Container}:${Remote}/"
         if ($LASTEXITCODE -ne 0) { throw 'FAIL: copy probe' }
         & docker exec $Container java -cp $Remote JamesProvisionMtlsProbe
         if ($LASTEXITCODE -ne 0) { throw 'FAIL: mTLS/route probe; no user or mail was changed' }
     } finally { Pop-Location }
 } finally {
-    if ($Container) {
+    if ($Container -and $OwnedRemote -and $Remote -match '^/tmp/corvex-admin-probe-[0-9a-f]{32}$') {
         & docker exec $Container rm -f "$Remote/JamesProvisionMtlsProbe.class"
         & docker exec $Container rmdir $Remote
     }
