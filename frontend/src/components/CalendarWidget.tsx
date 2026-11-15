@@ -8,7 +8,7 @@ import { localeTag, useI18n } from '../i18n';
  * позволяет переключаться на предыдущий/следующий, выделяет сегодняшний день.
  * Не симулирует сохранение событий и не заявляет о серверном хранении.
  */
-export function CalendarWidget({ className = '' }: { className?: string }) {
+export function CalendarWidget({ className = '', compact = false }: { className?: string; compact?: boolean }) {
   const { locale, t } = useI18n();
   const [open, setOpen] = useState(false);
   const [viewMonth, setViewMonth] = useState(new Date());
@@ -78,19 +78,21 @@ export function CalendarWidget({ className = '' }: { className?: string }) {
     setViewMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1));
 
   return (
-    <div ref={wrapperRef} className={`relative ${className}`}>
+    <div ref={wrapperRef} className="relative">
       <button
         type="button"
         ref={triggerRef}
         onClick={() => setOpen((o) => !o)}
-        className="flex min-h-14 w-full flex-col items-center justify-center gap-0.5 rounded-xl px-1 text-[10px] font-medium text-muted transition hover:bg-black/[0.04] hover:text-ink md:min-h-[58px] md:gap-1"
+        className={compact
+          ? `rail-btn ${className}`
+          : `flex min-h-14 w-full flex-col items-center justify-center gap-0.5 rounded-xl px-1 text-[10px] font-medium text-muted transition hover:bg-black/[0.04] hover:text-ink md:min-h-[58px] md:gap-1 ${className}`}
         aria-expanded={open}
         aria-controls={open ? dialogId : undefined}
         aria-haspopup="dialog"
         aria-label={t('Календарь')}
       >
         <CalendarIcon size={20} strokeWidth={1.75} />
-        <span>{t('Календарь')}</span>
+        {compact ? null : <span>{t('Календарь')}</span>}
       </button>
 
       {open && (

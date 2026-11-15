@@ -152,17 +152,11 @@ export default function AppShell() {
     0,
   );
 
+  // Круглые кнопки-иконки как в макете: подпись остаётся в aria-label/title.
   const navItem = (to: string, label: string, Icon: typeof Mail, badge?: number) => (
-    <NavLink
-      key={to}
-      to={to}
-      className={({ isActive }) => `group relative flex min-h-[58px] w-full flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium transition duration-150 ${isActive ? 'bg-accent-soft text-accent-dark' : 'text-muted hover:bg-black/[0.04] hover:text-ink'}`}
-    >
-      <span className="relative">
-        <Icon size={21} strokeWidth={1.75} />
-        {badge ? <span className="absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-semibold text-white">{badge}</span> : null}
-      </span>
-      <span>{label}</span>
+    <NavLink key={to} to={to} aria-label={label} title={label} className="rail-btn relative">
+      <Icon size={20} strokeWidth={1.75} />
+      {badge ? <span className="rail-badge">{badge}</span> : null}
     </NavLink>
   );
 
@@ -201,39 +195,38 @@ export default function AppShell() {
           <LogoMark size={40} />
         </button>
 
-        <nav className="mt-8 flex w-full flex-col gap-1.5" aria-label={t('Основная навигация')}>
+        <nav className="mt-6 flex w-full flex-col items-center gap-2" aria-label={t('Основная навигация')}>
           {navItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
           {navItem('/chat', t('Чат'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
-          <CalendarWidget />
+          <CalendarWidget compact />
           {canAdmin && navItem('/admin', t('Админ'), ShieldCheck)}
         </nav>
 
-        <button type="button" onClick={() => setSettingsOpen(true)} className="mt-1.5 flex min-h-[58px] w-full flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium text-muted transition hover:bg-black/[0.04] hover:text-ink" aria-label={t('Личные настройки')}>
-          <Settings2 size={20} strokeWidth={1.75} />{t('Настройки')}
+        <button type="button" onClick={() => setSettingsOpen(true)} className="rail-btn mt-1.5" aria-label={t('Личные настройки')} title={t('Личные настройки')}>
+          <Settings2 size={20} strokeWidth={1.75} />
         </button>
 
         <button
           type="button"
           onClick={() => setPaletteOpen(true)}
-          className="mt-5 flex min-h-[58px] w-full flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium text-muted transition hover:bg-black/[0.04] hover:text-ink"
+          className="rail-btn mt-4"
+          aria-label={t('Быстрый переход')}
+          title={`${t('Быстрый переход')} (Ctrl+K)`}
         >
           <Search size={20} strokeWidth={1.75} />
-          {t('Перейти')}
-          <span className="flex items-center gap-0.5 text-[9px] text-faint"><Command size={9} />K</span>
         </button>
 
         <button
           type="button"
           onClick={() => setLocale(nextLocale)}
-          className="mt-1.5 flex min-h-[52px] w-full flex-col items-center justify-center gap-0.5 rounded-xl px-1 text-[10px] font-semibold text-muted transition hover:bg-black/[0.04] hover:text-ink"
+          className="rail-btn mt-1.5 text-[11px] font-semibold tracking-wide"
           aria-label={`${t('Язык интерфейса')}: ${locale === 'ru' ? t('Русский') : t('Английский')}`}
           title={t('Язык интерфейса')}
         >
-          <Globe size={18} strokeWidth={1.75} />
           {locale.toUpperCase()}
         </button>
 
-        <div className="mt-auto flex flex-col items-center gap-3">
+        <div className="mt-auto flex flex-col items-center gap-2">
           {demoMode && <span className="rounded-full bg-amber-100 px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-amber-800">{t('Демо')}</span>}
           <Clock className="mt-1" />
           <button type="button" onClick={() => setProfileOpen(!profileOpen)} className="rounded-full ring-accent/30 transition hover:ring-4" aria-label={t('Профиль пользователя')}>

@@ -322,6 +322,12 @@ const EN: Record<string, string> = {
   'При возврате в визуальный редактор неподдерживаемая разметка будет удалена. Продолжить?': 'Returning to the visual editor removes unsupported markup. Continue?',
   'Изображение заблокировано': 'Image blocked',
   'Показать изображения': 'Show images',
+  'Сохранение черновика…': 'Saving draft…',
+  'Черновик сохранён': 'Draft saved',
+  'Черновик не сохранён: сервер недоступен': 'Draft not saved: server unavailable',
+  'Слишком много вложений для черновика (до 10).': 'Too many attachments for a draft (max 10).',
+  'Вложение больше 3 МБ не сохраняется в черновике.': 'Attachments over 3 MB are not saved in a draft.',
+  'Вложения черновика больше 10 МБ.': 'Draft attachments exceed 10 MB.',
   'Скрыть изображения': 'Hide images',
   'Изображения загружаются с серверов отправителя: он увидит ваш IP-адрес.':
     'Images load from the sender’s servers: the sender can see your IP address.',

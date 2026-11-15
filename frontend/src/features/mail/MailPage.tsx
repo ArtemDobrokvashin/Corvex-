@@ -23,10 +23,11 @@ import {
 import { demoFolders, demoMails, DemoMail } from '../../api/demoData';
 import { externalMailApi, ExternalMailAccount } from '../../api/externalMailApi';
 import { ApiError } from '../../api/httpClient';
-import { mailApi, MailboxQuota, MailFolderView, MailMessageListItem, MailAttachmentView, SendAttachment } from '../../api/mailApi';
+import { mailApi, MailboxQuota, MailFolderView, MailMessageListItem, MailAttachmentView, SendAttachment, SavedDraft } from '../../api/mailApi';
 import ExternalMailAccountsModal from './ExternalMailAccountsModal';
 import MailboxUsage from './MailboxUsage';
 import MailAttachments from './MailAttachments';
+import { buildDraftPayload, draftSizeProblem, draftStatusKey, fileToAttachment } from './drafts';
 import MailSidebarActions from './MailSidebarActions';
 import CreateFolder from './CreateFolder';
 import FolderList from './FolderList';
@@ -67,20 +68,6 @@ function errorMessage(error: unknown): string {
 
 function splitAddresses(value?: string): string[] {
   return (value ?? '').split(/[;,]/).map((part) => part.trim()).filter(Boolean);
-}
-
-async function fileToAttachment(file: File): Promise<SendAttachment> {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  let binary = '';
-  const chunkSize = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-  }
-  return {
-    fileName: file.name,
-    contentType: file.type || 'application/octet-stream',
-    contentBase64: btoa(binary),
-  };
 }
 
 const MAIL_REFRESH_INTERVAL_MS = 15_000;
@@ -1013,6 +1000,8 @@ export default function MailPage() {
         <ComposePanel
           key={`${composeDraft.to}-${composeDraft.subject}`}
           initial={composeDraft}
+          autoSave={!demoMode}
+          initialDraft={null}
           currentEmail={sessionUser?.email ?? ''}
           externalAccounts={externalAccounts}
           onClose={() => setComposeDraft(null)}
@@ -1023,12 +1012,15 @@ export default function MailPage() {
   );
 }
 
-export function ComposePanel({ initial, currentEmail, externalAccounts, onClose, onSend }: {
+export function ComposePanel({ initial, currentEmail, externalAccounts, onClose, onSend, autoSave = true, initialDraft }: {
   initial: ComposeDraft;
   currentEmail: string;
   externalAccounts: ExternalMailAccount[];
   onClose: () => void;
   onSend: (draft: ComposeDraft, files: File[]) => Promise<void>;
+  /** Демо-режим не пишет на сервер. */
+  autoSave?: boolean;
+  initialDraft?: SavedDraft | null;
 }) {
   const { t } = useI18n();
   const [draft, setDraft] = useState(initial);
@@ -1039,6 +1031,11 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
   const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [savedId, setSavedId] = useState<string | null>(initialDraft?.id ?? null);
+  const savedRevision = useRef<number>(initialDraft?.revision ?? 0);
+  const [draftStatus, setDraftStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [draftNote, setDraftNote] = useState('');
+  const savingDraft = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<ComposeEditorHandle>(null);
   const sendAsAccounts = externalAccounts.filter((account) => account.enabled && account.sendEnabled && account.smtpEnabled);
@@ -1053,6 +1050,60 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, [draft, files, sent]);
 
+
+  // Автосохранение: сервер держит owner-scope и ревизию, поэтому вторая
+  // вкладка не перезапишет более новый текст молча.
+  useEffect(() => {
+    if (!autoSave || sent || sending) return;
+    const hasContent = Boolean(draft.to || draft.cc || draft.subject || draft.body || files.length);
+    if (!hasContent) return;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        if (savingDraft.current) return;
+        const problem = draftSizeProblem(files);
+        if (problem) {
+          setDraftStatus('error');
+          setDraftNote(problem === 'count' ? t('Слишком много вложений для черновика (до 10).')
+            : problem === 'file' ? t('Вложение больше 3 МБ не сохраняется в черновике.')
+              : t('Вложения черновика больше 10 МБ.'));
+          return;
+        }
+        savingDraft.current = true;
+        setDraftStatus('saving');
+        try {
+          const payload = await buildDraftPayload(draft, files);
+          if (savedId) {
+            const saved = await mailApi.updateDraft(savedId, savedRevision.current, payload);
+            savedRevision.current = saved.revision;
+            setSavedId(saved.id);
+          } else {
+            const saved = await mailApi.createDraft(payload);
+            savedRevision.current = saved.revision;
+            setSavedId(saved.id);
+          }
+          setDraftNote('');
+          setDraftStatus('saved');
+        } catch (error) {
+          setDraftStatus('error');
+          setDraftNote(errorMessage(error));
+        } finally {
+          savingDraft.current = false;
+        }
+      })();
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [autoSave, draft, files, sent, sending, savedId, t]);
+
+  const dropSavedDraft = async () => {
+    if (!savedId) return null;
+    try {
+      await mailApi.deleteDraft(savedId, savedRevision.current);
+      return null;
+    } catch {
+      // Отправка уже состоялась: черновик удалит следующий проход, письмо не теряется.
+      return savedId;
+    }
+  };
 
   const closeComposer = () => {
     if (sending) return;
@@ -1069,6 +1120,7 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
       setSendError(null);
       try {
         await onSend(draft, files);
+        await dropSavedDraft();
         setSent(true);
         window.setTimeout(onClose, 900);
       } catch (error) {
@@ -1099,6 +1151,13 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
           onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDraggingFiles(false); }}
           onDrop={(event) => { event.preventDefault(); setDraggingFiles(false); const dropped = Array.from(event.dataTransfer.files); if (dropped.length) setFiles((previous) => [...previous, ...dropped]); }}>
           {draggingFiles && <div className="bg-accent-soft px-4 py-2 text-sm text-accent-dark">{t('Отпустите файлы, чтобы прикрепить')}</div>}
+          {autoSave && draftStatus !== 'idle' && (
+            <p className={`px-4 pt-2 text-[11px] ${draftStatus === 'error' ? 'text-danger' : 'text-faint'}`} role="status" aria-live="polite">
+              {t(draftStatusKey(draftStatus) ?? '')}
+              {draftStatus === 'saved' ? ` ${new Date().toLocaleTimeString()}` : ''}
+              {draftNote ? ` · ${draftNote}` : ''}
+            </p>
+          )}
           {sendAsAccounts.length > 0 && (
             <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
               <label htmlFor="compose-from" className="w-12 shrink-0 text-[13px] text-faint">{t('От кого')}</label>
