@@ -1,6 +1,6 @@
 <# Prepare immutable James AV artifacts and save current mailet config. No deployment. #>
 [CmdletBinding()]
-param([string]$ComposeDir = (Get-Location).Path, [switch]$ConfirmLaptop)
+param([string]$ComposeDir = (Get-Location).Path, [string]$SourceCommit = 'HEAD', [switch]$ConfirmLaptop)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 if (-not $ConfirmLaptop) { throw 'FAIL: -ConfirmLaptop required.' }
@@ -44,8 +44,9 @@ try {
         $stage = 'archive'
         if (Test-Path -LiteralPath $work) { throw 'Workspace already exists.' }
         New-Item -ItemType Directory -Path $work | Out-Null
-        $commit = @(& git rev-parse '9e33cfa^{commit}' 2>$null)
-        if ($LASTEXITCODE -ne 0 -or $commit.Count -ne 1 -or $commit[0] -notmatch '^[a-f0-9]{40}$') { throw 'Candidate commit unavailable.' }
+        if ($SourceCommit -notmatch '^(HEAD|[A-Za-z0-9._/-]+)$') { throw 'Invalid source commit reference.' }
+        $commit = @(& git rev-parse "$($SourceCommit)^{commit}" 2>$null)
+        if ($LASTEXITCODE -ne 0 -or $commit.Count -ne 1 -or $commit[0] -notmatch '^[a-f0-9]{40}$') { throw 'Source commit unavailable; fetch it first.' }
         $fullCommit = $commit[0]
         $archive = Join-Path $work 'candidate.tar'
         & git archive '--format=tar' "--output=$archive" $fullCommit 'experiments/james-av-gate'
@@ -53,6 +54,10 @@ try {
         & tar -xf $archive -C $work
         if ($LASTEXITCODE -ne 0) { throw 'Archive extraction failed.' }
         $module = Join-Path $work 'experiments/james-av-gate'
+        # Guard against silently preparing an older gate than the reviewed one.
+        if (-not (Test-Path -LiteralPath (Join-Path $module 'src/main/java/ru/corvex/james/av/ClamdAddressCache.java') -PathType Leaf)) {
+            throw 'Source commit lacks the ClamAV address cache; pass a newer -SourceCommit.'
+        }
         $stage = 'save-running-config'
         $backup = Join-Path $work 'original-mailetcontainer.xml'
         $savedPreference = $ErrorActionPreference
@@ -83,7 +88,7 @@ try {
         } finally { $ErrorActionPreference = $savedPreference }
         if ($code -ne 0 -or (Get-FileHash -LiteralPath $confirm -Algorithm SHA256).Hash.ToLowerInvariant() -cne $before) { throw 'Running mailet config changed during preparation.' }
         $state = [ordered]@{
-            candidateCommit = $fullCommit; composeDir = (Get-Location).Path; jamesContainerId = $container; jamesImageId = $image[0]
+            candidateCommit = $fullCommit; sourceCommitReference = $SourceCommit; composeDir = (Get-Location).Path; jamesContainerId = $container; jamesImageId = $image[0]
             relevantMounts = @($relevantMounts)
             originalConfig = $backup; originalConfigSha256 = $before
             candidateXml = $xml; candidateXmlSha256 = (Get-FileHash -LiteralPath $xml -Algorithm SHA256).Hash.ToLowerInvariant()
