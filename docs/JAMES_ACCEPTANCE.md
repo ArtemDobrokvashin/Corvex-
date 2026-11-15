@@ -229,6 +229,15 @@ mount пока неизвестен. Сохранены все существу�
 подготовка выводит только destination/type соответствующих mounts и продолжает
 сборку и резервирование конфигурации без изменения контейнера. Сама эта
 инвентаризация не разрешает перезаписывать или скрывать существующий mount.
+Повтор `5cf0065` на ноутбуке: Maven с настоящими зависимостями и synthetic
+unit-тесты PASS; текущий `mailetcontainer.xml` совпадает с upstream sample по
+SHA-256. Пакет и backup сохранены в manifest
+`C:\Users\Dobrokvashin_A_E\AppData\Local\Temp\corvex-james-av-494ac4dea6ad42a1b492f579aa1adfa9\preparation-manifest.json`.
+Строки с mount destination/type в полученном фрагменте вывода отсутствуют, их
+нужно прочитать из manifest до изменения подключений. В исходном образе James
+PostgreSQL 3.9.1 `/root/conf` и `/root/extensions-jars` объявлены как Docker
+volumes; это объясняет возможные mounts, но не определяет фактические ПК mounts.
+Запуск James AV и класс-загрузчик пока не проверены.
 
 Даже после замены образа AlertExceedsMax не включён, а false CLEAN остаётся:
 кандидат один не устраняет его. До включения James AV и переноса реальной почты
