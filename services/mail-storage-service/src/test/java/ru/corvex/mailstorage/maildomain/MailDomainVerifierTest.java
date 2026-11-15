@@ -46,7 +46,7 @@ class MailDomainVerifierTest {
 
         private void fail(String name) {
             if (failFor != null && failFor.equals(name)) {
-                throw new DnsLookupException("timeout");
+                throw new DnsRecordSource.DnsLookupException("timeout");
             }
         }
     }
