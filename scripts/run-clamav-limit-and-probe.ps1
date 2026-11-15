@@ -7,6 +7,9 @@
 param(
     [Parameter(Mandatory = $true)][string]$SourceRoot,
     [string]$ComposeDir = (Get-Location).Path,
+    # After a successful apply the configuration must not be reapplied; this
+    # mode only runs the synthetic probe.
+    [switch]$ProbeOnly,
     [switch]$ConfirmLaptop
 )
 Set-StrictMode -Version Latest
@@ -53,21 +56,36 @@ try {
     if (-not (Test-Path -LiteralPath (Join-Path $ComposeDir 'docker-compose.yml') -PathType Leaf)) {
         throw 'Compose directory has no docker-compose.yml.'
     }
+    # Both steps need their own inputs; check them before changing anything.
+    $prerequisites = @(
+        (Join-Path $SourceRoot 'scripts/src/AvNestedArchiveProbe.java'),
+        (Join-Path $SourceRoot 'services/mail-storage-service/pom.xml'))
+    if (-not $ProbeOnly) { $prerequisites += $enable }
+    foreach ($required in $prerequisites) {
+        if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
+            throw ('Source archive is incomplete, missing: ' + $required + '. Export scripts AND services/mail-storage-service.')
+        }
+    }
+    if (-not (Test-Path -LiteralPath $probeScript -PathType Leaf)) { throw ('Missing probe script: ' + $probeScript) }
     Write-Result ("Log: " + $log)
-    $dry = Invoke-Step 'dry' $enable @('-ComposeDir', $ComposeDir, '-ConfirmLaptop')
-    if ($dry -ne 0) {
-        $code = 1
-        Write-Result 'RESULT: dry-run failed; nothing was changed.'
-        throw 'Dry-run failed; see the log above.'
+    if (-not $ProbeOnly) {
+        $dry = Invoke-Step 'dry' $enable @('-ComposeDir', $ComposeDir, '-ConfirmLaptop')
+        if ($dry -ne 0) {
+            $code = 1
+            Write-Result 'RESULT: dry-run failed; nothing was changed.'
+            throw 'Dry-run failed; see the log above.'
+        }
+        $apply = Invoke-Step 'apply' $enable @('-ComposeDir', $ComposeDir, '-ConfirmLaptop', '-Apply')
+        if ($apply -ne 0) {
+            $code = 2
+            Write-Result 'RESULT: apply failed; ClamAV may be recreated without the setting. Inspect before any retry.'
+            throw 'Apply failed; see the log above.'
+        }
+        # The gate caches ClamAV addresses for 30 seconds.
+        Start-Sleep -Seconds 45
+    } else {
+        Write-Result 'Probe-only mode: configuration was not changed.'
     }
-    $apply = Invoke-Step 'apply' $enable @('-ComposeDir', $ComposeDir, '-ConfirmLaptop', '-Apply')
-    if ($apply -ne 0) {
-        $code = 2
-        Write-Result 'RESULT: apply failed; ClamAV may be recreated without the setting. Inspect before any retry.'
-        throw 'Apply failed; see the log above.'
-    }
-    # The gate caches ClamAV addresses for 30 seconds.
-    Start-Sleep -Seconds 45
     $probe = Invoke-Step 'probe' $probeScript @('-SourceRoot', $SourceRoot, '-ComposeDir', $ComposeDir, '-ConfirmLaptop')
     if ($probe -ne 0) {
         $code = 3

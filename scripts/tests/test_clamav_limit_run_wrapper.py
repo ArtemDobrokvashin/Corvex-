@@ -26,6 +26,15 @@ class ClamavLimitRunWrapperTest(unittest.TestCase):
             self.assertNotIn(forbidden, self.text)
         self.assertIn('does not', self.text)
 
+    def test_prerequisites_are_checked_before_any_change(self):
+        self.assertIn('[switch]$ProbeOnly', self.text)
+        self.assertIn('services/mail-storage-service/pom.xml', self.text)
+        self.assertLess(self.text.index('Source archive is incomplete'), self.text.index("Invoke-Step 'dry'"))
+
+    def test_probe_only_skips_configuration(self):
+        self.assertIn('if (-not $ProbeOnly)', self.text)
+        self.assertIn('Probe-only mode: configuration was not changed.', self.text)
+
     def test_steps_run_in_order_and_stop_on_failure(self):
         self.assertLess(self.text.index("Invoke-Step 'dry'"), self.text.index("Invoke-Step 'apply'"))
         self.assertLess(self.text.index("Invoke-Step 'apply'"), self.text.index("Invoke-Step 'probe'"))
