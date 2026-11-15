@@ -29,7 +29,8 @@ class MailDomainServiceTest {
     private MailDomainService service(Optional<JamesDomainAdmin> james) {
         return new MailDomainService(store, james,
                 new MailDomainVerifier(new EmptyDns(), List.of("mail.company.local"), "corvex1"),
-                Optional.empty(), List.of("company.local"), List.of("mail.company.local"), "corvex1",
+                Optional.empty(), AcceptedDomains.staticOnly("company.local"),
+                List.of("mail.company.local"), "corvex1",
                 Duration.ofHours(1), Duration.ofMinutes(2), CLOCK);
     }
 

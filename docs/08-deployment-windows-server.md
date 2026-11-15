@@ -73,6 +73,33 @@ notepad .env              # домены, LDAP при наличии AD, пол�
 | `TXT _dmarc` | `v=DMARC1; p=none; rua=mailto:dmarc@company.local` → через месяц `p=quarantine` | политика подделок и отчёты |
 | `CNAME autoconfig`, SRV `_imaps._tcp` и т.п. | на `mail.company.local` | автоконфиг Thunderbird/Outlook — пользователи не вводят серверы руками |
 
+### Второй и последующие собственные домены
+
+Домен добавляется в админке (`/api/v1/mail/admin/domains`, право
+`ADMIN_MAIL_POLICY`), создаётся в James и подтверждается DNS-проверкой. Точные
+записи для регистратора печатает `GET /{domain}/dns`: там же реальный `p=`
+действующего ключа, поэтому ключи вручную не копируются.
+
+Для подписи исходящих писем второго домена нужен отдельный ключ:
+
+```powershell
+# infra\secrets\dkim\<domain>.pem + необязательный <domain>.selector
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out infra\secrets\dkim\company.ru.pem
+"corvex1" | Out-File -Encoding ascii infra\secrets\dkim\company.ru.selector
+docker compose restart mail-smtp-service
+```
+
+Каталог `infra/secrets/dkim` монтируется в `mail-smtp-service` read-only
+(`CORVEX_DKIM_KEYS_DIR`). Ключ выбирается по домену From; ключ одного домена
+никогда не применяется к другому. Добавление ключа требует перезапуска
+сервиса — это осознанно, чтобы не перечитывать каталог на каждое письмо.
+
+Принимаемые домены: `CORVEX_MAIL_DOMAINS` остаётся аварийным статическим
+списком, а подтверждённые в реестре домены SMTP получает от mail-storage
+(`/internal/mail/domains/accepted`, кэш 30 c). Правка `.env` для нового домена
+не требуется; если реестр недоступен, письмо на неизвестный домен получает
+`451`, а не отказ «нет такого пользователя».
+
 ## Шаг 8. Запуск
 
 ```powershell

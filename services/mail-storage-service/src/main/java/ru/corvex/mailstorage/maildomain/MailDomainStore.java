@@ -55,6 +55,16 @@ public class MailDomainStore {
                 + "created_by, created_at FROM mail_domains ORDER BY domain", (rs, index) -> map(rs));
     }
 
+    /**
+     * Домены, которые сервер действительно принимает: включённые в реестре и
+     * подтверждённые в James. Непроверенные DNS-записи сюда не входят: они
+     * влияют на готовность, но не на факт существования домена.
+     */
+    public List<String> deliveryDomains() {
+        return jdbc.queryForList("SELECT domain FROM mail_domains "
+                + "WHERE enabled = TRUE AND james_state = 'CREATED' ORDER BY domain", String.class);
+    }
+
     /** true только если строка была именно в одном из разрешённых состояний. */
     public boolean claimRequest(UUID id, List<String> allowedFrom) {
         if (allowedFrom.isEmpty()) {

@@ -3,9 +3,11 @@ package ru.corvex.mailstorage.maildomain;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Optional;
@@ -37,12 +39,14 @@ public class HttpDkimKeyProbe implements DkimKeyProbe {
     }
 
     @Override
-    public Optional<SigningKey> signingKey() {
+    public Optional<SigningKey> signingKey(String domain) {
         if (internalToken == null || internalToken.isBlank()) {
             return Optional.empty();
         }
         try {
-            HttpRequest request = HttpRequest.newBuilder(endpoint)
+            String url = endpoint + (endpoint.getQuery() == null ? "?" : "&")
+                    + "domain=" + URLEncoder.encode(domain, StandardCharsets.UTF_8);
+            HttpRequest request = HttpRequest.newBuilder(URI.create(url))
                     .timeout(Duration.ofSeconds(3))
                     .header("X-Corvex-Internal-Token", internalToken)
                     .header("Accept", "application/json")
@@ -53,14 +57,14 @@ public class HttpDkimKeyProbe implements DkimKeyProbe {
                 return Optional.empty();
             }
             JsonNode body = mapper.readTree(response.body());
-            String domain = body.path("domain").asText("");
+            String keyDomain = body.path("domain").asText("");
             String selector = body.path("selector").asText("");
             String key = body.path("publicKeyBase64").asText("");
-            if (domain.isBlank() || selector.isBlank() || key.isBlank()) {
+            if (keyDomain.isBlank() || selector.isBlank() || key.isBlank()) {
                 return Optional.empty();
             }
             // Домен и селектор попадают в DNS-имя: принимаем только безопасные.
-            String normalizedDomain = MailDomainName.normalize(domain);
+            String normalizedDomain = MailDomainName.normalize(keyDomain);
             if (!selector.matches("[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")) {
                 return Optional.empty();
             }

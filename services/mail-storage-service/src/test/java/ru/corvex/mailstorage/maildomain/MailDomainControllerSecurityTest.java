@@ -36,7 +36,8 @@ class MailDomainControllerSecurityTest {
 
     private static MailDomainService.View view(String state, boolean receiving) {
         return new MailDomainService.View(UUID.randomUUID(), "company.local", true, state, null, true, true,
-                true, Instant.parse("2026-10-19T10:00:00Z"), true, receiving, false, null, List.of(), List.of());
+                "STATIC", true, Instant.parse("2026-10-19T10:00:00Z"), true, receiving, false, null,
+                List.of(), List.of());
     }
 
     @Test void rejectsAnonymousAndUnauthorizedAdministrators() throws Exception {

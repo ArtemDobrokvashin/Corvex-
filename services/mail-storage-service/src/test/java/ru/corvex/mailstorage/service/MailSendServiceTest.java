@@ -270,9 +270,45 @@ class MailSendServiceTest {
         verify(factory).compose(eq("external@mail.test"), eq("External Name"), anyString(), any(), any(), any());
     }
 
+    @Test
+    void domainConfirmedInRegistryIsDeliveredLocallyWithoutRestart() throws Exception {
+        var store = mock(ru.corvex.mailstorage.maildomain.MailDomainStore.class);
+        when(store.deliveryDomains()).thenReturn(List.of("new.example"));
+        var accepted = new ru.corvex.mailstorage.maildomain.AcceptedDomains(
+                Set.of("company.local"), store, java.time.Duration.ofSeconds(30),
+                java.time.Duration.ofMinutes(5), java.time.Clock.systemUTC());
+        MailSendService withRegistry = new MailSendService(auth, factory, spool, delivery, events, indexer,
+                externalAccounts, accepted);
+        when(delivery.storeSentCopy(eq(sender), anyString(), anyLong())).thenReturn(Optional.empty());
+
+        var result = withRegistry.send(senderId, ALL, request(
+                List.of("a@new.example"), List.of(), List.of(), false, null));
+
+        assertEquals(List.of("a@new.example"), result.localRecipients());
+        assertEquals(List.of(), result.externalRecipients());
+        verify(events).publishConfirmed(eq("mail.inbound.received"), any(), anyString());
+    }
+
+    @Test
+    void unknownDomainDuringRegistryOutageStopsInsteadOfRelayingExternally() throws Exception {
+        var store = mock(ru.corvex.mailstorage.maildomain.MailDomainStore.class);
+        when(store.deliveryDomains()).thenThrow(new IllegalStateException("db down"));
+        var accepted = new ru.corvex.mailstorage.maildomain.AcceptedDomains(
+                Set.of("company.local"), store, java.time.Duration.ofSeconds(30),
+                java.time.Duration.ofMinutes(5), java.time.Clock.systemUTC());
+        MailSendService withRegistry = new MailSendService(auth, factory, spool, delivery, events, indexer,
+                externalAccounts, accepted);
+
+        var error = assertThrows(ResponseStatusException.class, () -> withRegistry.send(senderId, ALL,
+                request(List.of("a@new.example"), List.of(), List.of(), false, null)));
+
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, error.getStatusCode());
+        verify(events, never()).publishConfirmed(eq("mail.outbound.queued"), any(), anyString());
+    }
+
     private MailSendService service(RawMessageSpool spoolToUse) {
         return new MailSendService(auth, factory, spoolToUse, delivery, events, indexer, externalAccounts,
-                " Company.Local, Example.Internal ");
+                ru.corvex.mailstorage.maildomain.AcceptedDomains.staticOnly(" Company.Local, Example.Internal "));
     }
 
     private MailDeliveryService.DeliveryResult deliveryResult(UUID id) {

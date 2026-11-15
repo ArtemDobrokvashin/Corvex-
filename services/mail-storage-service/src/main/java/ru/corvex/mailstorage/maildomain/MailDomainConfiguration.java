@@ -32,6 +32,20 @@ public class MailDomainConfiguration {
         return new DnsjavaRecordSource();
     }
 
+    /**
+     * Принимаемые домены: `CORVEX_MAIL_DOMAINS` плюс реестр, подтверждённый в
+     * James. TTL ограничивает частоту чтения БД, max-stale — срок, после
+     * которого устаревшее значение перестаёт считаться доказательством.
+     */
+    @Bean
+    AcceptedDomains acceptedDomains(MailDomainStore store,
+            @Value("${corvex.mail.domains:${CORVEX_MAIL_DOMAINS:company.local}}") String configured,
+            @Value("${corvex.domains.registry-ttl-seconds:30}") long ttlSeconds,
+            @Value("${corvex.domains.registry-max-stale-seconds:300}") long maxStaleSeconds) {
+        return new AcceptedDomains(new java.util.LinkedHashSet<>(csv(configured)), store,
+                Duration.ofSeconds(ttlSeconds), Duration.ofSeconds(maxStaleSeconds), Clock.systemUTC());
+    }
+
     @Bean
     MailDomainVerifier mailDomainVerifier(DnsRecordSource dns,
             @Value("${corvex.domains.expected-mx-hosts:${CORVEX_DOMAIN:mail.company.local}}") String mxHosts,
@@ -52,14 +66,13 @@ public class MailDomainConfiguration {
 
     @Bean
     MailDomainService mailDomainService(MailDomainStore store, ObjectProvider<JamesDomainAdmin> james,
-            MailDomainVerifier verifier, ObjectProvider<DkimKeyProbe> probe,
-            @Value("${corvex.mail.domains:${CORVEX_MAIL_DOMAINS:company.local}}") String acceptingDomains,
+            MailDomainVerifier verifier, ObjectProvider<DkimKeyProbe> probe, AcceptedDomains acceptedDomains,
             @Value("${corvex.domains.expected-mx-hosts:${CORVEX_DOMAIN:mail.company.local}}") String mxHosts,
             @Value("${corvex.domains.dkim-selector:${CORVEX_DKIM_SELECTOR:corvex1}}") String dkimSelector,
             @Value("${corvex.domains.max-check-age-seconds:3600}") long maxCheckAgeSeconds,
             @Value("${corvex.domains.james-request-timeout-seconds:120}") long requestTimeoutSeconds) {
         return new MailDomainService(store, Optional.ofNullable(james.getIfAvailable()), verifier,
-                Optional.ofNullable(probe.getIfAvailable()), csv(acceptingDomains), csv(mxHosts), dkimSelector,
+                Optional.ofNullable(probe.getIfAvailable()), acceptedDomains, csv(mxHosts), dkimSelector,
                 Duration.ofSeconds(maxCheckAgeSeconds), Duration.ofSeconds(requestTimeoutSeconds),
                 Clock.systemUTC());
     }

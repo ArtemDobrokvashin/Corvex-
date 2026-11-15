@@ -3,7 +3,6 @@ package ru.corvex.mailstorage.service;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.AddressException;
 import jakarta.mail.internet.InternetAddress;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -11,6 +10,7 @@ import ru.corvex.mailstorage.api.dto.MailDtos;
 import ru.corvex.mailstorage.client.AuthUserClient;
 import ru.corvex.mailstorage.domain.ExternalMailAccount;
 import ru.corvex.mailstorage.external.ExternalMailAccountService;
+import ru.corvex.mailstorage.maildomain.AcceptedDomains;
 import ru.corvex.mailstorage.mime.OutgoingMessageFactory;
 import ru.corvex.mailstorage.pipeline.MailEventPublisher;
 import ru.corvex.mailstorage.pipeline.MailPipelineEvents;
@@ -26,8 +26,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * Отправка из webmail: одно MIME-письмо раскладывается на независимые spool-копии —
@@ -49,7 +47,7 @@ public class MailSendService {
     private final MailEventPublisher events;
     private final MessageSearchIndexer indexer;
     private final ExternalMailAccountService externalAccounts;
-    private final Set<String> localDomains;
+    private final AcceptedDomains acceptedDomains;
 
     public MailSendService(AuthUserClient auth,
                            OutgoingMessageFactory factory,
@@ -58,7 +56,7 @@ public class MailSendService {
                            MailEventPublisher events,
                            MessageSearchIndexer indexer,
                            ExternalMailAccountService externalAccounts,
-                           @Value("${corvex.mail.domains:${CORVEX_MAIL_DOMAINS:company.local}}") String domainsCsv) {
+                           AcceptedDomains acceptedDomains) {
         this.auth = auth;
         this.factory = factory;
         this.spool = spool;
@@ -66,8 +64,7 @@ public class MailSendService {
         this.events = events;
         this.indexer = indexer;
         this.externalAccounts = externalAccounts;
-        this.localDomains = Stream.of(domainsCsv.split(","))
-                .map(String::trim).map(s -> s.toLowerCase(Locale.ROOT)).collect(Collectors.toSet());
+        this.acceptedDomains = acceptedDomains;
     }
 
     public MailDtos.SendMessageResult send(UUID senderId, Set<String> permissions, MailDtos.SendMessageRequest req)
@@ -219,8 +216,21 @@ public class MailSendService {
         return new ArrayList<>(out);
     }
 
+    /**
+     * Локальный домен определяется реестром, а не копией CSV: добавленный и
+     * подтверждённый в James домен сразу получает локальную доставку.
+     *
+     * <p>UNKNOWN (реестр недоступен, статического домена нет) — это не «чужой»:
+     * отправить письмо на собственный домен через внешний релей значило бы
+     * получить петлю. Поэтому отправка честно останавливается с 503.
+     */
     private boolean isLocal(String email) {
-        return localDomains.contains(domainOf(email));
+        return switch (acceptedDomains.classify(domainOf(email))) {
+            case LOCAL -> true;
+            case FOREIGN -> false;
+            case UNKNOWN -> throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Не удалось подтвердить домен получателя: список почтовых доменов недоступен");
+        };
     }
 
     private static String domainOf(String email) {

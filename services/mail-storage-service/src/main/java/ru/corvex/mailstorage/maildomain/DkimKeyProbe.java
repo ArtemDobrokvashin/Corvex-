@@ -8,8 +8,11 @@ import java.util.Optional;
  */
 public interface DkimKeyProbe {
 
-    /** @return ключ отправителя или empty, если он недоступен/не настроен. */
-    Optional<SigningKey> signingKey();
+    /**
+     * @param domain домен, для которого нужен ключ
+     * @return ключ отправителя или empty, если для этого домена его нет
+     */
+    Optional<SigningKey> signingKey(String domain);
 
     record SigningKey(String domain, String selector, String publicKeyBase64) { }
 }

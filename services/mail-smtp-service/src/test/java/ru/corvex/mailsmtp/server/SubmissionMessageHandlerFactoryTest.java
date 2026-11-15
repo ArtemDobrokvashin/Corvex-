@@ -282,8 +282,66 @@ class SubmissionMessageHandlerFactoryTest {
     }
 
     private SubmissionMessageHandlerFactory factory(InboundMessageHandlerFactory.RecipientPolicy policy) {
+        return factory(policy, LocalDomainPolicy.staticOnly(" Company.Local, Branch.Local "));
+    }
+
+    private SubmissionMessageHandlerFactory factory(InboundMessageHandlerFactory.RecipientPolicy policy,
+                                                    LocalDomainPolicy domains) {
         return new SubmissionMessageHandlerFactory(
-                identities, policy, storage, rawClient, rabbit.rabbit, mapper, " Company.Local, Branch.Local ");
+                identities, policy, storage, rawClient, rabbit.rabbit, mapper, domains);
+    }
+
+    @Test
+    void domainFromRegistryIsDeliveredLocally() throws Exception {
+        // Реестр отдаёт домен, которого нет в статическом списке.
+        var registry = com.sun.net.httpserver.HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        registry.createContext("/internal/mail/domains/accepted", exchange -> {
+            byte[] payload = "{\"domains\":[\"new.example\"]}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, payload.length);
+            exchange.getResponseBody().write(payload);
+            exchange.close();
+        });
+        registry.start();
+        try {
+            var domains = LocalDomainPolicy.withRegistry("company.local",
+                    "http://127.0.0.1:" + registry.getAddress().getPort() + "/internal/mail/domains/accepted",
+                    "token", mapper);
+            var policy = (InboundMessageHandlerFactory.RecipientPolicy) address ->
+                    InboundMessageHandlerFactory.RecipientPolicy.Decision.ACCEPT;
+            MessageHandler handler = factory(policy, domains).create(context("alice@company.local"));
+            when(storage.storeRaw(any(InputStream.class))).thenReturn(stored("ref", "sha", 1L));
+            when(identities.lookupCached(anyString())).thenReturn(Optional.of(mailbox("MAIL_SEND_INTERNAL")));
+
+            handler.from("alice@company.local");
+            handler.recipient("bob@new.example");
+            handler.data(stream());
+
+            // Домен реестра обработан как локальный: письмо ушло в inbound-событие.
+            assertEquals(1, rabbit.published.size());
+            assertTrue(rabbit.published.get(0).routingKey().startsWith("mail.inbound"));
+        } finally {
+            registry.stop(0);
+        }
+    }
+
+    @Test
+    void unknownDomainDuringRegistryOutageIsTemporaryFailureNotRelay() throws Exception {
+        int closedPort = closedPort();
+        var domains = LocalDomainPolicy.withRegistry("company.local",
+                "http://127.0.0.1:" + closedPort + "/internal/mail/domains/accepted", "token", mapper);
+        MessageHandler handler = factory(address -> InboundMessageHandlerFactory.RecipientPolicy.Decision.ACCEPT,
+                domains).create(context("alice@company.local"));
+        when(identities.lookupCached(anyString())).thenReturn(Optional.of(mailbox("MAIL_SEND_INTERNAL")));
+
+        handler.from("alice@company.local");
+        assertReject(451, "Temporary local problem", () -> handler.recipient("bob@new.example"));
+        verifyNoInteractions(storage);
+    }
+
+    private static int closedPort() throws IOException {
+        try (java.net.ServerSocket socket = new java.net.ServerSocket(0)) {
+            return socket.getLocalPort();
+        }
     }
 
     private MessageContext context(Object identity) throws Exception {
