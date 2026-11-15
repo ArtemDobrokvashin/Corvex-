@@ -29,16 +29,27 @@ public interface MailFolderRepository extends JpaRepository<MailFolder, UUID> {
 
     // ---- Протокольный API этапа 3: CREATE/DELETE/RENAME папок из IMAP. ----
 
+    /** Сериализует изменения имён одного владельца до завершения текущей транзакции. */
+    @Query(value = "select cast(pg_advisory_xact_lock(hashtextextended(:ownerId, 0)) as text)", nativeQuery = true)
+    String lockFolderNames(@Param("ownerId") String ownerId);
+
     boolean existsByParent_Id(UUID parentId);
 
-    /** Уникальность имени среди соседей; parentId=null сравнивается через IS NULL явно. */
+    /** Отдельные запросы избегают нетипизированного NULL-параметра в PostgreSQL. */
     @Query("""
             select count(f) > 0 from MailFolder f
-            where f.ownerId = :ownerId
-              and ((:parentId is null and f.parent is null) or f.parent.id = :parentId)
-              and lower(f.name) = lower(:name)
+            where f.ownerId = :ownerId and f.parent is null and lower(f.name) = lower(:name)
             """)
-    boolean existsSibling(@Param("ownerId") UUID ownerId,
-                          @Param("parentId") UUID parentId,
-                          @Param("name") String name);
+    boolean existsRootSibling(@Param("ownerId") UUID ownerId, @Param("name") String name);
+
+    @Query("""
+            select count(f) > 0 from MailFolder f
+            where f.ownerId = :ownerId and f.parent.id = :parentId and lower(f.name) = lower(:name)
+            """)
+    boolean existsChildSibling(@Param("ownerId") UUID ownerId, @Param("parentId") UUID parentId,
+                               @Param("name") String name);
+
+    default boolean existsSibling(UUID ownerId, UUID parentId, String name) {
+        return parentId == null ? existsRootSibling(ownerId, name) : existsChildSibling(ownerId, parentId, name);
+    }
 }

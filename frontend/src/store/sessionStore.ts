@@ -15,8 +15,14 @@ export interface DemoChatMessage {
 interface PersistedDemoReadState {
   userId: string | null;
   demoReadMailIds: string[];
+  demoUnreadMailIds: string[];
   demoReadRoomIds: string[];
   demoSentChatMessages: DemoChatMessage[];
+}
+
+/** Apply explicit demo overrides to the sample message's original seen flag. */
+export function demoMailIsSeen(mail: { id: string; seen: boolean }, readIds: readonly string[], unreadIds: readonly string[]): boolean {
+  return !unreadIds.includes(mail.id) && (mail.seen || readIds.includes(mail.id));
 }
 
 const MAX_DEMO_SENT_CHAT_MESSAGES = 100;
@@ -24,6 +30,7 @@ const MAX_DEMO_SENT_CHAT_MESSAGES = 100;
 const EMPTY_DEMO_READ_STATE: PersistedDemoReadState = {
   userId: null,
   demoReadMailIds: [],
+  demoUnreadMailIds: [],
   demoReadRoomIds: [],
   demoSentChatMessages: [],
 };
@@ -81,6 +88,7 @@ function loadDemoReadState(): PersistedDemoReadState {
     return {
       userId: typeof parsed.userId === 'string' ? parsed.userId : null,
       demoReadMailIds: sanitizeIds(parsed.demoReadMailIds),
+      demoUnreadMailIds: sanitizeIds(parsed.demoUnreadMailIds),
       demoReadRoomIds: sanitizeIds(parsed.demoReadRoomIds),
       demoSentChatMessages: sanitizeDemoChatMessages(parsed.demoSentChatMessages),
     };
@@ -95,6 +103,7 @@ let persistedDemoReadUserId = loadedDemoReadState.userId;
 function saveDemoReadState(
   userId: string,
   demoReadMailIds: string[],
+  demoUnreadMailIds: string[],
   demoReadRoomIds: string[],
   demoSentChatMessages: DemoChatMessage[],
 ): void {
@@ -105,6 +114,7 @@ function saveDemoReadState(
     storage.setItem(DEMO_READ_STATE_STORAGE_KEY, JSON.stringify({
       userId,
       demoReadMailIds,
+      demoUnreadMailIds,
       demoReadRoomIds,
       demoSentChatMessages: sanitizeDemoChatMessages(demoSentChatMessages),
     }));
@@ -144,8 +154,9 @@ interface SessionState {
   demoMode: boolean;
   /** Завершена ли первичная попытка восстановить сессию по refresh-cookie. */
   bootstrapped: boolean;
-  /** ID писем, прочитанных в текущей демо-сессии; общий источник для MailPage и бейджа AppShell. */
+  /** Явные отметки прочтения и непрочтения в текущей демо-сессии. */
   demoReadMailIds: string[];
+  demoUnreadMailIds: string[];
   /** ID комнат, прочитанных в текущей демо-сессии; общий источник для DemoChatPage и бейджа AppShell. */
   demoReadRoomIds: string[];
   /** Сообщения, отправленные пользователем в демо-чате текущей вкладки. */
@@ -155,6 +166,7 @@ interface SessionState {
   clearSession: () => void;
   setBootstrapped: () => void;
   markDemoMailRead: (id: string) => void;
+  markDemoMailUnread: (id: string) => void;
   markDemoRoomRead: (id: string) => void;
   addDemoSentChatMessage: (message: DemoChatMessage) => void;
   has: (permission: string) => boolean;
@@ -165,6 +177,7 @@ export const useSession = create<SessionState>((set, get) => ({
   demoMode: false,
   bootstrapped: false,
   demoReadMailIds: loadedDemoReadState.demoReadMailIds,
+  demoUnreadMailIds: loadedDemoReadState.demoUnreadMailIds,
   demoReadRoomIds: loadedDemoReadState.demoReadRoomIds,
   demoSentChatMessages: loadedDemoReadState.demoSentChatMessages,
   setSession: (user, demoMode) => {
@@ -175,6 +188,7 @@ export const useSession = create<SessionState>((set, get) => ({
       && persistedDemoReadUserId === user.id;
     const keepDemoReadState = demoMode && (sameSession || restoringDemo);
     const demoReadMailIds = keepDemoReadState ? current.demoReadMailIds : [];
+    const demoUnreadMailIds = keepDemoReadState ? current.demoUnreadMailIds : [];
     const demoReadRoomIds = keepDemoReadState ? current.demoReadRoomIds : [];
     const demoSentChatMessages = keepDemoReadState ? current.demoSentChatMessages : [];
 
@@ -183,12 +197,13 @@ export const useSession = create<SessionState>((set, get) => ({
       demoMode,
       bootstrapped: true,
       demoReadMailIds,
+      demoUnreadMailIds,
       demoReadRoomIds,
       demoSentChatMessages,
     });
 
     if (demoMode) {
-      saveDemoReadState(user.id, demoReadMailIds, demoReadRoomIds, demoSentChatMessages);
+      saveDemoReadState(user.id, demoReadMailIds, demoUnreadMailIds, demoReadRoomIds, demoSentChatMessages);
     } else {
       clearDemoReadState();
     }
@@ -199,6 +214,7 @@ export const useSession = create<SessionState>((set, get) => ({
       user: null,
       demoMode: false,
       demoReadMailIds: [],
+      demoUnreadMailIds: [],
       demoReadRoomIds: [],
       demoSentChatMessages: [],
     });
@@ -207,16 +223,22 @@ export const useSession = create<SessionState>((set, get) => ({
   setBootstrapped: () => set({ bootstrapped: true }),
   markDemoMailRead: (id) => {
     const current = get();
-    if (current.demoReadMailIds.includes(id)) return;
-    const demoReadMailIds = [...current.demoReadMailIds, id];
-    set({ demoReadMailIds });
+    if (current.demoReadMailIds.includes(id) && !current.demoUnreadMailIds.includes(id)) return;
+    const demoReadMailIds = current.demoReadMailIds.includes(id) ? current.demoReadMailIds : [...current.demoReadMailIds, id];
+    const demoUnreadMailIds = current.demoUnreadMailIds.filter((item) => item !== id);
+    set({ demoReadMailIds, demoUnreadMailIds });
     if (current.demoMode && current.user) {
-      saveDemoReadState(
-        current.user.id,
-        demoReadMailIds,
-        current.demoReadRoomIds,
-        current.demoSentChatMessages,
-      );
+      saveDemoReadState(current.user.id, demoReadMailIds, demoUnreadMailIds, current.demoReadRoomIds, current.demoSentChatMessages);
+    }
+  },
+  markDemoMailUnread: (id) => {
+    const current = get();
+    if (current.demoUnreadMailIds.includes(id) && !current.demoReadMailIds.includes(id)) return;
+    const demoReadMailIds = current.demoReadMailIds.filter((item) => item !== id);
+    const demoUnreadMailIds = current.demoUnreadMailIds.includes(id) ? current.demoUnreadMailIds : [...current.demoUnreadMailIds, id];
+    set({ demoReadMailIds, demoUnreadMailIds });
+    if (current.demoMode && current.user) {
+      saveDemoReadState(current.user.id, demoReadMailIds, demoUnreadMailIds, current.demoReadRoomIds, current.demoSentChatMessages);
     }
   },
   markDemoRoomRead: (id) => {
@@ -228,6 +250,7 @@ export const useSession = create<SessionState>((set, get) => ({
       saveDemoReadState(
         current.user.id,
         current.demoReadMailIds,
+        current.demoUnreadMailIds,
         demoReadRoomIds,
         current.demoSentChatMessages,
       );
@@ -243,6 +266,7 @@ export const useSession = create<SessionState>((set, get) => ({
     saveDemoReadState(
       current.user.id,
       current.demoReadMailIds,
+      current.demoUnreadMailIds,
       current.demoReadRoomIds,
       demoSentChatMessages,
     );

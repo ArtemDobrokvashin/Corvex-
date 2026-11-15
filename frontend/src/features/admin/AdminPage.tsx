@@ -23,10 +23,12 @@ import {
   X,
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AdminGroup, AdminUser, adminApi } from '../../api/adminApi';
+import { AdminGroup, AdminUser, adminApi, type AnalyticsActivity, type SystemHealth } from '../../api/adminApi';
 import { errorText } from '../../api/authApi';
 import { demoGroups, demoUsers, permissionLabels } from '../../api/demoData';
 import { Avatar, EmptyState, Notice } from '../../components/ui';
+import SidebarSlot, { useSidebarSlotContext } from '../../components/SidebarSlot';
+import WorkspaceUtilityBar from '../../components/WorkspaceUtilityBar';
 import { countLabel, formatBytes, formatDateTime, systemGroupName, useI18n } from '../../i18n';
 import { useSession } from '../../store/sessionStore';
 import GroupPickerPopover from './GroupPickerPopover';
@@ -59,6 +61,7 @@ function StatusPill({ status }: { status: string }) {
 export default function AdminPage() {
   const { locale, t } = useI18n();
   const { has, demoMode } = useSession();
+  const { onCloseNavigation } = useSidebarSlotContext();
   const navigate = useNavigate();
   const { section } = useParams<{ section?: string }>();
   const canViewGroups = has('ADMIN_GROUPS_MANAGE') || has('ADMIN_USERS_MANAGE');
@@ -83,6 +86,8 @@ export default function AdminPage() {
   const activeTab = requestedTab ?? availableTabs[0];
   const [groups, setGroups] = useState<AdminGroup[]>(demoMode && canViewGroups ? demoGroups(locale) : []);
   const [groupsError, setGroupsError] = useState('');
+  const [healthSummary, setHealthSummary] = useState<SystemHealth | null>(null);
+  const [activitySummary, setActivitySummary] = useState<AnalyticsActivity | null>(null);
 
   useEffect(() => {
     if (activeTab && section !== activeTab) {
@@ -107,49 +112,102 @@ export default function AdminPage() {
     adminApi.listGroups().then(setGroups).catch((e) => setGroupsError(errorText(e, locale)));
   }, [canViewGroups, demoMode, locale]);
 
+  // Never request telemetry for a role that lacks the corresponding permission.
+  useEffect(() => {
+    let cancelled = false;
+    setHealthSummary(null);
+    setActivitySummary(null);
+    if (demoMode) {
+      if (canHealth) setHealthSummary({ services: [{ name: 'auth-service', status: 'UP', version: null }, { name: 'mail-service', status: 'UP', version: null }], diskFreeBytes: 412 * 1024 ** 3, mailQueueDepth: 0 });
+      if (canAnalytics) {
+        const users = demoUsers(locale);
+        setActivitySummary({ scope: has('ANALYTICS_VIEW_COMPANY') ? 'COMPANY' : 'OWN_UNIT', department: null, usersTotal: users.length, usersActive: users.filter((item) => item.status === 'ACTIVE').length, usersBlocked: users.filter((item) => item.status === 'BLOCKED').length, usersDisabled: users.filter((item) => item.status === 'DISABLED').length, loginsLast24h: null, loginsLast7d: null, generatedAt: new Date().toISOString() });
+      }
+    } else {
+      if (canHealth) void Promise.resolve().then(() => adminApi.systemHealth()).then((data) => { if (!cancelled) setHealthSummary(data); }).catch(() => { if (!cancelled) setHealthSummary(null); });
+      if (canAnalytics) void Promise.resolve().then(() => adminApi.analyticsActivity()).then((data) => { if (!cancelled) setActivitySummary(data); }).catch(() => { if (!cancelled) setActivitySummary(null); });
+    }
+    return () => { cancelled = true; };
+  }, [canHealth, canAnalytics, demoMode, has, locale]);
+
   const navBtn = (id: Tab, label: string, Icon: typeof Users, description: string) => (
-    <button key={id} type="button" onClick={() => navigate(`/admin/${id}`)} aria-current={activeTab === id ? 'page' : undefined} className={`nav-row shrink-0 lg:min-h-[52px] ${activeTab === id ? 'nav-row-active' : ''}`}>
-      <Icon size={17} strokeWidth={1.8} />
-      <span className="min-w-0">
-        <span className="block truncate">{label}</span>
-        <span className="hidden truncate text-[11px] font-normal text-faint lg:block">{description}</span>
-      </span>
+    <button
+      key={id}
+      type="button"
+      onClick={() => { onCloseNavigation?.(); navigate(`/admin/${id}`); }}
+      aria-current={activeTab === id ? 'page' : undefined}
+      title={description}
+      className={`sidebar-subitem w-full ${activeTab === id ? 'sidebar-subitem-active' : ''}`}
+    >
+      <Icon size={15} strokeWidth={1.85} className="shrink-0" />
+      <span className="min-w-0 flex-1 text-left"><span className="block truncate">{label}</span><span className="block truncate text-[11px] font-normal text-sidebar-muted">{description}</span></span>
     </button>
   );
 
   return (
-    <div className="scroll-area h-full bg-canvas">
-      <div className="mx-auto w-full max-w-[1260px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-        <header className="mb-7 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-faint">{t('Организация')}</p>
-            <h1 className="mt-2 text-[29px] font-semibold tracking-[-0.03em] text-ink">{t('Администрирование')}</h1>
-            <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted">{t('Люди, доступы, состояние сервера и аналитика. Опасные действия подтверждаются и попадают в аудит.')}</p>
-          </div>
-          {canViewGroups && <span className="chip bg-surface"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{countLabel(locale, groups.length, ['группа доступа', 'группы доступа', 'групп доступа'], ['access group', 'access groups'])}</span>}
-        </header>
+    <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-canvas">
+      {availableTabs.length > 0 && (
+        <SidebarSlot fallbackClassName="border-b border-line bg-sidebar p-3 text-sidebar-text lg:w-[240px] lg:border-b-0 lg:border-r">
+          <div className="space-y-3 px-3 py-3">
+            <p className="sidebar-section-label px-1.5">{t('Управление сервером')}</p>
+            <nav className="space-y-0.5" aria-label={t('Разделы администрирования')}>
+              {has('ADMIN_USERS_MANAGE') && navBtn('users', t('Пользователи'), Users, t('Учётные записи и статусы'))}
+              {canQuotas && navBtn('quotas', t('Квоты'), HardDrive, t('Лимиты и занятое место'))}
+              {canViewGroups && navBtn('groups', t('Группы и права'), ShieldCheck, t('Кто что может делать'))}
+              {canExternalMail && navBtn('external-mail', t('Внешняя почта'), Mail, t('Ящики сотрудников и миграция'))}
+              {canServer && navBtn('server', t('Сервер'), Server, t('Состояние и резервное копирование'))}
+              {canSettings && navBtn('settings', t('Настройки'), Settings2, t('Реестр параметров сервера'))}
+              {canAnalytics && navBtn('analytics', t('Аналитика'), BarChart3, t('Сотрудники и события входа'))}
+              {has('AUDIT_VIEW') && navBtn('audit', t('Аудит'), ScrollText, t('История административных действий'))}
+            </nav>
 
-        {availableTabs.length === 0 ? (
-          <Notice tone="warning">{t('Для текущей учётной записи нет доступных разделов администрирования.')}</Notice>
-        ) : (
-          <div className="grid items-start gap-6 lg:grid-cols-[226px_minmax(0,1fr)]">
-            <aside className="lg:sticky lg:top-8">
-              <nav className="flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0" aria-label={t('Разделы администрирования')}>
-                {has('ADMIN_USERS_MANAGE') && navBtn('users', t('Пользователи'), Users, t('Учётные записи и статусы'))}
-                {canQuotas && navBtn('quotas', t('Квоты'), HardDrive, t('Лимиты и занятое место'))}
-                {canViewGroups && navBtn('groups', t('Группы и права'), ShieldCheck, t('Кто что может делать'))}
-                {canExternalMail && navBtn('external-mail', t('Внешняя почта'), Mail, t('Ящики сотрудников и миграция'))}
-                {canServer && navBtn('server', t('Сервер'), Server, t('Состояние и резервное копирование'))}
-                {canSettings && navBtn('settings', t('Настройки'), Settings2, t('Реестр параметров сервера'))}
-                {canAnalytics && navBtn('analytics', t('Аналитика'), BarChart3, t('Сотрудники и события входа'))}
-                {has('AUDIT_VIEW') && navBtn('audit', t('Аудит'), ScrollText, t('История административных действий'))}
-              </nav>
-              <div className="mt-6 hidden rounded-xl border border-line bg-chrome p-4 text-[13px] leading-relaxed text-muted lg:block">
-                <div className="mb-1.5 flex items-center gap-2 font-medium text-ink-soft"><ShieldCheck size={15} className="text-accent" />{t('Как действуют права')}</div>
-                {t('Итоговый доступ человека — объединение прав всех его групп. Новые права попадут в токены при обновлении сессии, не позднее 15 минут.')}
+            <div className="rounded-xl border border-sidebar-line bg-[#111B30] p-3 text-xs leading-relaxed text-sidebar-muted">
+              <div className="mb-1 flex items-center gap-1.5 font-medium text-sidebar-text">
+                <ShieldCheck size={14} className="text-[#60A5FA]" />
+                <span>{t('Как действуют права')}</span>
               </div>
-            </aside>
+              {t('Итоговый доступ человека — объединение прав всех его групп. Новые права попадут в токены при обновлении сессии, не позднее 15 минут.')}
+            </div>
+          </div>
+        </SidebarSlot>
+      )}
 
+      {/* 56px White Hairline Header */}
+      <header className="z-10 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-line bg-surface px-5">
+        <div className="flex min-w-0 items-center gap-3">
+          <h1 className="truncate text-[16px] font-semibold text-ink">{t('Администрирование')}</h1>
+          {canViewGroups && (
+            <span className="chip hidden sm:inline-flex">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              {countLabel(locale, groups.length, ['группа доступа', 'группы доступа', 'групп доступа'], ['access group', 'access groups'])}
+            </span>
+          )}
+        </div>
+        <WorkspaceUtilityBar />
+      </header>
+
+      <div className="scroll-area flex-1">
+        <div className="mx-auto w-full max-w-[1260px] px-4 py-6 sm:px-6 lg:px-8">
+          <p className="mb-5 max-w-2xl text-[13px] leading-relaxed text-muted">
+            {t('Люди, доступы, состояние сервера и аналитика. Опасные действия подтверждаются и попадают в аудит.')}
+          </p>
+
+          {(canHealth || canAnalytics) && (
+            <div className="mb-5 grid grid-cols-2 gap-3 xl:grid-cols-4" aria-label={t('Показатели сервера и активности')}>
+              {canHealth && <>
+                <div className="rounded-xl border border-line bg-surface px-4 py-3"><p className="text-xs text-muted">{t('Работает сервисов')}</p><p className="mt-1 text-lg font-semibold tabular-nums">{healthSummary ? `${healthSummary.services.filter((service) => service.status === 'UP').length} / ${healthSummary.services.length}` : '—'}</p></div>
+                <div className="rounded-xl border border-line bg-surface px-4 py-3"><p className="text-xs text-muted">{t('Свободно на диске')}</p><p className="mt-1 text-lg font-semibold tabular-nums">{healthSummary && healthSummary.diskFreeBytes >= 0 ? formatBytes(locale, healthSummary.diskFreeBytes) : '—'}</p></div>
+              </>}
+              {canAnalytics && <>
+                <div className="rounded-xl border border-line bg-surface px-4 py-3"><p className="text-xs text-muted">{t('Активные пользователи')}</p><p className="mt-1 text-lg font-semibold tabular-nums">{activitySummary?.usersActive ?? '—'}</p></div>
+                <div className="rounded-xl border border-line bg-surface px-4 py-3"><p className="text-xs text-muted">{t('Входы за 24 часа')}</p><p className="mt-1 text-lg font-semibold tabular-nums">{activitySummary?.loginsLast24h ?? '—'}</p></div>
+              </>}
+            </div>
+          )}
+
+          {availableTabs.length === 0 ? (
+            <Notice tone="warning">{t('Для текущей учётной записи нет доступных разделов администрирования.')}</Notice>
+          ) : (
             <div className="min-w-0">
               {groupsError && <Notice tone="error" className="mb-4">{t('Не удалось загрузить группы: {error}', { error: groupsError })}</Notice>}
               {activeTab === 'users' && <UsersTab groups={groups} demoMode={demoMode} />}
@@ -161,8 +219,8 @@ export default function AdminPage() {
               {activeTab === 'analytics' && <AnalyticsTab />}
               {activeTab === 'audit' && <AuditTab demoMode={demoMode} />}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
@@ -193,6 +251,8 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
   const [groupAnchor, setGroupAnchor] = useState<DOMRect | null>(null);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [profileUser, setProfileUser] = useState<AdminUser | null>(null);
+  const [disableUser, setDisableUser] = useState<AdminUser | null>(null);
+  const [disabling, setDisabling] = useState(false);
   const [passwordUser, setPasswordUser] = useState<AdminUser | null>(null);
   const [profileError, setProfileError] = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
@@ -324,8 +384,8 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
   }
 
   async function disable(u: AdminUser) {
-    if (!window.confirm(t('Отключить пользователя {name} ({username})? Сессии будут отозваны, группы сняты.', { name: u.displayName, username: u.username }))) return;
     setError('');
+    setDisabling(true);
     try {
       if (demoMode) {
         patchLocal({ ...u, status: 'DISABLED', groups: [] });
@@ -333,8 +393,12 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
         await adminApi.disableUser(u.id);
         patchLocal({ ...u, status: 'DISABLED', groups: [] });
       }
+      setDisableUser(null);
     } catch (err) {
       setError(errorText(err, locale));
+      setDisableUser(null);
+    } finally {
+      setDisabling(false);
     }
   }
 
@@ -388,7 +452,7 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
           <input value={departmentFilter} onChange={(e) => setDepartmentFilter(e.target.value)} placeholder={t('Подразделение')} aria-label={t('Фильтр по подразделению')} className="field h-10 w-[180px] py-0" />
           <button className="btn-secondary h-10">{t('Найти')}</button>
         </form>
-        <button type="button" onClick={() => setShowCreate(!showCreate)} className="btn-primary h-10"><UserPlus size={16} /><span className="hidden sm:inline">{t('Новый пользователь')}</span></button>
+        <button type="button" onClick={() => setShowCreate(!showCreate)} className="btn-primary h-10"><Plus size={16} />{t('Новый пользователь')}</button>
       </header>
 
       {(error || notice) && <div className="space-y-2 px-5 pt-4">{error && <Notice tone="error">{error}</Notice>}{notice && <Notice tone="success">{notice}</Notice>}</div>}
@@ -451,7 +515,7 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
                       <div className={`mt-1 text-[10px] ${used > 100 ? 'font-medium text-danger' : 'text-faint'}`}>{t('{used}% занято', { used })}</div>
                     </>}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-4 text-muted">{fmtDate(u.lastLoginAt)}</td>
+                  <td className="whitespace-nowrap tabular-nums px-4 py-4 text-muted">{fmtDate(u.lastLoginAt)}</td>
                   <td className="sticky right-0 bg-surface px-4 py-4 shadow-[-14px_0_18px_-18px_rgba(24,24,27,0.45)] transition group-hover:bg-chrome">
                     <div className="flex justify-end gap-1">
                       <button type="button" onClick={() => { setProfileUser(u); setProfileError(''); }} className="icon-btn" title={t('Редактировать профиль')} aria-label={`${t('Редактировать профиль')}: ${u.username}`}><Pencil size={16} /></button>
@@ -468,7 +532,7 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
                       <button type="button" onClick={() => toggleBlock(u)} className="icon-btn" title={u.status === 'ACTIVE' ? t('Заблокировать') : t('Разблокировать')} aria-label={u.status === 'ACTIVE' ? t('Заблокировать') : t('Разблокировать')}>
                         {u.status === 'ACTIVE' ? <Ban size={17} /> : <Check size={17} />}
                       </button>
-                      {u.status !== 'DISABLED' && <button type="button" onClick={() => disable(u)} className="icon-btn hover:bg-red-50 hover:text-danger" title={t('Отключить пользователя')} aria-label={t('Отключить пользователя')}><Power size={17} /></button>}
+                      {u.status !== 'DISABLED' && <button type="button" onClick={() => setDisableUser(u)} className="icon-btn hover:bg-red-50 hover:text-danger" title={t('Отключить пользователя')} aria-label={t('Отключить пользователя')}><Power size={17} /></button>}
                     </div>
                   </td>
                 </tr>
@@ -500,6 +564,19 @@ function UsersTab({ groups, demoMode }: { groups: AdminGroup[]; demoMode: boolea
         onClose={() => setPasswordUser(null)}
         onReset={(newPassword) => resetPassword(passwordUser, newPassword)}
       />
+    )}
+
+    {disableUser && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={() => !disabling && setDisableUser(null)}>
+        <div role="dialog" aria-modal="true" aria-labelledby="disable-user-title" className="w-full max-w-md rounded-xl border border-line bg-surface p-5 shadow-pop" onClick={(event) => event.stopPropagation()}>
+          <h2 id="disable-user-title" className="text-base font-semibold text-ink">{t('Отключить пользователя')}</h2>
+          <p className="mt-2 text-sm leading-relaxed text-muted">{t('Отключить пользователя {name} ({username})? Сессии будут отозваны, группы сняты.', { name: disableUser.displayName, username: disableUser.username })}</p>
+          <div className="mt-5 flex justify-end gap-2">
+            <button type="button" className="btn-secondary" disabled={disabling} onClick={() => setDisableUser(null)}>{t('Отмена')}</button>
+            <button type="button" className="btn-danger-ghost border border-red-200" disabled={disabling} onClick={() => void disable(disableUser)}>{t('Отключить пользователя')}</button>
+          </div>
+        </div>
+      </div>
     )}
 
     {profileUser && (

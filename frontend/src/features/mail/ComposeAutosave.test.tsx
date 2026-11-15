@@ -12,7 +12,7 @@ vi.mock('../../api/mailApi', async (importOriginal) => {
   return { ...original, mailApi: { ...original.mailApi, createDraft, updateDraft, deleteDraft } };
 });
 
-const { ComposePanel } = await import('./MailPage');
+const { ComposePanel } = await import('./ComposePanel');
 
 afterEach(() => {
   vi.useRealTimers();

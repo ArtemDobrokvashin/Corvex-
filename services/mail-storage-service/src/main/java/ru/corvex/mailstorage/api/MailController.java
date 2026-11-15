@@ -66,8 +66,9 @@ public class MailController {
     @PostMapping("/folders")
     @PreAuthorize("hasAuthority('MAIL_MANAGE_FOLDERS')")
     ResponseEntity<MailDtos.FolderView> createFolder(@AuthenticationPrincipal Jwt jwt,
-                                                      @RequestBody ProtocolDtos.CreateFolderRequest request) {
-        var folder = protocol.createFolder(userId(jwt), request);
+                                                      @RequestBody MailDtos.CreateFolderRequest request) {
+        var folder = protocol.createFolder(userId(jwt),
+                new ProtocolDtos.CreateFolderRequest(request.name(), request.parentId()));
         return ResponseEntity.status(HttpStatus.CREATED).body(new MailDtos.FolderView(
                 folder.id(), folder.name(), folder.specialUse(), folder.messageCount(), folder.unseenCount()));
     }

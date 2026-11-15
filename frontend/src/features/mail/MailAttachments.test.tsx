@@ -20,19 +20,26 @@ describe('mail attachment display', () => {
     expect(document.body.textContent).toContain('Antivirus scan not verified');
     expect(document.body.textContent).not.toContain('safe to open');
   });
-  it('uses decorative file-type icons without treating extensions as scan verdicts', () => {
+  it('derives the icon from the scan verdict, never from the file extension', () => {
     useLocaleStore.setState({ locale: 'en' });
-    const names = ['report.PDF', 'table.xlsx', 'photo.png', 'archive.zip', 'track.mp3', 'clip.mp4', 'code.ts', 'README'];
+    const misleading = ['report.PDF', 'photo.png', 'archive.zip', 'code.ts'];
     document.body.innerHTML = renderToStaticMarkup(<MailAttachments demoMode={false} busy={false}
-      attachments={names.map((fileName, index) => ({ ...attachment('UNVERIFIED', index), fileName }))} onDownload={() => undefined} />);
+      attachments={misleading.map((fileName, index) => ({ ...attachment('CLEAN', index), fileName }))} onDownload={() => undefined} />);
     const icons = [...document.querySelectorAll('svg')];
-    const types = ['file-text', 'file-spreadsheet', 'file-image', 'file-archive', 'file-audio', 'file-video', 'file-code', 'file'];
-    expect(icons.map((icon) => types.some((type) => icon.classList.contains(`lucide-${type}`)))).toEqual(types.map(() => true));
-    icons.forEach((icon, index) => {
-      expect(icon.classList.contains(`lucide-${types[index]}`)).toBe(true);
-      expect(icon.getAttribute('aria-hidden')).toBe('true');
-    });
-    expect([...document.querySelectorAll('button')].every((button) => button.textContent?.includes('Scan and download'))).toBe(true);
+    // Расширение не считается вердиктом: тип файла не угадывается по имени,
+    // а значок одинаков для всех чистых вложений.
+    expect(icons.every((icon) => icon.classList.contains('lucide-file-check-2')
+      || icon.classList.contains('lucide-shield-check')
+      || icon.classList.contains('lucide-download'))).toBe(true);
+    expect(icons.some((icon) => icon.classList.contains('lucide-file-text'))).toBe(false);
+
+    document.body.innerHTML = renderToStaticMarkup(<MailAttachments demoMode={false} busy={false}
+      attachments={[attachment('INFECTED', 0), attachment('PENDING', 1), attachment('ERROR', 2)]} onDownload={() => undefined} />);
+    const alert = document.querySelector('.lucide-shield-alert');
+    const question = document.querySelectorAll('.lucide-shield-question');
+    expect(alert).not.toBeNull();
+    expect(question.length).toBe(2);
+    expect(document.body.textContent).not.toContain('safe to open');
   });
   it('supports English and unknown status fails closed', () => {
     useLocaleStore.setState({ locale: 'en' });

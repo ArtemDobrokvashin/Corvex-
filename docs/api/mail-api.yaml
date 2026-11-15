@@ -38,13 +38,17 @@ paths:
                   type: object
                   properties:
                     id: { type: string, format: uuid }
-                    parentId: { type: string, format: uuid, nullable: true }
                     name: { type: string }
                     specialUse: { type: string, enum: [INBOX, SENT, DRAFTS, TRASH, SPAM, ARCHIVE], nullable: true }
-                    unreadCount: { type: integer }
-                    totalCount: { type: integer }
+                    unread: { type: integer, format: int64 }
+                    total: { type: integer, format: int64 }
     post:
       summary: Создать папку (MAIL_MANAGE_FOLDERS)
+      description: >-
+        Имя не может быть точкой, содержать /, обратную косую черту, %, *, две точки подряд
+        или управляющие символы. После преобразования файловый сегмент не должен превышать 255 байт.
+        Текущее плоское Maildir-хранилище может считать разные имена одинаковыми после преобразования
+        в безопасный файловый сегмент; такой конфликт возвращает 409.
       requestBody:
         required: true
         content:
@@ -53,7 +57,23 @@ paths:
               type: object
               required: [name]
               properties: { name: { type: string }, parentId: { type: string, format: uuid, nullable: true } }
-      responses: { '201': { description: Создана }, '409': { description: Имя занято в этом родителе } }
+      responses:
+        '201':
+          description: Созданная папка (счётчики total и unread равны нулю)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  name: { type: string }
+                  specialUse: { type: string, nullable: true }
+                  total: { type: integer, format: int64 }
+                  unread: { type: integer, format: int64 }
+        '400': { description: Недопустимое имя }
+        '403': { description: Нет права MAIL_MANAGE_FOLDERS }
+        '404': { description: Родительская папка не принадлежит пользователю или не найдена }
+        '409': { description: Имя занято, зарезервировано или конфликтует с другой папкой в файловом хранилище }
   /mail/folders/{folderId}:
     patch:
       summary: Переименовать/переместить папку (системные переименовывать нельзя)
@@ -119,30 +139,54 @@ paths:
       responses: { '202': { description: Принято к выполнению (асинхронно при больших объёмах) } }
   /mail/messages/send:
     post:
-      summary: Отправить письмо (MAIL_SEND_INTERNAL / MAIL_SEND_EXTERNAL проверяются по доменам получателей)
+      summary: Поставить письмо в очередь (MAIL_SEND_INTERNAL / MAIL_SEND_EXTERNAL проверяются по доменам получателей)
+      description: >-
+        Требуется хотя бы один адрес в to, cc или bcc (всего не более 100).
+        Успешный ответ означает приём в очередь, а не подтверждённую доставку.
+        Ключ идемпотентности не поддерживается: после тайм-аута или ошибки сервера
+        часть получателей уже может быть в очереди, поэтому повтор может создать дубликаты.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [to, subject]
               properties:
                 to: { type: array, items: { type: string, format: email } }
                 cc: { type: array, items: { type: string, format: email } }
                 bcc: { type: array, items: { type: string, format: email } }
-                subject: { type: string }
-                htmlBody: { type: string }
-                textBody: { type: string }
-                signatureId: { type: string, format: uuid, nullable: true }
+                subject: { type: string, nullable: true }
+                bodyText: { type: string, nullable: true }
+                bodyHtml: { type: string, nullable: true }
+                attachments:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      fileName: { type: string, nullable: true }
+                      contentType: { type: string, nullable: true }
+                      contentBase64: { type: string, format: byte, nullable: true }
+                saveToSent: { type: boolean, nullable: true, default: true }
                 externalAccountId: { type: string, format: uuid, nullable: true, description: "Подключённый внешний ящик для send-as через SMTP провайдера; null — адрес Corvex" }
-                attachmentIds: { type: array, items: { type: string } }
-                inReplyTo: { type: string, nullable: true }
       responses:
-        '202': { description: Поставлено в очередь отправки, копия сохранена в Отправленных }
-        '403': { description: Нет права на внешнюю отправку }
+        '200':
+          description: Письмо поставлено в очередь; sentMessageId может быть null, если копия в Sent не сохранена (например, из-за квоты)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messageIdHeader: { type: string }
+                  sentMessageId: { type: string, format: uuid, nullable: true }
+                  localRecipients: { type: array, items: { type: string } }
+                  externalRecipients: { type: array, items: { type: string } }
+                  fromAddress: { type: string }
+                  externalAccountId: { type: string, format: uuid, nullable: true }
+        '400': { description: Некорректное вложение }
+        '403': { description: Недостаточно прав на отправку }
+        '409': { description: Выбранный внешний ящик не разрешает отправку }
         '413': { description: Превышен лимит размера письма }
-        '507': { description: Превышена дисковая квота отправителя }
+        '422': { description: Некорректные получатели }
   /mail/drafts:
     post:
       summary: Создать/обновить черновик (автосохранение редактора)

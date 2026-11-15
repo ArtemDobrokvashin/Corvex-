@@ -15,6 +15,7 @@ import ru.corvex.mailstorage.domain.ExternalMailFolderState;
 import ru.corvex.mailstorage.domain.ExternalMailImportedMessage;
 import ru.corvex.mailstorage.domain.ExternalMailSyncRun;
 import ru.corvex.mailstorage.domain.MailFolder;
+import ru.corvex.mailstorage.mime.MimeMailParser;
 import ru.corvex.mailstorage.pipeline.MailEventPublisher;
 import ru.corvex.mailstorage.pipeline.MailPipelineEvents;
 import ru.corvex.mailstorage.repository.ExternalMailAccountRepository;
@@ -22,7 +23,10 @@ import ru.corvex.mailstorage.repository.ExternalMailFolderStateRepository;
 import ru.corvex.mailstorage.repository.ExternalMailImportedMessageRepository;
 import ru.corvex.mailstorage.repository.ExternalMailSyncRunRepository;
 import ru.corvex.mailstorage.repository.MailFolderRepository;
+import ru.corvex.mailstorage.repository.MessageMetadataRepository;
 import ru.corvex.mailstorage.service.MailDeliveryService;
+import ru.corvex.mailstorage.service.ProtocolMailService;
+import ru.corvex.mailstorage.storage.MaildirStorage;
 import ru.corvex.mailstorage.storage.RawMessageSpool;
 
 import java.io.ByteArrayInputStream;
@@ -89,6 +93,7 @@ class ExternalMailSyncServiceTest {
     private ExternalMailSecretCipher cipher;
     private AuthUserClient auth;
     private MailDeliveryService delivery;
+    private ProtocolMailService protocolMail;
     private RawMessageSpool spool;
     private MailEventPublisher events;
     private JdbcTemplate jdbc;
@@ -135,6 +140,9 @@ class ExternalMailSyncServiceTest {
         auth = mock(AuthUserClient.class);
         delivery = mock(MailDeliveryService.class);
         spool = new RawMessageSpool(tmp.resolve("spool"), 1_000_000);
+        MaildirStorage maildir = new MaildirStorage(tmp.resolve("mail"), tmp.resolve("attachments"));
+        protocolMail = new ProtocolMailService(folders, mock(MessageMetadataRepository.class), delivery,
+                maildir, spool, new MimeMailParser(maildir), auth);
         events = mock(MailEventPublisher.class);
         jdbc = mock(JdbcTemplate.class);
         service = newService(props, cipher, spool);
@@ -926,6 +934,23 @@ class ExternalMailSyncServiceTest {
     }
 
     @Test
+    void importReportsStorageCollisionInsteadOfCreatingASharedDirectory() throws Exception {
+        knownFolders.add(folder("Проекты", null, null));
+        account.setSyncScope(ExternalMailAccount.SyncScope.ALL_FOLDERS);
+        remoteFolders = List.of(new ExternalMailClient.RemoteFolderInfo(
+                "Клиенты", "/", 3L, 10, 1, Set.of(), null));
+
+        execute(ExternalMailSyncRun.Trigger.SCHEDULED);
+
+        assertEquals(ExternalMailSyncRun.Status.FAILED, run.getStatus());
+        assertTrue(run.getError().contains("конфликтует"));
+        assertTrue(knownFolders.stream().noneMatch(f -> f.getName().equals("Клиенты")));
+        assertTrue(importedRecords.isEmpty());
+        assertEquals(0, fetchCalls.get());
+        verify(folders).lockFolderNames(ownerId.toString());
+    }
+
+    @Test
     void blankFolderPathFallsBackToInbox() throws Exception {
         account.setSyncScope(ExternalMailAccount.SyncScope.ALL_FOLDERS);
         remoteFolders = List.of(new ExternalMailClient.RemoteFolderInfo(
@@ -1027,7 +1052,7 @@ class ExternalMailSyncServiceTest {
             ExternalMailProperties properties, ExternalMailSecretCipher cipherToUse, RawMessageSpool spoolToUse) {
         ExternalMailSyncService created = new ExternalMailSyncService(
                 accounts, states, imported, runs, folders, accountService, client, properties,
-                cipherToUse, auth, delivery, spoolToUse, events, jdbc);
+                cipherToUse, auth, delivery, protocolMail, spoolToUse, events, jdbc);
         servicesToStop.add(created);
         return created;
     }
