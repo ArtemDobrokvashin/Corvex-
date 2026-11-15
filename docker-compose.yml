@@ -182,10 +182,170 @@ services:
       CORVEX_EXTERNAL_MAIL_BATCH_SIZE: ${CORVEX_EXTERNAL_MAIL_BATCH_SIZE:-200}
       CORVEX_CLAMD_HOST: clamav
       CORVEX_CLAMD_PORT: 3310
+      CORVEX_JAMES_READ_ENABLED: ${CORVEX_JAMES_READ_ENABLED:-false}
+      CORVEX_JAMES_READ_ORIGIN: https://james-jmap:8443
+      CORVEX_JAMES_READ_PRIVATE_KEY_FILE: /run/james-adapter/jwt-private.pem
+      CORVEX_JAMES_READ_TLS_CERTIFICATE_FILE: /run/james-adapter/jmap-trust.crt
+      # Dormant until the mTLS bridge, schema and operational policy are ready.
+      CORVEX_JAMES_PROVISION_ENABLED: ${CORVEX_JAMES_PROVISION_ENABLED:-false}
+      CORVEX_JAMES_PROVISION_ADMIN_ORIGIN: https://james-admin:8443
+      CORVEX_JAMES_PROVISION_ADMIN_SECRET_FILE: /run/james-adapter/admin-secret
+      CORVEX_JAMES_PROVISION_ADMIN_KEYSTORE_FILE: /run/james-adapter/admin-client.p12
+      CORVEX_JAMES_PROVISION_ADMIN_KEYSTORE_PASSWORD_FILE: /run/james-adapter/admin-client-password
+      CORVEX_JAMES_PROVISION_ADMIN_TRUST_CERTIFICATE_FILE: /run/james-adapter/admin-trust.crt
+      CORVEX_JAMES_PROVISION_JMAP_ORIGIN: https://james-jmap:8443
+      CORVEX_JAMES_PROVISION_JMAP_PRIVATE_KEY_FILE: /run/james-adapter/jwt-private.pem
+      CORVEX_JAMES_PROVISION_JMAP_TRUST_CERTIFICATE_FILE: /run/james-adapter/jmap-trust.crt
+      # Публичный DKIM-ключ действующего отправителя (не приватный): нужен, чтобы
+      # проверить опубликованную DNS-запись домена и показать точное значение p=.
+      CORVEX_DKIM_SELECTOR: ${CORVEX_DKIM_SELECTOR:-corvex1}
+      CORVEX_DKIM_KEY_URL: ${CORVEX_DKIM_KEY_URL:-http://mail-smtp-service:8082/internal/dkim/public-key}
     volumes:
       - mail-data:/data/mail
       - attachment-data:/data/attachments
+      - "${CORVEX_JAMES_ADAPTER_DIR:-./infra/secrets/james-adapter}:/run/james-adapter:ro"
     depends_on: { postgres: { condition: service_healthy }, elasticsearch: { condition: service_healthy }, rabbitmq: { condition: service_healthy }, auth-service: { condition: service_healthy } }
+
+  # Candidate engine in the SAME Corvex project; OFF by default. No published
+  # ports and no mail route changes. Configuration must be provisioned explicitly.
+  james-postgres:
+    image: postgres:16.9
+    profiles: [james-transition]
+    restart: "no"
+    environment:
+      POSTGRES_DB: james
+      POSTGRES_USER: james
+      POSTGRES_PASSWORD: ${CORVEX_JAMES_DATABASE_PASSWORD:-}
+    entrypoint: ["sh", "-ec", 'test -n "$${POSTGRES_PASSWORD}" || { echo "James database password is required" >&2; exit 1; }; exec docker-entrypoint.sh postgres']
+    volumes:
+      - james-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U james -d james"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [james-internal]
+
+  james:
+    image: apache/james:postgres-3.9.1
+    profiles: [james-transition]
+    restart: "no"
+    depends_on:
+      james-postgres: { condition: service_healthy }
+    volumes:
+      - james-data:/root/var
+      - type: bind
+        source: ./infra/james/protocols/imapserver.xml
+        target: /root/conf/imapserver.xml
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${CORVEX_JAMES_SMTP_CONFIG_FILE:-./infra/james/protocols/smtpserver.xml}
+        target: /root/conf/smtpserver.xml
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./infra/james/protocols/pop3server.xml
+        target: /root/conf/pop3server.xml
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./infra/james/protocols/lmtpserver.xml
+        target: /root/conf/lmtpserver.xml
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./infra/james/protocols/managesieveserver.xml
+        target: /root/conf/managesieveserver.xml
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${CORVEX_JAMES_CONFIG_DIR:-./infra/secrets/james}/postgres.properties
+        target: /root/conf/postgres.properties
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${CORVEX_JAMES_CONFIG_DIR:-./infra/secrets/james}/jmap.properties
+        target: /root/conf/jmap.properties
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${CORVEX_JAMES_CONFIG_DIR:-./infra/secrets/james}/search.properties
+        target: /root/conf/search.properties
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${CORVEX_JAMES_CONFIG_DIR:-./infra/secrets/james}/blob.properties
+        target: /root/conf/blob.properties
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${CORVEX_JAMES_WEBADMIN_FILE:-${CORVEX_JAMES_CONFIG_DIR:-./infra/secrets/james}/webadmin.properties}
+        target: /root/conf/webadmin.properties
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${CORVEX_JAMES_CONFIG_DIR:-./infra/secrets/james}/jwt_publickey
+        target: /root/conf/jwt_publickey
+        read_only: true
+        bind: { create_host_path: false }
+    networks: [james-internal]
+
+  # Internal JMAP bridge: reads only; token/owner/RBAC checks still required.
+  james-jmap:
+    image: corvex-james-jmap-read-gateway:local
+    build: ./infra/james/jmap-read-gateway
+    profiles: [james-transition]
+    restart: "no"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      james: { condition: service_started }
+    volumes:
+      - type: bind
+        source: ${CORVEX_JAMES_CONFIG_DIR:-./infra/secrets/james}/jmap.crt
+        target: /run/james-tls/jmap.crt
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${CORVEX_JAMES_CONFIG_DIR:-./infra/secrets/james}/jmap.key
+        target: /run/james-tls/jmap.key
+        read_only: true
+        bind: { create_host_path: false }
+    networks: [app, james-internal]
+
+  # Separate opt-in internal management bridge. Only mTLS, no published port.
+  # The profile does not enable WebAdmin or provisioning automatically.
+  james-admin:
+    image: nginx:1.31-alpine
+    profiles: [james-provision]
+    restart: "no"
+    depends_on:
+      james: { condition: service_started }
+    volumes:
+      - type: bind
+        source: ./infra/james/provision-nginx.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${CORVEX_JAMES_PROVISION_DIR:-./infra/secrets/james-provision}/admin.crt
+        target: /run/james-provision/admin.crt
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${CORVEX_JAMES_PROVISION_DIR:-./infra/secrets/james-provision}/admin.key
+        target: /run/james-provision/admin.key
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${CORVEX_JAMES_PROVISION_DIR:-./infra/secrets/james-provision}/client-ca.crt
+        target: /run/james-provision/client-ca.crt
+        read_only: true
+        bind: { create_host_path: false }
+    networks: [app, james-internal]
 
   mail-smtp-service:
     <<: *java-common
@@ -428,9 +588,13 @@ networks:
   data:           # БД/очереди/поиск: порты наружу НЕ публикуются
     internal: true
   monitoring: {}
+  james-internal:
+    internal: true
 
 volumes:
   postgres-data: {}
+  james-postgres-data: {}  # isolated from existing Corvex PostgreSQL
+  james-data: {}           # James persistent data, not the legacy Maildir volume
   redis-data: {}
   rabbitmq-data: {}
   elasticsearch-data: {}

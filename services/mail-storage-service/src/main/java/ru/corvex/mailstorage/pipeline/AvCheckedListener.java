@@ -42,6 +42,11 @@ public class AvCheckedListener {
     @RabbitListener(queues = StoragePipelineAmqpConfig.QUEUE, containerFactory = "mailListenerFactory")
     public void onAvChecked(String payload) throws IOException {
         MailPipelineEvents.AvCheckedEvent event = mapper.readValue(payload, MailPipelineEvents.AvCheckedEvent.class);
+        // Reject even events from older AV services, including an empty recipient list,
+        // before any delivery or spool deletion. Recovery must rescan, not replay ERROR.
+        if (!"CLEAN".equalsIgnoreCase(event.avStatus()) && !"INFECTED".equalsIgnoreCase(event.avStatus())) {
+            throw new IOException("Antivirus verdict unavailable; message retained for recovery");
+        }
         for (String recipient : event.recipients()) {
             Optional<MailDeliveryService.DeliveryResult> result = delivery.deliver(event, recipient);
             result.ifPresent(r -> {

@@ -1,11 +1,7 @@
 package ru.corvex.mailsmtp.outbound;
 
-import jakarta.mail.Address;
 import jakarta.mail.MessagingException;
-import jakarta.mail.SendFailedException;
-import jakarta.mail.internet.InternetAddress;
 import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -43,6 +39,12 @@ class SmtpRelayClientTest {
     }
 
     @Test
+    void incompleteSendIsUnknownAndCloseFailureAfterSuccessfulSendIsSent() {
+        assertEquals(SmtpRelayClient.Status.UNKNOWN, SmtpRelayClient.sendOutcome(false));
+        assertEquals(SmtpRelayClient.Status.SENT, SmtpRelayClient.sendOutcome(true));
+    }
+
+    @Test
     void extractsPermanentSmtpCode() {
         assertEquals(550, SmtpRelayClient.smtpCode(new MessagingException("550 5.1.1 user unknown")));
     }
@@ -65,9 +67,9 @@ class SmtpRelayClientTest {
     }
 
     @Test
-    void sendsSuccessfullyThroughSubEthaServerOnPort25() {
+    void sendsSuccessfullyThroughSubEthaServerOnLoopback() {
         FakeSmtpServer server = relayServer();
-        SmtpRelayClient client = client(List.of("127.0.0.1"), false);
+        SmtpRelayClient client = client(List.of("127.0.0.1"), false, server.port());
 
         List<SmtpRelayClient.RecipientResult> results = client.sendToDomain(
                 EML, "alice@company.local", "example.test", List.of("good@example.test"));
@@ -84,75 +86,89 @@ class SmtpRelayClientTest {
     @Test
     void classifiesMixedRcptResultsWithoutSendingPartialData() {
         FakeSmtpServer server = relayServer();
-        SmtpRelayClient client = client(List.of("127.0.0.1"), false);
+        SmtpRelayClient client = client(List.of("127.0.0.1"), false, server.port());
 
         List<SmtpRelayClient.RecipientResult> results = client.sendToDomain(
                 EML, "alice@company.local", "example.test",
                 List.of("good@example.test", "bad@example.test", "temp@example.test"));
 
         Map<String, SmtpRelayClient.RecipientResult> byRecipient = byRecipient(results);
-        assertEquals(SmtpRelayClient.Status.PERMANENT, byRecipient.get("bad@example.test").status());
-        assertEquals(SmtpRelayClient.Status.TEMPORARY, byRecipient.get("good@example.test").status());
-        assertEquals(SmtpRelayClient.Status.TEMPORARY, byRecipient.get("temp@example.test").status());
+        assertEquals(SmtpRelayClient.Status.UNKNOWN, byRecipient.get("bad@example.test").status());
+        assertEquals(SmtpRelayClient.Status.UNKNOWN, byRecipient.get("good@example.test").status());
+        assertEquals(SmtpRelayClient.Status.UNKNOWN, byRecipient.get("temp@example.test").status());
         assertEquals(0, server.dataAttempts(), "sendpartial=false must abort DATA when any RCPT fails");
     }
 
     @Test
     void permanentRcptFailureStopsTryingFurtherMxHosts() {
         FakeSmtpServer server = relayServer();
-        SmtpRelayClient client = client(List.of("127.0.0.1", "127.0.0.1"), false);
+        SmtpRelayClient client = client(List.of("127.0.0.1", "127.0.0.1"), false, server.port());
 
         List<SmtpRelayClient.RecipientResult> results = client.sendToDomain(
                 EML, "alice@company.local", "example.test", List.of("bad@example.test"));
 
-        assertEquals(SmtpRelayClient.Status.PERMANENT, results.get(0).status());
+        assertEquals(SmtpRelayClient.Status.UNKNOWN, results.get(0).status());
         assertEquals(1, server.recipients().size());
     }
 
     @Test
-    void temporaryDataFailureIsRetriedOnNextMxHost() {
+    void dataFailureDoesNotRetryAnotherMxWhenOutcomeIsUncertain() {
         FakeSmtpServer server = relayServer();
         server.rejectFirstDataWithCode = 451;
-        SmtpRelayClient client = client(List.of("127.0.0.1", "127.0.0.1"), false);
+        SmtpRelayClient client = client(List.of("127.0.0.1", "127.0.0.1"), false, server.port());
 
         List<SmtpRelayClient.RecipientResult> results = client.sendToDomain(
                 EML, "alice@company.local", "example.test", List.of("good@example.test"));
 
-        assertEquals(SmtpRelayClient.Status.SENT, results.get(0).status());
-        assertEquals(2, server.dataAttempts());
+        assertEquals(SmtpRelayClient.Status.UNKNOWN, results.get(0).status());
+        assertEquals(1, server.dataAttempts());
+        assertEquals(0, server.messageTexts().size());
+    }
+
+    @Test
+    void handlerStoresDataThenFailsAndClientDoesNotTryAnotherMx() {
+        FakeSmtpServer server = relayServer();
+        server.storeThenFailData = true;
+        SmtpRelayClient client = client(List.of("127.0.0.1", "127.0.0.1"), false, server.port());
+
+        var results = client.sendToDomain(EML, "alice@company.local", "example.test", List.of("good@example.test"));
+
+        assertEquals(SmtpRelayClient.Status.UNKNOWN, results.get(0).status());
+        assertEquals(1, server.dataAttempts());
         assertEquals(1, server.messageTexts().size());
     }
 
     @Test
     void invalidRecipientSyntaxIsTemporaryAndRequiredStarttlsFailsTemporarilyOnPlainServer() {
-        relayServer();
-        SmtpRelayClient client = client(List.of("127.0.0.1"), false);
+        FakeSmtpServer server = relayServer();
+        SmtpRelayClient client = client(List.of("127.0.0.1"), false, server.port());
 
         List<SmtpRelayClient.RecipientResult> invalid = client.sendToDomain(
                 EML, "alice@company.local", "example.test", List.of("not an address"));
         assertEquals(SmtpRelayClient.Status.TEMPORARY, invalid.get(0).status());
 
-        SmtpRelayClient tlsRequired = client(List.of("127.0.0.1"), true);
+        SmtpRelayClient tlsRequired = client(List.of("127.0.0.1"), true, server.port());
         List<SmtpRelayClient.RecipientResult> tls = tlsRequired.sendToDomain(
                 EML, "alice@company.local", "example.test", List.of("good@example.test"));
         assertEquals(SmtpRelayClient.Status.TEMPORARY, tls.get(0).status());
     }
 
     @Test
-    void closedPort25IsTemporary() throws IOException {
-        stopSharedServer();
-        try (ServerSocket probe = new ServerSocket(25, 1, InetAddress.getByName("127.0.0.1"))) {
-            assertEquals(25, probe.getLocalPort());
-        } catch (IOException e) {
-            Assumptions.abort("Port 25 is unavailable for the closed-port check: " + e.getMessage());
+    void closedLoopbackPortIsTemporary() throws IOException {
+        int port;
+        try (ServerSocket probe = new ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))) {
+            port = probe.getLocalPort();
         }
-        SmtpRelayClient client = client(List.of("127.0.0.1"), false);
-
+        SmtpRelayClient client = client(List.of("127.0.0.1"), false, port);
         List<SmtpRelayClient.RecipientResult> results = client.sendToDomain(
                 EML, "alice@company.local", "example.test", List.of("good@example.test"));
-
         assertEquals(SmtpRelayClient.Status.TEMPORARY, results.get(0).status());
         assertNull(results.get(0).remoteHost());
+    }
+
+    @Test
+    void productionRelayPortRemains25() {
+        assertEquals(25, client(List.of(), false).smtpPort());
     }
 
     @Test
@@ -169,32 +185,6 @@ class SmtpRelayClientTest {
     }
 
     @Test
-    void classifySendFailedUsesCodeRulesAndFillsMissingRecipients() throws Exception {
-        SmtpRelayClient client = client(List.of(), false);
-        List<String> recipients = List.of(
-                "sent@example.test", "invalid@example.test", "unsent@example.test", "missing@example.test");
-
-        SendFailedException noCode = new SendFailedException(
-                "partial failure", new Exception("gateway failed"),
-                addresses("sent@example.test"), addresses("unsent@example.test"), addresses("invalid@example.test"));
-        Map<String, SmtpRelayClient.RecipientResult> noCodeResults = byRecipient(classify(client, noCode, recipients));
-        assertEquals(SmtpRelayClient.Status.SENT, noCodeResults.get("sent@example.test").status());
-        assertEquals(SmtpRelayClient.Status.PERMANENT, noCodeResults.get("invalid@example.test").status());
-        assertEquals(SmtpRelayClient.Status.TEMPORARY, noCodeResults.get("unsent@example.test").status());
-        assertEquals(SmtpRelayClient.Status.TEMPORARY, noCodeResults.get("missing@example.test").status());
-
-        SendFailedException temporaryCode = new SendFailedException(
-                "451 temporary", null, null, null, addresses("invalid@example.test"));
-        assertEquals(SmtpRelayClient.Status.TEMPORARY,
-                byRecipient(classify(client, temporaryCode, recipients)).get("invalid@example.test").status());
-
-        SendFailedException permanentCode = new SendFailedException(
-                "550 permanent", null, null, null, addresses("invalid@example.test"));
-        assertEquals(SmtpRelayClient.Status.PERMANENT,
-                byRecipient(classify(client, permanentCode, recipients)).get("invalid@example.test").status());
-    }
-
-    @Test
     void rootMessageFallsBackToExceptionClassName() throws Exception {
         SmtpRelayClient client = client(List.of(), false);
         Method rootMessage = SmtpRelayClient.class.getDeclaredMethod("rootMessage", Throwable.class);
@@ -205,36 +195,39 @@ class SmtpRelayClientTest {
                 new MessagingException("outer", new Exception("root cause"))));
     }
 
-    private static SmtpRelayClient client(List<String> hosts, boolean requireStarttls) {
-        MxResolver resolver = new MxResolver() {
+    private static MxResolver resolver(List<String> hosts) {
+        return new MxResolver() {
             @Override
             public List<String> lookupMxHosts(String domain) {
                 assertEquals("example.test", domain);
                 return hosts;
             }
         };
-        return new SmtpRelayClient(resolver, "mail.company.local", requireStarttls);
+    }
+
+    private static SmtpRelayClient client(List<String> hosts, boolean requireStarttls) {
+        return new SmtpRelayClient(resolver(hosts), "mail.company.local", requireStarttls);
+    }
+
+    private static SmtpRelayClient client(List<String> hosts, boolean requireStarttls, int port) {
+        return new SmtpRelayClient(resolver(hosts), "mail.company.local", requireStarttls) {
+            @Override
+            int smtpPort() {
+                return port;
+            }
+        };
     }
 
     private static FakeSmtpServer relayServer() {
         if (sharedServer == null) {
             try {
-                sharedServer = new FakeSmtpServer(25, InetAddress.getByName("127.0.0.1"), null);
+                sharedServer = new FakeSmtpServer(0, InetAddress.getByName("127.0.0.1"), null);
             } catch (Exception e) {
-                Assumptions.abort("Cannot bind test SMTP server to 127.0.0.1:25: " + e.getMessage());
-                throw new AssertionError(e);
+                throw new AssertionError("Cannot bind loopback test SMTP server", e);
             }
         }
         sharedServer.reset();
         return sharedServer;
-    }
-
-    private static Address[] addresses(String... emails) throws Exception {
-        Address[] addresses = new Address[emails.length];
-        for (int i = 0; i < emails.length; i++) {
-            addresses[i] = new InternetAddress(emails[i]);
-        }
-        return addresses;
     }
 
     private static Map<String, SmtpRelayClient.RecipientResult> byRecipient(List<SmtpRelayClient.RecipientResult> results) {
@@ -242,12 +235,4 @@ class SmtpRelayClientTest {
                 SmtpRelayClient.RecipientResult::recipient, Function.identity()));
     }
 
-    @SuppressWarnings("unchecked")
-    private static List<SmtpRelayClient.RecipientResult> classify(
-            SmtpRelayClient client, SendFailedException error, List<String> recipients) throws Exception {
-        Method method = SmtpRelayClient.class.getDeclaredMethod(
-                "classifySendFailed", SendFailedException.class, List.class, String.class);
-        method.setAccessible(true);
-        return (List<SmtpRelayClient.RecipientResult>) method.invoke(client, error, recipients, "127.0.0.1");
-    }
 }

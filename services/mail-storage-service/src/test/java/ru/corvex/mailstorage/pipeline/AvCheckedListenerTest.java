@@ -102,6 +102,20 @@ class AvCheckedListenerTest {
     }
 
     @Test
+    void unknownVerdictsAreRejectedBeforeDeliveryOrSpoolDeletion() throws Exception {
+        for (String status : new String[]{null, "ERROR", "PENDING", "UNKNOWN", "", "CLEAN ", "unrecognized"}) {
+            MailPipelineEvents.AvCheckedEvent base = event(status == null ? List.of() : List.of("one@company.local"));
+            MailPipelineEvents.AvCheckedEvent unknown = new MailPipelineEvents.AvCheckedEvent(
+                    base.rawRef(), base.mailFrom(), base.recipients(), base.remoteAddress(),
+                    base.sizeBytes(), base.sha256(), base.receivedAt(), base.spam(), base.spamScore(),
+                    base.spamThreshold(), base.spamChecked(), status, null);
+            assertThrows(IOException.class, () -> listener.onAvChecked(mapper.writeValueAsString(unknown)));
+        }
+        verify(spool, never()).delete(anyString());
+        org.mockito.Mockito.verifyNoInteractions(delivery, indexer, rabbit);
+    }
+
+    @Test
     void malformedPayloadIsRejected() {
         assertThrows(JsonProcessingException.class, () -> listener.onAvChecked("{not-json"));
     }

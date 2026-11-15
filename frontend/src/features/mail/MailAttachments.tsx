@@ -1,4 +1,4 @@
-import { FileCheck2 } from 'lucide-react';
+import { File, FileArchive, FileAudio, FileCode, FileImage, FileSpreadsheet, FileText, FileVideo } from 'lucide-react';
 import type { MailAttachmentView } from '../../api/mailApi';
 import { useI18n } from '../../i18n';
 
@@ -6,6 +6,20 @@ function fileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// Icons are decorative hints based on the filename, never an AV verdict or MIME validation.
+function fileIcon(fileName: string) {
+  const extension = fileName.includes('.') ? fileName.split('.').pop()?.toLowerCase() : '';
+  if (extension === 'pdf') return { Icon: FileText, tone: 'pdf' };
+  if (['doc', 'docx', 'txt'].includes(extension ?? '')) return { Icon: FileText, tone: 'document' };
+  if (['xls', 'xlsx', 'csv'].includes(extension ?? '')) return { Icon: FileSpreadsheet, tone: 'sheet' };
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension ?? '')) return { Icon: FileImage, tone: 'image' };
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(extension ?? '')) return { Icon: FileArchive, tone: 'archive' };
+  if (['mp3', 'wav', 'ogg'].includes(extension ?? '')) return { Icon: FileAudio, tone: 'audio' };
+  if (['mp4', 'mov', 'avi'].includes(extension ?? '')) return { Icon: FileVideo, tone: 'video' };
+  if (['js', 'ts', 'json', 'py', 'html', 'css'].includes(extension ?? '')) return { Icon: FileCode, tone: 'code' };
+  return { Icon: File, tone: 'unknown' };
 }
 
 export default function MailAttachments({ demoMode, attachments, busy, onDownload }: {
@@ -18,9 +32,10 @@ export default function MailAttachments({ demoMode, attachments, busy, onDownloa
   if (demoMode) return <p className="mt-6 text-sm text-muted">{t('Вложение недоступно в демонстрационном режиме')}</p>;
   if (!attachments) return <p className="mt-6 text-sm text-muted">{t('Загрузка вложений…')}</p>;
   if (!attachments.length) return <p className="mt-6 text-sm text-muted">{t('Вложения не найдены')}</p>;
-  return <div className="mt-6 space-y-2">{attachments.map((attachment) => (
-    <div key={attachment.partIndex} className="flex items-center gap-3 rounded-xl border border-line bg-chrome px-4 py-3">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-dark"><FileCheck2 size={19} /></span>
+  return <div className="mt-6 space-y-2">{attachments.map((attachment) => {
+    const { Icon, tone } = fileIcon(attachment.fileName);
+    return <div key={attachment.partIndex} className="flex items-center gap-3 rounded-xl border border-line bg-chrome px-4 py-3">
+      <span className={`mail-file-icon mail-file-icon-${tone} flex h-10 w-10 shrink-0 items-center justify-center rounded-lg`}><Icon size={19} aria-hidden="true" /></span>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium" title={attachment.fileName}>{attachment.fileName}</div>
         <div className="text-xs text-muted">{fileSize(attachment.sizeBytes)} · {t(attachment.avStatus === 'CLEAN' ? 'Письмо проверено антивирусом: угрозы не обнаружены'
@@ -32,6 +47,6 @@ export default function MailAttachments({ demoMode, attachments, busy, onDownloa
       <button type="button" className="btn-secondary h-9 px-3 text-[13px]"
         disabled={attachment.avStatus === 'INFECTED' || busy}
         onClick={() => onDownload(attachment)}>{t(attachment.avStatus === 'CLEAN' ? 'Скачать' : 'Проверить и скачать')}</button>
-    </div>
-  ))}</div>;
+    </div>;
+  })}</div>;
 }

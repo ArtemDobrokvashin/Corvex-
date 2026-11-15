@@ -2,6 +2,8 @@ package ru.corvex.mailsmtp.outbound;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.aopalliance.aop.Advice;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.Declarables;
 import org.springframework.amqp.core.Queue;
@@ -83,7 +85,13 @@ class OutboundAmqpConfigTest {
     @Test
     void createsConverterAndListenerFactory() {
         assertTrue(config.simpleMessageConverter() instanceof SimpleMessageConverter);
-        assertNotNull(config.mailListenerFactory(mock(ConnectionFactory.class)));
+        var factory = config.mailListenerFactory(mock(ConnectionFactory.class));
+        assertNotNull(factory);
+        var container = factory.createListenerContainer(null);
+        assertEquals(Boolean.FALSE, ReflectionTestUtils.getField(container, "defaultRequeueRejected"));
+        Advice[] advice = (Advice[]) ReflectionTestUtils.getField(container, "adviceChain");
+        assertNotNull(advice);
+        assertEquals(0, advice.length);
     }
 
     @Test

@@ -12,9 +12,12 @@ import ru.corvex.mailstorage.av.ClamAvClient;
 import ru.corvex.mailstorage.domain.MailFolder;
 import ru.corvex.mailstorage.domain.MessageMetadata;
 import ru.corvex.mailstorage.mime.MimeMailParser;
+import ru.corvex.mailstorage.mime.InlineImageExtractor;
+import java.io.ByteArrayInputStream;
 import ru.corvex.mailstorage.repository.MailFolderRepository;
 import ru.corvex.mailstorage.repository.MessageMetadataRepository;
 import ru.corvex.mailstorage.storage.MaildirStorage;
+import ru.corvex.mailstorage.storage.TransactionalMailMove;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -111,7 +114,9 @@ public class MailApiService {
 
     @Transactional
     public MailDtos.MessageListItem updateFlags(UUID ownerId, UUID messageId, MailDtos.UpdateFlagsRequest req) {
-        MessageMetadata m = loadOwned(ownerId, messageId);
+        // Serialize flag writes with MOVE before loading a mutable entity.
+        MessageMetadata m = messages.lockOwned(messageId, ownerId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Письмо не найдено"));
         boolean beforeSeen = m.isSeen();
         boolean beforeFlagged = m.isFlagged();
         boolean beforeAnswered = m.isAnswered();
@@ -140,28 +145,65 @@ public class MailApiService {
         return toListItem(m, hasAttachments(m.getId()));
     }
 
-    @Transactional
+    @Transactional(rollbackFor = IOException.class)
     public MailDtos.MessageListItem moveMessage(UUID ownerId, UUID messageId, UUID targetFolderId) throws IOException {
-        MessageMetadata m = loadOwned(ownerId, messageId);
+        return moveMessage(ownerId, messageId, targetFolderId, null, null);
+    }
+
+    @Transactional(rollbackFor = IOException.class)
+    public MailDtos.MessageListItem moveMessage(UUID ownerId, UUID messageId, UUID targetFolderId,
+                                                 UUID expectedFolderId, Long expectedUid) throws IOException {
+        if ((expectedFolderId == null) != (expectedUid == null) || (expectedUid != null && expectedUid < 1)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Некорректное ожидаемое состояние письма");
+        }
         MailFolder target = folders.findByIdAndOwnerId(targetFolderId, ownerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Папка назначения не найдена"));
+        target = folders.lockById(target.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Папка назначения не найдена"));
+        // Both webmail and IMAP MOVE lock the target folder before the message row.
+        MessageMetadata m = messages.lockOwned(messageId, ownerId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Письмо не найдено"));
+        if (expectedFolderId != null && (!m.getFolder().getId().equals(expectedFolderId) || m.getUid() != expectedUid)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Письмо изменилось или было перемещено. Обновите список.");
+        }
         if (m.getFolder().getId().equals(target.getId())) {
             return toListItem(m, hasAttachments(m.getId()));
         }
-        target = folders.lockById(target.getId()).orElseThrow();
         long uid = target.getUidNext();
         target.setUidNext(uid + 1);
         long modseq = Math.max(1, target.getHighestModseq()) + 1;
         target.setHighestModseq(modseq);
         folders.save(target);
 
-        String newPath = maildir.moveMessageToFolder(m.getMaildirPath(), target.getName(), m.isSeen()).toString();
+        String newPath = TransactionalMailMove.stage(maildir, m.getMaildirPath(), target.getName(), m.isSeen()).toString();
         m.setFolder(target);
         m.setUid(uid);
         m.setModseq(modseq);
         m.setMaildirPath(newPath);
         m = messages.save(m);
         return toListItem(m, hasAttachments(m.getId()));
+    }
+
+    /** CID images are read from the owner's original MIME, including historical messages. */
+    @Transactional(readOnly = true)
+    public InlineImageExtractor.Image inlineImage(UUID ownerId, UUID messageId, String cid) throws IOException {
+        MessageMetadata message = loadOwned(ownerId, messageId);
+        if (message.isAvScanVerified() && message.getAvStatus() == MessageMetadata.AvStatus.INFECTED) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Изображение заблокировано антивирусом");
+        }
+        InlineImageExtractor.Image image;
+        try (InputStream in = maildir.openMessage(message.getMaildirPath())) {
+            image = new InlineImageExtractor().extract(in, cid);
+        } catch (MessagingException e) {
+            throw new IOException("Не удалось разобрать письмо", e);
+        }
+        if (image == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Изображение не найдено");
+        ClamAvClient.ScanResult result = clam.scan(new ByteArrayInputStream(image.bytes()));
+        if (result.result() == ClamAvClient.Result.INFECTED)
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Изображение заблокировано антивирусом");
+        if (result.result() != ClamAvClient.Result.CLEAN)
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Антивирус временно недоступен");
+        return image;
     }
 
     private MessageMetadata loadOwned(UUID ownerId, UUID messageId) {

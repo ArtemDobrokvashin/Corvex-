@@ -1,0 +1,71 @@
+"""Static regression guards; not Docker/PowerShell or live-James tests."""
+from pathlib import Path
+import unittest
+
+ROOT = Path(__file__).resolve().parents[2]
+SCRIPT = (ROOT / 'scripts/test-james-jmap-read-gateway.ps1').read_text(encoding='utf-8')
+PROBE = (ROOT / 'scripts/JamesJmapGatewayLiveProbe.java').read_text(encoding='utf-8')
+DOCKERFILE = (ROOT / 'infra/james/jmap-read-gateway/Dockerfile').read_text(encoding='utf-8')
+
+
+class GatewayProbeGuards(unittest.TestCase):
+    def test_script_only_recreates_jmap_and_has_restoration(self):
+        self.assertIn('up -d --no-deps --no-build --force-recreate james-jmap', SCRIPT)
+        self.assertIn('if ($Changed)', SCRIPT)
+        self.assertIn('docker @Base up -d --no-deps --no-build --force-recreate james-jmap', SCRIPT)
+        self.assertIn('com.docker.compose.config-hash', SCRIPT)
+        self.assertIn("Probe 'read-only'", SCRIPT)
+        self.assertNotIn('down -v', SCRIPT)
+        self.assertNotIn('docker network connect', SCRIPT)
+
+    def test_docker_inspect_uses_windows_safe_template_for_both_hash_checks(self):
+        self.assertIn("--format '{{json .Config.Labels}}'", SCRIPT)
+        self.assertNotIn('{{index .Config.Labels', SCRIPT)
+        self.assertIn('$actualHash = ProxyHash $Jmap', SCRIPT)
+        self.assertIn('$restoredHash = ProxyHash $restored', SCRIPT)
+        self.assertIn("$labels.'com.docker.compose.config-hash'", SCRIPT)
+        self.assertIn('if ($LASTEXITCODE -ne 0 -or $lines.Count -ne 1)', SCRIPT)
+
+    def test_intent_before_proxy_recreation_and_no_retry(self):
+        self.assertIn('prior gateway probe intent exists', SCRIPT)
+        self.assertLess(SCRIPT.index("[IO.FileMode]::CreateNew"), SCRIPT.index('$Changed = $true'))
+        self.assertLess(SCRIPT.index('$Changed = $true'), SCRIPT.index('docker @candidate up'))
+
+    def test_probe_uses_synthetic_account_and_invalid_write_parameters(self):
+        self.assertIn('cvx-[0-9a-f]{32}@localhost', PROBE)
+        for method in ('Email/import', 'Email/set', 'Mailbox/set', 'EmailSubmission/set'):
+            self.assertIn('"' + method + '"', PROBE)
+        self.assertIn('addObject().put("invalidProbe", true)', PROBE)
+        self.assertIn('Request rejected', PROBE)
+        self.assertNotIn('BodyPublishers.ofFile', PROBE)
+
+    def test_installed_probe_does_not_recreate_services_or_modify_mail(self):
+        script = (ROOT / 'scripts/test-james-jmap-installed.ps1').read_text(encoding='utf-8')
+        self.assertIn('corvex-james-jmap-read-gateway:local', script)
+        self.assertIn("Probe 'tls'", script)
+        self.assertIn("Probe 'gateway'", script)
+        self.assertIn('acknowledged-and-jmap-verified', script)
+        for forbidden in ('docker @Base up', 'docker build', 'docker network', 'force-recreate', 'docker compose down'):
+            self.assertNotIn(forbidden, script)
+        self.assertIn("$Remote -match '^/tmp/corvex-jmap-guard-[0-9a-f]{32}$'", script)
+
+    def test_image_build_runs_unit_tests(self):
+        self.assertIn('RUN node --test gateway.test.cjs', DOCKERFILE)
+        self.assertIn('COPY --from=checked /app/gateway.cjs', DOCKERFILE)
+
+    def test_james_transition_uses_internal_read_gateway(self):
+        compose = (ROOT / 'docker-compose.yml').read_text(encoding='utf-8')
+        jmap = compose.split('  james-jmap:\n', 1)[1].split('\n  # Separate opt-in', 1)[0]
+        self.assertIn('image: corvex-james-jmap-read-gateway:local', jmap)
+        self.assertIn('build: ./infra/james/jmap-read-gateway', jmap)
+        self.assertIn('profiles: [james-transition]', jmap)
+        self.assertIn('read_only: true', jmap)
+        self.assertIn('cap_drop: [ALL]', jmap)
+        self.assertIn('target: /run/james-tls/jmap.crt', jmap)
+        self.assertIn('target: /run/james-tls/jmap.key', jmap)
+        self.assertNotIn('jmap-nginx.conf', jmap)
+        self.assertNotIn('ports:', jmap)
+
+
+if __name__ == '__main__':
+    unittest.main()

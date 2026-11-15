@@ -3,6 +3,109 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    /* Светлая тема по умолчанию (Quiet Work). Значения совпадают с токенами Tailwind. */
+    --corvex-canvas: #F7F7F4;
+    --corvex-chrome: #FBFBF9;
+    --corvex-surface: #FFFFFF;
+    --corvex-ink: #17181C;
+    --corvex-ink-soft: #2B2D33;
+    --corvex-muted: #6F7280;
+    --corvex-faint: #A5A8B3;
+    --corvex-line: #E8E7E2;
+    --corvex-accent: #3157D5;
+    --corvex-accent-dark: #2446B6;
+    --corvex-accent-soft: #EEF2FF;
+    --corvex-shadow-soft: 0 1px 2px rgba(23, 24, 28, 0.05), 0 1px 3px rgba(23, 24, 28, 0.04);
+    --corvex-radius: 12px;
+    /* Rail: круглые кнопки-иконки, активная — залитый круг. */
+    --corvex-rail-item: #FFFFFF;
+    --corvex-rail-item-hover: #F1F1EE;
+    --corvex-rail-active: #14151A;
+    --corvex-rail-active-ink: #FFFFFF;
+  }
+
+  [data-theme="dark"] {
+    /* Тёмная тема: контрастная, но без чёрной «стены» sidebar — приглушённая графитовая гамма. */
+    color-scheme: dark;
+    --corvex-canvas: #0A0B0D;
+    --corvex-chrome: #121316;
+    --corvex-surface: #1A1B1E;
+    --corvex-ink: #F2F2F0;
+    --corvex-ink-soft: #E4E4E0;
+    --corvex-muted: #B8BCC6;
+    --corvex-faint: #9498A4;
+    --corvex-line: #2A2B30;
+    --corvex-accent: #5B6FF5;
+    --corvex-accent-dark: #3E53C9;
+    --corvex-accent-soft: #2A2838;
+    --corvex-shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.35);
+    --corvex-radius: 12px;
+    --corvex-rail-item: #1A1B1E;
+    --corvex-rail-item-hover: #25262B;
+    --corvex-rail-active: #F2F2F0;
+    --corvex-rail-active-ink: #14151A;
+  }
+
+  /* ===== Базовые элементы: тёмная тема переопределяет Tailwind-токены =====
+     Body, html, #root используют Tailwind-классы bg-canvas/text-ink с фиксированными
+     значениями. Ниже — переопределения через data-theme с более высокой специфичностью,
+     чтобы в тёмной теме фон и текст были читаемыми. */
+
+  html[data-theme="dark"] body,
+  html[data-theme="dark"] #root,
+  html[data-theme="dark"] body.bg-canvas {
+    background-color: var(--corvex-canvas) !important;
+    color: var(--corvex-ink) !important;
+  }
+
+  html[data-theme="dark"] .text-ink,
+  html[data-theme="dark"] .text-ink-soft {
+    color: var(--corvex-ink) !important;
+  }
+
+  html[data-theme="dark"] .text-muted {
+    color: var(--corvex-muted) !important;
+  }
+
+  html[data-theme="dark"] .bg-canvas,
+  html[data-theme="dark"] .bg-chrome,
+  html[data-theme="dark"] .bg-surface {
+    background-color: var(--corvex-surface) !important;
+  }
+
+  /* ===== Акцентный цвет: реальное влияние в обеих темах =====
+     Tailwind-токены accent (bg-accent, text-accent-dark, border-accent) имеют
+     фиксированные значения. Ниже — переопределения через var(--corvex-accent),
+     чтобы выбранный цвет акцента реально менял интерфейс. */
+
+  .accent-dynamic {
+    background-color: var(--corvex-accent);
+    border-color: var(--corvex-accent);
+    color: #FFFFFF;
+  }
+
+  .accent-dynamic:hover {
+    background-color: var(--corvex-accent-dark);
+    border-color: var(--corvex-accent-dark);
+  }
+
+  .accent-dynamic-text {
+    color: var(--corvex-accent);
+  }
+
+  .accent-dynamic-border {
+    border-color: var(--corvex-accent);
+  }
+
+  html[data-theme="dark"] .accent-dynamic-text {
+    color: var(--corvex-accent);
+  }
+
+  [data-theme="system"] {
+    /* Системная тема подставляется через media-query в ThemeProvider. */
+  }
+
   html,
   body,
   #root {
@@ -20,7 +123,7 @@
   }
 
   :focus-visible {
-    outline: 2px solid rgba(49, 87, 213, 0.55);
+    outline: 2px solid var(--corvex-accent);
     outline-offset: 2px;
   }
 
@@ -218,3 +321,397 @@
     font-variant-emoji: emoji;
   }
 }
+
+/* The editor uses semantic HTML, which Tailwind's reset otherwise flattens. */
+.compose-editor p { margin: 0 0 0.5em; }
+.compose-editor ul { list-style: disc; padding-left: 1.5em; }
+.compose-editor ol { list-style: decimal; padding-left: 1.5em; }
+.compose-editor a { color: #3157d5; text-decoration: underline; }
+.compose-editor blockquote { border-left: 3px solid #d8d6cf; padding-left: 1em; }
+.compose-editor h1 { font-size: 1.5em; font-weight: 700; }
+.compose-editor h2 { font-size: 1.25em; font-weight: 700; }
+.compose-editor h3 { font-size: 1.1em; font-weight: 700; }
+
+/* Calm, low-contrast backdrop: content remains on opaque, readable surfaces. */
+.mail-workspace { background: #f1f5f6; }
+@media (min-width: 768px) {
+  .mail-workspace { background: linear-gradient(135deg, #eaf4f6 0%, #f6f3ef 53%, #edf3f6 100%); }
+}
+[data-workspace-background="plain"] .mail-workspace { background: #f1f5f6; }
+@media (forced-colors: active) {
+  .mail-workspace, [data-workspace-background="plain"] .mail-workspace { background: Canvas; }
+}
+.rail-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  background: var(--corvex-rail-item);
+  color: var(--corvex-muted);
+  transition: background 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+.rail-btn:hover { color: var(--corvex-ink); background: var(--corvex-rail-item-hover); }
+.rail-btn:focus-visible { outline: 2px solid var(--corvex-accent); outline-offset: 2px; }
+.rail-btn[aria-current="page"] {
+  background: var(--corvex-rail-active);
+  color: var(--corvex-rail-active-ink);
+  box-shadow: var(--corvex-shadow-soft);
+}
+.rail-btn .rail-badge {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--corvex-accent);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+/* Тема-ависимые утилиты. Используются в оболочке и ключевых компонентах,
+   чтобы светлая и тёмная тема переключались через data-theme на <html>. */
+.bg-corvex-canvas {
+  background-color: var(--corvex-canvas);
+}
+.bg-corvex-chrome {
+  background-color: var(--corvex-chrome);
+}
+.bg-corvex-surface {
+  background-color: var(--corvex-surface);
+}
+.text-corvex-ink {
+  color: var(--corvex-ink);
+}
+.text-corvex-ink-soft {
+  color: var(--corvex-ink-soft);
+}
+.text-corvex-muted {
+  color: var(--corvex-muted);
+}
+.text-corvex-faint {
+  color: var(--corvex-faint);
+}
+.border-corvex-line {
+  border-color: var(--corvex-line);
+}
+.shadow-corvex-soft {
+  box-shadow: var(--corvex-shadow-soft);
+}
+
+/* ===== Тёмная тема: переопределение общих компонентов =====
+   Применяются только когда data-theme="dark" на <html>.
+   Не затрагивают светлую тему и не ломают существующие экраны. */
+
+[data-theme="dark"] .panel {
+  border-color: var(--corvex-line);
+  background-color: var(--corvex-surface);
+  box-shadow: var(--corvex-shadow-soft);
+}
+
+[data-theme="dark"] .field {
+  border-color: var(--corvex-line);
+  background-color: var(--corvex-surface);
+  color: var(--corvex-ink);
+}
+[data-theme="dark"] .field::placeholder {
+  color: var(--corvex-muted);
+}
+[data-theme="dark"] .field:hover {
+  border-color: #5A5C62;
+}
+[data-theme="dark"] .field:focus {
+  border-color: var(--corvex-accent);
+  box-shadow: 0 0 0 4px rgba(49, 87, 213, 0.2);
+}
+
+[data-theme="dark"] .btn-secondary {
+  border-color: var(--corvex-line);
+  background-color: var(--corvex-surface);
+  color: var(--corvex-ink-soft);
+}
+[data-theme="dark"] .btn-secondary:hover {
+  border-color: #5A5C62;
+  background-color: var(--corvex-chrome);
+  color: var(--corvex-ink);
+}
+
+[data-theme="dark"] .icon-btn {
+  color: var(--corvex-muted);
+}
+[data-theme="dark"] .icon-btn:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--corvex-ink);
+}
+
+[data-theme="dark"] .nav-row {
+  color: var(--corvex-muted);
+}
+[data-theme="dark"] .nav-row:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--corvex-ink);
+}
+
+[data-theme="dark"] .chip {
+  border-color: var(--corvex-line);
+  background-color: var(--corvex-chrome);
+  color: var(--corvex-muted);
+}
+
+[data-theme="dark"] .notice {
+  border-color: var(--corvex-line);
+  background-color: var(--corvex-surface);
+  color: var(--corvex-ink);
+}
+
+[data-theme="dark"] .btn-primary {
+  background-color: var(--corvex-accent);
+  border-color: var(--corvex-accent);
+}
+[data-theme="dark"] .btn-primary:hover {
+  background-color: var(--corvex-accent-dark);
+  border-color: var(--corvex-accent-dark);
+}
+
+[data-theme="dark"] .btn-accent {
+  background-color: var(--corvex-accent);
+  border-color: var(--corvex-accent);
+}
+[data-theme="dark"] .btn-accent:hover {
+  background-color: var(--corvex-accent-dark);
+  border-color: var(--corvex-accent-dark);
+}
+
+[data-theme="dark"] .search-field {
+  background-color: rgba(255, 255, 255, 0.06);
+  border-color: var(--corvex-line);
+  color: var(--corvex-ink);
+}
+[data-theme="dark"] .search-field::placeholder {
+  color: var(--corvex-muted);
+}
+[data-theme="dark"] .search-field:hover {
+  background-color: rgba(255, 255, 255, 0.10);
+}
+[data-theme="dark"] .search-field:focus {
+  border-color: var(--corvex-accent);
+  box-shadow: 0 0 0 4px rgba(49, 87, 213, 0.2);
+}
+
+[data-theme="dark"] .scroll-area::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.16);
+}
+
+[data-theme="dark"] .scroll-area::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.28);
+}
+
+/* ===== Дополнительные компоненты: тёмная тема ===== */
+
+[data-theme="dark"] .badge {
+  background-color: var(--corvex-accent);
+  color: #FFFFFF;
+}
+
+[data-theme="dark"] .kbd {
+  background-color: var(--corvex-chrome);
+  border-color: var(--corvex-line);
+  color: var(--corvex-ink);
+}
+
+[data-theme="dark"] fieldset {
+  border-color: var(--corvex-line);
+}
+
+[data-theme="dark"] legend {
+  color: var(--corvex-ink);
+}
+
+[data-theme="dark"] table {
+  color: var(--corvex-ink);
+}
+
+[data-theme="dark"] th {
+  color: var(--corvex-ink-soft);
+}
+
+[data-theme="dark"] td {
+  color: var(--corvex-ink-soft);
+  border-color: var(--corvex-line);
+}
+
+[data-theme="dark"] .animate-spin {
+  color: var(--corvex-accent);
+}
+
+/* Поверхности существующих экранов, не покрытые токенами. */
+[data-theme="dark"] .bg-white,
+[data-theme="dark"] .bg-surface { background-color: var(--corvex-surface) !important; }
+[data-theme="dark"] .bg-gray-50,
+[data-theme="dark"] .bg-amber-50,
+[data-theme="dark"] .bg-red-50,
+[data-theme="dark"] .bg-emerald-50 { background-color: var(--corvex-chrome) !important; }
+[data-theme="dark"] .text-faint { color: var(--corvex-muted) !important; }
+[data-theme="dark"] .border-line { border-color: var(--corvex-line) !important; }
+[data-theme="dark"] .shadow-soft { box-shadow: var(--corvex-shadow-soft) !important; }
+html[data-theme="dark"] .mail-workspace,
+html[data-theme="dark"] [data-workspace-background="plain"] .mail-workspace {
+  background: var(--corvex-canvas);
+}
+[data-theme="dark"] .btn-ghost { color: var(--corvex-muted); }
+[data-theme="dark"] .btn-ghost:hover { background-color: rgba(255,255,255,.06); color: var(--corvex-ink); }
+
+/* ===== Акцентный цвет: реальное влияние в обеих темах =====
+   Переопределяем Tailwind-токены accent через var(--corvex-accent),
+   чтобы выбранный цвет акцента реально менял интерфейс в обеих темах. */
+
+html[data-theme="light"] .bg-accent {
+  background-color: var(--corvex-accent) !important;
+}
+
+html[data-theme="light"] .text-accent-dark {
+  color: var(--corvex-accent-on-light, var(--corvex-accent)) !important;
+}
+
+html[data-theme="light"] .border-accent {
+  border-color: var(--corvex-accent) !important;
+}
+
+html[data-theme="light"] .bg-accent-soft {
+  background-color: var(--corvex-accent-soft) !important;
+}
+
+html[data-theme="dark"] .bg-accent {
+  background-color: var(--corvex-accent) !important;
+}
+
+html[data-theme="dark"] .text-accent-dark {
+  color: var(--corvex-accent-on-dark) !important;
+}
+
+html[data-theme="dark"] .border-accent {
+  border-color: var(--corvex-accent) !important;
+}
+
+html[data-theme="dark"] .bg-accent-soft {
+  background-color: var(--corvex-accent-soft) !important;
+}
+
+/* ===== Плотность интерфейса =====
+   data-density="comfortable" увеличивает отступы и размеры интерактивных элементов. */
+
+[data-density="comfortable"] .field {
+  min-height: 3rem; /* h-12 — не фиксированная высота, чтобы контент мог расти */
+  padding-left: 1rem; /* px-4 */
+  padding-right: 1rem;
+}
+
+[data-density="comfortable"] .field-sm {
+  height: 2.5rem; /* h-10 */
+  padding-left: 0.875rem; /* px-3.5 */
+  padding-right: 0.875rem;
+}
+
+[data-density="comfortable"] .nav-row {
+  min-height: 2.5rem; /* min-h-10 */
+  padding-top: 0.625rem; /* py-2.5 */
+  padding-bottom: 0.625rem;
+}
+
+[data-density="comfortable"] .icon-btn {
+  height: 2.5rem; /* h-10 */
+  width: 2.5rem; /* w-10 */
+}
+
+[data-density="comfortable"] .icon-btn-sm {
+  height: 2.25rem; /* h-9 */
+  width: 2.25rem; /* w-9 */
+}
+
+[data-density="comfortable"] .btn-primary,
+[data-density="comfortable"] .btn-accent,
+[data-density="comfortable"] .btn-secondary {
+  height: 2.75rem; /* h-11 */
+  padding-left: 1.25rem; /* px-5 */
+  padding-right: 1.25rem;
+}
+
+/* ===== Акцентный цвет =====
+   --corvex-accent задаётся ThemeProvider через inline-стиль на <html>.
+   Компоненты, которые хотят реагировать на акцент, могут использовать
+   var(--corvex-accent) напрямую. */
+
+/* Existing component classes use @apply, so utility overrides alone do not reach them. */
+.btn-accent { background-color: var(--corvex-accent); color: var(--corvex-accent-button-text, #fff); }
+.btn-accent:hover, [data-theme="dark"] .btn-accent:hover { background-color: var(--corvex-accent); filter: brightness(0.88); }
+[data-theme="dark"] .btn-primary { color: var(--corvex-accent-button-text, #fff); }
+.nav-row-active, .chip-accent { color: var(--corvex-accent-on-light, var(--corvex-accent)); }
+[data-theme="dark"] .nav-row-active, [data-theme="dark"] .chip-accent {
+  color: var(--corvex-accent-on-dark);
+}
+/* @apply in nav-row-active is not affected by .bg-accent-soft overrides. */
+[data-theme="dark"] .nav-row-active,
+[data-theme="dark"] .nav-row-active:hover {
+  background-color: var(--corvex-accent-soft);
+  color: var(--corvex-accent-on-dark);
+  box-shadow: inset 3px 0 var(--corvex-accent-on-dark);
+}
+
+/* Dark navigation is confined to the desktop mail folder sidebar. */
+.mail-sidebar {
+  background-color: #0f172a;
+  border-color: #334155;
+  color: #f8fafc;
+}
+.mail-sidebar .section-label,
+.mail-sidebar .text-faint,
+.mail-sidebar .text-muted { color: #a9bad0; }
+.mail-sidebar .text-ink-soft { color: #e2e8f0; }
+.mail-sidebar .nav-row { color: #cbd5e1; }
+.mail-sidebar .nav-row:hover { color: #f8fafc; background-color: #26354b; }
+.mail-sidebar .nav-row-active,
+.mail-sidebar .nav-row-active:hover {
+  background-color: #183d37;
+  color: #8bf0c2;
+  box-shadow: inset 3px 0 #8bf0c2;
+}
+.mail-sidebar .nav-row-active .text-accent { color: #8bf0c2; }
+.mail-sidebar .btn-secondary {
+  background-color: #1e293b;
+  border-color: #475569;
+  color: #f8fafc;
+}
+.mail-sidebar .btn-secondary:hover { background-color: #334155; color: #fff; }
+.mail-sidebar form { color: #172033; }
+.mail-sidebar .icon-btn-sm { color: #475569; }
+.mail-sidebar [role="progressbar"] { background-color: #475569; }
+.mail-sidebar .scroll-area::-webkit-scrollbar-thumb { background-color: #64748b; }
+/* Existing dark-mode utility overrides are !important; keep this scope narrower. */
+html[data-theme="dark"] .mail-sidebar .text-faint,
+html[data-theme="dark"] .mail-sidebar .text-muted { color: #a9bad0 !important; }
+html[data-theme="dark"] .mail-sidebar .text-ink-soft { color: #e2e8f0 !important; }
+html[data-theme="dark"] .mail-sidebar .nav-row-active,
+html[data-theme="dark"] .mail-sidebar .nav-row-active:hover {
+  background-color: #183d37;
+  color: #8bf0c2;
+  box-shadow: inset 3px 0 #8bf0c2;
+}
+html[data-theme="dark"] .mail-sidebar form { color: #f8fafc; }
+
+/* Decorative file categories, not a trust or scan indicator. */
+.mail-file-icon { background: #edf1f7; color: #40526a; }
+.mail-file-icon-pdf { background: #fce8e8; color: #a52424; }
+.mail-file-icon-document { background: #e7efff; color: #254f9b; }
+.mail-file-icon-sheet { background: #e0f5e9; color: #176442; }
+.mail-file-icon-image { background: #f1e9fc; color: #69419a; }
+.mail-file-icon-archive { background: #fff2d9; color: #865600; }
+.mail-file-icon-audio { background: #e8e9ff; color: #434c9f; }
+.mail-file-icon-video { background: #ffeadf; color: #9a481b; }
+.mail-file-icon-code { background: #f4efd9; color: #6d590e; }

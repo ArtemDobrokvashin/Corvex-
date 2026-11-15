@@ -204,6 +204,9 @@ export const adminApi = {
   createGroup: (body: { code: string; name: string; permissions?: string[] }) =>
     apiFetch<AdminGroup>('/api/v1/admin/groups', { method: 'POST', body: JSON.stringify(body) }),
 
+  deleteGroup: (groupCode: string) =>
+    apiFetch<void>(`/api/v1/admin/groups/${encodeURIComponent(groupCode)}`, { method: 'DELETE' }),
+
   setGroupPermissions: (groupCode: string, permissions: string[]) =>
     apiFetch<AdminGroup>(`/api/v1/admin/groups/${groupCode}/permissions`, {
       method: 'PUT',

@@ -81,7 +81,11 @@ public class ExternalOutboundWorker {
         List<String> sent = new ArrayList<>();
         List<String> temporary = new ArrayList<>();
         String tempDiagnostic = "Временная ошибка SMTP провайдера";
-        for (SmtpRelayClient.RecipientResult result : smtp.send(config, eml, event.mailFrom(), event.recipients())) {
+        List<SmtpRelayClient.RecipientResult> results = smtp.send(config, eml, event.mailFrom(), event.recipients());
+        if (results.stream().anyMatch(result -> result.status() == SmtpRelayClient.Status.UNKNOWN)) {
+            throw new IOException("Provider SMTP outcome uncertain; manual reconciliation required");
+        }
+        for (SmtpRelayClient.RecipientResult result : results) {
             switch (result.status()) {
                 case SENT -> sent.add(result.recipient());
                 case PERMANENT -> publishBounced(event, result.recipient(), result.diagnostic());
@@ -89,6 +93,7 @@ public class ExternalOutboundWorker {
                     temporary.add(result.recipient());
                     tempDiagnostic = result.diagnostic();
                 }
+                case UNKNOWN -> throw new IOException("Provider SMTP outcome uncertain");
             }
         }
 

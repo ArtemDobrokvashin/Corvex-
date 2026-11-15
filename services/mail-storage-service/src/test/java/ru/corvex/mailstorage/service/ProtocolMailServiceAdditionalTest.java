@@ -7,6 +7,8 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 import ru.corvex.mailstorage.api.dto.ProtocolDtos;
 import ru.corvex.mailstorage.client.AuthUserClient;
@@ -119,17 +121,27 @@ class ProtocolMailServiceAdditionalTest {
     }
 
     @Test
-    void renameActuallyRenamesDirectoryAndMessagePaths() throws Exception {
+    void renameStagesMessageAndRetainsOriginalDirectory() throws Exception {
         MailFolder folder = folder("Projects", null);
         String rel = maildir.storeMessage("user@company.local", "Projects", bytes("body")).toString();
         MessageMetadata message = message(folder, 1, rel);
         when(folders.findByIdAndOwnerId(folder.getId(), ownerId)).thenReturn(Optional.of(folder));
+        when(folders.lockById(folder.getId())).thenReturn(Optional.of(folder));
         when(auth.findById(ownerId)).thenReturn(Optional.of(owner()));
-        when(messages.findAllByFolder_IdAndOwnerId(folder.getId(), ownerId)).thenReturn(List.of(message));
+        when(messages.findFolderUids(folder.getId(), ownerId)).thenReturn(List.of(1L));
+        when(messages.lockFolderUid(folder.getId(), 1L, ownerId)).thenReturn(Optional.of(message));
         when(messages.countByFolder_Id(folder.getId())).thenReturn(1L);
 
-        var renamed = service.renameFolder(ownerId, folder.getId(),
-                new ProtocolDtos.RenameFolderRequest("Renamed Folder", null, false));
+        TransactionSynchronizationManager.initSynchronization();
+        ProtocolDtos.FolderInfo renamed;
+        try {
+            renamed = service.renameFolder(ownerId, folder.getId(),
+                    new ProtocolDtos.RenameFolderRequest("Renamed Folder", null, false));
+            TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+        assertTrue(Files.exists(tmp.resolve("mail").resolve(rel)));
 
         assertEquals("Renamed Folder", renamed.name());
         assertTrue(message.getMaildirPath().contains("Renamed_Folder"));
@@ -142,6 +154,7 @@ class ProtocolMailServiceAdditionalTest {
     void renameGuardsSystemCycleSiblingAndCanMoveToRoot() throws Exception {
         MailFolder system = folder("INBOX", "INBOX");
         when(folders.findByIdAndOwnerId(system.getId(), ownerId)).thenReturn(Optional.of(system));
+        when(folders.lockById(system.getId())).thenReturn(Optional.of(system));
         assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
                 () -> service.renameFolder(ownerId, system.getId(),
                         new ProtocolDtos.RenameFolderRequest("Other", null, false))).getStatusCode());
@@ -150,6 +163,7 @@ class ProtocolMailServiceAdditionalTest {
         MailFolder child = folder("Child", null);
         child.setParent(parent);
         when(folders.findByIdAndOwnerId(parent.getId(), ownerId)).thenReturn(Optional.of(parent));
+        when(folders.lockById(parent.getId())).thenReturn(Optional.of(parent));
         when(folders.findByIdAndOwnerId(child.getId(), ownerId)).thenReturn(Optional.of(child));
         when(folders.findAllByOwnerIdOrderBySpecialUseAscNameAsc(ownerId)).thenReturn(List.of(parent, child));
         assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
@@ -159,6 +173,7 @@ class ProtocolMailServiceAdditionalTest {
         MailFolder movable = folder("Movable", null);
         movable.setParent(parent);
         when(folders.findByIdAndOwnerId(movable.getId(), ownerId)).thenReturn(Optional.of(movable));
+        when(folders.lockById(movable.getId())).thenReturn(Optional.of(movable));
         when(folders.existsSibling(ownerId, null, "Movable")).thenReturn(false);
         var moved = service.renameFolder(ownerId, movable.getId(),
                 new ProtocolDtos.RenameFolderRequest("Movable", child.getId(), true));
@@ -174,6 +189,7 @@ class ProtocolMailServiceAdditionalTest {
     void renameWithoutChangesDoesNotPersistFolder() throws Exception {
         MailFolder folder = folder("Same", null);
         when(folders.findByIdAndOwnerId(folder.getId(), ownerId)).thenReturn(Optional.of(folder));
+        when(folders.lockById(folder.getId())).thenReturn(Optional.of(folder));
 
         var result = service.renameFolder(ownerId, folder.getId(),
                 new ProtocolDtos.RenameFolderRequest("Same", null, false));
@@ -184,14 +200,16 @@ class ProtocolMailServiceAdditionalTest {
     }
 
     @Test
-    void deleteFolderGuardsAndSuccessPathRemoveRowsFilesAndDirectory() throws Exception {
+    void deleteFolderGuardsAndDefersFilesWithoutRemovingDirectory() throws Exception {
         MailFolder system = folder("INBOX", "INBOX");
         when(folders.findByIdAndOwnerId(system.getId(), ownerId)).thenReturn(Optional.of(system));
+        when(folders.lockById(system.getId())).thenReturn(Optional.of(system));
         assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
                 () -> service.deleteFolder(ownerId, system.getId())).getStatusCode());
 
         MailFolder parent = folder("Parent", null);
         when(folders.findByIdAndOwnerId(parent.getId(), ownerId)).thenReturn(Optional.of(parent));
+        when(folders.lockById(parent.getId())).thenReturn(Optional.of(parent));
         when(folders.existsByParent_Id(parent.getId())).thenReturn(true);
         assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
                 () -> service.deleteFolder(ownerId, parent.getId())).getStatusCode());
@@ -200,15 +218,24 @@ class ProtocolMailServiceAdditionalTest {
         String rel = maildir.storeMessage("user@company.local", "Disposable", bytes("delete")).toString();
         MessageMetadata message = message(disposable, 1, rel);
         when(folders.findByIdAndOwnerId(disposable.getId(), ownerId)).thenReturn(Optional.of(disposable));
+        when(folders.lockById(disposable.getId())).thenReturn(Optional.of(disposable));
         when(folders.existsByParent_Id(disposable.getId())).thenReturn(false);
-        when(messages.findAllByFolder_IdAndOwnerId(disposable.getId(), ownerId)).thenReturn(List.of(message));
-        when(auth.findById(ownerId)).thenReturn(Optional.of(owner()));
+        when(messages.findFolderUids(disposable.getId(), ownerId)).thenReturn(List.of(1L));
+        when(messages.lockFolderUid(disposable.getId(), 1L, ownerId)).thenReturn(Optional.of(message));
 
-        service.deleteFolder(ownerId, disposable.getId());
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.deleteFolder(ownerId, disposable.getId());
+            assertTrue(Files.exists(tmp.resolve("mail").resolve(rel)));
+            TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
 
         verify(messages).delete(message);
         verify(folders).delete(disposable);
-        assertFalse(Files.exists(tmp.resolve("mail/user@company.local/Disposable")));
+        assertTrue(Files.exists(tmp.resolve("mail").resolve(rel)), "original retained pending safe reconciliation");
+        assertTrue(Files.isDirectory(tmp.resolve("mail/user@company.local/Disposable")));
     }
 
     @Test
@@ -250,10 +277,10 @@ class ProtocolMailServiceAdditionalTest {
     }
 
     @Test
-    void flagUpdateWithoutChangesStillSavesWithoutLock() {
+    void flagUpdateWithoutChangesLocksMessageButDoesNotLockFolder() {
         MailFolder inbox = folder("INBOX", "INBOX");
         MessageMetadata message = message(inbox, 3, "x");
-        when(messages.findByFolder_IdAndUidAndOwnerId(inbox.getId(), 3L, ownerId)).thenReturn(Optional.of(message));
+        when(messages.lockFolderUid(inbox.getId(), 3L, ownerId)).thenReturn(Optional.of(message));
         when(messages.save(any(MessageMetadata.class))).thenAnswer(inv -> inv.getArgument(0));
 
         var meta = service.updateFlags(ownerId, inbox.getId(), 3,
@@ -271,9 +298,15 @@ class ProtocolMailServiceAdditionalTest {
         deleted.setDeleted(true);
         when(folders.findByIdAndOwnerId(inbox.getId(), ownerId)).thenReturn(Optional.of(inbox));
         when(folders.lockById(inbox.getId())).thenReturn(Optional.of(inbox));
-        when(messages.findAllByFolder_IdAndOwnerIdAndDeletedTrue(inbox.getId(), ownerId)).thenReturn(List.of(deleted));
-
-        assertEquals(List.of(6L), service.expunge(ownerId, inbox.getId(), null).expungedUids());
+        when(messages.findDeletedUids(inbox.getId(), ownerId)).thenReturn(List.of(6L));
+        when(messages.lockFolderUid(inbox.getId(), 6L, ownerId)).thenReturn(Optional.of(deleted));
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            assertEquals(List.of(6L), service.expunge(ownerId, inbox.getId(), null).expungedUids());
+            TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
         verify(messages).delete(deleted);
     }
 
@@ -281,16 +314,28 @@ class ProtocolMailServiceAdditionalTest {
     void hardDeleteAdvancesFolderModseqAndHandlesFolderlessRow() {
         MailFolder inbox = folder("INBOX", "INBOX");
         MessageMetadata withFolder = message(inbox, 2, "user@company.local/INBOX/new/missing.eml");
-        when(messages.findByIdAndOwnerId(withFolder.getId(), ownerId)).thenReturn(Optional.of(withFolder));
+        when(messages.lockOwned(withFolder.getId(), ownerId)).thenReturn(Optional.of(withFolder));
         when(folders.lockById(inbox.getId())).thenReturn(Optional.of(inbox));
 
-        service.hardDeleteMessage(ownerId, withFolder.getId());
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.hardDeleteMessage(ownerId, withFolder.getId());
+            TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
         assertEquals(21, inbox.getHighestModseq());
 
         MessageMetadata folderless = message(inbox, 3, "user@company.local/INBOX/new/missing.eml");
         folderless.setFolder(null);
-        when(messages.findByIdAndOwnerId(folderless.getId(), ownerId)).thenReturn(Optional.of(folderless));
-        service.hardDeleteMessage(ownerId, folderless.getId());
+        when(messages.lockOwned(folderless.getId(), ownerId)).thenReturn(Optional.of(folderless));
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.hardDeleteMessage(ownerId, folderless.getId());
+            TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
         verify(messages).delete(folderless);
     }
 
@@ -321,17 +366,25 @@ class ProtocolMailServiceAdditionalTest {
         when(folders.findByIdAndOwnerId(inbox.getId(), ownerId)).thenReturn(Optional.of(inbox));
         when(folders.findByIdAndOwnerId(archive.getId(), ownerId)).thenReturn(Optional.of(archive));
         when(folders.lockById(archive.getId())).thenReturn(Optional.of(archive));
-        when(messages.findByFolder_IdAndUidAndOwnerId(inbox.getId(), 4L, ownerId)).thenReturn(Optional.of(source));
+        when(messages.lockFolderUid(inbox.getId(), 4L, ownerId)).thenReturn(Optional.of(source));
 
-        var moved = service.copyMessages(ownerId, inbox.getId(),
-                new ProtocolDtos.CopyRequest(List.of(4L), archive.getId(), true));
-
-        assertEquals(List.of(50L), moved.targetUids());
-        assertEquals(archive, source.getFolder());
-        assertEquals(50, source.getUid());
-        assertFalse(Files.exists(tmp.resolve("mail").resolve(rel)));
-        assertTrue(Files.exists(tmp.resolve("mail").resolve(source.getMaildirPath())));
-        verify(messages).save(source);
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            var moved = service.copyMessages(ownerId, inbox.getId(),
+                    new ProtocolDtos.CopyRequest(List.of(4L), archive.getId(), true));
+            assertEquals(List.of(50L), moved.targetUids());
+            assertEquals(archive, source.getFolder());
+            assertEquals(50, source.getUid());
+            assertTrue(Files.exists(tmp.resolve("mail").resolve(rel)), "original remains until commit");
+            assertTrue(Files.exists(tmp.resolve("mail").resolve(source.getMaildirPath())));
+            TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(sync -> sync.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+            assertTrue(Files.exists(tmp.resolve("mail").resolve(rel)), "original retained for safe reconciliation");
+            assertTrue(Files.exists(tmp.resolve("mail").resolve(source.getMaildirPath())));
+            verify(messages).save(source);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
 
         var empty = service.copyMessages(ownerId, inbox.getId(),
                 new ProtocolDtos.CopyRequest(null, archive.getId(), false));

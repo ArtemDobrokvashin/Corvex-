@@ -29,6 +29,7 @@ final class FakeSmtpServer implements AutoCloseable {
 
     volatile int rejectDataWithCode;
     volatile int rejectFirstDataWithCode;
+    volatile boolean storeThenFailData;
 
     FakeSmtpServer(int port, InetAddress bindAddress, AuthenticationHandlerFactory authFactory) {
         SMTPServer.Builder builder = SMTPServer.port(port)
@@ -64,6 +65,9 @@ final class FakeSmtpServer implements AutoCloseable {
                                     throw new RejectException(rejectDataWithCode, "DATA rejected by test server");
                                 }
                                 messages.add(bytes);
+                                if (storeThenFailData) {
+                                    throw new IOException("synthetic failure after handler saved DATA");
+                                }
                                 return null;
                             }
 
@@ -112,6 +116,7 @@ final class FakeSmtpServer implements AutoCloseable {
         dataAttempts.set(0);
         rejectDataWithCode = 0;
         rejectFirstDataWithCode = 0;
+        storeThenFailData = false;
     }
 
     @Override

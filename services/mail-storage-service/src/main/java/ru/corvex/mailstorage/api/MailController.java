@@ -11,6 +11,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import ru.corvex.mailstorage.api.dto.MailDtos;
+import ru.corvex.mailstorage.api.dto.ProtocolDtos;
 import ru.corvex.mailstorage.service.MailApiService;
 import ru.corvex.mailstorage.service.MailSendService;
 import ru.corvex.mailstorage.service.ProtocolMailService;
@@ -61,6 +63,22 @@ public class MailController {
         return mail.listFolders(userId(jwt));
     }
 
+    @PostMapping("/folders")
+    @PreAuthorize("hasAuthority('MAIL_MANAGE_FOLDERS')")
+    ResponseEntity<MailDtos.FolderView> createFolder(@AuthenticationPrincipal Jwt jwt,
+                                                      @RequestBody ProtocolDtos.CreateFolderRequest request) {
+        var folder = protocol.createFolder(userId(jwt), request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(new MailDtos.FolderView(
+                folder.id(), folder.name(), folder.specialUse(), folder.messageCount(), folder.unseenCount()));
+    }
+
+    @DeleteMapping("/folders/{folderId}")
+    @PreAuthorize("hasAuthority('MAIL_MANAGE_FOLDERS')")
+    ResponseEntity<Void> deleteFolder(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID folderId) {
+        protocol.deleteEmptyWebFolder(userId(jwt), folderId);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/folders/{folderId}/messages")
     @PreAuthorize("hasAuthority('MAIL_READ_OWN')")
     List<MailDtos.MessageListItem> messages(@AuthenticationPrincipal Jwt jwt,
@@ -91,6 +109,17 @@ public class MailController {
                 .body(new InputStreamResource(file.stream()));
     }
 
+    @PostMapping("/messages/{id}/inline-image")
+    @PreAuthorize("hasAuthority('MAIL_READ_OWN')")
+    ResponseEntity<byte[]> inlineImage(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+                                       @RequestBody MailDtos.InlineImageRequest request) throws IOException {
+        var image = mail.inlineImage(userId(jwt), id, request.cid());
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType(image.contentType()))
+                .header("X-Content-Type-Options", "nosniff")
+                .header(HttpHeaders.CACHE_CONTROL, "private, no-store")
+                .body(image.bytes());
+    }
+
     @PatchMapping("/messages/{id}/flags")
     @PreAuthorize("hasAuthority('MAIL_READ_OWN')")
     MailDtos.MessageListItem flags(@AuthenticationPrincipal Jwt jwt,
@@ -104,7 +133,7 @@ public class MailController {
     MailDtos.MessageListItem move(@AuthenticationPrincipal Jwt jwt,
                                   @PathVariable UUID id,
                                   @RequestBody MailDtos.MoveMessageRequest req) throws IOException {
-        return mail.moveMessage(userId(jwt), id, req.targetFolderId());
+        return mail.moveMessage(userId(jwt), id, req.targetFolderId(), req.expectedFolderId(), req.expectedUid());
     }
 
     @PostMapping("/messages/send")

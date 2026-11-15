@@ -6,6 +6,7 @@ import {
   LogOut,
   Mail,
   MessageSquare,
+  Palette,
   PenSquare,
   Search,
   Settings2,
@@ -15,8 +16,11 @@ import { logout as apiLogout, restoreSession } from '../api/authApi';
 import { DEMO_MAILS, DEMO_ROOMS, getDemoUser } from '../api/demoData';
 import { setAccessToken } from '../api/httpClient';
 import { LanguageSwitcher, systemGroupName, useI18n } from '../i18n';
-import { Avatar, LoadingScreen, LogoMark } from '../components/ui';
+import { Avatar, Clock, LoadingScreen, LogoMark } from '../components/ui';
+import { AppearanceSettings } from '../components/AppearanceSettings';
+import { CalendarWidget } from '../components/CalendarWidget';
 import ChangePasswordModal from '../features/auth/ChangePasswordModal';
+import PersonalSettings, { readWorkspaceBackground, saveWorkspaceBackground, type WorkspaceBackground } from './PersonalSettings';
 import SecuritySettingsModal from '../features/auth/SecuritySettingsModal';
 import { canAccessAdmin } from '../features/admin/adminAccess';
 import { useSession } from '../store/sessionStore';
@@ -41,7 +45,15 @@ export default function AppShell() {
   const location = useLocation();
   const restoreStarted = useRef(false);
   const [securityOpen, setSecurityOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [background, setBackground] = useState<WorkspaceBackground>(readWorkspaceBackground);
+
+  useEffect(() => {
+    document.documentElement.dataset.workspaceBackground = background;
+    return () => { delete document.documentElement.dataset.workspaceBackground; };
+  }, [background]);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
 
@@ -116,6 +128,7 @@ export default function AppShell() {
       actions.push({ id: 'admin', label: t('Администрирование'), description: t('Пользователи, сервер, аналитика и аудит'), icon: Settings2, run: () => navigate('/admin') });
     }
     actions.push(
+      { id: 'settings', label: t('Личные настройки'), description: t('Язык и внешний вид'), icon: Settings2, run: () => setSettingsOpen(true) },
       { id: 'security', label: t('Безопасность'), description: t('Пароль, 2FA и пароли приложений'), icon: ShieldCheck, run: () => setSecurityOpen(true) },
       { id: 'logout', label: demoMode ? t('Выйти из демо') : t('Выйти'), description: t('Завершить текущую сессию'), icon: LogOut, run: onLogout },
     );
@@ -139,17 +152,11 @@ export default function AppShell() {
     0,
   );
 
+  // Круглые кнопки-иконки как в макете: подпись остаётся в aria-label/title.
   const navItem = (to: string, label: string, Icon: typeof Mail, badge?: number) => (
-    <NavLink
-      key={to}
-      to={to}
-      className={({ isActive }) => `group relative flex min-h-[58px] w-full flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium transition duration-150 ${isActive ? 'bg-accent-soft text-accent-dark' : 'text-muted hover:bg-black/[0.04] hover:text-ink'}`}
-    >
-      <span className="relative">
-        <Icon size={21} strokeWidth={1.75} />
-        {badge ? <span className="absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-semibold text-white">{badge}</span> : null}
-      </span>
-      <span>{label}</span>
+    <NavLink key={to} to={to} aria-label={label} title={label} className="rail-btn relative">
+      <Icon size={20} strokeWidth={1.75} />
+      {badge ? <span className="rail-badge">{badge}</span> : null}
     </NavLink>
   );
 
@@ -168,11 +175,12 @@ export default function AppShell() {
   );
 
   return (
-    <div className="flex h-full flex-col bg-canvas md:flex-row">
+    <div className="flex h-full flex-col bg-corvex-canvas md:flex-row">
       {/* Мобильная шапка */}
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-surface/95 px-4 md:hidden">
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-corvex-line bg-corvex-surface/95 px-4 md:hidden">
         <LogoMark size={34} />
         <span className="text-[17px] font-semibold tracking-[-0.02em]">Corvex</span>
+        <Clock className="shrink-0 ml-2 text-[11px]" />
         <div className="ml-auto flex items-center gap-1">
           <button type="button" onClick={() => setPaletteOpen(true)} className="icon-btn" aria-label={t('Быстрый переход')}><Search size={19} /></button>
           <button type="button" onClick={() => setProfileOpen(!profileOpen)} className="rounded-full" aria-label={t('Профиль')}>
@@ -182,40 +190,45 @@ export default function AppShell() {
       </header>
 
       {/* Десктопный rail */}
-      <aside className="hidden w-[76px] shrink-0 flex-col items-center border-r border-line bg-chrome px-2.5 py-4 md:flex">
+      <aside className="hidden w-[76px] shrink-0 flex-col items-center border-r border-corvex-line bg-corvex-chrome px-2.5 py-4 md:flex">
         <button type="button" onClick={() => navigate('/mail')} className="rounded-[13px]" aria-label={t('Corvex — почта')}>
           <LogoMark size={40} />
         </button>
 
-        <nav className="mt-8 flex w-full flex-col gap-1.5" aria-label={t('Основная навигация')}>
+        <nav className="mt-6 flex w-full flex-col items-center gap-2" aria-label={t('Основная навигация')}>
           {navItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
           {navItem('/chat', t('Чат'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
-          {canAdmin && navItem('/admin', t('Админ'), Settings2)}
+          <CalendarWidget compact />
+          {canAdmin && navItem('/admin', t('Админ'), ShieldCheck)}
         </nav>
+
+        <button type="button" onClick={() => setSettingsOpen(true)} className="rail-btn mt-1.5" aria-label={t('Личные настройки')} title={t('Личные настройки')}>
+          <Settings2 size={20} strokeWidth={1.75} />
+        </button>
 
         <button
           type="button"
           onClick={() => setPaletteOpen(true)}
-          className="mt-5 flex min-h-[58px] w-full flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-medium text-muted transition hover:bg-black/[0.04] hover:text-ink"
+          className="rail-btn mt-4"
+          aria-label={t('Быстрый переход')}
+          title={`${t('Быстрый переход')} (Ctrl+K)`}
         >
           <Search size={20} strokeWidth={1.75} />
-          {t('Перейти')}
-          <span className="flex items-center gap-0.5 text-[9px] text-faint"><Command size={9} />K</span>
         </button>
 
         <button
           type="button"
           onClick={() => setLocale(nextLocale)}
-          className="mt-1.5 flex min-h-[52px] w-full flex-col items-center justify-center gap-0.5 rounded-xl px-1 text-[10px] font-semibold text-muted transition hover:bg-black/[0.04] hover:text-ink"
+          className="rail-btn mt-1.5 text-[11px] font-semibold tracking-wide"
           aria-label={`${t('Язык интерфейса')}: ${locale === 'ru' ? t('Русский') : t('Английский')}`}
           title={t('Язык интерфейса')}
         >
-          <Globe size={18} strokeWidth={1.75} />
           {locale.toUpperCase()}
         </button>
 
-        <div className="mt-auto flex flex-col items-center gap-3">
+        <div className="mt-auto flex flex-col items-center gap-2">
           {demoMode && <span className="rounded-full bg-amber-100 px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-amber-800">{t('Демо')}</span>}
+          <Clock className="mt-1" />
           <button type="button" onClick={() => setProfileOpen(!profileOpen)} className="rounded-full ring-accent/30 transition hover:ring-4" aria-label={t('Профиль пользователя')}>
             <Avatar name={user.displayName} size={40} presence />
           </button>
@@ -235,10 +248,12 @@ export default function AppShell() {
       </div>
 
       {/* Мобильная нижняя навигация */}
-      <nav className="flex shrink-0 border-t border-line bg-surface px-2 pb-[env(safe-area-inset-bottom)] md:hidden" aria-label={t('Основная навигация')}>
+      <nav className="flex shrink-0 border-t border-corvex-line bg-corvex-surface px-2 pb-[env(safe-area-inset-bottom)] md:hidden" aria-label={t('Основная навигация')}>
         {mobileNavItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
         {mobileNavItem('/chat', t('Сообщения'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
-        {canAdmin && mobileNavItem('/admin', t('Админ'), Settings2)}
+        <CalendarWidget className="flex-1" />
+        {canAdmin && mobileNavItem('/admin', t('Админ'), ShieldCheck)}
+        <button type="button" onClick={() => setSettingsOpen(true)} className="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-muted" aria-label={t('Личные настройки')}><Settings2 size={21} strokeWidth={1.75} />{t('Настройки')}</button>
       </nav>
 
       {/* Меню профиля */}
@@ -260,13 +275,26 @@ export default function AppShell() {
                 <span className="min-w-0 flex-1">{t('Язык интерфейса')}</span>
                 <LanguageSwitcher />
               </div>
+              <button type="button" onClick={() => { setProfileOpen(false); setSettingsOpen(true); }} className="nav-row"><Settings2 size={17} strokeWidth={1.8} /> {t('Личные настройки')}</button>
               <button type="button" onClick={() => { setProfileOpen(false); setSecurityOpen(true); }} className="nav-row">
                 <ShieldCheck size={17} strokeWidth={1.8} /> {t('Безопасность')}
+              </button>
+              <button type="button" onClick={() => { setProfileOpen(false); setAppearanceOpen(true); }} className="nav-row">
+                <Palette size={17} strokeWidth={1.8} /> {t('Внешний вид')}
               </button>
               <button type="button" onClick={onLogout} className="nav-row text-danger hover:bg-red-50 hover:text-danger">
                 <LogOut size={17} strokeWidth={1.8} /> {demoMode ? t('Выйти из демо') : t('Выйти')}
               </button>
             </div>
+          </div>
+        </>
+      )}
+
+      {appearanceOpen && (
+        <>
+          <button type="button" aria-label={t('Закрыть')} className="fixed inset-0 z-40 cursor-default" onClick={() => setAppearanceOpen(false)} />
+          <div className="fixed left-3 right-3 top-16 z-50 max-w-[440px] max-h-[85vh] overflow-y-auto animate-scale-in rounded-2xl border border-corvex-line bg-corvex-surface p-2 shadow-pop md:left-auto md:right-3 md:top-16 md:bottom-auto md:w-[440px]">
+            <AppearanceSettings onClose={() => setAppearanceOpen(false)} />
           </div>
         </>
       )}
@@ -318,6 +346,7 @@ export default function AppShell() {
       {user.mustChangePassword && !demoMode && (
         <ChangePasswordModal onChanged={() => updateUser({ mustChangePassword: false })} />
       )}
+      {settingsOpen && <PersonalSettings background={background} onBackground={(value) => { setBackground(value); return saveWorkspaceBackground(value); }} onClose={() => setSettingsOpen(false)} onSecurity={() => { setSettingsOpen(false); setSecurityOpen(true); }} />}
       {securityOpen && <SecuritySettingsModal onClose={() => setSecurityOpen(false)} />}
     </div>
   );

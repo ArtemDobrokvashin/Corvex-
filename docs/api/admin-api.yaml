@@ -118,6 +118,17 @@ paths:
     post:
       summary: Создать пользовательскую группу
       responses: { '201': { description: Создана } }
+  /admin/groups/{groupCode}:
+    delete:
+      summary: Удалить пустую пользовательскую группу (ADMIN_GROUPS_MANAGE)
+      parameters:
+        - { name: groupCode, in: path, required: true, schema: { type: string } }
+      responses:
+        '204': { description: Удалена, событие записано в аудит }
+        '403': { description: Нет права на управление группами }
+        '404': { description: Группа не найдена }
+        '409': { description: В группе есть участники }
+        '422': { description: Системная группа защищена }
   /admin/groups/{groupCode}/permissions:
     put:
       summary: Сохранить чекбоксы прав группы (ADMIN_GROUPS_MANAGE)

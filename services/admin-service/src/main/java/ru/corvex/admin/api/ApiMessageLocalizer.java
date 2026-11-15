@@ -31,6 +31,8 @@ final class ApiMessageLocalizer {
                     "SUPER_ADMIN permissions cannot be edited (protection against locking the system out)"),
             Map.entry("Нельзя оставить систему без супер-администратора",
                     "The system cannot be left without a super administrator"),
+            Map.entry("Системную группу удалить нельзя", "System groups cannot be deleted"),
+            Map.entry("Удалить можно только группу без участников", "Only groups without members can be deleted"),
             Map.entry("Код группы не указан", "No group code was provided"),
             Map.entry("Пустой набор настроек", "The settings set is empty"),
             Map.entry("Неверный логин или пароль", "Incorrect username or password"),

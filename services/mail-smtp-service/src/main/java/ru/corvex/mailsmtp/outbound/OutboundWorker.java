@@ -78,7 +78,13 @@ public class OutboundWorker {
         List<String> temporary = new ArrayList<>();
         String tempDiagnostic = "Временная ошибка доставки";
         for (var entry : byDomain.entrySet()) {
-            for (SmtpRelayClient.RecipientResult result : relay.sendToDomain(signed, event.mailFrom(), entry.getKey(), entry.getValue())) {
+            List<SmtpRelayClient.RecipientResult> results = relay.sendToDomain(signed, event.mailFrom(), entry.getKey(), entry.getValue());
+            if (results.stream().anyMatch(result -> result.status() == SmtpRelayClient.Status.UNKNOWN)) {
+                // Some recipients may already have accepted DATA; never enqueue
+                // an automatic retry for this event. Reconciliation is required.
+                throw new IOException("SMTP delivery outcome uncertain; manual reconciliation required");
+            }
+            for (SmtpRelayClient.RecipientResult result : results) {
                 switch (result.status()) {
                     case SENT -> sent.add(result.recipient());
                     case PERMANENT -> publishBounced(event, result.recipient(), result.diagnostic());
@@ -86,6 +92,7 @@ public class OutboundWorker {
                         temporary.add(result.recipient());
                         tempDiagnostic = result.diagnostic();
                     }
+                    case UNKNOWN -> throw new IOException("SMTP delivery outcome uncertain");
                 }
             }
         }

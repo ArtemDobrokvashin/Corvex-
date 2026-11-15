@@ -461,6 +461,8 @@ public class ExternalMailSyncService {
         }
 
         ExternalMailImportedMessage record = retryRecord;
+        boolean persistenceMayHaveStarted = false;
+        boolean publicationMayHaveStarted = false;
         try {
             if (imported.existsByAccount_IdAndRemoteFolderAndSha256AndStatusIn(
                     account.getId(), envelope.remoteFolder(), stored.sha256(), DONE_STATUSES)) {
@@ -476,7 +478,14 @@ public class ExternalMailSyncService {
             record.setRawRef(stored.rawRef());
             record.setStatus(ExternalMailImportedMessage.Status.QUEUED);
             record.setError(null);
+            // A database commit may succeed even if the client loses its reply.
+            // From this point the record may already refer to these bytes.
+            persistenceMayHaveStarted = true;
             record = imported.saveAndFlush(record);
+            // From this point the broker may accept the event even if the
+            // publisher confirm is lost. Never delete its referenced bytes or
+            // mark it retryable merely because the result is unknown.
+            publicationMayHaveStarted = true;
             events.publishConfirmed("mail.inbound.received", new MailPipelineEvents.InboundReceivedEvent(
                             stored.rawRef(),
                             envelope.from() == null || envelope.from().isBlank() ? account.getEmailAddress() : envelope.from(),
@@ -488,16 +497,25 @@ public class ExternalMailSyncService {
             advanceCursor(account, envelope, lastSuccessfulUid);
             return ExternalMailClient.HandleResult.QUEUED;
         } catch (Exception e) {
-            try {
-                spool.delete(stored.rawRef());
-            } catch (Exception ignored) {
-                // Spool cleanup failure must not hide the real queueing error.
-            }
-            if (record != null && record.getId() != null) {
-                record.setStatus(ExternalMailImportedMessage.Status.FAILED);
-                record.setRawRef(null);
-                record.setError(safeError(e));
-                imported.saveAndFlush(record);
+            if (!persistenceMayHaveStarted) {
+                try {
+                    spool.delete(stored.rawRef());
+                } catch (Exception ignored) {
+                    // Spool cleanup failure must not hide the queueing error.
+                }
+                if (record != null && record.getId() != null) {
+                    record.setStatus(ExternalMailImportedMessage.Status.FAILED);
+                    record.setRawRef(null);
+                    record.setError(safeError(e));
+                    imported.saveAndFlush(record);
+                }
+            } else {
+                // The write may have committed even if the response was lost.
+                // If publishing started, a consumer may already have delivered.
+                // Never overwrite either state or remove the spool blindly.
+                log.warn("External mail {} outcome uncertain; retaining spool for reconciliation, account={}, folder={}, uid={}",
+                        publicationMayHaveStarted ? "publish" : "persistence",
+                        account.getId(), envelope.remoteFolder(), envelope.remoteUid());
             }
             counters.failed.incrementAndGet();
             counters.errors.add(envelope.remoteFolder() + "/" + envelope.remoteUid() + ": " + safeError(e));

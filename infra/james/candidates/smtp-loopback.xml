@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  NOT MOUNTED OR ENABLED. One-host synthetic native-SMTP probe candidate only.
+  Listener binds James container loopback; no published port, no network bridge.
+  SMTP is plaintext and loopback may relay: never use for real users, real
+  mail, production, or as the Corvex delivery endpoint. The active transition
+  config remains infra/james/protocols/smtpserver.xml (empty).
+-->
+<smtpservers>
+    <smtpserver enabled="true">
+        <jmxName>synthetic-loopback-smtp</jmxName>
+        <bind>127.0.0.1:2525</bind>
+        <connectiontimeout>30</connectiontimeout>
+        <connectionLimit>8</connectionLimit>
+        <connectionLimitPerIP>8</connectionLimitPerIP>
+        <auth>
+            <announce>never</announce>
+            <requireSSL>false</requireSSL>
+            <plainAuthEnabled>false</plainAuthEnabled>
+        </auth>
+        <authorizedAddresses>127.0.0.1/32</authorizedAddresses>
+        <verifyIdentity>true</verifyIdentity>
+        <!-- James 3.9.1 parses bare values in KiB: 25600 KiB = 25 MiB. -->
+        <maxmessagesize>25600</maxmessagesize>
+        <addressBracketsEnforcement>true</addressBracketsEnforcement>
+        <handlerchain coreHandlersPackage="org.apache.james.smtpserver.NoAuthCmdHandlerLoader">
+            <handler class="org.apache.james.smtpserver.fastfail.ValidRcptHandler"/>
+        </handlerchain>
+    </smtpserver>
+</smtpservers>

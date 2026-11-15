@@ -7,7 +7,6 @@ import jakarta.mail.Flags;
 import jakarta.mail.Folder;
 import jakarta.mail.Message;
 import jakarta.mail.MessagingException;
-import jakarta.mail.SendFailedException;
 import jakarta.mail.Session;
 import jakarta.mail.Store;
 import jakarta.mail.Transport;
@@ -25,11 +24,8 @@ import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Properties;
 
 /**
@@ -70,6 +66,8 @@ public class ExternalSmtpClient {
         } catch (MessagingException e) {
             return all(recipients, SmtpRelayClient.Status.PERMANENT, "Некорректный MIME: " + rootMessage(e), host);
         }
+        boolean sendStarted = false;
+        boolean sendCompleted = false;
         try (Transport transport = session.getTransport("smtp")) {
             transport.connect(host, config.smtpPort(), config.effectiveSmtpUsername(), config.secret());
             Address[] addresses = recipients.stream().map(r -> {
@@ -79,18 +77,20 @@ public class ExternalSmtpClient {
                     throw new IllegalStateException(e);
                 }
             }).toArray(Address[]::new);
+            sendStarted = true;
             transport.sendMessage(message, addresses);
+            sendCompleted = true;
             return all(recipients, SmtpRelayClient.Status.SENT, "250 OK via provider SMTP", host);
-        } catch (SendFailedException e) {
-            return classifySendFailed(e, recipients, host);
-        } catch (AuthenticationFailedException e) {
-            return all(recipients, SmtpRelayClient.Status.PERMANENT,
-                    "SMTP провайдера отклонил пароль приложения внешнего ящика", host);
         } catch (MessagingException | RuntimeException e) {
-            SmtpRelayClient.Status status = classify(e);
-            log.warn("Provider SMTP {} не принял письмо внешнего ящика {} ({}) : {}",
+            // sendMessage may have reached DATA even when its final response is lost.
+            // A later close failure must not change an already confirmed send.
+            SmtpRelayClient.Status status = sendStarted ? SmtpRelayClient.sendOutcome(sendCompleted)
+                    : e instanceof AuthenticationFailedException ? SmtpRelayClient.Status.PERMANENT : classify(e);
+            log.warn("Provider SMTP {} завершил операцию внешнего ящика {} со статусом {}: {}",
                     host, config.emailAddress(), status, rootMessage(e));
-            return all(recipients, status, rootMessage(e), host);
+            String diagnostic = !sendStarted && e instanceof AuthenticationFailedException
+                    ? "SMTP провайдера отклонил пароль приложения внешнего ящика" : rootMessage(e);
+            return all(recipients, status, diagnostic, host);
         }
     }
 
@@ -230,31 +230,6 @@ public class ExternalSmtpClient {
         }
         byte[] b = address.getAddress();
         return b.length == 16 && ((b[0] & (byte) 0xfe) == (byte) 0xfc);
-    }
-
-    private List<SmtpRelayClient.RecipientResult> classifySendFailed(SendFailedException e,
-                                                                      List<String> recipients, String host) {
-        Map<String, SmtpRelayClient.RecipientResult> out = new LinkedHashMap<>();
-        putAll(out, e.getValidSentAddresses(), SmtpRelayClient.Status.SENT, "250 OK via provider SMTP", host);
-        int code = SmtpRelayClient.smtpCode(e);
-        SmtpRelayClient.Status invalid = code >= 500 || code == 0
-                ? SmtpRelayClient.Status.PERMANENT : SmtpRelayClient.Status.TEMPORARY;
-        putAll(out, e.getInvalidAddresses(), invalid, rootMessage(e), host);
-        putAll(out, e.getValidUnsentAddresses(), SmtpRelayClient.Status.TEMPORARY, rootMessage(e), host);
-        for (String recipient : recipients) {
-            out.putIfAbsent(recipient, new SmtpRelayClient.RecipientResult(
-                    recipient, SmtpRelayClient.Status.TEMPORARY, rootMessage(e), host));
-        }
-        return new ArrayList<>(out.values());
-    }
-
-    private void putAll(Map<String, SmtpRelayClient.RecipientResult> out, Address[] addresses,
-                        SmtpRelayClient.Status status, String diagnostic, String host) {
-        if (addresses == null) return;
-        for (Address a : addresses) {
-            String email = a instanceof InternetAddress ia ? ia.getAddress() : a.toString();
-            out.put(email, new SmtpRelayClient.RecipientResult(email, status, diagnostic, host));
-        }
     }
 
     private List<SmtpRelayClient.RecipientResult> all(List<String> recipients, SmtpRelayClient.Status status,

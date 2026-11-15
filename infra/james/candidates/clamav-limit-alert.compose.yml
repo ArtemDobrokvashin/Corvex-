@@ -1,0 +1,8 @@
+# INACTIVE CANDIDATE ONLY. Never pass this file to Compose for normal user mail
+# until the mail AV guard, queue/DLQ handling, rollback and live checks are ready.
+# This covers only limits for which this ClamAV option actually emits an alert;
+# it does not prove complete scanning or cover every source of incompleteness.
+services:
+  clamav:
+    environment:
+      CLAMD_CONF_AlertExceedsMax: "yes"

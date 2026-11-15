@@ -77,9 +77,39 @@ export interface SendMessageResult {
   externalAccountId?: string | null;
 }
 
+/** Черновики: owner-scope на сервере, ревизия защищает от перезаписи из другой вкладки. */
+export interface WebmailDraftPayload {
+  to: string;
+  cc: string;
+  subject: string;
+  bodyText: string;
+  bodyHtml: string;
+  externalAccountId: string | null;
+  attachments: SendAttachment[];
+}
+
+export interface SavedDraft {
+  id: string;
+  revision: number;
+  payload: WebmailDraftPayload;
+  updatedAt: string;
+}
+
+export interface DraftSummary {
+  id: string;
+  revision: number;
+  to: string | null;
+  subject: string | null;
+  attachmentCount: number;
+  sizeBytes: number;
+  updatedAt: string;
+}
+
 export const mailApi = {
   quota: () => apiFetch<MailboxQuota>('/api/v1/mail/quota'),
   folders: () => apiFetch<MailFolderView[]>('/api/v1/mail/folders'),
+  createFolder: (name: string) => apiFetch<MailFolderView>('/api/v1/mail/folders', { method: 'POST', body: JSON.stringify({ name, parentId: null }) }),
+  deleteFolder: (folderId: string) => apiFetch<void>(`/api/v1/mail/folders/${encodeURIComponent(folderId)}`, { method: 'DELETE' }),
   messages: (folderId: string, cursorUid?: number, limit = 50) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (cursorUid != null) params.set('cursorUid', String(cursorUid));
@@ -92,14 +122,25 @@ export const mailApi = {
       method: 'PATCH',
       body: JSON.stringify(flags),
     }),
-  move: (id: string, targetFolderId: string) =>
-    apiFetch<MailMessageListItem>(`/api/v1/mail/messages/${id}/move`, {
+  move: (id: string, targetFolderId: string, expected?: { folderId: string; uid: number }) =>
+    apiFetch<MailMessageListItem>(`/api/v1/mail/messages/${encodeURIComponent(id)}/move`, {
       method: 'POST',
-      body: JSON.stringify({ targetFolderId }),
+      body: JSON.stringify({ targetFolderId, ...(expected ? { expectedFolderId: expected.folderId, expectedUid: expected.uid } : {}) }),
     }),
   send: (request: SendMessageRequest) =>
     apiFetch<SendMessageResult>('/api/v1/mail/messages/send', {
       method: 'POST',
       body: JSON.stringify(request),
     }),
+  drafts: (limit = 50) => apiFetch<DraftSummary[]>(`/api/v1/mail/drafts?limit=${limit}`),
+  draft: (id: string) => apiFetch<SavedDraft>(`/api/v1/mail/drafts/${encodeURIComponent(id)}`),
+  createDraft: (payload: WebmailDraftPayload) =>
+    apiFetch<SavedDraft>('/api/v1/mail/drafts', { method: 'POST', body: JSON.stringify(payload) }),
+  updateDraft: (id: string, revision: number, payload: WebmailDraftPayload) =>
+    apiFetch<SavedDraft>(`/api/v1/mail/drafts/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ revision, payload }),
+    }),
+  deleteDraft: (id: string, revision: number) =>
+    apiFetch<void>(`/api/v1/mail/drafts/${encodeURIComponent(id)}?revision=${revision}`, { method: 'DELETE' }),
 };

@@ -1,0 +1,32 @@
+# NOT ACTIVE BY DEFAULT. Candidate for a future bounded integration in the
+# EXISTING Compose project, not a second James installation. Do not use for
+# user mail: APPEND/JMAP import bypass the mailet, and quarantine/recovery,
+# clamd limits and the live classloader have not been verified.
+# Compose resolves bind paths relative to the first -f file (docker-compose.yml).
+services:
+  james:
+    networks:
+      - james-av-candidate
+    volumes:
+      - type: bind
+        source: ./experiments/james-av-gate/target/james-av-gate-0.0.1-SNAPSHOT.jar
+        target: /root/extensions-jars/corvex-av-gate.jar
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./experiments/james-av-gate/target/extension-deps/apache-james-clamav-3.9.1.jar
+        target: /root/extensions-jars/apache-james-clamav-3.9.1.jar
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./experiments/james-av-gate/mailetcontainer.candidate.xml
+        target: /root/conf/mailetcontainer.xml
+        read_only: true
+        bind: { create_host_path: false }
+  clamav:
+    networks:
+      - james-av-candidate
+
+networks:
+  james-av-candidate:
+    internal: true

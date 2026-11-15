@@ -12,7 +12,6 @@ import org.springframework.amqp.support.converter.SimpleMessageConverter;
 import org.springframework.amqp.rabbit.config.RetryInterceptorBuilder;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
-import org.springframework.amqp.rabbit.retry.RejectAndDontRequeueRecoverer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -60,7 +59,7 @@ public class AvPipelineAmqpConfig {
         return RetryInterceptorBuilder.stateless()
                 .maxAttempts(5)
                 .backOffOptions(1_000, 2.0, 10_000)
-                .recoverer(new RejectAndDontRequeueRecoverer())
+                .recoverer(new AvRetryRecoverer())
                 .build();
     }
 }

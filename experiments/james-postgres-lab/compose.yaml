@@ -1,0 +1,44 @@
+# Disposable isolated synthetic-data lab. Never merge into production compose.
+services:
+  postgres:
+    image: postgres:16.9
+    environment:
+      POSTGRES_DB: james
+      POSTGRES_USER: james
+      POSTGRES_PASSWORD: secret1  # upstream demo value, never production
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U james -d james"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [lab]
+  james:
+    image: apache/james:postgres-3.9.1
+    hostname: james.local
+    command: ["--generate-keystore"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./search.properties:/root/conf/search.properties:ro
+      - ./blob.properties:/root/conf/blob.properties:ro
+      - ./webadmin.properties:/root/conf/webadmin.properties:ro
+      - james-data:/root/var
+    networks: [lab]
+  probe:
+    image: python:3.12-alpine
+    working_dir: /probe
+    volumes:
+      - ../james-lab/probe.py:/probe/probe.py:ro
+      - ./jmap_probe.py:/probe/jmap_probe.py:ro
+    entrypoint: ["python", "/probe/jmap_probe.py"]
+    depends_on: [james]
+    networks: [lab]
+volumes:
+  pgdata: {}
+  james-data: {}
+networks:
+  lab:
+    internal: true

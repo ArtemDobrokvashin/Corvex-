@@ -83,8 +83,32 @@ class StorageControllersTest {
 
         verify(mail).listMessages(userId, folderId, 50L, 25);
         verify(mail).getMessage(userId, messageId);
-        verify(mail).moveMessage(userId, messageId, folderId);
+        verify(mail).moveMessage(userId, messageId, folderId, null, null);
         verify(protocol).quota(userId);
+    }
+
+    @Test
+    void createFolderUsesJwtOwnerAndRequiresFolderPermission() throws Exception {
+        var protocol = mock(ProtocolMailService.class);
+        var controller = new MailController(mock(MailApiService.class), mock(MailSendService.class), protocol);
+        var id = UUID.randomUUID();
+        var request = new ProtocolDtos.CreateFolderRequest("Projects", null);
+        when(protocol.createFolder(userId, request)).thenReturn(new ProtocolDtos.FolderInfo(id, null, "Projects", null, 1, 1, 1, 0, 0));
+        var response = controller.createFolder(jwt, request);
+        assertEquals(HttpStatus.CREATED, response.getStatusCode());
+        assertEquals(id, response.getBody().id());
+        verify(protocol).createFolder(userId, request);
+        assertEquals("hasAuthority('MAIL_MANAGE_FOLDERS')", MailController.class.getDeclaredMethod("createFolder", Jwt.class, ProtocolDtos.CreateFolderRequest.class).getAnnotation(PreAuthorize.class).value());
+    }
+
+    @Test
+    void deleteFolderUsesJwtOwnerAndRequiresFolderPermission() throws Exception {
+        var protocol = mock(ProtocolMailService.class);
+        var controller = new MailController(mock(MailApiService.class), mock(MailSendService.class), protocol);
+        var id = UUID.randomUUID();
+        assertEquals(HttpStatus.NO_CONTENT, controller.deleteFolder(jwt, id).getStatusCode());
+        verify(protocol).deleteEmptyWebFolder(userId, id);
+        assertEquals("hasAuthority('MAIL_MANAGE_FOLDERS')", MailController.class.getDeclaredMethod("deleteFolder", Jwt.class, UUID.class).getAnnotation(PreAuthorize.class).value());
     }
 
     @Test

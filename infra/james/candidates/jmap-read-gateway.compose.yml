@@ -1,0 +1,12 @@
+# Disabled candidate. Merge into the EXISTING Compose project only after the
+# live compatibility and isolation checks; this file is never loaded by default.
+# Docker Compose resolves build paths relative to the first compose file.
+services:
+  james-jmap:
+    image: corvex-james-jmap-read-gateway:candidate
+    build:
+      context: ./infra/james/jmap-read-gateway
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true

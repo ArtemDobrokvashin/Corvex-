@@ -1,5 +1,6 @@
 package ru.corvex.admin.service;
 
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -71,6 +72,29 @@ public class AdminGroupService {
         audit.record(actor, "GROUP_CREATED", "group", code,
                 Map.of("name", saved.getName(), "permissions", permissionNames(saved.getPermissions())));
         return view(saved, 0);
+    }
+
+    /** Только пустые пользовательские группы: никакие права участников не отзываются молча. */
+    @Transactional
+    public void deleteGroup(String codeRaw, Actor actor) {
+        UserGroup group = loadByCode(normalizeCode(codeRaw));
+        // FOR UPDATE конфликтует с проверкой FK при добавлении участника и закрывает гонку.
+        try {
+            jdbc.queryForObject("SELECT id FROM user_groups WHERE id = ? FOR UPDATE", UUID.class, group.getId());
+        } catch (EmptyResultDataAccessException ex) {
+            // Другая транзакция могла удалить группу после findByCode, пока мы ждали блокировку.
+            throw ApiException.notFound("Группа не найдена: " + group.getCode());
+        }
+        if (group.isSystem() || group.isSuperAdmin()) {
+            throw ApiException.unprocessable("Системную группу удалить нельзя");
+        }
+        Long count = jdbc.queryForObject("SELECT count(*) FROM user_group_members WHERE group_id = ?", Long.class, group.getId());
+        if (count == null || count != 0) {
+            throw ApiException.conflict("Удалить можно только группу без участников");
+        }
+        groups.delete(group);
+        groups.flush();
+        audit.record(actor, "GROUP_DELETED", "group", group.getCode(), Map.of("name", group.getName()));
     }
 
     @Transactional
@@ -215,7 +239,8 @@ public class AdminGroupService {
         List<UserGroup> userGroups = groups.findAllById(groupIds).stream()
                 .sorted(Comparator.comparing(UserGroup::getCode))
                 .toList();
-        List<String> groupCodes = userGroups.stream().map(UserGroup::getCode).toList();
+        // JWT group claims represent effective membership, not disabled assignments.
+        List<String> groupCodes = userGroups.stream().filter(UserGroup::isEnabled).map(UserGroup::getCode).toList();
         boolean superAdmin = userGroups.stream().anyMatch(g -> g.isSuperAdmin() && g.isEnabled());
         Set<Permission> perms = superAdmin
                 ? EnumSet.allOf(Permission.class)

@@ -191,10 +191,10 @@ function DemoChatPage() {
   if (!room) return <EmptyState icon={Hash} title={t('Чатов пока нет')} />;
 
   return (
-    <div className="h-full lg:p-3 xl:p-4">
-      <div className="flex h-full min-h-0 overflow-hidden bg-surface lg:rounded-[18px] lg:border lg:border-line lg:shadow-soft">
+    <div className="mail-workspace h-full md:p-3 xl:p-4">
+      <div className="flex h-full min-h-0 overflow-hidden bg-surface md:gap-2 md:bg-transparent">
         {/* Список разговоров */}
-        <aside className={`${mobileConversation ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-line bg-chrome md:w-[320px] xl:w-[344px]`}>
+        <aside className={`${mobileConversation ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-line bg-surface md:w-[320px] md:rounded-2xl md:border xl:w-[344px]`}>
           <header className="shrink-0 px-4 pb-3 pt-5">
             <div className="flex items-center">
               <h1 className="flex-1 text-[19px] font-semibold tracking-[-0.025em]">{t('Сообщения')}</h1>
@@ -224,7 +224,7 @@ function DemoChatPage() {
         </aside>
 
         {/* Разговор */}
-        <section className={`${mobileConversation ? 'flex' : 'hidden md:flex'} min-w-0 flex-1 flex-col bg-surface`}>
+        <section className={`${mobileConversation ? 'flex' : 'hidden md:flex'} min-w-0 flex-1 flex-col bg-surface md:overflow-hidden md:rounded-2xl md:border md:border-line`}>
           <header className="flex min-h-[68px] shrink-0 items-center gap-3 border-b border-line px-4 py-3">
             <button type="button" onClick={() => setMobileConversation(false)} className="icon-btn md:hidden" aria-label={t('К списку чатов')}><ArrowLeft size={19} /></button>
             <RoomMark room={room} size={42} />

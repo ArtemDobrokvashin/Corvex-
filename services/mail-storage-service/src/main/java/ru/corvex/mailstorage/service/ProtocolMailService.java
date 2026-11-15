@@ -7,6 +7,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 import ru.corvex.mailstorage.api.dto.ProtocolDtos;
 import ru.corvex.mailstorage.client.AuthUserClient;
@@ -16,6 +17,7 @@ import ru.corvex.mailstorage.mime.MimeMailParser;
 import ru.corvex.mailstorage.repository.MailFolderRepository;
 import ru.corvex.mailstorage.repository.MessageMetadataRepository;
 import ru.corvex.mailstorage.storage.MaildirStorage;
+import ru.corvex.mailstorage.storage.TransactionalMailMove;
 import ru.corvex.mailstorage.storage.RawMessageSpool;
 
 import java.io.IOException;
@@ -118,10 +120,10 @@ public class ProtocolMailService {
         return toFolderInfo(folders.saveAndFlush(f));
     }
 
-    @Transactional
+    @Transactional(rollbackFor = IOException.class)
     public ProtocolDtos.FolderInfo renameFolder(UUID ownerId, UUID folderId, ProtocolDtos.RenameFolderRequest req)
             throws IOException {
-        MailFolder folder = loadFolder(ownerId, folderId);
+        MailFolder folder = folders.lockById(loadFolder(ownerId, folderId).getId()).orElseThrow();
         if (folder.getSpecialUse() != null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Системную папку переименовать нельзя");
         }
@@ -146,11 +148,14 @@ public class ProtocolMailService {
         }
         String oldName = folder.getName();
         if (!oldName.equals(newName)) {
-            AuthUserClient.MailboxOwner owner = loadOwner(ownerId);
-            maildir.renameFolderDir(owner.email(), oldName, newName);
-            // Пути писем содержат сегмент каталога папки: <mailbox>/<folder>/new|cur/<file>
-            for (MessageMetadata m : messages.findAllByFolder_IdAndOwnerId(folderId, ownerId)) {
-                m.setMaildirPath(replaceFolderSegment(m.getMaildirPath(), newName));
+            // Retain the original directory and stage independent message copies.
+            // Rollback keeps every original; commit does not recursively clean up.
+            loadOwner(ownerId);
+            for (Long uid : messages.findFolderUids(folderId, ownerId)) {
+                MessageMetadata m = messages.lockFolderUid(folderId, uid, ownerId)
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Письмо изменилось во время переименования"));
+                Path staged = TransactionalMailMove.stage(maildir, m.getMaildirPath(), newName, m.isSeen());
+                m.setMaildirPath(staged.toString());
                 messages.save(m);
             }
             folder.setName(newName);
@@ -166,25 +171,47 @@ public class ProtocolMailService {
 
     @Transactional
     public void deleteFolder(UUID ownerId, UUID folderId) {
-        MailFolder folder = loadFolder(ownerId, folderId);
+        MailFolder folder = folders.lockById(loadFolder(ownerId, folderId).getId()).orElseThrow();
         if (folder.getSpecialUse() != null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Системную папку удалить нельзя");
         }
         if (folders.existsByParent_Id(folderId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Сначала удалите вложенные папки");
         }
-        for (MessageMetadata m : messages.findAllByFolder_IdAndOwnerId(folderId, ownerId)) {
-            deleteFileQuietly(m);
-            messages.delete(m);
+        // Read scalar UIDs before locking; do not keep stale entities in the persistence context.
+        for (Long uid : messages.findFolderUids(folderId, ownerId)) {
+            messages.lockFolderUid(folderId, uid, ownerId).ifPresent(m -> {
+                retainFileForReconciliation(m);
+                messages.delete(m);
+            });
         }
         folders.delete(folder);
-        auth.findById(ownerId).ifPresent(owner -> {
-            try {
-                maildir.deleteFolderDir(owner.email(), folder.getName());
-            } catch (IOException e) {
-                log.warn("Не удалось удалить каталог папки {} владельца {}: {}", folderId, ownerId, e.getMessage());
-            }
-        });
+        // Do not recursively remove the physical directory: it may contain unrelated
+        // or unreferenced files, and another folder may map to the same path.
+    }
+
+    /** Webmail removes only empty personal folders; unlike IMAP DELETE this never deletes messages. */
+    @Transactional
+    public void deleteEmptyWebFolder(UUID ownerId, UUID folderId) {
+        MailFolder owned = loadFolder(ownerId, folderId);
+        MailFolder folder = folders.lockById(owned.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Папка не найдена"));
+        if (!ownerId.equals(folder.getOwnerId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Папка не найдена");
+        }
+        if (folder.getSpecialUse() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Системную папку удалить нельзя");
+        }
+        if (folders.existsByParent_Id(folderId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Сначала удалите вложенные папки");
+        }
+        if (messages.countByFolder_Id(folderId) != 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Сначала переместите письма из папки");
+        }
+        // Never reuse IMAP DELETE here: it removes message files. Keep the Maildir directory
+        // as a harmless leftover; recursive filesystem deletion is unsafe if the database
+        // transaction rolls back or an untracked file is present.
+        folders.delete(folder);
     }
 
     // ------------------------------------------------------------------ messages
@@ -216,7 +243,8 @@ public class ProtocolMailService {
 
     @Transactional
     public ProtocolDtos.MessageMeta updateFlags(UUID ownerId, UUID folderId, long uid, ProtocolDtos.FlagsUpdate flags) {
-        MessageMetadata m = messages.findByFolder_IdAndUidAndOwnerId(folderId, uid, ownerId)
+        // UID and folder are checked by the same locking query used by IMAP MOVE.
+        MessageMetadata m = messages.lockFolderUid(folderId, uid, ownerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Письмо не найдено"));
         boolean beforeSeen = m.isSeen();
         boolean beforeAnswered = m.isAnswered();
@@ -240,22 +268,18 @@ public class ProtocolMailService {
     @Transactional
     public ProtocolDtos.ExpungeResponse expunge(UUID ownerId, UUID folderId, ProtocolDtos.ExpungeRequest req) {
         MailFolder folder = folders.lockById(loadFolder(ownerId, folderId).getId()).orElseThrow();
-        List<MessageMetadata> victims;
-        if (req == null || req.uids() == null || req.uids().isEmpty()) {
-            victims = messages.findAllByFolder_IdAndOwnerIdAndDeletedTrue(folderId, ownerId);
-        } else {
-            victims = new ArrayList<>();
-            for (Long uid : req.uids()) {
-                messages.findByFolder_IdAndUidAndOwnerId(folderId, uid, ownerId)
-                        .filter(MessageMetadata::isDeleted) // UID EXPUNGE трогает только \Deleted
-                        .ifPresent(victims::add);
-            }
-        }
+        List<Long> uids = req == null || req.uids() == null || req.uids().isEmpty()
+                ? messages.findDeletedUids(folderId, ownerId) : req.uids();
         List<Long> expunged = new ArrayList<>();
-        for (MessageMetadata m : victims) {
-            deleteFileQuietly(m);
-            messages.delete(m);
-            expunged.add(m.getUid());
+        for (Long uid : new java.util.LinkedHashSet<>(uids)) {
+            if (uid == null) continue;
+            messages.lockFolderUid(folderId, uid, ownerId)
+                    .filter(MessageMetadata::isDeleted)
+                    .ifPresent(m -> {
+                        retainFileForReconciliation(m);
+                        messages.delete(m);
+                        expunged.add(m.getUid());
+                    });
         }
         if (!expunged.isEmpty()) {
             nextModSeq(folder); // CONDSTORE/QRESYNC: удаление тоже двигает HIGHESTMODSEQ папки
@@ -266,9 +290,10 @@ public class ProtocolMailService {
     /** Жёсткое удаление одного письма — POP3 DELE, применённый на QUIT (флага \Deleted в POP3 нет). */
     @Transactional
     public void hardDeleteMessage(UUID ownerId, UUID messageId) {
-        MessageMetadata m = loadMessage(ownerId, messageId);
+        MessageMetadata m = messages.lockOwned(messageId, ownerId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Письмо не найдено"));
         UUID folderId = m.getFolder() == null ? null : m.getFolder().getId();
-        deleteFileQuietly(m);
+        retainFileForReconciliation(m);
         messages.delete(m);
         if (folderId != null) {
             folders.lockById(folderId).ifPresent(this::nextModSeq);
@@ -341,7 +366,7 @@ public class ProtocolMailService {
         }
     }
 
-    @Transactional
+    @Transactional(rollbackFor = IOException.class)
     public ProtocolDtos.CopyResponse copyMessages(UUID ownerId, UUID folderId, ProtocolDtos.CopyRequest req)
             throws IOException {
         loadFolder(ownerId, folderId);
@@ -349,13 +374,15 @@ public class ProtocolMailService {
         List<Long> sourceUids = new ArrayList<>();
         List<Long> targetUids = new ArrayList<>();
         for (Long uid : req.uids() == null ? List.<Long>of() : req.uids()) {
-            MessageMetadata src = messages.findByFolder_IdAndUidAndOwnerId(folderId, uid, ownerId)
+            MessageMetadata src = (req.move()
+                    ? messages.lockFolderUid(folderId, uid, ownerId)
+                    : messages.findByFolder_IdAndUidAndOwnerId(folderId, uid, ownerId))
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Письмо не найдено: uid=" + uid));
             long newUid = target.getUidNext();
             target.setUidNext(newUid + 1);
             long newModseq = nextModSeq(target);
             if (req.move()) {
-                Path newPath = maildir.moveMessageToFolder(src.getMaildirPath(), target.getName(), src.isSeen());
+                Path newPath = TransactionalMailMove.stage(maildir, src.getMaildirPath(), target.getName(), src.isSeen());
                 src.setFolder(target);
                 src.setUid(newUid);
                 src.setModseq(newModseq);
@@ -469,13 +496,14 @@ public class ProtocolMailService {
         return false;
     }
 
-    private void deleteFileQuietly(MessageMetadata m) {
-        try {
-            maildir.deleteMessage(m.getMaildirPath());
-        } catch (IOException e) {
-            // Строка БД — источник правды; осиротевший файл подберёт reconciler, письмо не «воскреснет».
-            log.warn("Не удалось удалить файл письма {} ({}): {}", m.getId(), m.getMaildirPath(), e.getMessage());
+    /** Temporary fail-closed behavior: never delete bodies until safe reconciliation exists. */
+    private void retainFileForReconciliation(MessageMetadata message) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            throw new IllegalStateException("Удаление письма требует активной транзакции");
         }
+        // A concurrent transaction can create a reference after any count/check.
+        // Retention consumes space and retains sensitive data; not production-ready.
+        log.warn("Тело удалённого письма {} временно сохранено; безопасная очистка не настроена", message.getId());
     }
 
     static String validateFolderName(String raw) {

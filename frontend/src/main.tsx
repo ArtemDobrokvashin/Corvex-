@@ -4,6 +4,7 @@ import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom'
 import AppShell from './app/AppShell';
 import LoginPage from './features/auth/LoginPage';
 import { useT } from './i18n';
+import { ThemeProvider } from './components/ThemeProvider';
 import '@fontsource-variable/inter';
 import './index.css';
 
@@ -11,6 +12,7 @@ import './index.css';
 const MailPage = lazy(() => import('./features/mail/MailPage'));
 const ChatPage = lazy(() => import('./features/chat/ChatPage'));
 const AdminPage = lazy(() => import('./features/admin/AdminPage'));
+const CalendarPage = lazy(() => import('./features/calendar/CalendarPage'));
 
 function RouteLoading({ source }: { source: string }) {
   const t = useT();
@@ -26,6 +28,7 @@ const router = createBrowserRouter([
       { index: true, element: <Navigate to="/mail" replace /> },
       { path: 'mail', element: <Suspense fallback={<RouteLoading source="Загружаем почту…" />}><MailPage /></Suspense> },
       { path: 'chat', element: <Suspense fallback={<RouteLoading source="Загружаем сообщения…" />}><ChatPage /></Suspense> },
+      { path: 'calendar', element: <Suspense fallback={<RouteLoading source="Загружаем календарь…" />}><CalendarPage /></Suspense> },
       { path: 'admin/:section?', element: <Suspense fallback={<RouteLoading source="Загружаем администрирование…" />}><AdminPage /></Suspense> },
     ],
   },
@@ -33,5 +36,8 @@ const router = createBrowserRouter([
 ]);
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode><RouterProvider router={router} /></React.StrictMode>,
+  <React.StrictMode>
+    <ThemeProvider />
+    <RouterProvider router={router} />
+  </React.StrictMode>,
 );

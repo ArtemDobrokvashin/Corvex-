@@ -13,8 +13,11 @@ import java.nio.file.Path;
 import java.security.KeyFactory;
 import java.security.MessageDigest;
 import java.security.PrivateKey;
+import java.security.PublicKey;
+import java.security.interfaces.RSAPrivateCrtKey;
 import java.security.Signature;
 import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.RSAPublicKeySpec;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -64,6 +67,33 @@ public class DkimSigner {
 
     public boolean isEnabled() {
         return privateKey != null;
+    }
+
+    public String domain() {
+        return domain;
+    }
+
+    public String selector() {
+        return selector;
+    }
+
+    /**
+     * Публичная часть действующего ключа в base64 (X.509 SubjectPublicKeyInfo) —
+     * именно она публикуется в DNS как p=. Приватный ключ наружу не выходит.
+     *
+     * @return null, если подпись не настроена или ключ не RSA
+     */
+    public String publicKeyBase64() {
+        if (!(privateKey instanceof RSAPrivateCrtKey rsa)) {
+            return null;
+        }
+        try {
+            PublicKey publicKey = KeyFactory.getInstance("RSA").generatePublic(
+                    new RSAPublicKeySpec(rsa.getModulus(), rsa.getPublicExponent()));
+            return Base64.getEncoder().encodeToString(publicKey.getEncoded());
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public byte[] signIfConfigured(byte[] raw, String envelopeFrom) {

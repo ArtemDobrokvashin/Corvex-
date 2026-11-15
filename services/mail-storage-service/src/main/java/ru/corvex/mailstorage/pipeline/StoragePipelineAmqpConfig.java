@@ -67,6 +67,18 @@ public class StoragePipelineAmqpConfig {
         return factory;
     }
 
+    /** Bounce publication is non-idempotent: a confirm can be lost after acceptance.
+     * Errors go directly to the DLQ instead of retrying the entire listener.
+     * Broker redelivery after a crash can still duplicate a DSN. */
+    @Bean(name = "bounceListenerFactory")
+    SimpleRabbitListenerContainerFactory bounceListenerFactory(ConnectionFactory connectionFactory) {
+        SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
+        factory.setConnectionFactory(connectionFactory);
+        factory.setMessageConverter(new SimpleMessageConverter());
+        factory.setDefaultRequeueRejected(false);
+        return factory;
+    }
+
     private Advice mailRetryAdvice() {
         return RetryInterceptorBuilder.stateless()
                 .maxAttempts(5)
