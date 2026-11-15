@@ -83,9 +83,17 @@ function Get-JamesInfo([string]$Id) {
     # Full inspect data stays in memory only.
     return $raw[0] | ConvertFrom-Json
 }
+function Get-NamedProperty($Object, [string]$Name) {
+    # Windows PowerShell 5.1 cannot index properties whose names contain '/'.
+    if ($null -eq $Object) { return $null }
+    foreach ($property in @($Object.PSObject.Properties)) {
+        if ($property.Name -ceq $Name) { return $property }
+    }
+    return $null
+}
 function Assert-Volumes($Info, $Expected) {
     foreach ($dst in @('/root/conf', '/root/extensions-jars', '/root/var')) {
-        $property = $Expected.PSObject.Properties[$dst]
+        $property = Get-NamedProperty $Expected $dst
         if ($null -eq $property) { throw "Original volume record missing: $dst" }
         $found = @($Info.Mounts | Where-Object { $_.Destination -ceq $dst -and $_.Type -ceq 'volume' -and $_.Name -ceq $property.Value })
         if ($found.Count -ne 1) { throw "Original volume not attached: $dst" }
@@ -251,8 +259,12 @@ try {
 } catch {
     $message = $_.Exception.Message
     if ($null -ne $stream) { Write-Journal "FAILED at stage ${stage}: $message" }
+    # Print on stdout as well: redirected stderr is easy to lose in a terminal transcript.
+    Write-Host ("ERROR: rollback drill failed at stage " + $stage + ": " + $message)
+    Write-Host ("STATE: rollbackVerified=" + $rollbackVerified + " applyVerified=" + $applyVerified)
+    Write-Host ("JOURNAL: " + $(if ($journal) { $journal } else { '(not created; failure before manifest was read)' }))
+    Write-Host 'James may be pre-gate. Do not retry blindly; inspect the journal, Compose file and containers first.'
     [Console]::Error.WriteLine("ERROR: rollback drill failed at stage $stage. State: rollbackVerified=$rollbackVerified applyVerified=$applyVerified. Journal: $journal")
-    [Console]::Error.WriteLine('James may be pre-gate. Do not retry blindly; inspect the journal, Compose file and containers first.')
     throw
 } finally {
     if ($null -ne $stream) { $stream.Dispose() }
