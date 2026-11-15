@@ -46,6 +46,14 @@ class QuarantineProofTest(unittest.TestCase):
         self.assertIn('do not repeat automatically', self.text)
         self.assertIn('no automatic retry', self.text)
 
+    def test_native_command_stderr_cannot_abort_the_run(self):
+        self.assertIn('function Invoke-Capture', self.text)
+        self.assertIn("$ErrorActionPreference = 'Continue'", self.text)
+        self.assertIn('Invoke-Capture { docker logs --since 5m $James }', self.text)
+        self.assertIn('Invoke-Capture { docker exec', self.text)
+        # The only raw redirect must live inside the guarded helper.
+        self.assertEqual(self.text.count('2>&1'), 1)
+
     def test_candidate_listener_is_staged_and_verified(self):
         self.assertIn("$candidateSource = Join-Path $PSScriptRoot", self.text)
         self.assertIn("Copy-Item -LiteralPath $candidateSource -Destination $candidateFile", self.text)

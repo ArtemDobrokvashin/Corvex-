@@ -54,11 +54,16 @@ function Running-Id([string]$Service) {
     if ($LASTEXITCODE -ne 0 -or $ids.Count -ne 1 -or [string]::IsNullOrWhiteSpace($ids[0])) { throw "FAIL: $Service is not running" }
     return $ids[0].Trim()
 }
+function Invoke-Capture([scriptblock]$Command) {
+    $saved = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { return , @(& $Command 2>&1) } finally { $ErrorActionPreference = $saved }
+}
 function Get-RepositoryCounts {
     # Read-only aggregate: how many stored mails belong to the AV quarantine
     # repository and how many exist in total. No message bodies are read.
     $sql = "select coalesce(sum(case when url like '%corvex-av-unknown%' then 1 else 0 end),0)::text || ',' || count(*)::text from mail_repository_content"
-    $out = @(& docker exec (Running-Id 'james-postgres') psql -U james -d james -tAc $sql 2>&1)
+    $out = Invoke-Capture { docker exec (Running-Id 'james-postgres') psql -U james -d james -tAc $sql }
     if ($LASTEXITCODE -ne 0) { return $null }
     $value = ("$($out -join '')").Trim()
     if ($value -notmatch '^([0-9]+),([0-9]+)$') { return $null }
@@ -179,7 +184,8 @@ try {
         & docker cp (Join-Path $out 'ru') "${James}:${Remote}/"
         if ($LASTEXITCODE -ne 0) { throw 'FAIL: copy James probe.' }
         foreach ($jar in $jars) { & docker cp $jar "${James}:${Remote}/lib/"; if ($LASTEXITCODE -ne 0) { throw 'FAIL: copy James probe dependency.' } }
-        $logs = (& docker logs --since 5m $James 2>&1) -join "`n"
+        # Container stderr is expected here (SLF4J); it must never abort the run.
+        $logs = (Invoke-Capture { docker logs --since 5m $James }) -join "`n"
         if ($logs -notmatch 'CorvexClamAVGate instantiated') { Write-Warning 'Gate instantiation was not observed in recent James logs; the result below still depends on it.' }
         $ProbeId = [guid]::NewGuid().ToString('N')
         New-Item -ItemType Directory -Path $Marker | Out-Null
