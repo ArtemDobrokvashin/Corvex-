@@ -14,7 +14,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 if (-not $ConfirmLaptop) { throw 'FAIL: -ConfirmLaptop required.' }
 $Repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$Prior = Join-Path $Repo 'infra\secrets\james-native-smtp-probe'
+$Prior = Join-Path $Repo 'infra\secrets\james-provision-live-probe'
 $Marker = Join-Path $Repo 'infra\secrets\james-av-quarantine-probe'
 $Temp = Join-Path ([IO.Path]::GetTempPath()) ('corvex-av-quarantine-' + [guid]::NewGuid().ToString('N'))
 $Remote = '/tmp/corvex-av-quarantine-' + [guid]::NewGuid().ToString('N')
