@@ -46,6 +46,16 @@ class QuarantineProofTest(unittest.TestCase):
         self.assertIn('do not repeat automatically', self.text)
         self.assertIn('no automatic retry', self.text)
 
+    def test_candidate_listener_is_staged_and_verified(self):
+        self.assertIn("$candidateSource = Join-Path $PSScriptRoot", self.text)
+        self.assertIn("Copy-Item -LiteralPath $candidateSource -Destination $candidateFile", self.text)
+        self.assertIn('$candidateFile.Replace([char]92, \'/\')', self.text)
+        self.assertLess(self.text.index('candidate SMTP config is missing'),
+                        self.text.index('$Changed = $true'))
+        self.assertIn("$active -notmatch 'synthetic-quarantine-smtp'", self.text)
+        self.assertLess(self.text.index('force-recreate james'),
+                        self.text.index('James is not running the candidate loopback listener'))
+
     def test_compose_directory_is_explicit(self):
         self.assertIn('[string]$ComposeDir', self.text)
         self.assertIn("(Resolve-Path -LiteralPath $ComposeDir).Path", self.text)
@@ -58,7 +68,7 @@ class QuarantineProofTest(unittest.TestCase):
         self.assertIn('pass -Login', self.text)
         self.assertIn('JamesAvQuarantineProbe check', self.text)
         check = self.text.index('JamesAvQuarantineProbe check')
-        candidate = self.text.index("smtp-quarantine-proof.xml'")
+        candidate = self.text.index("$candidateFile = Join-Path $Temp")
         self.assertLess(check, candidate)
 
     def test_absence_and_repository_delta_are_both_required(self):

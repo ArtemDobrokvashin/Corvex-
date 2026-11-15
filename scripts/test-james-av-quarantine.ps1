@@ -71,6 +71,10 @@ foreach ($required in @('docker-compose.yml', '.env', 'infra\secrets\james\compo
     }
 }
 if (-not (Get-Command mvn -ErrorAction SilentlyContinue) -or -not (Get-Command javac -ErrorAction SilentlyContinue)) { throw 'FAIL: Maven and JDK 17 required.' }
+# The candidate listener is staged outside the Compose checkout so a stale
+# working tree cannot turn a bind mount into a directory.
+$candidateSource = Join-Path $PSScriptRoot '..\infra\james\candidates\smtp-quarantine-proof.xml'
+if (-not (Test-Path -LiteralPath $candidateSource -PathType Leaf)) { throw ('FAIL: candidate SMTP config is missing: ' + $candidateSource) }
 # The synthetic account comes from the verified provisioning record of the
 # earlier JMAP probe; -Login is only an explicit override for the same pattern.
 if (-not $Login) {
@@ -153,7 +157,9 @@ try {
         # Confirm the synthetic mailbox exists before touching any container.
         & docker exec $Mail java -cp "$Remote`:$Remote/lib/*" ru.corvex.mailstorage.james.JamesAvQuarantineProbe check $Login
         if ($LASTEXITCODE -ne 0) { throw 'FAIL: the synthetic account is not usable; nothing was changed.' }
-        $env:CORVEX_JAMES_SMTP_CONFIG_FILE = './infra/james/candidates/smtp-quarantine-proof.xml'
+        $candidateFile = Join-Path $Temp 'smtp-quarantine-proof.xml'
+        Copy-Item -LiteralPath $candidateSource -Destination $candidateFile -Force
+        $env:CORVEX_JAMES_SMTP_CONFIG_FILE = $candidateFile.Replace([char]92, '/')
         & docker @Compose config --quiet
         if ($LASTEXITCODE -ne 0) { throw 'FAIL: candidate Compose config.' }
         # Mark before recreation so an ambiguous outcome can never look like a
@@ -163,6 +169,11 @@ try {
         if ($LASTEXITCODE -ne 0 -or -not (Ready-James)) { throw 'FAIL: James candidate startup; restoration will be attempted.' }
         if (-not (Start-Proxies)) { throw 'FAIL: James proxy startup; restoration will be attempted.' }
         $James = Running-Id 'james'
+        $active = (& docker exec $James cat /root/conf/smtpserver.xml) -join "`n"
+        if ($LASTEXITCODE -ne 0 -or $active -notmatch 'synthetic-quarantine-smtp' -or $active -notmatch '127\.0\.0\.1:2525') {
+            throw 'FAIL: James is not running the candidate loopback listener; restoration will be attempted.'
+        }
+        Write-Host 'Confirmed: James runs the loopback-only candidate listener.'
         & docker exec $James mkdir -p "$Remote/lib"
         if ($LASTEXITCODE -ne 0) { throw 'FAIL: James probe directory.' }
         & docker cp (Join-Path $out 'ru') "${James}:${Remote}/"
