@@ -313,6 +313,81 @@ paths:
   /mail/vacation:
     get: { summary: Настройки автоответа (отпуск), responses: { '200': { description: Настройки } } }
     put: { summary: Включить/изменить автоответ, responses: { '200': { description: Сохранено } } }
+  # --- Собственные домены (ADMIN_MAIL_POLICY) ---------------------------------
+  # readiness вычисляется только из подтверждённого James и свежих DNS-проверок;
+  # «домен добавлен» само по себе никогда не означает «приём работает».
+  /mail/admin/domains:
+    get:
+      summary: Реестр доменов с состоянием James и готовностью
+      responses:
+        '200': { description: Список, Cache-Control no-store }
+        '403': { description: Нет права ADMIN_MAIL_POLICY }
+    post:
+      summary: Зарегистрировать домен в реестре Corvex (в James не пишет)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [domain]
+              properties: { domain: { type: string, example: company.ru } }
+      responses:
+        '201': { description: Зарегистрирован }
+        '400': { description: Некорректный домен }
+        '409': { description: Домен уже добавлен }
+  /mail/admin/domains/{domain}:
+    get:
+      summary: Домен, последние проверки и причины блокировки
+      parameters: [{ name: domain, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Карточка домена }
+        '404': { description: Домен не найден }
+    delete:
+      summary: Удалить только запись реестра (James и ящики не изменяются)
+      parameters: [{ name: domain, in: path, required: true, schema: { type: string } }]
+      responses:
+        '204': { description: Удалено }
+  /mail/admin/domains/{domain}/james:
+    post:
+      summary: Создать домен в James через mTLS-мост
+      description: |
+        200 — James подтвердил наличие домена (204 на PUT).
+        202 — исход неизвестен (таймаут/неожиданный код): повторять запрос нельзя,
+        состояние разрешается чтением GET /domains/{domain} в James.
+        400 — James отклонил домен. 503 — мост не настроен.
+      parameters: [{ name: domain, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Домен подтверждён }
+        '202': { description: Исход неизвестен, домен не считается созданным }
+        '400': { description: James отклонил домен }
+        '409': { description: Домен отключён или запрос уже выполняется }
+        '503': { description: Мост James WebAdmin не настроен }
+  /mail/admin/domains/{domain}/verify:
+    post:
+      summary: Выполнить реальную DNS-проверку MX/SPF/DKIM/DMARC/autodiscover
+      parameters: [{ name: domain, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Результаты сохранены, readiness пересчитан }
+  /mail/admin/domains/{domain}/dns:
+    get:
+      summary: Точные DNS-записи для регистратора, включая p= действующего DKIM-ключа
+      parameters: [{ name: domain, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200':
+          description: Записи MX/TXT/CNAME с пояснениями
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    type: { type: string, enum: [MX, TXT, CNAME] }
+                    name: { type: string, example: '@' }
+                    value: { type: string, nullable: true }
+                    priority: { type: integer, nullable: true }
+                    note: { type: string }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
@@ -417,6 +492,31 @@ components:
         flagged: { type: boolean }
         hasAttachments: { type: boolean }
         spamScore: { type: number, nullable: true }
+    MailDomainView:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        domain: { type: string }
+        enabled: { type: boolean }
+        jamesState: { type: string, enum: [NOT_REQUESTED, REQUESTING, CREATED, FAILED, UNCERTAIN] }
+        jamesConfirmedAt: { type: string, format: date-time, nullable: true }
+        jamesBridgeAvailable: { type: boolean }
+        acceptanceEnabled: { type: boolean, description: Домен входит в CORVEX_MAIL_DOMAINS }
+        dnsChecked: { type: boolean }
+        checkedAt: { type: string, format: date-time, nullable: true }
+        fresh: { type: boolean, description: Проверка не старше corvex.domains.max-check-age-seconds }
+        receivingReady: { type: boolean }
+        sendingReady: { type: boolean }
+        blockedReason: { type: string, nullable: true }
+        checks:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string, enum: [MX, SPF, DKIM, DMARC, AUTODISCOVER] }
+              state: { type: string, enum: [PASS, WARN, FAIL, UNKNOWN] }
+              detail: { type: string }
+              observedAt: { type: string, format: date-time }
     MessageDetail:
       allOf:
         - $ref: '#/components/schemas/MessageSummary'

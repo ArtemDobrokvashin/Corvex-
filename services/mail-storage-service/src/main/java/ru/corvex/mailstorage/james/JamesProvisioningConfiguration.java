@@ -48,6 +48,28 @@ class JamesProvisioningConfiguration {
         } finally { Arrays.fill(keyPassword, '\0'); }
     }
 
+    /**
+     * Отдельный клиент доменов на том же mTLS-мосту. Включается вместе с
+     * provision-режимом; при выключенном мосте доменный API отвечает 503 и не
+     * делает вид, что домен добавлен.
+     */
+    @Bean(destroyMethod = "close")
+    JamesDomainAdminClient jamesDomainAdminClient(
+            @Value("${corvex.james.provision.admin-origin}") String origin,
+            @Value("${corvex.james.provision.admin-secret-file}") String secret,
+            @Value("${corvex.james.provision.admin-keystore-file}") String keystore,
+            @Value("${corvex.james.provision.admin-keystore-password-file}") String password,
+            @Value("${corvex.james.provision.admin-trust-certificate-file}") String trust) throws Exception {
+        String adminSecret = readSecret(Path.of(secret));
+        char[] keyPassword = readSecret(Path.of(password)).toCharArray();
+        try {
+            return new JamesDomainAdminClient(URI.create(origin), adminSecret,
+                    adminTls(Path.of(keystore), keyPassword, Path.of(trust)));
+        } finally {
+            Arrays.fill(keyPassword, '\0');
+        }
+    }
+
     @Bean
     JamesProvisioningAccess jamesProvisioningAccess(AuthUserClient users, JdbcTemplate jdbc, DataSource dataSource,
             InternalTokenGuard internalTokens, ObjectMapper mapper, JamesWebAdminCreateClient admin,

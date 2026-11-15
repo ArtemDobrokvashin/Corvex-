@@ -196,6 +196,10 @@ services:
       CORVEX_JAMES_PROVISION_JMAP_ORIGIN: https://james-jmap:8443
       CORVEX_JAMES_PROVISION_JMAP_PRIVATE_KEY_FILE: /run/james-adapter/jwt-private.pem
       CORVEX_JAMES_PROVISION_JMAP_TRUST_CERTIFICATE_FILE: /run/james-adapter/jmap-trust.crt
+      # Публичный DKIM-ключ действующего отправителя (не приватный): нужен, чтобы
+      # проверить опубликованную DNS-запись домена и показать точное значение p=.
+      CORVEX_DKIM_SELECTOR: ${CORVEX_DKIM_SELECTOR:-corvex1}
+      CORVEX_DKIM_KEY_URL: ${CORVEX_DKIM_KEY_URL:-http://mail-smtp-service:8082/internal/dkim/public-key}
     volumes:
       - mail-data:/data/mail
       - attachment-data:/data/attachments
