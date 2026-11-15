@@ -103,6 +103,25 @@ describe('group forward', () => {
     expect(notice).toContain('not verified by antivirus');
   });
 
+  it('uses the same original-preserving path for a single forward', async () => {
+    await act(async () => root.render(<MemoryRouter initialEntries={['/mail']}><MailPage /></MemoryRouter>));
+    await flush();
+
+    await click([...container.querySelectorAll('[draggable="true"]')][0]);
+    await flush();
+    await click(container.querySelector('button[aria-label="Forward"]'));
+    await flush();
+
+    expect((container.querySelector('#compose-subject') as HTMLInputElement).value).toBe('Fwd: Contract');
+    const body = container.querySelector('[aria-label="Message body"]')?.textContent ?? '';
+    expect(body).toContain('From: Alice <alice@example.com>');
+    expect(body).toContain('Full contract text.');
+    // Одиночная пересылка больше не теряет проверенное вложение.
+    expect(mailApi.downloadAttachment).toHaveBeenCalledWith('m1', 0);
+    expect(container.textContent).toContain('contract.pdf');
+    expect(container.textContent).toContain('invoice.exe');
+  });
+
   it('never sends a partial batch when the original cannot be loaded', async () => {
     // Один из оригиналов недоступен — всю пачку не отправляем, а не «что успели».
     vi.mocked(mailApi.message).mockRejectedValue(new Error('mailbox unavailable'));

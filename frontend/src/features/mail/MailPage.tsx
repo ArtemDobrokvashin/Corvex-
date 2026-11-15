@@ -1029,13 +1029,14 @@ export default function MailPage() {
   };
 
   /**
-   * Групповая пересылка оригиналов: тексты писем целиком, вложения — только
-   * проверенные антивирусом и в пределах лимитов. Отказ по каждому файлу
-   * показывается пользователю, а не проглатывается.
+   * Пересылка оригиналов: тексты писем целиком, вложения — только проверенные
+   * антивирусом и в пределах лимитов. Отказ по каждому файлу показывается
+   * пользователю, а не проглатывается. Один и тот же путь используется и для
+   * одного письма, и для группы, чтобы «Переслать» не теряла вложения.
    */
-  const forwardSelected = async () => {
-    if (bulkBusyRef.current || bulkSelection.length === 0) return;
-    const snapshot = [...bulkSelection];
+  const forwardMessages = async (ids: string[], options: { clearSelection?: boolean } = {}) => {
+    if (bulkBusyRef.current || ids.length === 0) return;
+    const snapshot = [...ids];
     bulkBusyRef.current = true;
     setBulkBusy(true);
     setBulkNotice('');
@@ -1090,7 +1091,7 @@ export default function MailPage() {
       setComposeFiles(files);
       setResumeDraft(null);
       setComposeDraft({ to: '', subject: forwardSubject(details, 'Fwd:'), body });
-      setBulkSelection([]);
+      if (options.clearSelection) setBulkSelection([]);
 
       if (blocked.length > 0) {
         const listed = blocked
@@ -1105,6 +1106,8 @@ export default function MailPage() {
       setBulkBusy(false);
     }
   };
+
+  const forwardSelected = () => forwardMessages(bulkSelection, { clearSelection: true });
 
   const toggleFlag = (mail: DemoMail) => {
     if (movingMailIdsRef.current.has(mail.id)) return;
@@ -1764,13 +1767,8 @@ export default function MailPage() {
                 label={t('Переслать')}
                 size={17}
                 className="hidden 2xl:inline-flex"
-                onClick={() =>
-                  openDraft({
-                    to: '',
-                    subject: `Fwd: ${active.subject}`,
-                    body: `\n\n--- ${t('Пересылаемое письмо')} ---\n${activeBody}`,
-                  }, 'forward')
-                }
+                disabled={bulkBusy}
+                onClick={() => void forwardMessages([active.id])}
               />
 
               <span className="mx-1 h-4 w-px bg-line" aria-hidden="true" />
@@ -1983,13 +1981,8 @@ export default function MailPage() {
                 <button
                   type="button"
                   className="btn-secondary"
-                  onClick={() =>
-                    openDraft({
-                      to: '',
-                      subject: `Fwd: ${active.subject}`,
-                      body: `\n\n--- ${t('Пересылаемое письмо')} ---\n${activeBody}`,
-                    }, 'forward')
-                  }
+                  disabled={bulkBusy}
+                  onClick={() => void forwardMessages([active.id])}
                 >
                   <Forward size={15} /> {t('Переслать')}
                 </button>
