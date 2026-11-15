@@ -463,3 +463,31 @@ AV/storage и их DLQ, без получения содержимого. Отс
 реальными зависимостями James: BUILD SUCCESS, unit-тесты и packaging прошли;
 их точный счётчик в присланном фрагменте отсутствует. Это не работающий mailet
 в James, не Docker DNS и не проверка против реального ClamAV.
+
+### Лимит-алерт ClamAV на ноутбуке: подтверждено (`866b5f9`, `6fa3d5c`)
+
+Скрипт `enable-clamav-limit-alert.ps1` после исправления имён сетей
+(`<project>_app`, проект берётся из label `com.docker.compose.project`) прошёл
+dry-run и apply. ClamAV пересоздан, healthy, сети `corvex_app` и обе
+`corvex-james-av-*` восстановлены, в `/etc/clamav/clamd.conf` присутствует
+`AlertExceedsMax: yes`. Манифест:
+`...\Temp\corvex-clamav-limit-7a7d1f8cd0524fde9f4295d7e5a5f2cb\deployment-manifest.json`.
+
+Проба на действующем clamd (`6fa3d5c`, режим `-ProbeOnly`) дала:
+`raw_eicar=EICAR_FOUND`, `zip_depth_1=EICAR_FOUND`, `mime_zip_depth_1=EICAR_FOUND`,
+`zip_depth_25=LIMIT_ALERT bytes=2573`, `mime_zip_depth_25=LIMIT_ALERT`, exit 0.
+Ложный `CLEAN` на глубине и в MIME-вложении закрыт на уровне демона. Гейт
+трактует `Heuristics.Limits.Exceeded... FOUND` как `UNKNOWN`, а не как вирус.
+Покрытие остальных причин неполного сканирования не доказано; это не допуск AV
+и не разрешение cutover.
+
+### Карантин на живом письме: подготовлено, не выполнено
+
+`scripts/test-james-av-quarantine.ps1` + `scripts/JamesAvQuarantineProbe.java` +
+выключенный кандидат `infra/james/candidates/smtp-quarantine-proof.xml`
+(loopback `127.0.0.1:2525`, `authorizedAddresses 127.0.0.1/32`, без публикации
+порта). Один синтетический конверт с вложением — ZIP глубины 25 с EICAR;
+ожидается: письмо не появляется в ящике через JMAP, `mail_repository_content`
+для `corvex-av-unknown` растёт ровно на одну запись, после чего выключенный SMTP
+восстанавливается. Маркер `infra/secrets/james-av-quarantine-probe` запрещает
+автоматический повтор. На ноутбуке сценарий ещё не запускался.
