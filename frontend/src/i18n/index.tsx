@@ -1195,6 +1195,13 @@ const EN: Record<string, string> = {
   "Серверные правила и автоответ пока не поддерживаются.": "Server-side rules and automatic replies are not supported yet.",
   "Сохранить настройки": "Save settings",
   "Новых входящих писем: {count}": "New inbox messages: {count}",
+  // Bulk actions and safe images
+  'Отменить': 'Cancel',
+  'Не удалось открыть черновик.': 'Could not open the draft.',
+  'Не удалось определить целевую папку. Обновите список.': 'Could not determine the target folder. Refresh the list.',
+  'Групповые действия': 'Bulk actions',
+  'Снять выбор': 'Clear selection',
+  'Внешние изображения заблокированы. Отправитель узнает, что вы открыли письмо.': 'External images are blocked. The sender will learn that you opened the message.',
 };
 
 const API_PATTERNS: Array<{ pattern: RegExp; en: string; ru?: string }> = [
