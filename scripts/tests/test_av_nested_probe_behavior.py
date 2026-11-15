@@ -111,3 +111,22 @@ class NestedProbeBehaviorTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class NestedProbeScriptTest(unittest.TestCase):
+    def setUp(self):
+        self.script = (ROOT / 'scripts/test-av-nested-archive.ps1').read_bytes()
+        self.text = self.script.decode('ascii')
+
+    def test_script_is_ascii_and_requires_confirmation(self):
+        self.assertIn("-not $ConfirmLaptop", self.text)
+
+    def test_script_rejects_incomplete_scanner_output(self):
+        self.assertIn("mime_zip_depth_25=", self.text)
+        self.assertIn('throw \'INCONCLUSIVE: probe output incomplete.\'', self.text)
+        self.assertLess(self.text.index('probe output incomplete'), self.text.index('$probeExit -eq 3'))
+
+    def test_script_does_not_mutate_compose_or_networks(self):
+        for forbidden in ('compose up', 'compose down', 'compose restart', 'network create',
+                          'docker rm', 'docker run', '--env'):
+            self.assertNotIn(forbidden, self.text)

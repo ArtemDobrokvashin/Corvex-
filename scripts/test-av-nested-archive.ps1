@@ -69,8 +69,19 @@ try {
         $remoteOwned = $true
         & docker cp (Join-Path $out '.') "${container}:${remote}/"
         if ($LASTEXITCODE -ne 0) { throw 'FAIL: probe copy.' }
-        & docker exec $container java -cp "$remote`:$remote/lib/*" AvNestedArchiveProbe clamav 3310
-        $probeExit = $LASTEXITCODE
+        $saved = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            $lines = @(& docker exec $container java -cp "$remote`:$remote/lib/*" AvNestedArchiveProbe clamav 3310 2>$null)
+            $probeExit = $LASTEXITCODE
+        } finally { $ErrorActionPreference = $saved }
+        foreach ($line in $lines) { Write-Host $line }
+        $joined = $lines -join "`n"
+        if (-not ($joined.Contains('mime_zip_depth_1=') -and $joined.Contains('zip_depth_25=') -and
+                  $joined.Contains('mime_zip_depth_25='))) {
+            # Missing output must never look like a completed scan.
+            throw 'INCONCLUSIVE: probe output incomplete.'
+        }
     } finally { Pop-Location }
 } finally {
     if ($remoteOwned -and $container -and $remote -match '^/tmp/corvex-av-nested-[0-9a-f]{32}$') {
