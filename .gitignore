@@ -18,3 +18,8 @@ artifacts/
 
 # Local tool caches (pip/npm/tree-sitter) are never part of the project.
 .cache/
+
+# Одноразовые патчи и рабочие артефакты прошлых сессий: не часть проекта.
+/corvex-*.patch
+/james-git-download.patch
+/collaboration.png
