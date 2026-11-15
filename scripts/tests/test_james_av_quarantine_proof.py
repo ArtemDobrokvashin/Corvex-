@@ -46,6 +46,12 @@ class QuarantineProofTest(unittest.TestCase):
         self.assertIn('do not repeat automatically', self.text)
         self.assertIn('no automatic retry', self.text)
 
+    def test_compose_directory_is_explicit(self):
+        self.assertIn('[string]$ComposeDir', self.text)
+        self.assertIn("(Resolve-Path -LiteralPath $ComposeDir).Path", self.text)
+        self.assertNotIn("$Repo = (Resolve-Path (Join-Path $PSScriptRoot", self.text)
+        self.assertIn("'docker-compose.yml', '.env'", self.text)
+
     def test_account_comes_from_verified_record_or_explicit_override(self):
         self.assertIn('james-provision-live-probe', self.text)
         self.assertIn('acknowledged-and-jmap-verified', self.text)

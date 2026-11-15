@@ -8,12 +8,15 @@
    mailbox, no queue replay, no automatic repeat after a send attempt. #>
 param(
     [string]$Login,
+    # Compose project with running James; markers and .env live here. The probe
+    # sources come from this script's own directory.
+    [string]$ComposeDir = (Join-Path $PSScriptRoot '..'),
     [switch]$ConfirmLaptop
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 if (-not $ConfirmLaptop) { throw 'FAIL: -ConfirmLaptop required.' }
-$Repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$Repo = (Resolve-Path -LiteralPath $ComposeDir).Path
 $Prior = Join-Path $Repo 'infra\secrets\james-provision-live-probe'
 $Marker = Join-Path $Repo 'infra\secrets\james-av-quarantine-probe'
 $Temp = Join-Path ([IO.Path]::GetTempPath()) ('corvex-av-quarantine-' + [guid]::NewGuid().ToString('N'))
@@ -62,6 +65,11 @@ function Get-RepositoryCounts {
     return [pscustomobject]@{ Quarantine = [int]$Matches[1]; Total = [int]$Matches[2] }
 }
 if (Test-Path -LiteralPath $Marker) { throw 'FAIL: a quarantine-proof intent already exists; do not repeat automatically.' }
+foreach ($required in @('docker-compose.yml', '.env', 'infra\secrets\james\compose.env', 'infra\secrets\james-provision\compose.env')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $Repo $required) -PathType Leaf)) {
+        throw ('FAIL: Compose file is missing in "{0}": {1}' -f $Repo, $required)
+    }
+}
 if (-not (Get-Command mvn -ErrorAction SilentlyContinue) -or -not (Get-Command javac -ErrorAction SilentlyContinue)) { throw 'FAIL: Maven and JDK 17 required.' }
 # The synthetic account comes from the verified provisioning record of the
 # earlier JMAP probe; -Login is only an explicit override for the same pattern.
