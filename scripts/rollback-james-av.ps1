@@ -5,6 +5,17 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 if (-not $ConfirmLaptop) { throw 'FAIL: -ConfirmLaptop required.' }
 $stage = 'manifest'
+function Invoke-Docker([string[]]$Arguments) {
+    # Native stderr is a terminating error in Windows PowerShell 5.1 when
+    # $ErrorActionPreference is Stop; keep it non-terminating and discarded.
+    $saved = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = @(& docker @Arguments 2>$null)
+        $code = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $saved }
+    return @{ Output = $output; Code = $code }
+}
 $changed = $false
 try {
     $m = Get-Content -Raw -LiteralPath $DeploymentManifest | ConvertFrom-Json
@@ -26,11 +37,11 @@ try {
             $webFile = Join-Path (Get-Location).Path $m.webAdminRelative
             if (-not (Test-Path -LiteralPath $webFile -PathType Leaf) -or (Get-FileHash -LiteralPath $webFile -Algorithm SHA256).Hash.ToLowerInvariant() -cne $m.webAdminSha256) { throw 'WebAdmin source changed; preserve it.' }
         }
-        $ids = @(& docker compose --profile james-transition ps -a -q james 2>$null)
-        if ($LASTEXITCODE -ne 0 -or $ids.Count -gt 1) { throw 'Unexpected James containers.' }
-        if ($ids.Count -eq 1) {
-            $image = @(& docker inspect --format '{{.Image}}' $ids[0] 2>$null)
-            if ($LASTEXITCODE -ne 0 -or $image.Count -ne 1 -or $image[0] -cne $m.jamesImageId) { throw 'James image changed independently.' }
+        $found = Invoke-Docker @('compose', '--profile', 'james-transition', 'ps', '-a', '-q', 'james')
+        if ($found.Code -ne 0 -or $found.Output.Count -gt 1) { throw 'Unexpected James containers.' }
+        if ($found.Output.Count -eq 1) {
+            $image = Invoke-Docker @('inspect', '--format', '{{.Image}}', $found.Output[0])
+            if ($image.Code -ne 0 -or $image.Output.Count -ne 1 -or $image.Output[0] -cne $m.jamesImageId) { throw 'James image changed independently.' }
         }
         $stage = 'restore-compose'
         $changed = $true
@@ -43,11 +54,12 @@ try {
         $ErrorActionPreference = 'Continue'
         try { & docker compose --profile james-transition up -d --no-deps --no-build --pull never --force-recreate james; $code = $LASTEXITCODE } finally { $ErrorActionPreference = $saved }
         if ($code -ne 0) { throw 'James recreation failed.' }
-        $ids = @(& docker compose --profile james-transition ps --status running -q james 2>$null)
-        if ($LASTEXITCODE -ne 0 -or $ids.Count -ne 1) { throw 'Restored James not running.' }
-        $raw = @(& docker inspect --format '{{json .}}' $ids[0] 2>$null)
-        if ($LASTEXITCODE -ne 0 -or $raw.Count -ne 1) { throw 'Cannot inspect restored James.' }
-        $info = $raw[0] | ConvertFrom-Json
+        $running = Invoke-Docker @('compose', '--profile', 'james-transition', 'ps', '--status', 'running', '-q', 'james')
+        if ($running.Code -ne 0 -or $running.Output.Count -ne 1) { throw 'Restored James not running.' }
+        $ids = $running.Output
+        $raw = Invoke-Docker @('inspect', '--format', '{{json .}}', $ids[0])
+        if ($raw.Code -ne 0 -or $raw.Output.Count -ne 1) { throw 'Cannot inspect restored James.' }
+        $info = $raw.Output[0] | ConvertFrom-Json
         if ($info.Image -cne $m.jamesImageId) { throw 'Unexpected restored James image.' }
         foreach ($dst in @('/root/conf','/root/extensions-jars','/root/var')) {
             $property = $m.originalVolumes.PSObject.Properties[$dst]
@@ -56,8 +68,8 @@ try {
             if ($found.Count -ne 1) { throw "Original volume not attached: $dst" }
         }
         if ($m.webAdminPinned) {
-            $webHash = @(& docker exec $ids[0] sha256sum /root/conf/webadmin.properties 2>$null)
-            if ($LASTEXITCODE -ne 0 -or $webHash.Count -ne 1 -or $webHash[0] -notmatch '^([a-f0-9]{64})\s' -or $Matches[1] -cne $m.webAdminSha256) { throw 'Restored WebAdmin config mismatch.' }
+            $webHash = Invoke-Docker @('exec', $ids[0], 'sha256sum', '/root/conf/webadmin.properties')
+            if ($webHash.Code -ne 0 -or $webHash.Output.Count -ne 1 -or $webHash.Output[0] -notmatch '^([a-f0-9]{64})\s' -or $Matches[1] -cne $m.webAdminSha256) { throw 'Restored WebAdmin config mismatch.' }
         }
         Write-Host 'Pre-gate Compose and James image restored; original James volumes attached.'
         Write-Host 'Network and artifacts were deliberately retained; do not remove while in use.'

@@ -56,8 +56,28 @@ class RollbackDrillTest(unittest.TestCase):
         self.assertIn('RESULT failures=', text)
         self.assertIn('composeDir differs', text)
 
+    def test_native_docker_stderr_cannot_abort_the_drill(self):
+        # Windows PowerShell 5.1 turns native stderr into a terminating error;
+        # james-cli writes SLF4J warnings there, so all calls use one helper.
+        self.assertEqual(1, self.text.count('& docker '))
+        helper = self.text.index('function Invoke-Docker')
+        call = self.text.index('& docker ')
+        self.assertGreater(call, helper)
+        self.assertIn("$ErrorActionPreference = 'Continue'", self.text[helper:call + 200])
+        self.assertIn("Invoke-Docker @('exec', $container, 'james-cli', 'ListDomains')", self.text)
+
+    def test_rollback_child_also_guards_native_stderr(self):
+        text = (SCRIPTS / 'rollback-james-av.ps1').read_text(encoding='utf-8')
+        self.assertIn('function Invoke-Docker', text)
+        raw = [line for line in text.splitlines() if '& docker ' in line and 'Invoke-Docker' not in line]
+        # One helper implementation plus the explicit recreate wrapped in Continue.
+        self.assertEqual(2, len(raw), raw)
+        self.assertIn('& docker @Arguments', raw[0])
+        self.assertIn("$ErrorActionPreference = 'Continue'", text)
+        self.assertTrue(any('force-recreate' in line for line in raw), raw)
+
     def test_reads_status_without_printing_full_inspect(self):
-        self.assertIn('$raw[0] | ConvertFrom-Json', self.text)
+        self.assertIn('$result.Output[0] | ConvertFrom-Json', self.text)
         self.assertNotIn('Write-Host $raw', self.text)
         self.assertNotIn('ConvertTo-Json -Depth 0', self.text)
 

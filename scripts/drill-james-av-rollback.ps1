@@ -53,6 +53,18 @@ function Invoke-Child([string]$Script, [string[]]$Arguments, [string]$OutFile, [
     } finally { $ErrorActionPreference = $saved }
     return $proc.ExitCode
 }
+function Invoke-Docker([string[]]$Arguments) {
+    # Windows PowerShell 5.1 raises a terminating NativeCommandError when a
+    # native command writes to stderr while $ErrorActionPreference is Stop.
+    # james-cli logs SLF4J warnings on stderr, so every call goes through here.
+    $saved = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = @(& docker @Arguments 2>$null)
+        $code = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $saved }
+    return @{ Output = $output; Code = $code }
+}
 function Get-Sha([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "Missing file: $Path" }
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -60,28 +72,28 @@ function Get-Sha([string]$Path) {
 function Get-RunningJames([string]$ComposeDir) {
     Push-Location -LiteralPath $ComposeDir
     try {
-        $ids = @(& docker compose --profile james-transition ps --status running -q james 2>$null)
-        if ($LASTEXITCODE -ne 0 -or $ids.Count -ne 1 -or $ids[0] -notmatch '^[a-f0-9]{12,64}$') {
+        $result = Invoke-Docker @('compose', '--profile', 'james-transition', 'ps', '--status', 'running', '-q', 'james')
+        if ($result.Code -ne 0 -or $result.Output.Count -ne 1 -or $result.Output[0] -notmatch '^[a-f0-9]{12,64}$') {
             throw 'Expected exactly one running James container.'
         }
-        return $ids[0]
+        return $result.Output[0]
     } finally { Pop-Location }
 }
 function Get-RunningClamav([string]$ComposeDir) {
     Push-Location -LiteralPath $ComposeDir
     try {
-        $ids = @(& docker compose ps --status running -q clamav 2>$null)
-        if ($LASTEXITCODE -ne 0 -or $ids.Count -ne 1 -or $ids[0] -notmatch '^[a-f0-9]{12,64}$') {
+        $result = Invoke-Docker @('compose', 'ps', '--status', 'running', '-q', 'clamav')
+        if ($result.Code -ne 0 -or $result.Output.Count -ne 1 -or $result.Output[0] -notmatch '^[a-f0-9]{12,64}$') {
             throw 'Expected exactly one running ClamAV container.'
         }
-        return $ids[0]
+        return $result.Output[0]
     } finally { Pop-Location }
 }
 function Get-JamesInfo([string]$Id) {
-    $raw = @(& docker inspect --format '{{json .}}' $Id 2>$null)
-    if ($LASTEXITCODE -ne 0 -or $raw.Count -ne 1) { throw 'Cannot inspect James.' }
+    $result = Invoke-Docker @('inspect', '--format', '{{json .}}', $Id)
+    if ($result.Code -ne 0 -or $result.Output.Count -ne 1) { throw 'Cannot inspect James.' }
     # Full inspect data stays in memory only.
-    return $raw[0] | ConvertFrom-Json
+    return $result.Output[0] | ConvertFrom-Json
 }
 function Get-NamedProperty($Object, [string]$Name) {
     # Windows PowerShell 5.1 cannot index properties whose names contain '/'.
@@ -100,16 +112,16 @@ function Assert-Volumes($Info, $Expected) {
     }
 }
 function Get-MailetSha([string]$Id) {
-    $lines = @(& docker exec $Id sha256sum /root/conf/mailetcontainer.xml 2>$null)
-    if ($LASTEXITCODE -ne 0 -or $lines.Count -ne 1 -or $lines[0] -notmatch '^([a-f0-9]{64})\s') {
+    $result = Invoke-Docker @('exec', $Id, 'sha256sum', '/root/conf/mailetcontainer.xml')
+    if ($result.Code -ne 0 -or $result.Output.Count -ne 1 -or $result.Output[0] -notmatch '^([a-f0-9]{64})\s') {
         throw 'Cannot hash the mounted mailet configuration.'
     }
     return $Matches[1]
 }
 function Get-GateJars([string]$Id) {
-    $entries = @(& docker exec $Id find /root/extensions-jars -maxdepth 1 -type f -name '*.jar' 2>$null)
-    if ($LASTEXITCODE -ne 0) { throw 'Cannot list James extension jars.' }
-    return @($entries | Where-Object { $_ -match '\.jar$' })
+    $result = Invoke-Docker @('exec', $Id, 'find', '/root/extensions-jars', '-maxdepth', '1', '-type', 'f', '-name', '*.jar')
+    if ($result.Code -ne 0) { throw 'Cannot list James extension jars.' }
+    return @($result.Output | Where-Object { $_ -match '\.jar$' })
 }
 function Read-ManifestLine([string]$OutFile, [string]$Label) {
     $text = Read-ChildText $OutFile
@@ -160,13 +172,13 @@ try {
     if ((Get-GateJars $container).Count -lt 1) { throw 'Gate extension jar is not mounted.' }
     # Read-only availability checks; the drill never reconfigures ClamAV.
     $clam = Get-RunningClamav $m.composeDir
-    $clamStatus = @(& docker inspect --format '{{.State.Status}} {{.State.Health.Status}}' $clam 2>$null)
-    if ($LASTEXITCODE -ne 0 -or $clamStatus.Count -ne 1 -or $clamStatus[0] -cne 'running healthy') {
+    $clamStatus = Invoke-Docker @('inspect', '--format', '{{.State.Status}} {{.State.Health.Status}}', $clam)
+    if ($clamStatus.Code -ne 0 -or $clamStatus.Output.Count -ne 1 -or $clamStatus.Output[0] -cne 'running healthy') {
         throw 'ClamAV is not healthy; do not drill.'
     }
-    $domains = @(& docker exec $container james-cli ListDomains 2>$null)
-    if ($LASTEXITCODE -ne 0) { throw 'James CLI is not ready; do not drill.' }
-    Write-Host "James CLI reported $($domains.Count) domain(s)."
+    $domains = Invoke-Docker @('exec', $container, 'james-cli', 'ListDomains')
+    if ($domains.Code -ne 0) { throw 'James CLI is not ready; do not drill.' }
+    Write-Host "James CLI reported $($domains.Output.Count) domain(s)."
 
     Write-Journal 'PREFLIGHT PASS: deployment manifest, Compose, gate mount, ClamAV and James verified.'
 
