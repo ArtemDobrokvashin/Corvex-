@@ -10,6 +10,9 @@
 param(
     [Parameter(Mandatory = $true)][string]$DeploymentManifest,
     [string]$SourceCommit = 'HEAD',
+    # Continue after a rollback that already completed but failed verification
+    # for a reason that has since been fixed. The pre-gate state is verified.
+    [switch]$ResumeAfterRollback,
     [switch]$ConfirmLaptop
 )
 Set-StrictMode -Version Latest
@@ -118,10 +121,28 @@ function Get-MailetSha([string]$Id) {
     }
     return $Matches[1]
 }
-function Get-GateJars([string]$Id) {
-    $result = Invoke-Docker @('exec', $Id, 'find', '/root/extensions-jars', '-maxdepth', '1', '-type', 'f', '-name', '*.jar')
+function Get-ExtensionJars([string]$Id) {
+    # Size and name only. A file bind-mounted under a volume leaves a zero-byte
+    # mount-point stub inside the volume after the container is recreated.
+    $result = Invoke-Docker @('exec', $Id, 'find', '/root/extensions-jars', '-maxdepth', '1', '-type', 'f', '-name', '*.jar', '-printf', '%s %f\n')
     if ($result.Code -ne 0) { throw 'Cannot list James extension jars.' }
-    return @($result.Output | Where-Object { $_ -match '\.jar$' })
+    $entries = @()
+    foreach ($line in $result.Output) {
+        if ($line -notmatch '^([0-9]+) ([A-Za-z0-9._-]+)$') { throw 'Unexpected extension entry.' }
+        $entries += [pscustomobject]@{ Size = [long]$Matches[1]; Name = $Matches[2] }
+    }
+    return $entries
+}
+function Assert-NoGateJars([string]$Id) {
+    $stubs = @()
+    foreach ($entry in (Get-ExtensionJars $Id)) {
+        $isOwnStub = $entry.Name -match '^corvex-(av-gate|av-parent)-[a-f0-9]{32}\.jar$' -and $entry.Size -eq 0
+        if ($isOwnStub) { $stubs += $entry.Name; continue }
+        throw ("Extension jar present after rollback: " + $entry.Name + " (" + $entry.Size + " bytes)")
+    }
+    if ($stubs.Count -gt 0) {
+        Write-Journal ("Zero-byte mount-point stubs retained (not loadable): " + ($stubs -join ', '))
+    }
 }
 function Read-ManifestLine([string]$OutFile, [string]$Label) {
     $text = Read-ChildText $OutFile
@@ -162,14 +183,28 @@ try {
     if ($prep.originalConfigSha256 -notmatch '^[a-f0-9]{64}$' -or $prep.candidateXmlSha256 -notmatch '^[a-f0-9]{64}$' -or
         $prep.composeDir -cne $m.composeDir) { throw 'Preparation manifest is inconsistent with the deployment.' }
     $stage = 'preflight'
-    if ((Get-Sha (Join-Path $m.composeDir 'docker-compose.yml')) -cne $m.composeAfterSha256) {
-        throw 'Compose changed independently since deployment; preserve and inspect.'
-    }
     $container = Get-RunningJames $m.composeDir
     $info = Get-JamesInfo $container
     if ($info.Image -cne $m.jamesImageId) { throw 'James image changed independently; preserve and inspect.' }
-    if ((Get-MailetSha $container) -cne $prep.candidateXmlSha256) { throw 'Gate mailet configuration is not the deployed one.' }
-    if ((Get-GateJars $container).Count -lt 1) { throw 'Gate extension jar is not mounted.' }
+    if ($ResumeAfterRollback) {
+        # The earlier run already restored the pre-gate Compose; verify it
+        # instead of repeating the rollback.
+        if ((Get-Sha (Join-Path $m.composeDir 'docker-compose.yml')) -cne $m.rollbackComposeSha256) {
+            throw 'Resume requested, but Compose is not the recorded pre-gate file.'
+        }
+        Assert-Volumes $info $m.originalVolumes
+        if ((Get-MailetSha $container) -cne $prep.originalConfigSha256) { throw 'Resume: mailet configuration is not the original.' }
+        Assert-NoGateJars $container
+        $rollbackVerified = $true
+        Write-Journal 'RESUME: pre-gate Compose, image, volumes and original mailet config verified; rollback not repeated.'
+    } else {
+        if ((Get-Sha (Join-Path $m.composeDir 'docker-compose.yml')) -cne $m.composeAfterSha256) {
+            throw 'Compose changed independently since deployment; preserve and inspect.'
+        }
+        if ((Get-MailetSha $container) -cne $prep.candidateXmlSha256) { throw 'Gate mailet configuration is not the deployed one.' }
+        $gateJars = @((Get-ExtensionJars $container) | Where-Object { $_.Size -gt 0 })
+        if ($gateJars.Count -lt 1) { throw 'Gate extension jar is not mounted.' }
+    }
     # Read-only availability checks; the drill never reconfigures ClamAV.
     $clam = Get-RunningClamav $m.composeDir
     $clamStatus = Invoke-Docker @('inspect', '--format', '{{.State.Status}} {{.State.Health.Status}}', $clam)
@@ -183,26 +218,28 @@ try {
     Write-Journal 'PREFLIGHT PASS: deployment manifest, Compose, gate mount, ClamAV and James verified.'
 
     # Stage 1: rollback to the recorded pre-gate Compose and image.
-    $stage = 'rollback'
-    Write-Journal 'ROLLBACK START: restoring pre-gate Compose and recreating James once.'
-    $out = Join-Path $work 'rollback-out.txt'
-    $err = Join-Path $work 'rollback-err.txt'
-    $code = Invoke-Child (Join-Path $PSScriptRoot 'rollback-james-av.ps1') @('-DeploymentManifest', $DeploymentManifest, '-ConfirmLaptop') $out $err
-    (Read-ChildText $out).TrimEnd() | Write-Host
-    if ($code -ne 0) {
-        (Read-ChildText $err).TrimEnd().Split("`n") | ForEach-Object { [Console]::Error.WriteLine($_) }
-        throw "Rollback script failed with exit $code."
+    if (-not $ResumeAfterRollback) {
+        $stage = 'rollback'
+        Write-Journal 'ROLLBACK START: restoring pre-gate Compose and recreating James once.'
+        $out = Join-Path $work 'rollback-out.txt'
+        $err = Join-Path $work 'rollback-err.txt'
+        $code = Invoke-Child (Join-Path $PSScriptRoot 'rollback-james-av.ps1') @('-DeploymentManifest', $DeploymentManifest, '-ConfirmLaptop') $out $err
+        (Read-ChildText $out).TrimEnd() | Write-Host
+        if ($code -ne 0) {
+            (Read-ChildText $err).TrimEnd().Split("`n") | ForEach-Object { [Console]::Error.WriteLine($_) }
+            throw "Rollback script failed with exit $code."
+        }
+        $stage = 'verify-rollback'
+        if ((Get-Sha (Join-Path $m.composeDir 'docker-compose.yml')) -cne $m.rollbackComposeSha256) { throw 'Restored Compose hash differs.' }
+        $container = Get-RunningJames $m.composeDir
+        $info = Get-JamesInfo $container
+        if ($info.Image -cne $m.jamesImageId) { throw 'Restored James image differs.' }
+        Assert-Volumes $info $m.originalVolumes
+        if ((Get-MailetSha $container) -cne $prep.originalConfigSha256) { throw 'Restored mailet configuration differs from the original.' }
+        Assert-NoGateJars $container
+        $rollbackVerified = $true
+        Write-Journal 'ROLLBACK VERIFIED: pre-gate Compose, image, original volumes and original mailet config restored.'
     }
-    $stage = 'verify-rollback'
-    if ((Get-Sha (Join-Path $m.composeDir 'docker-compose.yml')) -cne $m.rollbackComposeSha256) { throw 'Restored Compose hash differs.' }
-    $container = Get-RunningJames $m.composeDir
-    $info = Get-JamesInfo $container
-    if ($info.Image -cne $m.jamesImageId) { throw 'Restored James image differs.' }
-    Assert-Volumes $info $m.originalVolumes
-    if ((Get-MailetSha $container) -cne $prep.originalConfigSha256) { throw 'Restored mailet configuration differs from the original.' }
-    if ((Get-GateJars $container).Count -ne 0) { throw 'Gate extension jars remain after rollback.' }
-    $rollbackVerified = $true
-    Write-Journal 'ROLLBACK VERIFIED: pre-gate Compose, image, original volumes and original mailet config restored.'
 
     # Stage 2: fresh preparation from an immutable commit.
     $stage = 'prepare'
@@ -246,7 +283,7 @@ try {
     if ($info.Image -cne $m.jamesImageId) { throw 'James image changed during re-enable.' }
     Assert-Volumes $info $m.originalVolumes
     if ((Get-MailetSha $container) -cne $newPrep.candidateXmlSha256) { throw 'Gate mailet configuration is not mounted.' }
-    if ((Get-GateJars $container).Count -lt 2) { throw 'Expected gate and parent extension jars.' }
+    if (@((Get-ExtensionJars $container) | Where-Object { $_.Size -gt 0 }).Count -lt 2) { throw 'Expected gate and parent extension jars.' }
     $applyVerified = $true
     Write-Journal 'APPLY VERIFIED: gate configuration and both extension jars are mounted; original volumes retained.'
 
@@ -255,6 +292,7 @@ try {
         completedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
         originalDeploymentManifest = (Resolve-Path -LiteralPath $DeploymentManifest).Path
         rollbackVerified = $rollbackVerified
+        resumedAfterRollback = [bool]$ResumeAfterRollback
         sourceCommit = $newPrep.candidateCommit
         newPreparationManifest = $newPrepPath
         newDeploymentManifest = $newDeploymentPath

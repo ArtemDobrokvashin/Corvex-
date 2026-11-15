@@ -104,11 +104,16 @@ if ($null -ne $m) {
         'candidate XML is mounted'
     }
     Try-Step 'gate extension jars' {
-        $result = Invoke-Docker @('exec', $james, 'find', '/root/extensions-jars', '-maxdepth', '1', '-type', 'f', '-name', '*.jar')
+        $result = Invoke-Docker @('exec', $james, 'find', '/root/extensions-jars', '-maxdepth', '1', '-type', 'f', '-name', '*.jar', '-printf', '%s %f\n')
         if ($result.Code -ne 0) { throw 'cannot list the directory' }
-        $count = @($result.Output | Where-Object { $_ -match '\.jar$' }).Count
-        if ($count -lt 1) { throw 'no extension jar found' }
-        ('' + $count + ' jar(s)')
+        $real = @(); $stubs = @()
+        foreach ($line in $result.Output) {
+            if ($line -notmatch '^([0-9]+) ([A-Za-z0-9._-]+)$') { throw 'unexpected entry' }
+            if ([long]$Matches[1] -eq 0) { $stubs += $Matches[2] } else { $real += ($Matches[2] + ' (' + $Matches[1] + ' bytes)') }
+        }
+        if ($stubs.Count -gt 0) { Write-Host ('INFO zero-byte mount-point stubs: ' + ($stubs -join ', ')) }
+        if ($real.Count -lt 1) { throw 'no non-empty extension jar found' }
+        ($real -join '; ')
     }
     Try-Step 'running ClamAV' {
         Push-Location -LiteralPath $m.composeDir

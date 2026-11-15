@@ -23,7 +23,8 @@ class RollbackDrillTest(unittest.TestCase):
         self.assertLess(self.text.index('PREPARE VERIFIED'), self.text.index('APPLY START'))
         self.assertIn('Assert-Volumes', self.text)
         self.assertIn('Restored mailet configuration differs from the original.', self.text)
-        self.assertIn('Gate extension jars remain after rollback.', self.text)
+        self.assertIn('Assert-NoGateJars $container', self.text)
+        self.assertIn('Extension jar present after rollback: ', self.text)
 
     def test_children_run_in_isolated_processes_and_are_not_retried(self):
         self.assertEqual(3, self.text.count('Invoke-Child '))
@@ -75,6 +76,19 @@ class RollbackDrillTest(unittest.TestCase):
         self.assertIn('& docker @Arguments', raw[0])
         self.assertIn("$ErrorActionPreference = 'Continue'", text)
         self.assertTrue(any('force-recreate' in line for line in raw), raw)
+
+    def test_resume_mode_verifies_instead_of_repeating_rollback(self):
+        self.assertIn('[switch]$ResumeAfterRollback', self.text)
+        self.assertIn('if (-not $ResumeAfterRollback)', self.text)
+        self.assertIn('Resume requested, but Compose is not the recorded pre-gate file.', self.text)
+        self.assertIn('rollback not repeated', self.text)
+
+    def test_zero_byte_mount_stubs_are_not_loadable_jars(self):
+        self.assertIn("'-printf', '%s %f", self.text)
+        self.assertIn('$entry.Size -eq 0', self.text)
+        enable = (SCRIPTS / 'enable-james-av.ps1').read_text(encoding='utf-8')
+        self.assertIn('Zero-byte mount-point stubs from earlier runs', enable)
+        self.assertIn('Existing extension jars found or not inspectable', enable)
 
     def test_reads_status_without_printing_full_inspect(self):
         self.assertIn('$result.Output[0] | ConvertFrom-Json', self.text)

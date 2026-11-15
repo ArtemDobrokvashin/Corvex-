@@ -47,11 +47,20 @@ try {
         }
         $status = @(& docker inspect --format '{{.State.Status}} {{.State.Health.Status}}' $clamId 2>$null)
         if ($LASTEXITCODE -ne 0 -or $status.Count -ne 1 -or $status[0] -cne 'running healthy') { throw 'ClamAV not healthy.' }
-        $extensionEntries = @(& docker exec $m.jamesContainerId find /root/extensions-jars -maxdepth 1 2>$null)
-        if ($LASTEXITCODE -ne 0 -or $extensionEntries.Count -eq 0) { throw 'Extension directory not inspectable.' }
+        $extensionEntries = @(& docker exec $m.jamesContainerId find /root/extensions-jars -maxdepth 1 -type f -name '*.jar' -printf '%s %f\n' 2>$null)
+        if ($LASTEXITCODE -ne 0) { throw 'Extension directory not inspectable.' }
+        $stubs = @()
         foreach ($entry in $extensionEntries) {
-            if ($entry -cmatch '\.jar$') { throw 'Existing extension jars found or not inspectable; do not mask them.' }
+            if ($entry -notmatch '^([0-9]+) ([A-Za-z0-9._-]+)$') { throw 'Unexpected extension entry; do not mask it.' }
+            # A file bind mount under a volume leaves a zero-byte mount-point
+            # stub after the container is recreated. It cannot be a loaded jar.
+            if ([long]$Matches[1] -eq 0 -and $Matches[2] -match '^corvex-(av-gate|av-parent)-[a-f0-9]{32}\.jar$') {
+                $stubs += $Matches[2]
+                continue
+            }
+            throw 'Existing extension jars found or not inspectable; do not mask them.'
         }
+        if ($stubs.Count -gt 0) { Write-Host ("Zero-byte mount-point stubs from earlier runs: " + ($stubs -join ', ')) }
         $liveHash = @(& docker exec $m.jamesContainerId sha256sum /root/conf/mailetcontainer.xml 2>$null)
         if ($LASTEXITCODE -ne 0 -or $liveHash.Count -ne 1 -or $liveHash[0] -notmatch '^([a-f0-9]{64})\s' -or $Matches[1] -cne $m.originalConfigSha256) { throw 'Live mailet config changed.' }
         $originalHashes = @{}
