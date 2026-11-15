@@ -347,6 +347,12 @@ const EN: Record<string, string> = {
   'Эмодзи': 'Emoji',
   'Подпись добавится автоматически': 'Your signature will be added automatically',
   'Удалить черновик': 'Discard draft',
+  'Черновики': 'Drafts',
+  'Сохранённых черновиков нет.': 'No saved drafts.',
+  'Получатель не указан': 'No recipient',
+  'влож.': 'att.',
+  'Черновики хранятся на сервере и доступны только вам.':
+    'Drafts are stored on the server and visible only to you.',
 
   // External Mail Connector
   'Внешний ящик сохранён. Первая синхронизация поставлена в очередь.': 'The external mailbox was saved. The first synchronization has been queued.',
