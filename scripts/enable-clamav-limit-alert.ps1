@@ -39,6 +39,33 @@ function Invoke-Docker([string[]]$Arguments) {
     } finally { $ErrorActionPreference = $saved }
     return @{ Output = $output; Code = $code }
 }
+function Get-ProjectName([string]$Id) {
+    $labels = (Invoke-Docker @('inspect', '--format', '{{json .Config.Labels}}', $Id)).Output
+    if (@($labels).Count -ne 1) { throw 'Cannot read Compose project label.' }
+    $project = ($labels[0] | ConvertFrom-Json).PSObject.Properties['com.docker.compose.project']
+    if ($null -eq $project -or $project.Value -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]*$') {
+        throw 'Compose project name unavailable.'
+    }
+    return $project.Value
+}
+function Resolve-NetworkNames($Service, $Networks, [string]$Project) {
+    # Compose keys such as 'app' become '<project>_app' unless an explicit name
+    # is declared; the drilled AV networks are external with their own name.
+    $names = @()
+    foreach ($property in @($Service.networks.PSObject.Properties)) {
+        $key = $property.Name
+        $declared = $null
+        if ($null -ne $Networks -and $null -ne $Networks.PSObject.Properties[$key]) {
+            $declared = $Networks.PSObject.Properties[$key].Value
+        }
+        if ($null -ne $declared -and $null -ne $declared.PSObject.Properties['name'] -and $declared.name) {
+            $names += [string]$declared.name
+        } else {
+            $names += ($Project + '_' + $key)
+        }
+    }
+    return $names
+}
 function Get-Networks([string]$Id) {
     $result = Invoke-Docker @('inspect', '--format', '{{json .NetworkSettings.Networks}}', $Id)
     if ($result.Code -ne 0 -or $result.Output.Count -ne 1) { throw 'Cannot inspect container networks.' }
@@ -118,15 +145,19 @@ try {
         $imageId = $info.Image
         if ($imageId -notmatch '^sha256:[a-f0-9]{64}$') { throw 'Unexpected ClamAV image id.' }
         $stage = 'networks'
+        $projectName = Get-ProjectName $oldId
         $networkJson = Get-Networks $oldId
         $runningNetworks = @($networkJson.PSObject.Properties.Name)
         $avNetworks = @($runningNetworks | Where-Object { $_ -match '^corvex-james-av-[a-f0-9]{32}$' })
         if ($avNetworks.Count -eq 0) { throw 'ClamAV is not attached to a James AV network; enable the gate first.' }
-        $allowed = @('app') + $avNetworks
+        $appNetwork = $projectName + '_app'
+        if ($runningNetworks -cnotcontains $appNetwork) {
+            throw ("ClamAV is not attached to the application network " + $appNetwork + ".")
+        }
+        $allowed = @($appNetwork) + $avNetworks
         foreach ($network in $runningNetworks) {
             if ($allowed -cnotcontains $network) { throw ("Unexpected ClamAV network: " + $network) }
         }
-        if ($runningNetworks -cnotcontains 'app') { throw 'ClamAV is not attached to the application network.' }
         $jamesIds = (Invoke-Docker @('compose', '--profile', 'james-transition', 'ps', '--status', 'running', '-q', 'james')).Output
         if (@($jamesIds).Count -ne 1 -or $jamesIds[0] -notmatch '^[a-f0-9]{12,64}$') { throw 'Expected one running James container.' }
         $jamesNetworks = (Get-Networks $jamesIds[0]).PSObject.Properties.Name
@@ -142,14 +173,14 @@ try {
         }
         $configJson = Invoke-Docker @('compose', 'config', '--format', 'json')
         if ($configJson.Code -ne 0 -or $configJson.Output.Count -eq 0) { throw 'Compose configuration unavailable.' }
-        $composeService = (($configJson.Output -join "`n") | ConvertFrom-Json).services.clamav
+        $composeFull = ($configJson.Output -join "`n") | ConvertFrom-Json
+        $composeService = $composeFull.services.clamav
         if ($null -eq $composeService) { throw 'clamav service is missing from Compose.' }
-        $declared = @($composeService.networks.PSObject.Properties.Name)
-        foreach ($network in $declared) {
-            if ($network -ceq 'app') { continue }
-            if ($network -cne 'corvex-james-av-live') { throw ("Unexpected Compose network for clamav: " + $network) }
+        $declaredNames = Resolve-NetworkNames $composeService $composeFull.networks $projectName
+        foreach ($name in $declaredNames) {
+            if ($allowed -cnotcontains $name) { throw ("Unexpected Compose network for clamav: " + $name) }
         }
-        if ($declared -cnotcontains 'app') { throw 'Compose clamav service is not on the application network.' }
+        if ($declaredNames -cnotcontains $appNetwork) { throw 'Compose clamav service is not on the application network.' }
         $hash = (Invoke-Docker @('compose', 'config', '--hash', 'clamav')).Output
         if (@($hash).Count -ne 1 -or $hash[0] -notmatch '^clamav\s+([a-f0-9]{64})$') { throw 'Compose hash unavailable.' }
         $runningHash = $Matches[1]
@@ -226,7 +257,7 @@ try {
         $newVolume = @($newInfoEarly.Mounts | Where-Object { $_.Destination -ceq '/var/lib/clamav' -and $_.Type -ceq 'volume' -and $_.Name -ceq $clamVolumeName })
         if ($newVolume.Count -ne 1) { throw 'ClamAV database volume changed after recreation.' }
         $newNetworkNames = @((Get-Networks $newId).PSObject.Properties.Name)
-        $expectedNetworks = @('app') + $avNetworks
+        $expectedNetworks = @($appNetwork) + $avNetworks
         foreach ($network in $newNetworkNames) {
             if ($expectedNetworks -cnotcontains $network) { throw ("Unexpected ClamAV network after recreation: " + $network) }
         }

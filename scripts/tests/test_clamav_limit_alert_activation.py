@@ -30,9 +30,16 @@ class ClamavLimitAlertTest(unittest.TestCase):
         self.assertIn("'config', '--images', 'clamav'", self.enable)
         self.assertIn('Compose image for clamav differs from the running container.', self.enable)
 
+    def test_project_prefixed_network_names_are_resolved(self):
+        # Compose key 'app' is the Docker network '<project>_app'.
+        self.assertIn('function Get-ProjectName', self.enable)
+        self.assertIn("$appNetwork = $projectName + '_app'", self.enable)
+        self.assertIn('function Resolve-NetworkNames', self.enable)
+        self.assertNotIn("$allowed = @('app') + $avNetworks", self.enable)
+
     def test_database_volume_and_networks_are_preserved(self):
         self.assertIn('ClamAV database volume changed after recreation.', self.enable)
-        self.assertIn("$expectedNetworks = @('app') + $avNetworks", self.enable)
+        self.assertIn("$expectedNetworks = @($appNetwork) + $avNetworks", self.enable)
         self.assertIn('Missing ClamAV network after recreation: ', self.enable)
 
     def test_activation_verifies_both_config_and_compose_identity(self):
