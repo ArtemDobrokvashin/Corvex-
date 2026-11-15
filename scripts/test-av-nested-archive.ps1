@@ -1,4 +1,4 @@
-<# Synthetic EICAR ZIP scan using existing ClamAV; no mail, no restart, no config edits. #>
+<# Synthetic EICAR ZIP and MIME scans using existing ClamAV; no mail, no restart, no config edits. #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$SourceRoot,
