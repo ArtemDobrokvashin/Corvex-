@@ -36,6 +36,12 @@ class RollbackDrillTest(unittest.TestCase):
                           'Remove-Item', 'docker volume', 'git reset', 'git clean', 'mailqueue', 'Reprocess'):
             self.assertNotIn(forbidden, self.text)
 
+    def test_child_output_encoding_and_quoting_are_handled(self):
+        self.assertIn('UTF8.GetString($bytes)', self.text)
+        self.assertIn('Unicode.GetString($bytes', self.text)
+        self.assertIn("'-NoProfile'", self.text)
+        self.assertIn('if ($_ -match ', self.text)
+
     def test_reads_status_without_printing_full_inspect(self):
         self.assertIn('$raw[0] | ConvertFrom-Json', self.text)
         self.assertNotIn('Write-Host $raw', self.text)

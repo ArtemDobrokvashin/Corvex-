@@ -34,9 +34,17 @@ function Write-Journal([string]$Text) {
     }
     Write-Host $Text
 }
+function Read-ChildText([string]$Path) {
+    # Windows PowerShell redirected output may be UTF-8, UTF-16 with BOM or OEM.
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    if ($bytes.Length -ge 2 -and $bytes[0] -eq 255 -and $bytes[1] -eq 254) { return [Text.Encoding]::Unicode.GetString($bytes, 2, $bytes.Length - 2) }
+    if ($bytes.Length -ge 2 -and $bytes[0] -eq 254 -and $bytes[1] -eq 255) { return [Text.Encoding]::BigEndianUnicode.GetString($bytes, 2, $bytes.Length - 2) }
+    return [Text.Encoding]::UTF8.GetString($bytes)
+}
 function Invoke-Child([string]$Script, [string[]]$Arguments, [string]$OutFile, [string]$ErrFile) {
     # Separate Windows PowerShell process: no inherited environment overrides.
     $all = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $Script) + $Arguments
+    $all = @($all | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } })
     $saved = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
@@ -96,7 +104,7 @@ function Get-GateJars([string]$Id) {
     return @($entries | Where-Object { $_ -match '\.jar$' })
 }
 function Read-ManifestLine([string]$OutFile, [string]$Label) {
-    $text = [IO.File]::ReadAllText($OutFile)
+    $text = Read-ChildText $OutFile
     $found = [regex]::Matches($text, '(?m)^' + [regex]::Escape($Label) + ': (.+?)\r?$')
     if ($found.Count -ne 1) { throw "Expected exactly one '$Label' line in child output." }
     return $found[0].Groups[1].Value
@@ -159,9 +167,9 @@ try {
     $out = Join-Path $work 'rollback-out.txt'
     $err = Join-Path $work 'rollback-err.txt'
     $code = Invoke-Child (Join-Path $PSScriptRoot 'rollback-james-av.ps1') @('-DeploymentManifest', $DeploymentManifest, '-ConfirmLaptop') $out $err
-    [IO.File]::ReadAllText($out) | Write-Host
+    (Read-ChildText $out).TrimEnd() | Write-Host
     if ($code -ne 0) {
-        [IO.File]::ReadAllText($err) | ForEach-Object { [Console]::Error.WriteLine($_) }
+        (Read-ChildText $err).TrimEnd().Split("`n") | ForEach-Object { [Console]::Error.WriteLine($_) }
         throw "Rollback script failed with exit $code."
     }
     $stage = 'verify-rollback'
@@ -181,9 +189,9 @@ try {
     $out = Join-Path $work 'prepare-out.txt'
     $err = Join-Path $work 'prepare-err.txt'
     $code = Invoke-Child (Join-Path $PSScriptRoot 'prepare-james-av-runtime.ps1') @('-ComposeDir', $m.composeDir, '-SourceCommit', $SourceCommit, '-ConfirmLaptop') $out $err
-    [IO.File]::ReadAllText($out) | Write-Host
+    (Read-ChildText $out).TrimEnd() | Write-Host
     if ($code -ne 0) {
-        [IO.File]::ReadAllText($err) | ForEach-Object { [Console]::Error.WriteLine($_) }
+        (Read-ChildText $err).TrimEnd().Split("`n") | ForEach-Object { [Console]::Error.WriteLine($_) }
         throw "Preparation failed with exit $code; James is pre-gate."
     }
     $newPrepPath = Read-ManifestLine $out 'James AV preparation manifest'
@@ -203,9 +211,9 @@ try {
     $out = Join-Path $work 'apply-out.txt'
     $err = Join-Path $work 'apply-err.txt'
     $code = Invoke-Child (Join-Path $PSScriptRoot 'enable-james-av.ps1') @('-PreparationManifest', $newPrepPath, '-ConfirmLaptop', '-Apply') $out $err
-    [IO.File]::ReadAllText($out) | Write-Host
+    (Read-ChildText $out).TrimEnd() | Write-Host
     if ($code -ne 0) {
-        [IO.File]::ReadAllText($err) | ForEach-Object { [Console]::Error.WriteLine($_) }
+        (Read-ChildText $err).TrimEnd().Split("`n") | ForEach-Object { [Console]::Error.WriteLine($_) }
         throw "Re-enable failed with exit $code; James may be pre-gate or partially configured."
     }
     $newDeploymentPath = Read-ManifestLine $out 'James AV deployment manifest'
