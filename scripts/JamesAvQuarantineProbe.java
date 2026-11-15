@@ -112,13 +112,29 @@ class JamesAvQuarantineProbe {
         System.out.println("PASS: one synthetic message with a " + DEPTH + "-level archive accepted by local James SMTP");
     }
 
-    private static void absent(String login, String marker) throws Exception {
+    /** Opens the JMAP session only: proves the synthetic account exists. */
+    private static void check(String login) throws Exception {
+        var client = client();
+        var session = client.session(token(login));
+        var primary = session.path("primaryAccounts").path(MAIL);
+        if (!primary.isTextual() || primary.textValue().isBlank()) throw new IllegalStateException("No mail account for the synthetic login");
+        System.out.println("PASS: synthetic account exists and is readable via JMAP");
+    }
+
+    private static JamesJmapReadClient client() throws Exception {
+        return new JamesJmapReadClient(URI.create("https://james-jmap:8443"), mapper, jmapTls());
+    }
+
+    private static String token(String login) throws Exception {
         UUID owner = UUID.randomUUID();
         var principal = new JamesMailboxBinding.Principal(owner, Set.of("MAIL_READ_OWN"));
         var mapping = new JamesMailboxBinding.ProvisionedMailbox(owner, true, login, "synthetic-only");
-        var issuer = new JamesReadTokenIssuer(signingKey(), Clock.systemUTC(), mapper);
-        var client = new JamesJmapReadClient(URI.create("https://james-jmap:8443"), mapper, jmapTls());
-        String token = issuer.issue(principal, mapping);
+        return new JamesReadTokenIssuer(signingKey(), Clock.systemUTC(), mapper).issue(principal, mapping);
+    }
+
+    private static void absent(String login, String marker) throws Exception {
+        var client = client();
+        String token = token(login);
         var primary = client.session(token).path("primaryAccounts").path(MAIL);
         if (!primary.isTextual() || primary.textValue().isBlank()) throw new IllegalStateException("Invalid session");
         String account = primary.textValue();
@@ -149,8 +165,14 @@ class JamesAvQuarantineProbe {
 
     public static void main(String[] args) {
         try {
-            if (args.length != 3 || !args[1].matches("cvx-[0-9a-f]{32}@localhost")
-                    || !args[2].matches("[0-9a-f]{32}")) throw new IllegalArgumentException("Invalid synthetic arguments");
+            if (args.length < 2 || !args[1].matches("cvx-[0-9a-f]{32}@localhost")) {
+                throw new IllegalArgumentException("Invalid synthetic arguments");
+            }
+            if ("check".equals(args[0]) && args.length == 2) {
+                check(args[1]);
+                return;
+            }
+            if (args.length != 3 || !args[2].matches("[0-9a-f]{32}")) throw new IllegalArgumentException("Invalid synthetic arguments");
             if ("send".equals(args[0])) send(args[1], args[2]);
             else if ("absent".equals(args[0])) absent(args[1], args[2]);
             else throw new IllegalArgumentException("Invalid probe mode");

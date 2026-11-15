@@ -46,6 +46,14 @@ class QuarantineProofTest(unittest.TestCase):
         self.assertIn('do not repeat automatically', self.text)
         self.assertIn('no automatic retry', self.text)
 
+    def test_account_comes_from_verified_record_or_explicit_override(self):
+        self.assertIn('james-provision-live-probe', self.text)
+        self.assertIn('acknowledged-and-jmap-verified', self.text)
+        self.assertIn('pass -Login', self.text)
+        self.assertIn('JamesAvQuarantineProbe check', self.text)
+        check = self.text.index('JamesAvQuarantineProbe check')
+        self.assertLess(check, self.text.index('force-recreate james'))
+
     def test_absence_and_repository_delta_are_both_required(self):
         self.assertIn('JamesAvQuarantineProbe absent', self.text)
         self.assertIn('mail_repository_content', self.text)

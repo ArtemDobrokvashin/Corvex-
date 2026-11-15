@@ -63,14 +63,22 @@ function Get-RepositoryCounts {
 }
 if (Test-Path -LiteralPath $Marker) { throw 'FAIL: a quarantine-proof intent already exists; do not repeat automatically.' }
 if (-not (Get-Command mvn -ErrorAction SilentlyContinue) -or -not (Get-Command javac -ErrorAction SilentlyContinue)) { throw 'FAIL: Maven and JDK 17 required.' }
-$priorIntent = Join-Path $Prior 'intent.txt'
-if (-not (Test-Path -LiteralPath $priorIntent -PathType Leaf)) { throw 'FAIL: the synthetic account intent from the earlier SMTP probe is missing.' }
+# The synthetic account comes from the verified provisioning record of the
+# earlier JMAP probe; -Login is only an explicit override for the same pattern.
 if (-not $Login) {
+    $priorIntent = Join-Path $Prior 'intent.txt'
+    $priorDone = Join-Path $Prior 'completed.txt'
+    if (-not (Test-Path -LiteralPath $priorIntent -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $priorDone -PathType Leaf) -or
+        ([IO.File]::ReadAllText($priorDone)).Trim() -ne 'acknowledged-and-jmap-verified') {
+        throw 'FAIL: verified synthetic provisioning record is missing; pass -Login <cvx-...@localhost> explicitly.'
+    }
     $loginLines = @([IO.File]::ReadAllLines($priorIntent) | Where-Object { $_ -match '^synthetic-login=cvx-[0-9a-f]{32}@localhost$' })
-    if ($loginLines.Count -ne 1) { throw 'FAIL: cannot determine the synthetic account; pass -Login.' }
+    if ($loginLines.Count -ne 1) { throw 'FAIL: cannot determine the synthetic account; pass -Login explicitly.' }
     $Login = $loginLines[0].Substring('synthetic-login='.Length)
 }
 if ($Login -notmatch '^cvx-[0-9a-f]{32}@localhost$') { throw 'FAIL: only the synthetic cvx-<guid>@localhost account is allowed.' }
+Write-Host "Synthetic account: $Login"
 try {
     Push-Location $Repo
     try {
@@ -134,6 +142,9 @@ try {
         & docker cp (Join-Path $out 'ru') "${Mail}:${Remote}/"
         if ($LASTEXITCODE -ne 0) { throw 'FAIL: copy probe classes.' }
         foreach ($jar in $jars) { & docker cp $jar "${Mail}:${Remote}/lib/"; if ($LASTEXITCODE -ne 0) { throw 'FAIL: copy probe dependency.' } }
+        # Confirm the synthetic mailbox exists before touching any container.
+        & docker exec $Mail java -cp "$Remote`:$Remote/lib/*" ru.corvex.mailstorage.james.JamesAvQuarantineProbe check $Login
+        if ($LASTEXITCODE -ne 0) { throw 'FAIL: the synthetic account is not usable; nothing was changed.' }
         $env:CORVEX_JAMES_SMTP_CONFIG_FILE = './infra/james/candidates/smtp-quarantine-proof.xml'
         & docker @Compose config --quiet
         if ($LASTEXITCODE -ne 0) { throw 'FAIL: candidate Compose config.' }
