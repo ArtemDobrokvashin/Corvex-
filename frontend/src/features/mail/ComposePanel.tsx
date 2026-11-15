@@ -21,7 +21,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function ComposePanel({ initial, currentEmail, externalAccounts, onClose, onSend, autoSave = true, initialDraft }: {
+export function ComposePanel({ initial, currentEmail, externalAccounts, onClose, onSend, autoSave = true, initialDraft, initialFiles }: {
   initial: ComposeDraft;
   currentEmail: string;
   externalAccounts: ExternalMailAccount[];
@@ -31,12 +31,15 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
   /** Демо-режим не пишет на сервер. */
   autoSave?: boolean;
   initialDraft?: SavedDraft | null;
+  /** Вложения групповой пересылки, подготовленные до открытия композера. */
+  initialFiles?: File[];
 }) {
   const { t } = useI18n();
   const [draft, setDraft] = useState(initial);
   const [showCc, setShowCc] = useState(Boolean(initial.cc));
   const [files, setFiles] = useState<File[]>(() =>
-    (initialDraft?.payload.attachments ?? []).map((attachment) => attachmentToFile(attachment)));
+    initialFiles?.length ? initialFiles
+      : (initialDraft?.payload.attachments ?? []).map((attachment) => attachmentToFile(attachment)));
   const [draggingFiles, setDraggingFiles] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [sent, setSent] = useState(false);
