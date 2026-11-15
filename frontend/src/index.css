@@ -113,13 +113,13 @@
   }
 
   body {
-    @apply bg-canvas font-sans text-ink antialiased;
+    @apply bg-surface font-sans text-ink antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "ss01";
     text-rendering: optimizeLegibility;
   }
 
   ::selection {
-    background: #dbe5ff;
+    background: #dbeafe;
   }
 
   :focus-visible {
@@ -163,7 +163,7 @@
 
 @layer components {
   .btn-primary {
-    @apply inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-ink px-4 text-sm font-medium text-white shadow-soft transition duration-150 hover:bg-ink-soft active:translate-y-px disabled:cursor-not-allowed disabled:opacity-55 disabled:active:translate-y-0;
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-white shadow-soft transition duration-150 hover:bg-accent-dark active:translate-y-px disabled:cursor-not-allowed disabled:opacity-55 disabled:active:translate-y-0;
   }
 
   .btn-accent {
@@ -171,27 +171,31 @@
   }
 
   .btn-secondary {
-    @apply inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 text-sm font-medium text-ink-soft shadow-soft transition duration-150 hover:border-[#D8D6CF] hover:bg-chrome active:translate-y-px disabled:cursor-not-allowed disabled:opacity-55 disabled:active:translate-y-0;
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line-control bg-surface px-4 text-sm font-medium text-ink-soft shadow-soft transition duration-150 hover:border-[#CBD5E1] hover:bg-canvas active:translate-y-px disabled:cursor-not-allowed disabled:opacity-55 disabled:active:translate-y-0;
   }
 
   .btn-ghost {
-    @apply inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-muted transition duration-150 hover:bg-black/[0.045] hover:text-ink disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-muted transition duration-150 hover:bg-canvas hover:text-ink disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-danger-ghost {
-    @apply inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-danger transition duration-150 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-danger transition duration-150 hover:bg-[#FEE2E2]/60 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .icon-btn {
-    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted transition duration-150 hover:bg-black/[0.045] hover:text-ink disabled:cursor-not-allowed disabled:opacity-45;
+    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted transition duration-150 hover:bg-canvas hover:text-ink disabled:cursor-not-allowed disabled:opacity-45;
   }
 
   .icon-btn-sm {
-    @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted transition duration-150 hover:bg-black/[0.045] hover:text-ink disabled:cursor-not-allowed disabled:opacity-45;
+    @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted transition duration-150 hover:bg-canvas hover:text-ink disabled:cursor-not-allowed disabled:opacity-45;
+  }
+
+  .toolbar-btn {
+    @apply inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-lg text-muted transition duration-150 hover:bg-canvas hover:text-ink disabled:cursor-not-allowed disabled:opacity-45;
   }
 
   .field {
-    @apply h-11 w-full rounded-lg border border-line bg-surface px-3.5 text-sm text-ink shadow-[inset_0_1px_2px_rgba(23,24,28,0.025)] outline-none transition duration-150 placeholder:text-faint hover:border-[#D9D7D0] focus:border-accent focus:ring-4 focus:ring-accent/10 disabled:cursor-not-allowed disabled:bg-chrome disabled:text-muted;
+    @apply h-10 w-full rounded-lg border border-line-control bg-surface px-3.5 text-sm text-ink outline-none transition duration-150 placeholder:text-faint hover:border-[#CBD5E1] focus:border-accent focus:ring-2 focus:ring-accent/15 disabled:cursor-not-allowed disabled:bg-canvas disabled:text-muted;
   }
 
   .field-sm {
@@ -207,19 +211,64 @@
   }
 
   .search-field {
-    @apply h-10 w-full rounded-full border border-transparent bg-black/[0.045] pl-10 pr-10 text-sm text-ink outline-none transition duration-150 placeholder:text-faint hover:bg-black/[0.06] focus:border-accent/35 focus:bg-surface focus:ring-4 focus:ring-accent/10;
+    @apply h-9 w-full rounded-lg border border-line-control bg-canvas pl-9 pr-12 text-sm text-ink outline-none transition duration-150 placeholder:text-faint hover:border-[#CBD5E1] focus:border-accent focus:bg-surface focus:ring-2 focus:ring-accent/15;
   }
 
   .panel {
-    @apply rounded-2xl border border-line bg-surface shadow-soft;
+    @apply rounded-xl border border-line-control bg-surface;
   }
 
   .section-label {
     @apply px-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-faint;
   }
 
+  .sidebar-section-label {
+    @apply px-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-sidebar-muted;
+  }
+
+  .sidebar-item {
+    @apply relative flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-[13.5px] font-medium text-sidebar-text transition duration-150 hover:bg-sidebar-hover hover:text-white;
+  }
+
+  .sidebar-item-active {
+    @apply bg-sidebar-active text-white hover:bg-sidebar-active;
+  }
+
+  .sidebar-item-active::before {
+    content: '';
+    @apply absolute bottom-1.5 left-0 top-1.5 w-[3px] rounded-r bg-accent;
+  }
+
+  .sidebar-subitem {
+    @apply flex min-h-9 items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-sidebar-text transition duration-150 hover:bg-sidebar-hover hover:text-white;
+  }
+
+  .sidebar-subitem-active {
+    @apply bg-sidebar-sub text-white hover:bg-sidebar-sub;
+  }
+
+  .dark-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+  }
+
+  .dark-scroll::-webkit-scrollbar { width: 6px; }
+  .dark-scroll::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.35); border-radius: 8px; }
+
+  .sidebar-row {
+    @apply flex min-h-[36px] w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13.5px] font-medium text-sidebar-text transition duration-150 hover:bg-white/[0.05] hover:text-white;
+  }
+
+  .sidebar-row-active {
+    @apply bg-sidebar-sub text-white hover:bg-sidebar-sub hover:text-white;
+  }
+
+  .sidebar-pill {
+    @apply inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#2563EB] px-1.5 text-[11px] font-semibold leading-none text-white tabular-nums;
+  }
+
   .nav-row {
-    @apply flex min-h-9 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-muted transition duration-150 hover:bg-black/[0.04] hover:text-ink;
+    @apply flex min-h-9 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-ink-soft transition duration-150 hover:bg-canvas hover:text-ink;
   }
 
   .nav-row-active {
@@ -227,15 +276,39 @@
   }
 
   .chip {
-    @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-chrome px-2.5 py-1 text-xs font-medium text-muted;
+    @apply inline-flex items-center gap-1.5 rounded-md border border-line-control bg-canvas px-2 py-0.5 text-xs font-medium text-muted;
   }
 
   .chip-accent {
-    @apply border-accent/20 bg-accent-soft text-accent-dark;
+    @apply border-[#BFDBFE] bg-badge-info-bg text-badge-info-text;
+  }
+
+  .status-badge {
+    @apply inline-flex h-[21px] items-center gap-1 rounded-md px-2 text-[11.5px] font-medium leading-none whitespace-nowrap;
+  }
+
+  .status-badge-positive {
+    @apply bg-badge-positive-bg text-badge-positive-text;
+  }
+
+  .status-badge-warning {
+    @apply bg-badge-warning-bg text-badge-warning-text;
+  }
+
+  .status-badge-neutral {
+    @apply bg-badge-neutral-bg text-badge-neutral-text;
+  }
+
+  .status-badge-critical {
+    @apply bg-badge-critical-bg text-badge-critical-text;
+  }
+
+  .status-badge-info {
+    @apply bg-badge-info-bg text-badge-info-text;
   }
 
   .kbd {
-    @apply inline-flex h-5 min-w-5 items-center justify-center rounded border border-line bg-surface px-1 font-mono text-[10px] font-medium text-faint shadow-[0_1px_0_rgba(23,24,28,0.06)];
+    @apply inline-flex h-5 min-w-5 items-center justify-center rounded border border-line-control bg-surface px-1 font-mono text-[10px] font-medium text-faint tabular-nums shadow-[0_1px_0_rgba(15,23,42,0.05)];
   }
 
   .notice {
@@ -243,15 +316,15 @@
   }
 
   .notice-error {
-    @apply border-red-100 bg-red-50/80 text-red-800;
+    @apply border-[#FECACA] bg-[#FEF2F2] text-danger;
   }
 
   .notice-success {
-    @apply border-emerald-100 bg-emerald-50/80 text-emerald-900;
+    @apply border-[#BBF7D0] bg-[#F0FDF4] text-success;
   }
 
   .notice-warning {
-    @apply border-amber-100 bg-amber-50/90 text-amber-900;
+    @apply border-[#FDE68A] bg-[#FFFBEB] text-warning;
   }
 
   .hairline-t {
@@ -266,7 +339,7 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: thin;
-    scrollbar-color: rgba(23, 24, 28, 0.18) transparent;
+    scrollbar-color: rgba(15, 23, 42, 0.16) transparent;
   }
 
   .scroll-area::-webkit-scrollbar {
@@ -275,22 +348,20 @@
   }
 
   .scroll-area::-webkit-scrollbar-thumb {
-    background: rgba(23, 24, 28, 0.16);
+    background: rgba(15, 23, 42, 0.16);
     border: 2px solid transparent;
     border-radius: 999px;
     background-clip: padding-box;
   }
 
   .scroll-area::-webkit-scrollbar-thumb:hover {
-    background: rgba(23, 24, 28, 0.28);
+    background: rgba(15, 23, 42, 0.28);
     border: 2px solid transparent;
     background-clip: padding-box;
   }
 
   .message-markdown {
     min-width: 0;
-    /* Длинные URL и строки без пробелов должны переноситься внутри колонки,
-       а не создавать горизонтальную прокрутку всего чата. */
     overflow-wrap: anywhere;
   }
 
@@ -313,7 +384,7 @@
   }
 
   .message-markdown code {
-    @apply rounded bg-black/[0.055] px-1 py-0.5 font-mono text-[0.86em];
+    @apply rounded bg-canvas px-1 py-0.5 font-mono text-[0.86em] text-ink-soft;
   }
 
   .emoji-text {
@@ -664,54 +735,3 @@ html[data-theme="dark"] .bg-accent-soft {
   box-shadow: inset 3px 0 var(--corvex-accent-on-dark);
 }
 
-/* Dark navigation is confined to the desktop mail folder sidebar. */
-.mail-sidebar {
-  background-color: #0f172a;
-  border-color: #334155;
-  color: #f8fafc;
-}
-.mail-sidebar .section-label,
-.mail-sidebar .text-faint,
-.mail-sidebar .text-muted { color: #a9bad0; }
-.mail-sidebar .text-ink-soft { color: #e2e8f0; }
-.mail-sidebar .nav-row { color: #cbd5e1; }
-.mail-sidebar .nav-row:hover { color: #f8fafc; background-color: #26354b; }
-.mail-sidebar .nav-row-active,
-.mail-sidebar .nav-row-active:hover {
-  background-color: #183d37;
-  color: #8bf0c2;
-  box-shadow: inset 3px 0 #8bf0c2;
-}
-.mail-sidebar .nav-row-active .text-accent { color: #8bf0c2; }
-.mail-sidebar .btn-secondary {
-  background-color: #1e293b;
-  border-color: #475569;
-  color: #f8fafc;
-}
-.mail-sidebar .btn-secondary:hover { background-color: #334155; color: #fff; }
-.mail-sidebar form { color: #172033; }
-.mail-sidebar .icon-btn-sm { color: #475569; }
-.mail-sidebar [role="progressbar"] { background-color: #475569; }
-.mail-sidebar .scroll-area::-webkit-scrollbar-thumb { background-color: #64748b; }
-/* Existing dark-mode utility overrides are !important; keep this scope narrower. */
-html[data-theme="dark"] .mail-sidebar .text-faint,
-html[data-theme="dark"] .mail-sidebar .text-muted { color: #a9bad0 !important; }
-html[data-theme="dark"] .mail-sidebar .text-ink-soft { color: #e2e8f0 !important; }
-html[data-theme="dark"] .mail-sidebar .nav-row-active,
-html[data-theme="dark"] .mail-sidebar .nav-row-active:hover {
-  background-color: #183d37;
-  color: #8bf0c2;
-  box-shadow: inset 3px 0 #8bf0c2;
-}
-html[data-theme="dark"] .mail-sidebar form { color: #f8fafc; }
-
-/* Decorative file categories, not a trust or scan indicator. */
-.mail-file-icon { background: #edf1f7; color: #40526a; }
-.mail-file-icon-pdf { background: #fce8e8; color: #a52424; }
-.mail-file-icon-document { background: #e7efff; color: #254f9b; }
-.mail-file-icon-sheet { background: #e0f5e9; color: #176442; }
-.mail-file-icon-image { background: #f1e9fc; color: #69419a; }
-.mail-file-icon-archive { background: #fff2d9; color: #865600; }
-.mail-file-icon-audio { background: #e8e9ff; color: #434c9f; }
-.mail-file-icon-video { background: #ffeadf; color: #9a481b; }
-.mail-file-icon-code { background: #f4efd9; color: #6d590e; }

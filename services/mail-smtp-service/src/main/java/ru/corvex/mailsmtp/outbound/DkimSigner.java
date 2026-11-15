@@ -6,18 +6,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.security.KeyFactory;
 import java.security.MessageDigest;
 import java.security.PrivateKey;
-import java.security.PublicKey;
-import java.security.interfaces.RSAPrivateCrtKey;
 import java.security.Signature;
-import java.security.spec.PKCS8EncodedKeySpec;
-import java.security.spec.RSAPublicKeySpec;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -29,10 +21,11 @@ import java.util.Map;
 /**
  * DKIM rsa-sha256 с canonicalization relaxed/relaxed (RFC 6376).
  *
- * <p>Подписываются только письма, чей From-домен равен настроенному d=. Приватный ключ —
+ * <p>Ключ выбирается по домену From из набора {@link DkimKeyRing}: один сервер
+ * подписывает столько доменов, для скольких загружены ключи. Приватный ключ —
  * PKCS#8 PEM (`BEGIN PRIVATE KEY`, так его генерирует first-run через openssl genpkey).
- * Если ключ не настроен, письмо уходит без подписи и воркер честно пишет warning:
- * доставляемость тогда держится на SPF/PTR, а DKIM включается одним файлом и DNS-записью.
+ * Если ключа для домена нет, письмо уходит без подписи и воркер честно пишет
+ * warning: доставляемость тогда держится на SPF/PTR.
  */
 @Component
 public class DkimSigner {
@@ -41,83 +34,87 @@ public class DkimSigner {
     private static final List<String> SIGN_HEADERS =
             List.of("from", "to", "cc", "subject", "date", "message-id", "mime-version", "content-type");
 
-    private final String domain;
-    private final String selector;
-    private final PrivateKey privateKey;
+    private final DkimKeyRing ring;
 
     @Autowired
     public DkimSigner(@Value("${corvex.dkim.domain:${CORVEX_DKIM_DOMAIN:${CORVEX_MAIL_DOMAIN:company.local}}}") String domain,
                       @Value("${corvex.dkim.selector:${CORVEX_DKIM_SELECTOR:corvex1}}") String selector,
-                      @Value("${corvex.dkim.private-key-file:${CORVEX_DKIM_PRIVATE_KEY_FILE:/run/secrets/dkim_private.pem}}") String keyFile) {
-        this.domain = firstDomain(domain);
-        this.selector = selector;
-        this.privateKey = loadKey(keyFile);
-        if (privateKey == null) {
-            log.warn("DKIM disabled: private key file {} not found (selector={} domain={})", keyFile, selector, this.domain);
-        } else {
-            log.info("DKIM enabled: selector={} domain={}", selector, this.domain);
-        }
+                      @Value("${corvex.dkim.private-key-file:${CORVEX_DKIM_PRIVATE_KEY_FILE:/run/secrets/dkim_private.pem}}") String keyFile,
+                      @Value("${corvex.dkim.keys-directory:${CORVEX_DKIM_KEYS_DIR:/run/secrets/dkim}}") String keysDirectory) {
+        this.ring = DkimKeyRing.load(domain, selector, keyFile, keysDirectory);
+    }
+
+    /** Только явный файл ключа, без каталога: так проверяется загрузка и ошибки PEM. */
+    DkimSigner(String domain, String selector, String keyFile) {
+        this.ring = DkimKeyRing.load(domain, selector, keyFile, null);
     }
 
     DkimSigner(String domain, String selector, PrivateKey privateKey) {
-        this.domain = domain;
-        this.selector = selector;
-        this.privateKey = privateKey;
+        this.ring = DkimKeyRing.single(domain, selector, privateKey);
+    }
+
+    public DkimSigner(DkimKeyRing ring) {
+        this.ring = ring;
     }
 
     public boolean isEnabled() {
-        return privateKey != null;
+        return !ring.isEmpty();
     }
 
+    /** Набор ключей по доменам: один сервер может подписывать несколько доменов. */
+    public DkimKeyRing keyRing() {
+        return ring;
+    }
+
+    /** Домен единственного ключа; null, если ключей несколько или нет ни одного. */
     public String domain() {
-        return domain;
+        return ring.keys().size() == 1 ? ring.keys().get(0).domain() : null;
     }
 
     public String selector() {
-        return selector;
+        return ring.keys().size() == 1 ? ring.keys().get(0).selector() : null;
+    }
+
+    /** Публичная часть ключа единственного домена; null при нескольких ключах или их отсутствии. */
+    public String publicKeyBase64() {
+        return ring.keys().size() == 1 ? ring.keys().get(0).publicKeyBase64() : null;
     }
 
     /**
-     * Публичная часть действующего ключа в base64 (X.509 SubjectPublicKeyInfo) —
-     * именно она публикуется в DNS как p=. Приватный ключ наружу не выходит.
-     *
-     * @return null, если подпись не настроена или ключ не RSA
+     * Подписывает письмо ключом домена From. Нет ключа для этого домена —
+     * письмо уходит без подписи с предупреждением: подписывать чужим ключом
+     * нельзя, а отказывать в отправке из-за ненастроенного DKIM — тоже.
      */
-    public String publicKeyBase64() {
-        if (!(privateKey instanceof RSAPrivateCrtKey rsa)) {
-            return null;
-        }
-        try {
-            PublicKey publicKey = KeyFactory.getInstance("RSA").generatePublic(
-                    new RSAPublicKeySpec(rsa.getModulus(), rsa.getPublicExponent()));
-            return Base64.getEncoder().encodeToString(publicKey.getEncoded());
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
     public byte[] signIfConfigured(byte[] raw, String envelopeFrom) {
         if (!isEnabled()) {
             return raw;
         }
         ParsedRaw parsed = parse(raw);
         String fromDomain = fromDomain(parsed.headers(), envelopeFrom);
-        if (!domain.equalsIgnoreCase(fromDomain)) {
-            log.warn("DKIM пропущен: From-домен {} не равен настроенному d={}", fromDomain, domain);
+        DkimKeyRing.Key key = ring.find(fromDomain).orElse(null);
+        if (key == null) {
+            log.warn("DKIM пропущен: для From-домена {} нет ключа", fromDomain);
             return raw;
         }
         if (parsed.headers().stream().anyMatch(h -> h.name().equals("dkim-signature")
-                && h.value().toLowerCase(Locale.ROOT).contains("d=" + domain.toLowerCase(Locale.ROOT)))) {
+                && h.value().toLowerCase(Locale.ROOT).contains("d=" + key.domain()))) {
             return raw;
         }
-        return sign(parsed);
+        return sign(parsed, key);
     }
 
+    /** Подпись без проверки домена: ключ подбирается по From, иначе берётся первый. */
     byte[] sign(byte[] raw) {
-        return sign(parse(raw));
+        if (ring.isEmpty()) {
+            return raw;
+        }
+        ParsedRaw parsed = parse(raw);
+        DkimKeyRing.Key key = ring.find(fromDomain(parsed.headers(), null))
+                .orElseGet(() -> ring.keys().get(0));
+        return sign(parsed, key);
     }
 
-    private byte[] sign(ParsedRaw parsed) {
+    private byte[] sign(ParsedRaw parsed, DkimKeyRing.Key key) {
         try {
             String bodyHash = Base64.getEncoder().encodeToString(
                     MessageDigest.getInstance("SHA-256").digest(canonicalBody(parsed.body())));
@@ -135,13 +132,13 @@ public class DkimSigner {
                     data.append(canonicalHeader(name, h.value())).append("\r\n");
                 }
             }
-            String dkimValue = "v=1; a=rsa-sha256; c=relaxed/relaxed; d=" + domain + "; s=" + selector
+            String dkimValue = "v=1; a=rsa-sha256; c=relaxed/relaxed; d=" + key.domain() + "; s=" + key.selector()
                     + "; t=" + Instant.now().getEpochSecond() + "; bh=" + bodyHash
                     + "; h=" + String.join(":", signedNames) + "; b=";
             data.append(canonicalHeader("dkim-signature", dkimValue));
 
             Signature signature = Signature.getInstance("SHA256withRSA");
-            signature.initSign(privateKey);
+            signature.initSign(key.privateKey());
             signature.update(data.toString().getBytes(StandardCharsets.ISO_8859_1));
             String b = Base64.getEncoder().encodeToString(signature.sign());
 
@@ -267,28 +264,4 @@ public class DkimSigner {
         return s.substring(at + 1).replaceAll("[\\s>].*$", "").trim().toLowerCase(Locale.ROOT);
     }
 
-    private static String firstDomain(String csvOrDomain) {
-        return csvOrDomain.split(",")[0].trim().toLowerCase(Locale.ROOT);
-    }
-
-    private PrivateKey loadKey(String keyFile) {
-        try {
-            Path path = Path.of(keyFile);
-            if (!Files.isRegularFile(path)) {
-                return null;
-            }
-            String pem = Files.readString(path);
-            String base64 = pem
-                    .replaceAll("-----BEGIN [^-]+-----", "")
-                    .replaceAll("-----END [^-]+-----", "")
-                    .replaceAll("\\s+", "");
-            byte[] der = Base64.getDecoder().decode(base64);
-            return KeyFactory.getInstance("RSA").generatePrivate(new PKCS8EncodedKeySpec(der));
-        } catch (IOException e) {
-            throw new IllegalStateException("Не удалось прочитать DKIM ключ " + keyFile, e);
-        } catch (Exception e) {
-            throw new IllegalStateException(
-                    "DKIM ключ должен быть PKCS#8 PEM (openssl genpkey или openssl pkcs8 -topk8): " + e.getMessage(), e);
-        }
-    }
 }

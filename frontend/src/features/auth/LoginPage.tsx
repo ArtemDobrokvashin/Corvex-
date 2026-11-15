@@ -32,7 +32,6 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
 
   const previewMails = demoMails(locale).slice(0, 3);
-  const previewAuthor = cleanPersonName(previewMails[0]?.from ?? 'Anna Petrova');
 
   async function finishLogin() {
     const me = await fetchMe();
@@ -85,34 +84,27 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-full bg-surface lg:grid-cols-[1.04fr_0.96fr]">
+    <main className="grid min-h-full bg-surface lg:grid-cols-2">
       {/* Продуктовая витрина */}
-      <section
-        className="relative hidden overflow-hidden px-12 py-10 lg:flex lg:flex-col xl:px-16"
-        style={{
-          backgroundColor: '#EEF1F7',
-          backgroundImage:
-            'radial-gradient(circle at 15% 10%, rgba(91,124,255,.20), transparent 32%), radial-gradient(circle at 90% 85%, rgba(49,87,213,.13), transparent 38%), linear-gradient(145deg, #F6F7F2 0%, #EDF1F8 52%, #E8EEF8 100%)',
-        }}
-      >
-        <Logo subtitle={t('Корпоративные коммуникации')} />
+      <section className="relative hidden overflow-hidden bg-sidebar px-12 py-10 text-white lg:flex lg:flex-col xl:px-16">
+        <Logo dark subtitle={t('Корпоративные коммуникации')} />
 
         <div className="mx-auto flex w-full max-w-[620px] flex-1 flex-col justify-center py-12">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent-dark">{t('Рабочее пространство компании')}</p>
-          <h1 className="mt-4 text-[42px] font-semibold leading-[1.08] tracking-[-0.035em] text-ink">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#93C5FD]">{t('Рабочее пространство компании')}</p>
+          <h1 className="mt-4 text-[42px] font-semibold leading-[1.08] tracking-[-0.035em] text-white">
             {t('Почта и сообщения.')}<br />{t('Без лишнего шума.')}
           </h1>
-          <p className="mt-4 max-w-md text-[16px] leading-relaxed text-muted">
+          <p className="mt-4 max-w-md text-[16px] leading-relaxed text-sidebar-text">
             {t('Один спокойный интерфейс для писем, командных чатов и внутренних сервисов вашей организации.')}
           </p>
 
-          <div className="relative mb-9 mt-10">
-            <div className="animate-rise-in overflow-hidden rounded-2xl border border-white/80 bg-white/95 shadow-pop backdrop-blur">
+          <div className="mb-9 mt-10">
+            <div className="animate-rise-in overflow-hidden rounded-xl border border-sidebar-line bg-surface text-ink">
               <div className="flex h-11 items-center gap-2 border-b border-line px-4">
                 <span className="h-2.5 w-2.5 rounded-full bg-[#FF5F57]" />
                 <span className="h-2.5 w-2.5 rounded-full bg-[#FEBC2E]" />
                 <span className="h-2.5 w-2.5 rounded-full bg-[#28C840]" />
-                <span className="mx-auto flex h-7 w-64 items-center gap-2 rounded-full bg-black/[0.045] px-3 text-xs text-faint"><Search size={13} />{t('Поиск по почте и людям')}</span>
+                <span className="mx-auto flex h-7 w-64 items-center gap-2 rounded-lg bg-black/[0.045] px-3 text-xs text-faint"><Search size={13} />{t('Поиск по почте и людям')}</span>
               </div>
               <div className="grid grid-cols-[128px_1fr]">
                 <div className="space-y-1 border-r border-line bg-chrome p-3 text-xs text-muted">
@@ -134,17 +126,14 @@ export default function LoginPage() {
                 </div>
               </div>
             </div>
-            <div className="absolute -bottom-7 -right-5 flex max-w-[300px] items-start gap-3 rounded-2xl border border-line bg-white p-3.5 shadow-composer">
-              <Avatar name={previewAuthor} size={34} presence />
-              <div className="text-[13px] leading-snug"><b>{previewAuthor}</b><br /><span className="text-muted">{t('Реестр уже в почте, посмотрите до обеда.')}</span></div>
-            </div>
+
           </div>
         </div>
 
-        <div className="mx-auto flex w-full max-w-[620px] flex-wrap gap-x-6 gap-y-2 text-[13px] text-muted">
-          <span className="flex items-center gap-2"><ShieldCheck size={15} className="text-accent" />{t('Данные внутри компании')}</span>
-          <span className="flex items-center gap-2"><LockKeyhole size={15} className="text-accent" />{t('2FA и пароли приложений')}</span>
-          <span className="flex items-center gap-2"><Search size={15} className="text-accent" />{t('Быстрый переход Ctrl+K')}</span>
+        <div className="mx-auto flex w-full max-w-[620px] flex-wrap gap-x-6 gap-y-2 text-[13px] text-sidebar-text">
+          <span className="flex items-center gap-2"><ShieldCheck size={15} className="text-[#93C5FD]" />{t('Данные внутри компании')}</span>
+          <span className="flex items-center gap-2"><LockKeyhole size={15} className="text-[#93C5FD]" />{t('2FA и пароли приложений')}</span>
+          <span className="flex items-center gap-2"><Search size={15} className="text-[#93C5FD]" />{t('Быстрый переход Ctrl+K')}</span>
         </div>
       </section>
 

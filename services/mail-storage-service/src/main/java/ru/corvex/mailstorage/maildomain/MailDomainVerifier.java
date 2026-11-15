@@ -110,7 +110,15 @@ public class MailDomainVerifier {
     }
 
     private Check dkim(String domain, Optional<DkimKeyProbe.SigningKey> signingKey, Instant now) {
-        String name = dkimSelector + "._domainkey." + domain;
+        // Селектор может различаться по доменам (`<domain>.selector` в mail-smtp).
+        // Проверять запись чужого селектора бессмысленно: имя DNS-записи берём у
+        // сервера, если он подтвердил ключ именно этого домена.
+        String selector = signingKey
+                .filter(key -> key.domain().equalsIgnoreCase(domain))
+                .map(DkimKeyProbe.SigningKey::selector)
+                .filter(value -> value != null && !value.isBlank())
+                .orElse(dkimSelector);
+        String name = selector + "._domainkey." + domain;
         List<String> records;
         try {
             records = dns.txt(name);

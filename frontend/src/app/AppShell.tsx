@@ -1,62 +1,120 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Command,
-  Globe,
+  Bell,
+  Calendar as CalendarIcon,
+  ChevronUp,
+  Clock as ClockIcon,
   LogOut,
   Mail,
+  Maximize2,
+  Menu,
   MessageSquare,
   Palette,
-  PenSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
   Search,
   Settings2,
+  Shield,
   ShieldCheck,
+  X,
 } from 'lucide-react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { logout as apiLogout, restoreSession } from '../api/authApi';
 import { DEMO_MAILS, DEMO_ROOMS, getDemoUser } from '../api/demoData';
 import { setAccessToken } from '../api/httpClient';
-import { LanguageSwitcher, systemGroupName, useI18n } from '../i18n';
-import { Avatar, Clock, LoadingScreen, LogoMark } from '../components/ui';
 import { AppearanceSettings } from '../components/AppearanceSettings';
-import { CalendarWidget } from '../components/CalendarWidget';
-import ChangePasswordModal from '../features/auth/ChangePasswordModal';
-import PersonalSettings, { readWorkspaceBackground, saveWorkspaceBackground, type WorkspaceBackground } from './PersonalSettings';
-import SecuritySettingsModal from '../features/auth/SecuritySettingsModal';
+import CalendarSidebarWidget from '../components/CalendarSidebarWidget';
+import Clock from '../components/Clock';
+import CommandPalette from '../components/CommandPalette';
+import { SidebarSlotContext } from '../components/SidebarSlot';
+import { Avatar, LoadingScreen, LogoMark, StatusBadge } from '../components/ui';
 import { canAccessAdmin } from '../features/admin/adminAccess';
-import { useSession } from '../store/sessionStore';
+import ChangePasswordModal from '../features/auth/ChangePasswordModal';
+import SecuritySettingsModal from '../features/auth/SecuritySettingsModal';
+import { LanguageSwitcher, systemGroupName, useI18n } from '../i18n';
+import {
+  CalendarEvent,
+  formatIsoDate,
+  getEventsForDate,
+  getDueReminder,
+  reminderKey,
+  useCalendarStore,
+} from '../store/calendarStore';
+import { demoMailIsSeen, useSession } from '../store/sessionStore';
+import PersonalSettings, {
+  readWorkspaceBackground,
+  saveWorkspaceBackground,
+  type WorkspaceBackground,
+} from './PersonalSettings';
 
-interface QuickAction {
-  id: string;
-  label: string;
-  description: string;
-  icon: typeof Mail;
-  shortcut?: string;
-  run: () => void;
-}
+const SIDEBAR_COLLAPSED_KEY = 'corvex.sidebar.collapsed';
 
-/**
- * Единая оболочка в визуальном языке Quiet Work: тонкий светлый rail на десктопе,
- * нижний таб-бар на мобильном, профиль и быстрый переход — без тёмной «стены».
- */
 export default function AppShell() {
-  const { locale, setLocale, t } = useI18n();
-  const { user, demoMode, bootstrapped, demoReadMailIds, demoReadRoomIds, has, setSession, clearSession, setBootstrapped, updateUser } = useSession();
+  const { locale, t } = useI18n();
+  const {
+    user,
+    demoMode,
+    bootstrapped,
+    demoReadMailIds,
+    demoUnreadMailIds,
+    demoReadRoomIds,
+    has,
+    setSession,
+    clearSession,
+    setBootstrapped,
+    updateUser,
+  } = useSession();
   const navigate = useNavigate();
   const location = useLocation();
   const restoreStarted = useRef(false);
+
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [slotHost, setSlotHost] = useState<HTMLElement | null>(null);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
   const [securityOpen, setSecurityOpen] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [background, setBackground] = useState<WorkspaceBackground>(readWorkspaceBackground);
+  const [dueReminderEvent, setDueReminderEvent] = useState<CalendarEvent | null>(null);
 
+  // Фон рабочей области — локальная настройка пользователя, как тема и плотность.
   useEffect(() => {
     document.documentElement.dataset.workspaceBackground = background;
     return () => { delete document.documentElement.dataset.workspaceBackground; };
   }, [background]);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [appearanceOpen, setAppearanceOpen] = useState(false);
-  const [paletteOpen, setPaletteOpen] = useState(false);
-  const [paletteQuery, setPaletteQuery] = useState('');
 
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  const widgetOpen = useCalendarStore((s) => s.widgetOpen);
+  const setWidgetOpen = useCalendarStore((s) => s.setWidgetOpen);
+  const toggleWidget = useCalendarStore((s) => s.toggleWidget);
+  const events = useCalendarStore((s) => s.events);
+  const dismissedReminderKeys = useCalendarStore((s) => s.dismissedReminderKeys);
+  const snoozedUntilMs = useCalendarStore((s) => s.snoozedUntilMs);
+  const dismissReminder = useCalendarStore((s) => s.dismissReminder);
+  const setCalendarOwner = useCalendarStore((s) => s.setOwner);
+  const setDemoCalendarLocale = useCalendarStore((s) => s.setDemoLocale);
+  const snoozeEventReminder = useCalendarStore((s) => s.snoozeEventReminder);
+  const setSelectedDate = useCalendarStore((s) => s.setSelectedDate);
+
+  // Calendar data is kept per signed-in account in this browser, not on a server.
+  useEffect(() => {
+    setCalendarOwner(user?.id ?? null, demoMode);
+  }, [user?.id, demoMode, setCalendarOwner]);
+
+  useEffect(() => {
+    if (demoMode && user) setDemoCalendarLocale(locale);
+  }, [demoMode, locale, setDemoCalendarLocale, user?.id]);
+
+  // Restore session on initial mount
   useEffect(() => {
     if (restoreStarted.current || bootstrapped) return;
     restoreStarted.current = true;
@@ -77,7 +135,6 @@ export default function AppShell() {
         navigate('/login', { replace: true });
       }
     })();
-    // Locale is read only for the first demo restore; the ref above prevents a second restore.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bootstrapped, navigate, setSession, setBootstrapped]);
 
@@ -85,15 +142,31 @@ export default function AppShell() {
     if (demoMode) updateUser({ displayName: getDemoUser(locale).displayName });
   }, [demoMode, locale, updateUser]);
 
+  const toggleSidebarCollapsed = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0');
+      } catch {
+        // ignore storage restrictions
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    setMobileDrawerOpen(false);
+    setProfileMenuOpen(false);
+    if (location.pathname.startsWith('/calendar')) {
+      setWidgetOpen(false);
+    }
+  }, [location.pathname, setWidgetOpen]);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setPaletteOpen(true);
-      }
-      if (e.key === 'Escape') {
-        setPaletteOpen(false);
-        setProfileOpen(false);
+        setCommandOpen((prev) => !prev);
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -101,253 +174,665 @@ export default function AppShell() {
   }, []);
 
   useEffect(() => {
-    setProfileOpen(false);
-  }, [location.pathname]);
+    if (!profileMenuOpen) return undefined;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!profileRef.current?.contains(e.target as Node)) setProfileMenuOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setProfileMenuOpen(false);
+    };
+    window.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [profileMenuOpen]);
+
+  // In-app reminders are checked while the workspace is open.
+  useEffect(() => {
+    const checkReminders = () => setDueReminderEvent(
+      getDueReminder(events, dismissedReminderKeys, snoozedUntilMs, new Date()),
+    );
+    checkReminders();
+    const timer = window.setInterval(checkReminders, 20_000);
+    return () => window.clearInterval(timer);
+  }, [dismissedReminderKeys, events, snoozedUntilMs]);
 
   async function onLogout() {
     if (!demoMode) {
       try {
         await apiLogout();
       } catch {
-        // сервер уже недоступен — локальный выход всё равно выполняем
+        // local logout proceeds even if server is unreachable
       }
     }
     setAccessToken(null);
+    setCalendarOwner(null);
     sessionStorage.removeItem('corvex.demo');
     clearSession();
     navigate('/login', { replace: true });
   }
 
-  const quickActions = useMemo<QuickAction[]>(() => {
-    const actions: QuickAction[] = [
-      { id: 'mail', label: t('Открыть почту'), description: t('Входящие и папки'), icon: Mail, run: () => navigate('/mail') },
-      { id: 'compose', label: t('Написать письмо'), description: t('Новый черновик'), icon: PenSquare, shortcut: 'C', run: () => navigate('/mail?compose=1') },
-      { id: 'chat', label: t('Открыть сообщения'), description: t('Каналы и личные чаты'), icon: MessageSquare, run: () => navigate('/chat') },
-    ];
-    if (canAccessAdmin(has)) {
-      actions.push({ id: 'admin', label: t('Администрирование'), description: t('Пользователи, сервер, аналитика и аудит'), icon: Settings2, run: () => navigate('/admin') });
-    }
-    actions.push(
-      { id: 'settings', label: t('Личные настройки'), description: t('Язык и внешний вид'), icon: Settings2, run: () => setSettingsOpen(true) },
-      { id: 'security', label: t('Безопасность'), description: t('Пароль, 2FA и пароли приложений'), icon: ShieldCheck, run: () => setSecurityOpen(true) },
-      { id: 'logout', label: demoMode ? t('Выйти из демо') : t('Выйти'), description: t('Завершить текущую сессию'), icon: LogOut, run: onLogout },
-    );
-    return actions;
-    // onLogout стабилен по смыслу для палитры; не тянем его в зависимости хука.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [demoMode, has, navigate, t]);
-
-  const visibleActions = quickActions.filter((a) => `${a.label} ${a.description}`.toLowerCase().includes(paletteQuery.trim().toLowerCase()));
+  const todayEventCount = useMemo(
+    () => getEventsForDate(events, formatIsoDate(new Date())).length,
+    [events],
+  );
 
   if (!bootstrapped) return <LoadingScreen label={t('Восстанавливаем сессию')} />;
   if (!user) return <LoadingScreen label={t('Переходим ко входу')} />;
 
-  const canAdmin = canAccessAdmin(has);
-  const nextLocale = locale === 'ru' ? 'en' : 'ru';
-  const demoMailUnreadCount = DEMO_MAILS.filter(
-    (mail) => !mail.seen && !demoReadMailIds.includes(mail.id),
-  ).length;
-  const demoChatUnreadCount = DEMO_ROOMS.reduce(
-    (total, room) => total + (demoReadRoomIds.includes(room.id) ? 0 : room.unread),
-    0,
-  );
+  const unreadMail = demoMode
+    ? DEMO_MAILS.filter((m) => !demoMailIsSeen(m, demoReadMailIds, demoUnreadMailIds)).length
+    : 0;
+  const unreadChat = demoMode
+    ? DEMO_ROOMS.reduce((acc, r) => acc + (demoReadRoomIds.includes(r.id) ? 0 : r.unread), 0)
+    : 0;
 
-  // Круглые кнопки-иконки как в макете: подпись остаётся в aria-label/title.
-  const navItem = (to: string, label: string, Icon: typeof Mail, badge?: number) => (
-    <NavLink key={to} to={to} aria-label={label} title={label} className="rail-btn relative">
-      <Icon size={20} strokeWidth={1.75} />
-      {badge ? <span className="rail-badge">{badge}</span> : null}
-    </NavLink>
-  );
-
-  const mobileNavItem = (to: string, label: string, Icon: typeof Mail, badge?: number) => (
-    <NavLink
-      key={to}
-      to={to}
-      className={({ isActive }) => `relative flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium ${isActive ? 'text-accent-dark' : 'text-muted'}`}
-    >
-      <span className="relative">
-        <Icon size={21} strokeWidth={1.75} />
-        {badge ? <span className="absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-semibold text-white">{badge}</span> : null}
-      </span>
-      {label}
-    </NavLink>
-  );
+  const canSeeAdmin = canAccessAdmin(has);
+  const onCalendarRoute = location.pathname.startsWith('/calendar');
+  const sidebarWidthPx = sidebarCollapsed ? 64 : 252;
 
   return (
-    <div className="flex h-full flex-col bg-corvex-canvas md:flex-row">
-      {/* Мобильная шапка */}
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-corvex-line bg-corvex-surface/95 px-4 md:hidden">
-        <LogoMark size={34} />
-        <span className="text-[17px] font-semibold tracking-[-0.02em]">Corvex</span>
-        <Clock className="shrink-0 ml-2 text-[11px]" />
-        <div className="ml-auto flex items-center gap-1">
-          <button type="button" onClick={() => setPaletteOpen(true)} className="icon-btn" aria-label={t('Быстрый переход')}><Search size={19} /></button>
-          <button type="button" onClick={() => setProfileOpen(!profileOpen)} className="rounded-full" aria-label={t('Профиль')}>
-            <Avatar name={user.displayName} size={34} presence />
-          </button>
-        </div>
-      </header>
-
-      {/* Десктопный rail */}
-      <aside className="hidden w-[76px] shrink-0 flex-col items-center border-r border-corvex-line bg-corvex-chrome px-2.5 py-4 md:flex">
-        <button type="button" onClick={() => navigate('/mail')} className="rounded-[13px]" aria-label={t('Corvex — почта')}>
-          <LogoMark size={40} />
-        </button>
-
-        <nav className="mt-6 flex w-full flex-col items-center gap-2" aria-label={t('Основная навигация')}>
-          {navItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
-          {navItem('/chat', t('Чат'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
-          <CalendarWidget compact />
-          {canAdmin && navItem('/admin', t('Админ'), ShieldCheck)}
-        </nav>
-
-        <button type="button" onClick={() => setSettingsOpen(true)} className="rail-btn mt-1.5" aria-label={t('Личные настройки')} title={t('Личные настройки')}>
-          <Settings2 size={20} strokeWidth={1.75} />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setPaletteOpen(true)}
-          className="rail-btn mt-4"
-          aria-label={t('Быстрый переход')}
-          title={`${t('Быстрый переход')} (Ctrl+K)`}
-        >
-          <Search size={20} strokeWidth={1.75} />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setLocale(nextLocale)}
-          className="rail-btn mt-1.5 text-[11px] font-semibold tracking-wide"
-          aria-label={`${t('Язык интерфейса')}: ${locale === 'ru' ? t('Русский') : t('Английский')}`}
-          title={t('Язык интерфейса')}
-        >
-          {locale.toUpperCase()}
-        </button>
-
-        <div className="mt-auto flex flex-col items-center gap-2">
-          {demoMode && <span className="rounded-full bg-amber-100 px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-amber-800">{t('Демо')}</span>}
-          <Clock className="mt-1" />
-          <button type="button" onClick={() => setProfileOpen(!profileOpen)} className="rounded-full ring-accent/30 transition hover:ring-4" aria-label={t('Профиль пользователя')}>
-            <Avatar name={user.displayName} size={40} presence />
-          </button>
-        </div>
-      </aside>
-
-      {/* Контент */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {demoMode && (
-          <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-100 bg-amber-50/90 px-4 py-1.5 text-center text-xs text-amber-900">
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-            <span>{t('Демо-режим: сервер не подключён, данные учебные.')}</span>
-            <button onClick={onLogout} className="font-semibold underline decoration-amber-300 underline-offset-2">{t('Выйти')}</button>
+    <SidebarSlotContext.Provider
+      value={{
+        inAppShell: true,
+        slotEl: slotHost,
+        mobileSlotEl: null,
+        collapsed: sidebarCollapsed,
+        openPalette: () => setCommandOpen(true),
+        onOpenCommandPalette: () => setCommandOpen(true),
+        onOpenCalendarWidget: () => setWidgetOpen(true),
+        onOpenSecurity: () => { setMobileDrawerOpen(false); setSecurityOpen(true); },
+        onCloseNavigation: () => setMobileDrawerOpen(false),
+        onLogout,
+      }}
+    >
+      <div className="flex h-dvh w-screen flex-col overflow-hidden bg-surface md:flex-row">
+        {/* Mobile (< 768px) 52px top bar */}
+        <header className="flex h-[52px] shrink-0 items-center justify-between border-b border-sidebar-line bg-sidebar px-3 text-white md:hidden">
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => setMobileDrawerOpen(true)}
+              aria-label={t('Открыть навигацию')}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-text hover:bg-sidebar-hover hover:text-white"
+            >
+              <Menu size={18} />
+            </button>
+            <span className="inline-flex rounded-[9px] border border-white/[0.14]">
+              <LogoMark size={28} />
+            </span>
+            <span className="text-[17px] font-semibold tracking-[-0.02em] text-white">Corvex</span>
           </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => toggleWidget()}
+              aria-label={t('Мой день')}
+              className={`inline-flex h-8 w-8 items-center justify-center rounded-lg transition ${
+                widgetOpen ? 'bg-accent text-white' : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white'
+              }`}
+            >
+              <CalendarIcon size={16} />
+            </button>
+            <Clock variant="dark" onOpenCalendar={() => navigate('/calendar')} />
+          </div>
+        </header>
+
+        {/* Mobile drawer backdrop */}
+        {mobileDrawerOpen && (
+          <div
+            onClick={() => setMobileDrawerOpen(false)}
+            className="fixed inset-0 z-40 bg-ink/45 md:hidden"
+            aria-hidden="true"
+          />
         )}
-        <div className="min-h-0 min-w-0 flex-1"><Outlet /></div>
-      </div>
 
-      {/* Мобильная нижняя навигация */}
-      <nav className="flex shrink-0 border-t border-corvex-line bg-corvex-surface px-2 pb-[env(safe-area-inset-bottom)] md:hidden" aria-label={t('Основная навигация')}>
-        {mobileNavItem('/mail', t('Почта'), Mail, demoMode ? demoMailUnreadCount : undefined)}
-        {mobileNavItem('/chat', t('Сообщения'), MessageSquare, demoMode ? demoChatUnreadCount : undefined)}
-        <CalendarWidget className="flex-1" />
-        {canAdmin && mobileNavItem('/admin', t('Админ'), ShieldCheck)}
-        <button type="button" onClick={() => setSettingsOpen(true)} className="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-muted" aria-label={t('Личные настройки')}><Settings2 size={21} strokeWidth={1.75} />{t('Настройки')}</button>
-      </nav>
-
-      {/* Меню профиля */}
-      {profileOpen && (
-        <>
-          <button type="button" aria-label={t('Закрыть меню')} className="fixed inset-0 z-40 cursor-default" onClick={() => setProfileOpen(false)} />
-          <div className="fixed right-3 top-16 z-50 w-[300px] animate-scale-in rounded-2xl border border-line bg-surface p-2 shadow-pop md:bottom-4 md:left-[86px] md:right-auto md:top-auto">
-            <div className="flex items-center gap-3 px-3 py-3">
-              <Avatar name={user.displayName} size={42} presence />
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold">{user.displayName}</div>
-                <div className="truncate text-xs text-muted">{user.email}</div>
-                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{t('В сети')}{user.groups.length > 0 && ` · ${user.groups.map((code) => systemGroupName(locale, code)).join(', ')}`}</div>
-              </div>
+        {/* Left Midnight Navy Sidebar (#0B1221): 272px drawer on <768px, static 252px/64px on >=768px */}
+        <aside
+          aria-label={t('Боковая навигация Corvex')}
+          className={`fixed inset-y-0 left-0 z-50 flex w-[272px] shrink-0 flex-col border-r border-sidebar-line bg-sidebar text-sidebar-text transition-[width,transform] duration-150 md:static md:z-20 md:translate-x-0 ${
+            mobileDrawerOpen ? 'translate-x-0' : '-translate-x-full'
+          } ${sidebarCollapsed ? 'md:w-[64px]' : 'md:w-[252px]'}`}
+        >
+          {/* 56px Brand Header */}
+          <div
+            className={`flex h-14 shrink-0 items-center border-b border-sidebar-line ${
+              sidebarCollapsed ? 'justify-between px-3.5 md:justify-center md:px-2' : 'justify-between px-3.5'
+            }`}
+          >
+            <div className={`flex min-w-0 items-center gap-2.5 ${sidebarCollapsed ? 'md:hidden' : ''}`}>
+              <span className="inline-flex shrink-0 rounded-[9px] border border-white/[0.14]">
+                <LogoMark size={30} />
+              </span>
+              <span className="truncate text-[18px] font-semibold tracking-[-0.02em] text-white">
+                Corvex
+              </span>
             </div>
-            <div className="hairline-t py-1.5">
-              <div className="flex items-center gap-2.5 px-2.5 py-2 text-sm text-muted">
-                <Globe size={17} strokeWidth={1.8} />
-                <span className="min-w-0 flex-1">{t('Язык интерфейса')}</span>
-                <LanguageSwitcher />
-              </div>
-              <button type="button" onClick={() => { setProfileOpen(false); setSettingsOpen(true); }} className="nav-row"><Settings2 size={17} strokeWidth={1.8} /> {t('Личные настройки')}</button>
-              <button type="button" onClick={() => { setProfileOpen(false); setSecurityOpen(true); }} className="nav-row">
-                <ShieldCheck size={17} strokeWidth={1.8} /> {t('Безопасность')}
+
+            {sidebarCollapsed && (
+              <button
+                type="button"
+                onClick={toggleSidebarCollapsed}
+                title={t('Развернуть боковую панель')}
+                aria-label={t('Развернуть боковую панель')}
+                className="hidden h-9 w-9 items-center justify-center rounded-[9px] border border-white/[0.14] transition hover:border-white/30 md:inline-flex"
+              >
+                <LogoMark size={28} />
               </button>
-              <button type="button" onClick={() => { setProfileOpen(false); setAppearanceOpen(true); }} className="nav-row">
-                <Palette size={17} strokeWidth={1.8} /> {t('Внешний вид')}
+            )}
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setCommandOpen(true)}
+                title={`${t('Быстрый переход')} (⌘K)`}
+                aria-label={t('Быстрый переход')}
+                className={`inline-flex h-7 w-7 items-center justify-center rounded-lg text-sidebar-muted transition hover:bg-sidebar-hover hover:text-white ${
+                  sidebarCollapsed ? 'md:hidden' : ''
+                }`}
+              >
+                <Search size={15} />
               </button>
-              <button type="button" onClick={onLogout} className="nav-row text-danger hover:bg-red-50 hover:text-danger">
-                <LogOut size={17} strokeWidth={1.8} /> {demoMode ? t('Выйти из демо') : t('Выйти')}
+
+              <button
+                type="button"
+                onClick={toggleSidebarCollapsed}
+                title={sidebarCollapsed ? t('Развернуть боковую панель') : t('Свернуть боковую панель')}
+                aria-label={sidebarCollapsed ? t('Развернуть боковую панель') : t('Свернуть боковую панель')}
+                className={`hidden h-7 w-7 items-center justify-center rounded-lg text-sidebar-muted transition hover:bg-sidebar-hover hover:text-white md:inline-flex ${
+                  sidebarCollapsed ? 'md:hidden' : ''
+                }`}
+              >
+                {sidebarCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMobileDrawerOpen(false)}
+                aria-label={t('Закрыть навигацию')}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-sidebar-muted hover:bg-sidebar-hover hover:text-white md:hidden"
+              >
+                <X size={16} />
               </button>
             </div>
           </div>
-        </>
-      )}
 
-      {appearanceOpen && (
-        <>
-          <button type="button" aria-label={t('Закрыть')} className="fixed inset-0 z-40 cursor-default" onClick={() => setAppearanceOpen(false)} />
-          <div className="fixed left-3 right-3 top-16 z-50 max-w-[440px] max-h-[85vh] overflow-y-auto animate-scale-in rounded-2xl border border-corvex-line bg-corvex-surface p-2 shadow-pop md:left-auto md:right-3 md:top-16 md:bottom-auto md:w-[440px]">
-            <AppearanceSettings onClose={() => setAppearanceOpen(false)} />
-          </div>
-        </>
-      )}
+          {sidebarCollapsed && (
+            <div className="hidden justify-center border-b border-sidebar-line py-1.5 md:flex">
+              <button
+                type="button"
+                onClick={toggleSidebarCollapsed}
+                title={t('Развернуть боковую панель')}
+                aria-label={t('Развернуть боковую панель')}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-sidebar-muted transition hover:bg-sidebar-hover hover:text-white"
+              >
+                <PanelLeftOpen size={15} />
+              </button>
+            </div>
+          )}
 
-      {/* Command palette */}
-      {paletteOpen && (
-        <div className="fixed inset-0 z-[60] flex items-start justify-center bg-ink/35 px-4 pt-[10vh] backdrop-blur-[2px]" onClick={() => setPaletteOpen(false)}>
-          <section className="w-full max-w-xl animate-scale-in overflow-hidden rounded-2xl border border-line bg-surface shadow-pop" onClick={(e) => e.stopPropagation()} aria-label={t('Быстрый переход')}>
-            <div className="flex items-center gap-3 border-b border-line px-4">
-              <Search size={19} className="shrink-0 text-faint" />
-              <input
-                autoFocus
-                value={paletteQuery}
-                onChange={(e) => setPaletteQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && visibleActions[0]) {
-                    setPaletteOpen(false);
-                    visibleActions[0].run();
+          {/* Primary Module Navigation */}
+          <nav
+            aria-label={t('Основная навигация')}
+            className={`shrink-0 space-y-0.5 border-b border-sidebar-line py-2.5 ${
+              sidebarCollapsed ? 'px-2.5 md:px-2' : 'px-2.5'
+            }`}
+          >
+            <NavLink
+              to="/mail"
+              title={t('Почта')}
+              className={({ isActive }) =>
+                `sidebar-item ${isActive ? 'sidebar-item-active' : ''} ${
+                  sidebarCollapsed ? 'md:justify-center md:px-0' : ''
+                }`
+              }
+            >
+              <Mail size={17} strokeWidth={1.85} className="shrink-0" />
+              <span className={`min-w-0 flex-1 truncate ${sidebarCollapsed ? 'md:hidden' : ''}`}>
+                {t('Почта')}
+              </span>
+              {unreadMail > 0 && (
+                <span
+                  className={`rounded-full bg-accent px-1.5 py-0.5 text-[10.5px] font-semibold leading-none text-white tabular-nums ${
+                    sidebarCollapsed ? 'md:hidden' : ''
+                  }`}
+                >
+                  {unreadMail}
+                </span>
+              )}
+            </NavLink>
+
+            <NavLink
+              to="/chat"
+              title={t('Чаты')}
+              className={({ isActive }) =>
+                `sidebar-item ${isActive ? 'sidebar-item-active' : ''} ${
+                  sidebarCollapsed ? 'md:justify-center md:px-0' : ''
+                }`
+              }
+            >
+              <MessageSquare size={17} strokeWidth={1.85} className="shrink-0" />
+              <span className={`min-w-0 flex-1 truncate ${sidebarCollapsed ? 'md:hidden' : ''}`}>
+                {t('Чаты')}
+              </span>
+              {unreadChat > 0 && (
+                <span
+                  className={`rounded-full bg-accent px-1.5 py-0.5 text-[10.5px] font-semibold leading-none text-white tabular-nums ${
+                    sidebarCollapsed ? 'md:hidden' : ''
+                  }`}
+                >
+                  {unreadChat}
+                </span>
+              )}
+            </NavLink>
+
+            {/* Календарь: открывает боковой виджет поверх работы + быстрый переход в /calendar */}
+            <div
+              className={`group flex items-center rounded-lg transition ${
+                onCalendarRoute || widgetOpen
+                  ? 'bg-sidebar-active text-white'
+                  : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white'
+              }`}
+            >
+              <button
+                type="button"
+                title={onCalendarRoute ? t('Календарь') : t('Открыть виджет календаря')}
+                onClick={() => {
+                  if (onCalendarRoute) {
+                    navigate('/calendar');
+                  } else {
+                    setMobileDrawerOpen(false);
+                    toggleWidget();
                   }
                 }}
-                placeholder={t('Перейти или выполнить действие…')}
-                aria-label={t('Быстрый переход')}
-                className="h-14 min-w-0 flex-1 border-0 bg-transparent text-[15px] outline-none placeholder:text-faint focus:ring-0"
-              />
-              <span className="kbd">Esc</span>
-            </div>
-            <div className="max-h-[52vh] overflow-y-auto p-2">
-              {visibleActions.map((action) => (
-                <button
-                  key={action.id}
-                  type="button"
-                  onClick={() => { setPaletteOpen(false); action.run(); }}
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-accent-soft/70"
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-black/[0.04] text-muted"><action.icon size={17} strokeWidth={1.8} /></span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-ink">{action.label}</span>
-                    <span className="block truncate text-xs text-muted">{action.description}</span>
+                onDoubleClick={() => {
+                  setWidgetOpen(false);
+                  navigate('/calendar');
+                }}
+                aria-expanded={!onCalendarRoute ? widgetOpen : undefined}
+                className={`relative flex h-9 min-w-0 flex-1 items-center gap-2.5 px-2.5 text-left text-[13.5px] font-medium ${
+                  sidebarCollapsed ? 'md:justify-center md:px-0' : ''
+                }`}
+              >
+                {(onCalendarRoute || widgetOpen) && (
+                  <span
+                    className="absolute bottom-1.5 left-0 top-1.5 w-[3px] rounded-r bg-accent"
+                    aria-hidden="true"
+                  />
+                )}
+                <CalendarIcon
+                  size={17}
+                  strokeWidth={1.85}
+                  className={`shrink-0 ${onCalendarRoute || widgetOpen ? 'text-[#60A5FA]' : ''}`}
+                />
+                <span className={`min-w-0 flex-1 truncate ${sidebarCollapsed ? 'md:hidden' : ''}`}>
+                  {t('Календарь')}
+                </span>
+                {todayEventCount > 0 && (
+                  <span
+                    className={`rounded-full bg-white/[0.12] px-1.5 py-0.5 text-[10.5px] font-semibold leading-none text-sidebar-text tabular-nums ${
+                      sidebarCollapsed ? 'md:hidden' : ''
+                    }`}
+                  >
+                    {todayEventCount}
                   </span>
-                  {action.shortcut && <span className="kbd">{action.shortcut}</span>}
-                </button>
-              ))}
-              {visibleActions.length === 0 && <p className="px-4 py-10 text-center text-sm text-muted">{t('Ничего не найдено')}</p>}
-            </div>
-          </section>
-        </div>
-      )}
+                )}
+              </button>
 
-      {user.mustChangePassword && !demoMode && (
-        <ChangePasswordModal onChanged={() => updateUser({ mustChangePassword: false })} />
-      )}
-      {settingsOpen && <PersonalSettings background={background} onBackground={(value) => { setBackground(value); return saveWorkspaceBackground(value); }} onClose={() => setSettingsOpen(false)} onSecurity={() => { setSettingsOpen(false); setSecurityOpen(true); }} />}
-      {securityOpen && <SecuritySettingsModal onClose={() => setSecurityOpen(false)} />}
-    </div>
+              {!onCalendarRoute && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileDrawerOpen(false);
+                    setWidgetOpen(false);
+                    navigate('/calendar');
+                  }}
+                  title={t('Открыть полный календарь')}
+                  aria-label={t('Открыть полный календарь')}
+                  className={`mr-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-sidebar-muted transition hover:bg-white/[0.1] hover:text-white ${
+                    sidebarCollapsed ? 'md:hidden' : ''
+                  }`}
+                >
+                  <Maximize2 size={13} strokeWidth={1.9} />
+                </button>
+              )}
+            </div>
+
+            {canSeeAdmin && (
+              <NavLink
+                to="/admin"
+                title={t('Администрирование')}
+                className={({ isActive }) =>
+                  `sidebar-item ${isActive ? 'sidebar-item-active' : ''} ${
+                    sidebarCollapsed ? 'md:justify-center md:px-0' : ''
+                  }`
+                }
+              >
+                <Shield size={17} strokeWidth={1.85} className="shrink-0" />
+                <span className={`min-w-0 flex-1 truncate ${sidebarCollapsed ? 'md:hidden' : ''}`}>
+                  {t('Админ')}
+                </span>
+              </NavLink>
+            )}
+          </nav>
+
+          {/* Контекстный слот активного модуля (#corvex-sidebar-slot) */}
+          <div
+            id="corvex-sidebar-slot"
+            ref={setSlotHost}
+            className={`dark-scroll min-h-0 flex-1 overflow-y-auto ${
+              sidebarCollapsed ? 'md:hidden' : ''
+            }`}
+          />
+          {sidebarCollapsed && <div className="hidden flex-1 md:block" />}
+
+          {/* Нижний блок профиля 64px */}
+          <div
+            ref={profileRef}
+            className="relative flex h-16 shrink-0 items-center border-t border-sidebar-line px-2.5"
+          >
+            <button
+              type="button"
+              onClick={() => setProfileMenuOpen((v) => !v)}
+              aria-expanded={profileMenuOpen}
+              aria-label={t('Профиль пользователя')}
+              className={`flex w-full items-center gap-2.5 rounded-lg p-1.5 text-left transition hover:bg-sidebar-hover ${
+                sidebarCollapsed ? 'md:justify-center' : ''
+              }`}
+            >
+              <Avatar name={user.displayName || user.username || 'Corvex'} size={34} presence />
+              <div className={`min-w-0 flex-1 ${sidebarCollapsed ? 'md:hidden' : ''}`}>
+                <div className="truncate text-[13px] font-semibold text-white">
+                  {user.displayName || user.username}
+                </div>
+                <div className="truncate text-[11.5px] text-sidebar-muted">
+                  {user.email}
+                </div>
+              </div>
+              <ChevronUp
+                size={15}
+                className={`shrink-0 text-sidebar-muted transition ${
+                  profileMenuOpen ? 'rotate-180 text-white' : ''
+                } ${sidebarCollapsed ? 'md:hidden' : ''}`}
+              />
+            </button>
+
+            {profileMenuOpen && (
+              <div
+                role="menu"
+                aria-label={t('Профиль пользователя')}
+                className="absolute bottom-[68px] left-2.5 z-30 w-[256px] animate-scale-in rounded-xl border border-line-control bg-surface p-1.5 text-ink shadow-pop"
+              >
+                <div className="border-b border-line-subtle px-2.5 py-2">
+                  <div className="truncate text-[13px] font-semibold text-ink">
+                    {user.displayName}
+                  </div>
+                  <div className="truncate text-xs text-muted">{user.email}</div>
+                  {user.groups.length > 0 && (
+                    <div className="mt-1 truncate text-[11px] text-faint">
+                      {user.groups.map((code) => systemGroupName(locale, code)).join(', ')}
+                    </div>
+                  )}
+                </div>
+
+                <div className="py-1">
+                  {has('MAIL_READ_OWN') && <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setProfileMenuOpen(false);
+                      setMobileDrawerOpen(false);
+                      navigate('/mail?settings=1');
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink-soft transition hover:bg-canvas hover:text-ink"
+                  >
+                    <Settings2 size={15} className="text-muted" />
+                    <span>{t('Настройки почты')}</span>
+                  </button>}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setProfileMenuOpen(false);
+                      setAppearanceOpen(true);
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink-soft transition hover:bg-canvas hover:text-ink"
+                  >
+                    <Palette size={15} className="text-muted" />
+                    <span>{t('Внешний вид')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setProfileMenuOpen(false);
+                      setSettingsOpen(true);
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink-soft transition hover:bg-canvas hover:text-ink"
+                  >
+                    <Settings2 size={15} className="text-muted" />
+                    <span>{t('Личные настройки')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setProfileMenuOpen(false);
+                      setSecurityOpen(true);
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink-soft transition hover:bg-canvas hover:text-ink"
+                  >
+                    <ShieldCheck size={15} className="text-muted" />
+                    <span>{t('Безопасность и 2FA')}</span>
+                  </button>
+
+                  <div className="flex items-center justify-between px-2.5 py-1.5">
+                    <span className="text-xs text-muted">{t('Язык интерфейса')}</span>
+                    <LanguageSwitcher />
+                  </div>
+                </div>
+
+                <div className="border-t border-line-subtle pt-1">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setProfileMenuOpen(false);
+                      void onLogout();
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-medium text-danger transition hover:bg-danger-soft"
+                  >
+                    <LogOut size={15} />
+                    <span>{demoMode ? t('Выйти из демо') : t('Выйти')}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </aside>
+
+        {/* Sidebar Calendar Widget */}
+        {widgetOpen && !onCalendarRoute && (
+          <CalendarSidebarWidget
+            sidebarOffsetPx={sidebarWidthPx}
+            onClose={() => setWidgetOpen(false)}
+          />
+        )}
+
+        {/* Crisp White Hairline Workspace */}
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface pb-14 md:pb-0">
+          <Outlet />
+        </main>
+
+        {/* Mobile (< 768px) 56px bottom navigation bar */}
+        <nav
+          aria-label={t('Нижняя навигация')}
+          className="fixed inset-x-0 bottom-0 z-40 flex h-14 items-center justify-around border-t border-line bg-surface px-2 md:hidden"
+        >
+          <NavLink
+            to="/mail"
+            className={({ isActive }) =>
+              `flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] font-medium ${
+                isActive ? 'text-accent' : 'text-muted'
+              }`
+            }
+          >
+            <Mail size={18} />
+            <span>{t('Почта')}</span>
+          </NavLink>
+          <NavLink
+            to="/chat"
+            className={({ isActive }) =>
+              `flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] font-medium ${
+                isActive ? 'text-accent' : 'text-muted'
+              }`
+            }
+          >
+            <MessageSquare size={18} />
+            <span>{t('Чаты')}</span>
+          </NavLink>
+          <NavLink
+            to="/calendar"
+            className={({ isActive }) =>
+              `flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] font-medium ${
+                isActive ? 'text-accent' : 'text-muted'
+              }`
+            }
+          >
+            <CalendarIcon size={18} />
+            <span>{t('Календарь')}</span>
+          </NavLink>
+          {canSeeAdmin && (
+            <NavLink
+              to="/admin"
+              className={({ isActive }) =>
+                `flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] font-medium ${
+                  isActive ? 'text-accent' : 'text-muted'
+                }`
+              }
+            >
+              <Shield size={18} />
+              <span>{t('Админ')}</span>
+            </NavLink>
+          )}
+        </nav>
+
+        {/* Live In-App Event Reminder Toast */}
+        {dueReminderEvent && (
+          <div
+            role="alert"
+            className="fixed bottom-16 right-4 z-50 w-[340px] animate-slide-up rounded-xl border border-line-control bg-surface p-3.5 shadow-pop md:bottom-4"
+          >
+            <div className="flex items-start gap-2.5">
+              <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#EEF4FF] text-accent">
+                <Bell size={16} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-accent">
+                    {t('Напоминание календаря')}
+                  </span>
+                  <StatusBadge
+                    tone={
+                      dueReminderEvent.priority === 'high'
+                        ? 'critical'
+                        : dueReminderEvent.priority === 'medium'
+                          ? 'warning'
+                          : 'positive'
+                    }
+                  >
+                    {dueReminderEvent.priority === 'high'
+                      ? t('Высокий')
+                      : dueReminderEvent.priority === 'medium'
+                        ? t('Средний')
+                        : t('Низкий')}
+                  </StatusBadge>
+                </div>
+                <h4 className="mt-1 truncate text-[13.5px] font-semibold text-ink">
+                  {dueReminderEvent.title}
+                </h4>
+                <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted tabular-nums">
+                  <ClockIcon size={12} />
+                  <span>
+                    {dueReminderEvent.allDay
+                      ? t('Весь день')
+                      : `${dueReminderEvent.startTime} – ${dueReminderEvent.endTime}`}
+                  </span>
+                </p>
+
+                <div className="mt-2.5 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedDate(dueReminderEvent.date);
+                      dismissReminder(reminderKey(dueReminderEvent.id, dueReminderEvent.date));
+                      setDueReminderEvent(null);
+                      navigate(`/calendar?date=${dueReminderEvent.date}`);
+                    }}
+                    className="btn-primary h-7 px-2.5 text-xs"
+                  >
+                    {t('Открыть')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      snoozeEventReminder(dueReminderEvent.id, 10, dueReminderEvent.date);
+                      setDueReminderEvent(null);
+                    }}
+                    className="btn-secondary h-7 px-2.5 text-xs"
+                  >
+                    {t('Отложить 10 мин')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      dismissReminder(reminderKey(dueReminderEvent.id, dueReminderEvent.date));
+                      setDueReminderEvent(null);
+                    }}
+                    aria-label={t('Закрыть напоминание')}
+                    className="ml-auto rounded p-1 text-faint hover:bg-canvas hover:text-ink"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <CommandPalette
+          open={commandOpen}
+          onClose={() => setCommandOpen(false)}
+          canSeeAdmin={canSeeAdmin}
+          onToggleCalendarWidget={() => toggleWidget()}
+          onOpenSecurity={() => setSecurityOpen(true)}
+          onLogout={() => void onLogout()}
+          demoMode={demoMode}
+        />
+
+        {user.mustChangePassword && !demoMode && (
+          <ChangePasswordModal onChanged={() => updateUser({ mustChangePassword: false })} />
+        )}
+        {securityOpen && <SecuritySettingsModal onClose={() => setSecurityOpen(false)} />}
+        {appearanceOpen && <AppearanceSettings onClose={() => setAppearanceOpen(false)} />}
+        {settingsOpen && (
+          <PersonalSettings
+            background={background}
+            onBackground={(value) => {
+              setBackground(value);
+              return saveWorkspaceBackground(value);
+            }}
+            onClose={() => setSettingsOpen(false)}
+            onSecurity={() => {
+              setSettingsOpen(false);
+              setSecurityOpen(true);
+            }}
+          />
+        )}
+      </div>
+    </SidebarSlotContext.Provider>
   );
 }

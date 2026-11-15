@@ -5,6 +5,7 @@ import {
   Hash,
   Lock,
   Megaphone,
+  MessageSquare,
   Mic,
   MoreHorizontal,
   Paperclip,
@@ -20,6 +21,10 @@ import { demoMessages, demoRooms, DemoMsg, DemoRoom } from '../../api/demoData';
 import { EmojiPickerButton, REACTION_EMOJI_OPTIONS, ReactionPickerButton } from '../../components/EmojiPicker';
 import { createInitialDemoReactionState, demoReactionKey, toggleDemoReaction } from './demoReactions';
 import { Avatar, EmptyState, IconButton } from '../../components/ui';
+import ChatSidebar from '../../components/ChatSidebar';
+import ChatThreadPanel from '../../components/ChatThreadPanel';
+import SidebarSlot from '../../components/SidebarSlot';
+import WorkspaceUtilityBar from '../../components/WorkspaceUtilityBar';
 import { formatTime, useI18n } from '../../i18n';
 import { firstGraphemes, insertTextAtSelection, stripMarkdownPreview } from '../../lib/text';
 import { renderChatMarkdown } from '../../lib/markdown';
@@ -62,6 +67,11 @@ function DemoChatPage() {
     ];
   });
   const [draft, setDraft] = useState('');
+  const [newRoomOpen, setNewRoomOpen] = useState(false);
+  const [newRoomTitle, setNewRoomTitle] = useState('');
+  const [threadRootId, setThreadRootId] = useState<string | null>(null);
+  const [threadDraft, setThreadDraft] = useState('');
+  const [threadReplies, setThreadReplies] = useState<Record<string, Array<{ id: string; author: string; text: string; time: string }>>>({});
   const [search, setSearch] = useState('');
   const [mobileConversation, setMobileConversation] = useState(false);
   const [reactionState, setReactionState] = useState(createInitialDemoReactionState);
@@ -110,6 +120,7 @@ function DemoChatPage() {
   }, [roomMsgs.length, roomId]);
 
   const selectRoom = (id: string) => {
+    if (id !== roomId) { setThreadRootId(null); setThreadDraft(''); }
     setRoomId(id);
     setMobileConversation(true);
     markRoomRead(id);
@@ -191,14 +202,23 @@ function DemoChatPage() {
   if (!room) return <EmptyState icon={Hash} title={t('Чатов пока нет')} />;
 
   return (
-    <div className="mail-workspace h-full md:p-3 xl:p-4">
-      <div className="flex h-full min-h-0 overflow-hidden bg-surface md:gap-2 md:bg-transparent">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 bg-surface">
+      <SidebarSlot>
+        <ChatSidebar
+          channels={rooms.filter((item) => item.online === undefined).map((item) => ({ id: item.id, title: cleanTitle(item.title), unread: item.unread }))}
+          direct={rooms.filter((item) => item.online !== undefined).map((item) => ({ id: item.id, title: cleanTitle(item.title), unread: item.unread, online: item.online }))}
+          selectedId={roomId}
+          onSelect={selectRoom}
+          onNew={() => setNewRoomOpen(true)}
+        />
+      </SidebarSlot>
+      <div className="relative flex h-full min-h-0 min-w-0 flex-1 overflow-hidden bg-surface">
         {/* Список разговоров */}
-        <aside className={`${mobileConversation ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-line bg-surface md:w-[320px] md:rounded-2xl md:border xl:w-[344px]`}>
+        <aside className={`${mobileConversation ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-line bg-surface md:w-[356px]`}>
           <header className="shrink-0 px-4 pb-3 pt-5">
             <div className="flex items-center">
               <h1 className="flex-1 text-[19px] font-semibold tracking-[-0.025em]">{t('Сообщения')}</h1>
-              <IconButton icon={PenSquare} label={t('Новый разговор')} />
+              <IconButton icon={PenSquare} label={t('Новый разговор')} onClick={() => setNewRoomOpen(true)} />
             </div>
             <div className="relative mt-3">
               <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-faint" />
@@ -224,10 +244,10 @@ function DemoChatPage() {
         </aside>
 
         {/* Разговор */}
-        <section className={`${mobileConversation ? 'flex' : 'hidden md:flex'} min-w-0 flex-1 flex-col bg-surface md:overflow-hidden md:rounded-2xl md:border md:border-line`}>
-          <header className="flex min-h-[68px] shrink-0 items-center gap-3 border-b border-line px-4 py-3">
+        <section className={`${mobileConversation ? 'flex' : 'hidden md:flex'} min-w-0 flex-1 flex-col bg-surface`}>
+          <header className="z-10 flex h-14 shrink-0 items-center gap-2 border-b border-line bg-surface px-4">
             <button type="button" onClick={() => setMobileConversation(false)} className="icon-btn md:hidden" aria-label={t('К списку чатов')}><ArrowLeft size={19} /></button>
-            <RoomMark room={room} size={42} />
+            <RoomMark room={room} size={34} />
             <div className="min-w-0 flex-1">
               <h2 className="truncate text-[16px] font-semibold tracking-[-0.015em]">{cleanTitle(room.title)}</h2>
               <p className="truncate text-xs text-muted">{room.online ? t('В сети') : room.kind}</p>
@@ -238,6 +258,7 @@ function DemoChatPage() {
               <span className="hidden md:block"><IconButton icon={Video} label={t('Видеозвонок')} /></span>
               <IconButton icon={MoreHorizontal} label={t('Ещё действия')} />
             </div>
+            <WorkspaceUtilityBar className="hidden md:flex" />
           </header>
 
           <div className="scroll-area min-h-0 flex-1 px-3 py-5 sm:px-5">
@@ -278,7 +299,7 @@ function DemoChatPage() {
                                 key={reaction.emoji}
                                 type="button"
                                 onClick={() => toggleReaction(m.id, reaction.emoji)}
-                                className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium transition ${reacted ? 'border-accent/25 bg-accent-soft text-accent-dark' : 'border-line bg-surface text-muted hover:border-accent/25'}`}
+                                className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition ${reacted ? 'border-accent/25 bg-accent-soft text-accent-dark' : 'border-line bg-surface text-muted hover:border-accent/25'}`}
                                 title={reactionName}
                                 aria-label={`${t('Реакция')}: ${reactionName}: ${reaction.count}`}
                               >
@@ -289,9 +310,10 @@ function DemoChatPage() {
                         </div>
                       )}
                     </div>
-                    <div className="absolute -top-3 right-3 hidden items-center rounded-lg border border-line bg-surface p-0.5 shadow-soft group-hover:flex">
+                    <div className="absolute -top-3 right-3 flex items-center rounded-lg border border-line bg-surface p-0.5 opacity-100 shadow-soft md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
                       <ReactionPickerButton onPick={(emoji) => toggleReaction(m.id, emoji)} />
                       <button type="button" onClick={() => replyTo(m)} className="icon-btn-sm" title={t('Ответить')} aria-label={t('Ответить')}><Reply size={15} /></button>
+                      <button type="button" onClick={() => { setThreadRootId(m.id); setThreadDraft(''); }} className="icon-btn-sm" title={t('Ответить в ветке')} aria-label={t('Ответить в ветке')}><MessageSquare size={15} /></button>
                       <button type="button" className="icon-btn-sm" title={t('Ещё')} aria-label={t('Ещё действия с сообщением')}><MoreHorizontal size={15} /></button>
                     </div>
                   </div>
@@ -309,7 +331,7 @@ function DemoChatPage() {
                   <Lock size={16} /> {t('Это канал объявлений. Публиковать могут только администраторы.')}
                 </div>
               ) : (
-                <div className="rounded-[18px] border border-line bg-surface shadow-soft transition focus-within:border-accent/40 focus-within:ring-4 focus-within:ring-accent/10">
+                <div className="rounded-xl border border-line bg-surface transition focus-within:border-accent/40 focus-within:ring-4 focus-within:ring-accent/10">
                   <textarea
                     ref={inputRef}
                     value={draft}
@@ -322,6 +344,7 @@ function DemoChatPage() {
                       }
                     }}
                     placeholder={t('Сообщение для {name}…', { name: cleanTitle(room.title) })}
+                    aria-label={t('Сообщение для {name}…', { name: cleanTitle(room.title) })}
                     className="max-h-36 min-h-[58px] w-full resize-none border-0 bg-transparent px-4 pb-1 pt-3.5 text-[14.5px] leading-relaxed outline-none placeholder:text-faint focus:ring-0"
                   />
                   <div className="flex items-center gap-0.5 px-2 pb-2">
@@ -333,7 +356,7 @@ function DemoChatPage() {
                       type="button"
                       onClick={send}
                       disabled={!draft.trim()}
-                      className="ml-auto flex h-9 w-9 items-center justify-center rounded-full bg-ink text-white transition hover:bg-ink-soft disabled:cursor-not-allowed disabled:bg-black/[0.08] disabled:text-faint"
+                      className="ml-auto flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:bg-black/[0.08] disabled:text-faint"
                       aria-label={t('Отправить сообщение')}
                     >
                       <SendHorizontal size={16} />
@@ -344,7 +367,50 @@ function DemoChatPage() {
             </div>
           </div>
         </section>
+        {threadRootId && roomMsgs.find((message) => message.id === threadRootId) && (() => {
+          const rootMessage = roomMsgs.find((message) => message.id === threadRootId)!;
+          const author = rootMessage.mine ? user?.displayName ?? t('Вы') : rootMessage.author;
+          return <ChatThreadPanel
+            root={<div className="flex gap-2.5"><Avatar name={author} size={30} /><div className="min-w-0"><div className="text-sm font-semibold text-ink">{author}</div><div className="message-markdown mt-1 text-sm text-ink-soft" dangerouslySetInnerHTML={renderChatMarkdown(rootMessage.text)} /></div></div>}
+            draft={threadDraft}
+            onDraftChange={setThreadDraft}
+            onClose={() => { setThreadRootId(null); setThreadDraft(''); }}
+            canWrite={!readOnly}
+            onSend={() => {
+              const text = threadDraft.trim();
+              if (!text || !threadRootId) return;
+              const reply = { id: `reply-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, author: user?.displayName ?? t('Вы'), text, time: formatTime(locale, new Date()) };
+              setThreadReplies((previous) => ({ ...previous, [threadRootId]: [...(previous[threadRootId] ?? []), reply] }));
+              setThreadDraft('');
+            }}
+          >
+            <p className="text-xs text-muted">{t('Ответы в демо-ветке доступны, пока открыт экран чата.')}</p>
+            {(threadReplies[threadRootId] ?? []).length === 0 && <p className="text-xs text-muted">{t('Ответов пока нет')}</p>}
+            {(threadReplies[threadRootId] ?? []).map((reply) => <article key={reply.id} className="flex gap-2.5"><Avatar name={reply.author} size={30} /><div className="min-w-0"><div className="flex gap-2 text-sm font-semibold text-ink">{reply.author}<time className="text-[11px] font-normal text-faint">{reply.time}</time></div><div className="message-markdown mt-1 text-sm text-ink-soft" dangerouslySetInnerHTML={renderChatMarkdown(reply.text)} /></div></article>)}
+          </ChatThreadPanel>;
+        })()}
       </div>
+      {newRoomOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={() => setNewRoomOpen(false)}>
+          <form role="dialog" aria-modal="true" aria-label={t('Новый разговор')} className="w-full max-w-md rounded-xl border border-line bg-surface p-5 shadow-pop" onClick={(event) => event.stopPropagation()} onSubmit={(event) => {
+            event.preventDefault();
+            const title = newRoomTitle.trim();
+            if (!title) return;
+            const id = `demo-room-${Date.now()}`;
+            setRooms((previous) => [...previous, { id, title, kind: t('Групповой чат'), unread: 0 }]);
+            setRoomId(id);
+            setMobileConversation(true);
+            setNewRoomOpen(false);
+            setNewRoomTitle('');
+          }}>
+            <h2 className="mb-4 text-base font-semibold">{t('Новый разговор')}</h2>
+            <label className="field-label" htmlFor="demo-room-title">{t('Название')}</label>
+            <input id="demo-room-title" className="field" value={newRoomTitle} onChange={(event) => setNewRoomTitle(event.target.value)} required autoFocus />
+            <p className="mt-2 text-xs text-muted">{t('Демо-разговор доступен, пока открыт экран чата.')}</p>
+            <div className="mt-4 flex justify-end gap-2"><button type="button" className="btn-secondary" onClick={() => setNewRoomOpen(false)}>{t('Отмена')}</button><button type="submit" className="btn-primary">{t('Создать')}</button></div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

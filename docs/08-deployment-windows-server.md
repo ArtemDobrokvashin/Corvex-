@@ -73,6 +73,40 @@ notepad .env              # домены, LDAP при наличии AD, пол�
 | `TXT _dmarc` | `v=DMARC1; p=none; rua=mailto:dmarc@company.local` → через месяц `p=quarantine` | политика подделок и отчёты |
 | `CNAME autoconfig`, SRV `_imaps._tcp` и т.п. | на `mail.company.local` | автоконфиг Thunderbird/Outlook — пользователи не вводят серверы руками |
 
+### Второй и последующие собственные домены
+
+Домен добавляется в админке (`/api/v1/mail/admin/domains`, право
+`ADMIN_MAIL_POLICY`), создаётся в James и подтверждается DNS-проверкой. Точные
+записи для регистратора печатает `GET /{domain}/dns`: там же реальный `p=`
+действующего ключа, поэтому ключи вручную не копируются.
+
+Для подписи исходящих писем второго домена нужен отдельный ключ:
+
+```powershell
+# infra\secrets\dkim\<domain>.pem + необязательный <domain>.selector
+New-Item -ItemType Directory -Force infra\secrets\dkim | Out-Null
+docker run --rm -v "${PWD}\infra\secrets\dkim:/out" alpine sh -c "apk add --no-cache openssl >/dev/null && openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /out/company.ru.pem && chown 100:101 /out/company.ru.pem && chmod 600 /out/company.ru.pem"
+"corvex1" | Out-File -Encoding ascii infra\secrets\dkim\company.ru.selector
+docker compose restart mail-smtp-service
+```
+
+`chown 100:101` обязателен: сервис работает не от root, и ключ с правами
+`0600 root:root` будет пропущен с ошибкой в логе (подпись домена молча
+отключится). Селектор можно не создавать — тогда используется
+`CORVEX_DKIM_SELECTOR` (`corvex1`); после смены ключа меняйте и селектор, чтобы
+старая DNS-запись не мешала проверке.
+
+Каталог `infra/secrets/dkim` монтируется в `mail-smtp-service` read-only
+(`CORVEX_DKIM_KEYS_DIR`). Ключ выбирается по домену From; ключ одного домена
+никогда не применяется к другому. Добавление ключа требует перезапуска
+сервиса — это осознанно, чтобы не перечитывать каталог на каждое письмо.
+
+Принимаемые домены: `CORVEX_MAIL_DOMAINS` остаётся аварийным статическим
+списком, а подтверждённые в реестре домены SMTP получает от mail-storage
+(`/internal/mail/domains/accepted`, кэш 30 c). Правка `.env` для нового домена
+не требуется; если реестр недоступен, письмо на неизвестный домен получает
+`451`, а не отказ «нет такого пользователя».
+
 ## Шаг 8. Запуск
 
 ```powershell

@@ -362,6 +362,9 @@ services:
       CORVEX_DKIM_DOMAIN: ${CORVEX_MAIL_DOMAIN:-company.local}
       CORVEX_DKIM_SELECTOR: ${CORVEX_DKIM_SELECTOR:-corvex1}
       CORVEX_DKIM_PRIVATE_KEY_FILE: /run/secrets/dkim_private.pem
+      # Ключи остальных доменов: infra/secrets/dkim/<domain>.pem (+ <domain>.selector).
+      # Каталог монтируется только для чтения; отсутствие — не ошибка.
+      CORVEX_DKIM_KEYS_DIR: /run/secrets/dkim
       CORVEX_SMTP_TLS_CERT_FILE: /certs/fullchain.pem
       CORVEX_SMTP_TLS_KEY_FILE: /certs/privkey.pem
     volumes:

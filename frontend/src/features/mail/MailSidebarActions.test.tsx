@@ -34,6 +34,21 @@ describe('mail sidebar actions', () => {
     expect(admin.textContent).toContain('External mailboxes');
   });
 
+  it('offers drafts only when the server draft store is available', () => {
+    useLocaleStore.setState({ locale: 'en' });
+    document.body.innerHTML = renderToStaticMarkup(
+      <MailSidebarActions
+        canAdminExternalAccounts={false}
+        externalAccountCount={0}
+        onCompose={() => undefined}
+        onOpenExternal={() => undefined}
+        onOpenDrafts={() => undefined}
+      />,
+    );
+    const texts = [...document.querySelectorAll('button')].map((button) => button.textContent?.trim());
+    expect(texts).toEqual(['ComposeC', 'Drafts']);
+  });
+
   it('keeps fixed action classes and reserves the same badge space for zero and two accounts', () => {
     useLocaleStore.setState({ locale: 'en' });
     const zero = render(true, 0).querySelectorAll('button')[1];

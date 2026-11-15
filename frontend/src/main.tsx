@@ -11,8 +11,8 @@ import './index.css';
 // Ленивая загрузка модулей (ТЗ §10.4): админка не тянется в бандл обычного пользователя
 const MailPage = lazy(() => import('./features/mail/MailPage'));
 const ChatPage = lazy(() => import('./features/chat/ChatPage'));
-const AdminPage = lazy(() => import('./features/admin/AdminPage'));
 const CalendarPage = lazy(() => import('./features/calendar/CalendarPage'));
+const AdminPage = lazy(() => import('./features/admin/AdminPage'));
 
 function RouteLoading({ source }: { source: string }) {
   const t = useT();

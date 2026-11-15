@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { describe, expect, it, vi } from 'vitest';
 import { useLocaleStore } from '../../i18n';
 import { cleanComposeHtml } from './ComposeEditor';
-import { ComposePanel } from './MailPage';
+import { ComposePanel } from './ComposePanel';
 
 describe('compose HTML editor', () => {
   it('strips executable content, unsafe links and CSS while preserving basic formatting', () => {

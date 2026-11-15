@@ -30,11 +30,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * Реализации портов SMTP-приёма и жизненный цикл SubEtha-листенера.
@@ -67,26 +64,47 @@ public class SmtpServerConfig {
         });
     }
 
+    /**
+     * Домены берутся из статического списка и реестра, подтверждённого в James.
+     * Если реестр недоступен и домена нет в статическом списке, входящее письмо
+     * получает 451: отказ «нет такого пользователя» на собственный домен
+     * означал бы потерю письма из-за временной аварии.
+     */
+    @Bean
+    LocalDomainPolicy localDomainPolicy(
+            @Value("${corvex.mail.domains:company.local}") String domainsCsv,
+            @Value("${corvex.storage.base-url:${CORVEX_STORAGE_BASE_URL:http://mail-storage-service:8085}}") String storageBaseUrl,
+            @Value("${corvex.security.internal-token:${CORVEX_INTERNAL_API_TOKEN:}}") String internalToken,
+            ObjectMapper mapper) {
+        String endpoint = storageBaseUrl.replaceAll("/$", "") + "/internal/mail/domains/accepted";
+        LocalDomainPolicy policy = LocalDomainPolicy.withRegistry(domainsCsv, endpoint, internalToken, mapper);
+        log.info("Configured mail domains (registry consulted for the rest): {}", policy.configuredDomains());
+        return policy;
+    }
+
     @Bean
     InboundMessageHandlerFactory.RecipientPolicy recipientPolicy(
-            @Value("${corvex.mail.domains:company.local}") String domainsCsv,
+            LocalDomainPolicy localDomains,
             @Value("${corvex.auth.base-url:${CORVEX_AUTH_SERVICE_URL:http://auth-service:8081}}") String authBaseUrl,
             @Value("${corvex.security.internal-token:${CORVEX_INTERNAL_API_TOKEN:}}") String internalToken,
             ObjectMapper mapper) {
-        Set<String> domains = Stream.of(domainsCsv.split(","))
-                .map(String::trim).map(s -> s.toLowerCase(Locale.ROOT)).collect(Collectors.toSet());
         String baseUrl = authBaseUrl.replaceAll("/$", "");
         HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
         ConcurrentMap<String, CachedDecision> cache = new ConcurrentHashMap<>();
-        log.info("Local mail domains (relay allowed only to existing mailboxes): {}", domains);
         return address -> {
             String email = normalizeAddress(address);
             int at = email.lastIndexOf('@');
             if (at <= 0 || at == email.length() - 1) {
                 return InboundMessageHandlerFactory.RecipientPolicy.Decision.REJECT_UNKNOWN_USER;
             }
-            if (!domains.contains(email.substring(at + 1))) {
-                return InboundMessageHandlerFactory.RecipientPolicy.Decision.REJECT_RELAY;
+            switch (localDomains.classify(email.substring(at + 1))) {
+                case LOCAL -> { }
+                case UNKNOWN -> {
+                    return InboundMessageHandlerFactory.RecipientPolicy.Decision.TEMP_FAIL;
+                }
+                case FOREIGN -> {
+                    return InboundMessageHandlerFactory.RecipientPolicy.Decision.REJECT_RELAY;
+                }
             }
             CachedDecision cached = cache.get(email);
             if (cached != null && cached.expiresAt().isAfter(Instant.now())) {

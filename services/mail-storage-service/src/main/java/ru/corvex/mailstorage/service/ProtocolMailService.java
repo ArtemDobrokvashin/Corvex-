@@ -105,24 +105,52 @@ public class ProtocolMailService {
     @Transactional
     public ProtocolDtos.FolderInfo createFolder(UUID ownerId, ProtocolDtos.CreateFolderRequest req) {
         String name = validateFolderName(req.name());
+        folders.lockFolderNames(ownerId.toString());
         MailFolder parent = req.parentId() == null ? null : loadFolder(ownerId, req.parentId());
         if (folders.existsSibling(ownerId, req.parentId(), name)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Папка с таким именем уже существует");
         }
-        MailFolder f = new MailFolder();
-        f.setOwnerId(ownerId);
-        f.setParent(parent);
-        f.setName(name);
-        f.setSpecialUse(null);
-        f.setUidNext(1);
-        f.setUidValidity(Math.max(1, Instant.now().getEpochSecond()));
-        f.setHighestModseq(1);
-        return toFolderInfo(folders.saveAndFlush(f));
+        ensureDistinctStorageFolder(ownerId, null, name);
+        return toFolderInfo(createFolderRecord(ownerId, parent, name));
+    }
+
+    /**
+     * Внешняя синхронизация повторно использует существующий логический путь, а
+     * новые сегменты создаёт под тем же lock и с теми же проверками, что IMAP/web.
+     * Сначала ищем прежний путь, чтобы не ломать синхронизацию старых имён.
+     */
+    @Transactional
+    public MailFolder ensureImportedFolder(UUID ownerId, UUID parentId, String rawName) {
+        folders.lockFolderNames(ownerId.toString());
+        MailFolder parent = parentId == null ? null : loadFolder(ownerId, parentId);
+        String name = rawName == null ? null : rawName.trim();
+        for (MailFolder candidate : folders.findAllByOwnerIdOrderBySpecialUseAscNameAsc(ownerId)) {
+            UUID candidateParentId = candidate.getParent() == null ? null : candidate.getParent().getId();
+            if (java.util.Objects.equals(candidateParentId, parentId) && candidate.getName().equalsIgnoreCase(name)) {
+                return candidate;
+            }
+        }
+        name = validateFolderName(name);
+        ensureDistinctStorageFolder(ownerId, null, name);
+        return createFolderRecord(ownerId, parent, name);
+    }
+
+    private MailFolder createFolderRecord(UUID ownerId, MailFolder parent, String name) {
+        MailFolder folder = new MailFolder();
+        folder.setOwnerId(ownerId);
+        folder.setParent(parent);
+        folder.setName(name);
+        folder.setSpecialUse(null);
+        folder.setUidNext(1);
+        folder.setUidValidity(Math.max(1, Instant.now().getEpochSecond()));
+        folder.setHighestModseq(1);
+        return folders.saveAndFlush(folder);
     }
 
     @Transactional(rollbackFor = IOException.class)
     public ProtocolDtos.FolderInfo renameFolder(UUID ownerId, UUID folderId, ProtocolDtos.RenameFolderRequest req)
             throws IOException {
+        folders.lockFolderNames(ownerId.toString());
         MailFolder folder = folders.lockById(loadFolder(ownerId, folderId).getId()).orElseThrow();
         if (folder.getSpecialUse() != null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Системную папку переименовать нельзя");
@@ -148,6 +176,9 @@ public class ProtocolMailService {
         }
         String oldName = folder.getName();
         if (!oldName.equals(newName)) {
+            // Новое имя не должно указывать на каталог другой папки: иначе два
+            // логических имени делят один Maildir и удаление одного задевает другое.
+            ensureDistinctStorageFolder(ownerId, folderId, newName);
             // Retain the original directory and stage independent message copies.
             // Rollback keeps every original; commit does not recursively clean up.
             loadOwner(ownerId);
@@ -171,6 +202,7 @@ public class ProtocolMailService {
 
     @Transactional
     public void deleteFolder(UUID ownerId, UUID folderId) {
+        folders.lockFolderNames(ownerId.toString());
         MailFolder folder = folders.lockById(loadFolder(ownerId, folderId).getId()).orElseThrow();
         if (folder.getSpecialUse() != null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Системную папку удалить нельзя");
@@ -178,6 +210,9 @@ public class ProtocolMailService {
         if (folders.existsByParent_Id(folderId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Сначала удалите вложенные папки");
         }
+        // Каталог мог достаться от старого имени и быть общим с другой папкой:
+        // удалять письма в таком случае нельзя без ручной проверки.
+        ensureSafeSourceFolder(ownerId, folder);
         // Read scalar UIDs before locking; do not keep stale entities in the persistence context.
         for (Long uid : messages.findFolderUids(folderId, ownerId)) {
             messages.lockFolderUid(folderId, uid, ownerId).ifPresent(m -> {
@@ -506,15 +541,57 @@ public class ProtocolMailService {
         log.warn("Тело удалённого письма {} временно сохранено; безопасная очистка не настроена", message.getId());
     }
 
+    /** Не переносить и не удалять каталог старой папки, если он может быть общим. */
+    private void ensureSafeSourceFolder(UUID ownerId, MailFolder folder) {
+        try {
+            ensureDistinctStorageFolder(ownerId, folder.getId(), folder.getName());
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Недопустимый каталог старой папки требует проверки");
+        }
+    }
+
+    /**
+     * Maildir пока использует плоские санитизированные имена, а не UUID папок.
+     * Разные логические имена (в том числе в разных родителях) могут указывать
+     * на один каталог. Не создаём такую пару: удаление одной папки иначе могло
+     * бы удалить файлы другой. Исторические дубли здесь не изменяются.
+     */
+    private void ensureDistinctStorageFolder(UUID ownerId, UUID exceptId, String name) {
+        String segment = MaildirStorage.folderPathSegment(name);
+        boolean reserved = DEFAULT_FOLDERS.values().stream()
+                .anyMatch(systemName -> MaildirStorage.folderPathSegment(systemName).equalsIgnoreCase(segment));
+        if (reserved) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Имя конфликтует с системной папкой в хранилище");
+        }
+        for (MailFolder other : folders.findAllByOwnerIdOrderBySpecialUseAscNameAsc(ownerId)) {
+            if (other.getId() != null && other.getId().equals(exceptId)) continue;
+            String otherSegment;
+            try {
+                otherSegment = MaildirStorage.folderPathSegment(other.getName());
+            } catch (IllegalArgumentException ignored) {
+                // Старое некорректное имя не может использоваться как каталог Maildir.
+                continue;
+            }
+            if (segment.equalsIgnoreCase(otherSegment)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Имя конфликтует с другой папкой в хранилище");
+            }
+        }
+    }
+
     static String validateFolderName(String raw) {
         if (raw == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Имя папки не задано");
         }
         String name = raw.trim();
-        if (name.isEmpty() || name.length() > 256
+        if (name.isEmpty() || name.length() > 256 || ".".equals(name)
                 || name.contains("/") || name.contains("\\") || name.contains("%") || name.contains("*")
                 || name.contains("..") || name.chars().anyMatch(c -> c < 0x20)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Недопустимое имя папки");
+        }
+        // Большинство ФС ограничивают один сегмент 255 байтами. Здесь он ASCII
+        // после санитизации, поэтому его длина равна длине в байтах.
+        if (MaildirStorage.folderPathSegment(name).length() > 255) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Имя папки слишком длинное для хранилища");
         }
         if ("INBOX".equalsIgnoreCase(name)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "INBOX — системная папка");

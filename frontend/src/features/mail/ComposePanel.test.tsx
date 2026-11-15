@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, vi } from 'vitest';
 import { useLocaleStore } from '../../i18n';
-import { ComposePanel } from './MailPage';
+import { ComposePanel } from './ComposePanel';
 
 describe('compose attachments', () => {
   it('adds dropped files and allows removing them without submitting', async () => {

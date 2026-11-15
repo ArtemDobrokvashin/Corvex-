@@ -55,7 +55,7 @@ class SmtpServerConfigTest {
     @Test
     void deniesRelayToForeignDomainsBeforeAuthLookup() {
         InboundMessageHandlerFactory.RecipientPolicy policy = config.recipientPolicy(
-                "company.local", "http://localhost:1", "", new ObjectMapper());
+                LocalDomainPolicy.staticOnly("company.local"), "http://localhost:1", "", new ObjectMapper());
 
         assertEquals(InboundMessageHandlerFactory.RecipientPolicy.Decision.REJECT_RELAY,
                 policy.check("victim@partner.example"));
@@ -119,7 +119,7 @@ class SmtpServerConfigTest {
             }
             return RecordingHttpServer.Response.json(200, "{\"status\":\"active\"}");
         });
-        var policy = config.recipientPolicy(" Company.Local, Branch.Local ",
+        var policy = config.recipientPolicy(LocalDomainPolicy.staticOnly(" Company.Local, Branch.Local "),
                 server.baseUrl() + "/", "internal-token", mapper);
 
         assertEquals(InboundMessageHandlerFactory.RecipientPolicy.Decision.ACCEPT,
@@ -148,7 +148,7 @@ class SmtpServerConfigTest {
     @Test
     void recipientPolicyEncodesPlusAddressing() {
         server.setHandler(request -> RecordingHttpServer.Response.json(200, "{\"status\":\"ACTIVE\"}"));
-        var policy = config.recipientPolicy("company.local", server.baseUrl(), "token", mapper);
+        var policy = config.recipientPolicy(LocalDomainPolicy.staticOnly("company.local"), server.baseUrl(), "token", mapper);
 
         assertEquals(InboundMessageHandlerFactory.RecipientPolicy.Decision.ACCEPT,
                 policy.check("user+tag@company.local"));
@@ -157,7 +157,7 @@ class SmtpServerConfigTest {
 
     @Test
     void recipientPolicyRejectsMalformedAddressesWithoutHttp() {
-        var policy = config.recipientPolicy("company.local", server.baseUrl(), "token", mapper);
+        var policy = config.recipientPolicy(LocalDomainPolicy.staticOnly("company.local"), server.baseUrl(), "token", mapper);
 
         assertEquals(InboundMessageHandlerFactory.RecipientPolicy.Decision.REJECT_UNKNOWN_USER, policy.check("nope"));
         assertEquals(InboundMessageHandlerFactory.RecipientPolicy.Decision.REJECT_UNKNOWN_USER, policy.check("@company.local"));
@@ -167,13 +167,14 @@ class SmtpServerConfigTest {
 
     @Test
     void recipientPolicyTempFailsOnMissingTokenHttpErrorsAndConnectionFailure() throws IOException {
-        var noToken = config.recipientPolicy("company.local", server.baseUrl(), " ", mapper);
+        var noToken = config.recipientPolicy(LocalDomainPolicy.staticOnly("company.local"),
+                server.baseUrl(), " ", mapper);
         assertEquals(InboundMessageHandlerFactory.RecipientPolicy.Decision.TEMP_FAIL,
                 noToken.check("user@company.local"));
         assertEquals(0, server.requests().size());
 
         server.setHandler(request -> RecordingHttpServer.Response.empty(503));
-        var flaky = config.recipientPolicy("company.local", server.baseUrl(), "token", mapper);
+        var flaky = config.recipientPolicy(LocalDomainPolicy.staticOnly("company.local"), server.baseUrl(), "token", mapper);
         assertEquals(InboundMessageHandlerFactory.RecipientPolicy.Decision.TEMP_FAIL,
                 flaky.check("user@company.local"));
         assertEquals(InboundMessageHandlerFactory.RecipientPolicy.Decision.TEMP_FAIL,
@@ -182,7 +183,8 @@ class SmtpServerConfigTest {
 
         int closedPort = closedPort();
         var unreachable = config.recipientPolicy(
-                "company.local", "http://127.0.0.1:" + closedPort, "token", mapper);
+                LocalDomainPolicy.staticOnly("company.local"),
+                "http://127.0.0.1:" + closedPort, "token", mapper);
         assertEquals(InboundMessageHandlerFactory.RecipientPolicy.Decision.TEMP_FAIL,
                 unreachable.check("user@company.local"));
     }

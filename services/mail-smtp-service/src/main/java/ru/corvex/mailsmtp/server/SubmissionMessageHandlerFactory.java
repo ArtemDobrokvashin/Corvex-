@@ -6,7 +6,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.subethamail.smtp.MessageContext;
 import org.subethamail.smtp.MessageHandler;
@@ -20,15 +19,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * Submission 587: только аутентифицированные пользователи, MAIL FROM обязан совпадать с ящиком,
@@ -49,7 +46,7 @@ public class SubmissionMessageHandlerFactory implements MessageHandlerFactory {
     private final StorageRawClient rawClient;
     private final RabbitTemplate rabbit;
     private final ObjectMapper mapper;
-    private final Set<String> localDomains;
+    private final LocalDomainPolicy localDomains;
 
     public SubmissionMessageHandlerFactory(SubmissionIdentityClient identities,
                                            InboundMessageHandlerFactory.RecipientPolicy localRecipients,
@@ -57,15 +54,14 @@ public class SubmissionMessageHandlerFactory implements MessageHandlerFactory {
                                            StorageRawClient rawClient,
                                            RabbitTemplate rabbit,
                                            ObjectMapper mapper,
-                                           @Value("${corvex.mail.domains:company.local}") String domainsCsv) {
+                                           LocalDomainPolicy localDomains) {
         this.identities = identities;
         this.localRecipients = localRecipients;
         this.storage = storage;
         this.rawClient = rawClient;
         this.rabbit = rabbit;
         this.mapper = mapper;
-        this.localDomains = Stream.of(domainsCsv.split(","))
-                .map(String::trim).map(s -> s.toLowerCase(Locale.ROOT)).collect(Collectors.toSet());
+        this.localDomains = localDomains;
     }
 
     @Override
@@ -73,6 +69,10 @@ public class SubmissionMessageHandlerFactory implements MessageHandlerFactory {
         return new MessageHandler() {
             private String mailFrom;
             private final List<String> recipients = new ArrayList<>();
+            // Решение принимается один раз, на RCPT: между RCPT и DATA список
+            // доменов может обновиться, и повторная классификация отправила бы
+            // письмо на собственный домен внешним релеем.
+            private final Map<String, LocalDomainPolicy.Kind> recipientKinds = new HashMap<>();
 
             @Override
             public void from(String from) throws RejectException {
@@ -83,6 +83,11 @@ public class SubmissionMessageHandlerFactory implements MessageHandlerFactory {
                     throw new RejectException(553, "Sender address rejected: not owned by user");
                 }
                 this.mailFrom = normalized;
+            }
+
+            private void accept(String normalized, LocalDomainPolicy.Kind kind) {
+                recipients.add(normalized);
+                recipientKinds.put(normalized, kind);
             }
 
             @Override
@@ -97,20 +102,26 @@ public class SubmissionMessageHandlerFactory implements MessageHandlerFactory {
                         || (recipients.size() >= BULK_THRESHOLD && !mailbox.can("MAIL_BULK_SEND"))) {
                     throw new RejectException(552, "Too many recipients");
                 }
-                if (isLocal(normalized)) {
-                    if (!mailbox.can("MAIL_SEND_INTERNAL")) {
-                        throw new RejectException(550, "Relay denied");
+                switch (kindOf(normalized)) {
+                    case UNKNOWN -> throw new RejectException(451,
+                            "Temporary local problem - please try later");
+                    case LOCAL -> {
+                        if (!mailbox.can("MAIL_SEND_INTERNAL")) {
+                            throw new RejectException(550, "Relay denied");
+                        }
+                        switch (localRecipients.check(normalized)) {
+                            case ACCEPT -> accept(normalized, LocalDomainPolicy.Kind.LOCAL);
+                            case TEMP_FAIL -> throw new RejectException(451,
+                                    "Temporary local problem - please try later");
+                            default -> throw new RejectException(550, "No such user here");
+                        }
                     }
-                    switch (localRecipients.check(normalized)) {
-                        case ACCEPT -> recipients.add(normalized);
-                        case TEMP_FAIL -> throw new RejectException(451, "Temporary local problem - please try later");
-                        default -> throw new RejectException(550, "No such user here");
+                    case FOREIGN -> {
+                        if (!mailbox.can("MAIL_SEND_EXTERNAL")) {
+                            throw new RejectException(550, "Relay denied");
+                        }
+                        accept(normalized, LocalDomainPolicy.Kind.FOREIGN);
                     }
-                } else {
-                    if (!mailbox.can("MAIL_SEND_EXTERNAL")) {
-                        throw new RejectException(550, "Relay denied");
-                    }
-                    recipients.add(normalized);
                 }
             }
 
@@ -121,8 +132,14 @@ public class SubmissionMessageHandlerFactory implements MessageHandlerFactory {
                 if (mailFrom == null || recipients.isEmpty()) {
                     throw new RejectException(554, "No valid recipients");
                 }
-                List<String> local = recipients.stream().filter(r -> isLocal(r)).toList();
-                List<String> external = recipients.stream().filter(r -> !isLocal(r)).toList();
+                // Домены зафиксированы на этапе RCPT (см. recipientKinds).
+                List<String> local = recipients.stream()
+                        .filter(r -> recipientKinds.get(r) == LocalDomainPolicy.Kind.LOCAL).toList();
+                List<String> external = recipients.stream()
+                        .filter(r -> recipientKinds.get(r) == LocalDomainPolicy.Kind.FOREIGN).toList();
+                if (local.size() + external.size() != recipients.size()) {
+                    throw new RejectException(451, "Temporary local problem - please try later");
+                }
 
                 InboundMessageHandlerFactory.RawMessageStoreClient.StoredRaw first;
                 try {
@@ -216,8 +233,13 @@ public class SubmissionMessageHandlerFactory implements MessageHandlerFactory {
         }
     }
 
-    private boolean isLocal(String email) {
+    /**
+     * Судьба домена получателя. UNKNOWN (реестр недоступен, домена нет в
+     * статическом списке) не считается ни локальным, ни внешним: отправка
+     * получает 451, иначе письмо ушло бы внешним релеем на собственный домен.
+     */
+    private LocalDomainPolicy.Kind kindOf(String email) {
         int at = email == null ? -1 : email.lastIndexOf('@');
-        return at > 0 && localDomains.contains(email.substring(at + 1).toLowerCase(Locale.ROOT));
+        return at <= 0 ? LocalDomainPolicy.Kind.FOREIGN : localDomains.classify(email.substring(at + 1));
     }
 }

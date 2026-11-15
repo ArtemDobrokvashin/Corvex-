@@ -117,6 +117,19 @@ class MailDomainVerifierTest {
         assertEquals(CheckState.PASS, check(verifier.verify(DOMAIN, Optional.of(signing), NOW), CheckName.DKIM).state());
     }
 
+    @Test void dkimUsesSelectorReportedByTheServer() {
+        healthyDns();
+        String key = "A".repeat(216);
+        // Запись корпоративного селектора содержит другой ключ: если проверка
+        // проигнорирует селектор домена, она сравнит DNS-запись не с тем ключом.
+        dns.txt.put("corvex1._domainkey." + DOMAIN, List.of("v=DKIM1; k=rsa; p=" + "B".repeat(216)));
+        dns.txt.put("branch2._domainkey." + DOMAIN, List.of("v=DKIM1; k=rsa; p=" + key));
+        var signing = new DkimKeyProbe.SigningKey(DOMAIN, "branch2", key);
+
+        assertEquals(CheckState.PASS,
+                check(verifier.verify(DOMAIN, Optional.of(signing), NOW), CheckName.DKIM).state());
+    }
+
     @Test void dkimWithAnotherKeyFails() {
         healthyDns();
         var signing = new DkimKeyProbe.SigningKey(DOMAIN, "corvex1", "B".repeat(216));

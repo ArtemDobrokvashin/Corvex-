@@ -239,6 +239,27 @@ class ProtocolMailServiceAdditionalTest {
     }
 
     @Test
+    void deletingAFolderNeverDeletesPhysicalFilesOfACollidingMailbox() throws Exception {
+        MailFolder folder = folder("Work", null);
+        String ownPath = maildir.storeMessage("user+tag@company.local", "Work", bytes("own")).toString();
+        String otherPath = maildir.storeMessage("user_tag@company.local", "Work", bytes("other")).toString();
+        MessageMetadata own = message(folder, 1, ownPath);
+        when(folders.findByIdAndOwnerId(folder.getId(), ownerId)).thenReturn(Optional.of(folder));
+        when(folders.lockById(folder.getId())).thenReturn(Optional.of(folder));
+        when(messages.findFolderUids(folder.getId(), ownerId)).thenReturn(List.of(1L));
+        when(messages.lockFolderUid(folder.getId(), 1L, ownerId)).thenReturn(Optional.of(own));
+
+        service.deleteFolder(ownerId, folder.getId());
+
+        // Файлы остаются на диске до сверки: каталог мог быть общим для двух ящиков,
+        // а удаление «своих» файлов по пути задело бы чужие письма.
+        assertTrue(Files.exists(tmp.resolve("mail").resolve(ownPath)));
+        assertTrue(Files.exists(tmp.resolve("mail").resolve(otherPath)));
+        verify(messages).delete(own);
+        verify(folders).delete(folder);
+    }
+
+    @Test
     void listMessagesClampsLimitsAndAfterUid() {
         MailFolder inbox = folder("INBOX", "INBOX");
         MessageMetadata message = message(inbox, 3, "x");
@@ -451,7 +472,13 @@ class ProtocolMailServiceAdditionalTest {
         assertEquals(HttpStatus.BAD_REQUEST, assertThrows(ResponseStatusException.class,
                 () -> ProtocolMailService.validateFolderName("bad..name")).getStatusCode());
         assertEquals(HttpStatus.BAD_REQUEST, assertThrows(ResponseStatusException.class,
+                () -> ProtocolMailService.validateFolderName(".")).getStatusCode());
+        assertEquals(HttpStatus.BAD_REQUEST, assertThrows(ResponseStatusException.class,
                 () -> ProtocolMailService.validateFolderName("x".repeat(257))).getStatusCode());
+        assertEquals(HttpStatus.BAD_REQUEST, assertThrows(ResponseStatusException.class,
+                () -> ProtocolMailService.validateFolderName("x".repeat(256))).getStatusCode());
+        assertEquals("x".repeat(255), ProtocolMailService.validateFolderName("x".repeat(255)));
+        assertEquals("💙".repeat(128), ProtocolMailService.validateFolderName("💙".repeat(128)));
 
         MessageMetadata meta = message(folder("INBOX", "INBOX"), 12, "x");
         meta.setSeen(true);

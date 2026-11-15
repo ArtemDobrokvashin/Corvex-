@@ -30,6 +30,12 @@ export default function SecuritySettingsModal({ onClose }: { onClose: () => void
   const [copied, setCopied] = useState('');
 
   useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  useEffect(() => {
     if (!demoMode) {
       listAppPasswords().then(setAppPasswords).catch(() => setAppPasswords([]));
     }
@@ -56,13 +62,14 @@ export default function SecuritySettingsModal({ onClose }: { onClose: () => void
   async function onPasswordSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (guardDemo()) return;
-    const data = new FormData(e.currentTarget);
+    const form = e.currentTarget;
+    const data = new FormData(form);
     setError('');
     setNotice('');
     try {
       await changePassword(String(data.get('current') ?? ''), String(data.get('next') ?? ''));
       setNotice(t('Пароль изменён. Другие устройства разлогинены.'));
-      e.currentTarget.reset();
+      form.reset();
     } catch (err) {
       setError(errorText(err, locale));
     }
@@ -108,13 +115,14 @@ export default function SecuritySettingsModal({ onClose }: { onClose: () => void
   async function onCreateAppPassword(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (guardDemo()) return;
-    const label = String(new FormData(e.currentTarget).get('label') ?? '');
+    const form = e.currentTarget;
+    const label = String(new FormData(form).get('label') ?? '');
     setError('');
     try {
       const created = await createAppPassword(label);
       setCreatedPassword(created.password);
       setAppPasswords(await listAppPasswords());
-      e.currentTarget.reset();
+      form.reset();
     } catch (err) {
       setError(errorText(err, locale));
     }
@@ -138,7 +146,7 @@ export default function SecuritySettingsModal({ onClose }: { onClose: () => void
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-ink/35 backdrop-blur-[2px]" onClick={onClose}>
-      <section className="flex h-full w-full max-w-[570px] animate-rise-in flex-col bg-surface shadow-pop" onClick={(e) => e.stopPropagation()} aria-label={t('Безопасность')}>
+      <section className="flex h-full w-full max-w-[460px] animate-rise-in flex-col bg-surface shadow-pop" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={t('Безопасность')}>
         <header className="flex shrink-0 items-center gap-3 border-b border-line px-5 py-4 sm:px-6">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-ink text-white"><ShieldCheck size={19} /></span>
           <div className="min-w-0 flex-1">
@@ -175,7 +183,7 @@ export default function SecuritySettingsModal({ onClose }: { onClose: () => void
               <form onSubmit={onConfirmTotp} className="space-y-3">
                 <p className="text-sm leading-relaxed text-muted">{t('Добавьте секрет в приложение-аутентификатор, затем введите первый код для подтверждения.')}</p>
                 <div className="flex justify-center rounded-xl border border-line bg-white p-4" aria-label={t('QR-код для настройки 2FA')}>
-                  <QRCodeSVG value={setup.otpauthUri} size={192} level="M" marginSize={2} />
+                  <QRCodeSVG value={setup.otpauthUri} size={192} level="M" marginSize={2} role="img" aria-label={t('QR-код для настройки 2FA')} />
                 </div>
                 <p className="text-xs text-muted">{t('Не передавайте QR-код и секрет другим людям.')}</p>
                 <div className="flex items-start gap-2 rounded-xl border border-line bg-chrome px-3.5 py-3">

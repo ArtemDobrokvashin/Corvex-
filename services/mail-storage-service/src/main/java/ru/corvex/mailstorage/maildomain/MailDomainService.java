@@ -8,7 +8,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,7 +34,7 @@ public class MailDomainService {
     private final Optional<JamesDomainAdmin> jamesAdmin;
     private final MailDomainVerifier verifier;
     private final Optional<DkimKeyProbe> dkimKeyProbe;
-    private final Set<String> acceptingDomains;
+    private final AcceptedDomains accepted;
     private final List<String> expectedMxHosts;
     private final String dkimSelector;
     private final Duration maxCheckAge;
@@ -44,16 +43,13 @@ public class MailDomainService {
 
     public MailDomainService(MailDomainStore store, Optional<JamesDomainAdmin> jamesAdmin,
                              MailDomainVerifier verifier, Optional<DkimKeyProbe> dkimKeyProbe,
-                             List<String> acceptingDomains, List<String> expectedMxHosts, String dkimSelector,
+                             AcceptedDomains accepted, List<String> expectedMxHosts, String dkimSelector,
                              Duration maxCheckAge, Duration requestTimeout, Clock clock) {
         this.store = store;
         this.jamesAdmin = jamesAdmin;
         this.verifier = verifier;
         this.dkimKeyProbe = dkimKeyProbe;
-        this.acceptingDomains = acceptingDomains.stream()
-                .map(domain -> domain.trim().toLowerCase(Locale.ROOT))
-                .filter(domain -> !domain.isEmpty())
-                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        this.accepted = accepted;
         this.expectedMxHosts = expectedMxHosts.stream()
                 .map(host -> host.trim().toLowerCase(Locale.ROOT))
                 .filter(host -> !host.isEmpty())
@@ -65,7 +61,8 @@ public class MailDomainService {
     }
 
     public record View(UUID id, String domain, boolean enabled, String jamesState, Instant jamesConfirmedAt,
-                       boolean jamesBridgeAvailable, boolean acceptanceEnabled, boolean dnsChecked,
+                       boolean jamesBridgeAvailable, boolean acceptanceEnabled, String acceptanceSource,
+                       boolean dnsChecked,
                        Instant checkedAt, boolean fresh, boolean receivingReady, boolean sendingReady,
                        String blockedReason, List<MailDomainVerifier.Check> checks, List<String> warnings) { }
 
@@ -165,7 +162,8 @@ public class MailDomainService {
     /** Единственный путь получить свежие доказательства: реальный DNS-запрос. */
     public View verify(String rawDomain, UUID actor) {
         MailDomainStore.Row row = require(rawDomain);
-        Optional<DkimKeyProbe.SigningKey> key = dkimKeyProbe.flatMap(DkimKeyProbe::signingKey);
+        Optional<DkimKeyProbe.SigningKey> key =
+                dkimKeyProbe.flatMap(probe -> probe.signingKey(row.domain()));
         List<MailDomainVerifier.Check> checks = verifier.verify(row.domain(), key, clock.instant());
         store.saveChecks(row.id(), checks);
         store.recordEvent(row.id(), row.domain(), actor, "dns-verified", summary(checks));
@@ -184,7 +182,8 @@ public class MailDomainService {
     /** Точные записи, которые администратор публикует у регистратора. */
     public List<DnsInstruction> dnsInstructions(String rawDomain) {
         MailDomainStore.Row row = require(rawDomain);
-        Optional<DkimKeyProbe.SigningKey> key = dkimKeyProbe.flatMap(DkimKeyProbe::signingKey);
+        Optional<DkimKeyProbe.SigningKey> key =
+                dkimKeyProbe.flatMap(probe -> probe.signingKey(row.domain()));
         List<DnsInstruction> instructions = new ArrayList<>();
         if (expectedMxHosts.isEmpty()) {
             instructions.add(new DnsInstruction("MX", "@", null, 10,
@@ -197,9 +196,15 @@ public class MailDomainService {
         }
         instructions.add(new DnsInstruction("TXT", "@", "v=spf1 mx -all", null,
                 "Если SPF уже существует, добавьте механизм mx в него: две SPF-записи недопустимы"));
-        String dkimName = dkimSelector + "._domainkey";
         Optional<DkimKeyProbe.SigningKey> domainKey =
                 key.filter(signing -> signing.domain().equalsIgnoreCase(row.domain()));
+        // Домен может подписываться своим селектором (`<domain>.selector`);
+        // подставлять общий corvex1 в имя записи значило бы выдать запись,
+        // которой сервер не пользуется.
+        String dkimName = domainKey
+                .map(DkimKeyProbe.SigningKey::selector)
+                .filter(value -> value != null && !value.isBlank())
+                .orElse(dkimSelector) + "._domainkey";
         if (domainKey.isPresent()) {
             instructions.add(new DnsInstruction("TXT", dkimName,
                     "v=DKIM1; k=rsa; p=" + domainKey.get().publicKeyBase64(), null,
@@ -251,7 +256,13 @@ public class MailDomainService {
         Instant checkedAt = checks.stream().map(MailDomainVerifier.Check::observedAt)
                 .max(Instant::compareTo).orElse(null);
         String state = effectiveState(row);
-        boolean acceptanceEnabled = acceptingDomains.contains(row.domain());
+        // Приём возможен, если домен либо в статическом списке, либо реально
+        // подтверждён в James и включён в реестре. Источник показываем отдельно:
+        // «нет в списке» и «список недоступен» требуют разных действий.
+        AcceptedDomains.Source acceptance =
+                row.enabled() ? accepted.source(row.domain()) : AcceptedDomains.Source.ABSENT;
+        boolean acceptanceEnabled = acceptance == AcceptedDomains.Source.STATIC
+                || acceptance == AcceptedDomains.Source.DYNAMIC;
         MailDomainAssessment assessment = MailDomainAssessment.assess("CREATED".equals(state),
                 acceptanceEnabled, checks, checkedAt, maxCheckAge, clock.instant());
         List<String> warnings = new ArrayList<>();
@@ -262,9 +273,14 @@ public class MailDomainService {
             warnings.add("Исход добавления в James неизвестен. Повторная запись выполняется только "
                     + "после достоверного ответа GET /domains");
         }
-        if (!acceptanceEnabled) {
-            warnings.add("Домен не входит в CORVEX_MAIL_DOMAINS: приём и отправка писем отключены, "
-                    + "даже если DNS настроен");
+        if (!row.enabled()) {
+            warnings.add("Домен отключён в реестре: приём и отправка писем не выполняются");
+        } else if (acceptance == AcceptedDomains.Source.UNAVAILABLE) {
+            warnings.add("Список принимаемых доменов недоступен: сервер не может подтвердить, "
+                    + "что домен уже принимается");
+        } else if (!acceptanceEnabled) {
+            warnings.add("Домен не принимается: его нет ни в CORVEX_MAIL_DOMAINS, ни среди "
+                    + "подтверждённых в James доменов реестра");
         }
         if (checks.isEmpty()) {
             warnings.add("DNS ещё не проверялся");
@@ -272,7 +288,7 @@ public class MailDomainService {
             warnings.add("Результаты DNS-проверки устарели: выполните проверку повторно");
         }
         return new View(row.id(), row.domain(), row.enabled(), state, row.jamesConfirmedAt(),
-                jamesAdmin.isPresent(), acceptanceEnabled, !checks.isEmpty(), checkedAt,
+                jamesAdmin.isPresent(), acceptanceEnabled, acceptance.name(), !checks.isEmpty(), checkedAt,
                 assessment.fresh(), assessment.receivingReady(), assessment.sendingReady(),
                 assessment.blockedReason(), checks, List.copyOf(new LinkedHashSet<>(warnings)));
     }
