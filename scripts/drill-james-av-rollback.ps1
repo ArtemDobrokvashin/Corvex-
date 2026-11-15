@@ -130,6 +130,14 @@ try {
         $webFile = Join-Path $m.composeDir $m.webAdminRelative
         if ((Get-Sha $webFile) -cne $m.webAdminSha256) { throw 'WebAdmin source changed; preserve and inspect.' }
     }
+    # Journal first, so every later failure is recorded even in preflight.
+    $journalDir = Join-Path (Split-Path -Parent (Resolve-Path -LiteralPath $DeploymentManifest).Path) ('rollback-drill-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $journalDir -ErrorAction Stop | Out-Null
+    $journal = Join-Path $journalDir 'journal.txt'
+    $stream = [IO.File]::Open($journal, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::Read)
+    $work = Join-Path $journalDir 'child-output'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    Write-Journal 'Journal opened; manifest validated.'
     $prep = Get-Content -Raw -LiteralPath $m.preparationManifest | ConvertFrom-Json
     if ($prep.originalConfigSha256 -notmatch '^[a-f0-9]{64}$' -or $prep.candidateXmlSha256 -notmatch '^[a-f0-9]{64}$' -or
         $prep.composeDir -cne $m.composeDir) { throw 'Preparation manifest is inconsistent with the deployment.' }
@@ -152,14 +160,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'James CLI is not ready; do not drill.' }
     Write-Host "James CLI reported $($domains.Count) domain(s)."
 
-    $journalDir = Join-Path (Split-Path -Parent (Resolve-Path -LiteralPath $DeploymentManifest).Path) ('rollback-drill-' + [guid]::NewGuid().ToString('N'))
-    New-Item -ItemType Directory -Path $journalDir -ErrorAction Stop | Out-Null
-    $journal = Join-Path $journalDir 'journal.txt'
-    $stream = [IO.File]::Open($journal, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::Read)
-    $work = Join-Path $journalDir 'child-output'
-    New-Item -ItemType Directory -Path $work | Out-Null
     Write-Journal 'PREFLIGHT PASS: deployment manifest, Compose, gate mount, ClamAV and James verified.'
-    Write-Journal "Journal directory: $journalDir"
 
     # Stage 1: rollback to the recorded pre-gate Compose and image.
     $stage = 'rollback'

@@ -42,6 +42,20 @@ class RollbackDrillTest(unittest.TestCase):
         self.assertIn("'-NoProfile'", self.text)
         self.assertIn('if ($_ -match ', self.text)
 
+    def test_journal_opens_before_preflight_checks(self):
+        self.assertLess(self.text.index('Journal opened; manifest validated.'),
+                        self.text.index('Gate mailet configuration is not the deployed one.'))
+        self.assertLess(self.text.index('$stream = [IO.File]::Open'),
+                        self.text.index('Get-RunningJames $m.composeDir'))
+
+    def test_preflight_diagnostic_is_read_only(self):
+        text = (SCRIPTS / 'inspect-james-av-preflight.ps1').read_bytes().decode('ascii')
+        for forbidden in ('compose up', 'compose down', 'docker rm', 'network connect', 'network create',
+                          'Remove-Item', 'WriteAllBytes', 'WriteAllText', 'Set-Content'):
+            self.assertNotIn(forbidden, text)
+        self.assertIn('RESULT failures=', text)
+        self.assertIn('composeDir differs', text)
+
     def test_reads_status_without_printing_full_inspect(self):
         self.assertIn('$raw[0] | ConvertFrom-Json', self.text)
         self.assertNotIn('Write-Host $raw', self.text)
