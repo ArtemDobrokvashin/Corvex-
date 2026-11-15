@@ -85,11 +85,14 @@ class LocalDomainPolicyTest {
     }
 
     @Test
-    void missingInternalTokenDisablesRegistryInsteadOfReportingUnknown() {
+    void missingInternalTokenIsTreatedAsUnavailableRegistry() {
         LocalDomainPolicy withoutToken =
                 LocalDomainPolicy.withRegistry("company.local", url(), " ", new ObjectMapper());
 
-        assertEquals(LocalDomainPolicy.Kind.FOREIGN, withoutToken.classify("other.example"));
+        // Без токена реестр не читается, но собственный домен из реестра не
+        // должен ни уходить внешним релеем, ни отвергаться окончательно.
+        assertEquals(LocalDomainPolicy.Kind.UNKNOWN, withoutToken.classify("other.example"));
+        assertEquals(LocalDomainPolicy.Kind.LOCAL, withoutToken.classify("company.local"));
         assertEquals(0, hits.get());
     }
 

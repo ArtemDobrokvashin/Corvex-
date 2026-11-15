@@ -103,8 +103,15 @@ public class DkimSigner {
         return sign(parsed, key);
     }
 
+    /** Подпись без проверки домена: ключ подбирается по From, иначе берётся первый. */
     byte[] sign(byte[] raw) {
-        return ring.keys().isEmpty() ? raw : sign(parse(raw), ring.keys().get(0));
+        if (ring.isEmpty()) {
+            return raw;
+        }
+        ParsedRaw parsed = parse(raw);
+        DkimKeyRing.Key key = ring.find(fromDomain(parsed.headers(), null))
+                .orElseGet(() -> ring.keys().get(0));
+        return sign(parsed, key);
     }
 
     private byte[] sign(ParsedRaw parsed, DkimKeyRing.Key key) {

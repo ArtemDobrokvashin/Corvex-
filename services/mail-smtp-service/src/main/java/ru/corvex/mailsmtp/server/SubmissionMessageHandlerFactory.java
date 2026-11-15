@@ -19,7 +19,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -67,6 +69,10 @@ public class SubmissionMessageHandlerFactory implements MessageHandlerFactory {
         return new MessageHandler() {
             private String mailFrom;
             private final List<String> recipients = new ArrayList<>();
+            // Решение принимается один раз, на RCPT: между RCPT и DATA список
+            // доменов может обновиться, и повторная классификация отправила бы
+            // письмо на собственный домен внешним релеем.
+            private final Map<String, LocalDomainPolicy.Kind> recipientKinds = new HashMap<>();
 
             @Override
             public void from(String from) throws RejectException {
@@ -77,6 +83,11 @@ public class SubmissionMessageHandlerFactory implements MessageHandlerFactory {
                     throw new RejectException(553, "Sender address rejected: not owned by user");
                 }
                 this.mailFrom = normalized;
+            }
+
+            private void accept(String normalized, LocalDomainPolicy.Kind kind) {
+                recipients.add(normalized);
+                recipientKinds.put(normalized, kind);
             }
 
             @Override
@@ -99,7 +110,7 @@ public class SubmissionMessageHandlerFactory implements MessageHandlerFactory {
                             throw new RejectException(550, "Relay denied");
                         }
                         switch (localRecipients.check(normalized)) {
-                            case ACCEPT -> recipients.add(normalized);
+                            case ACCEPT -> accept(normalized, LocalDomainPolicy.Kind.LOCAL);
                             case TEMP_FAIL -> throw new RejectException(451,
                                     "Temporary local problem - please try later");
                             default -> throw new RejectException(550, "No such user here");
@@ -109,7 +120,7 @@ public class SubmissionMessageHandlerFactory implements MessageHandlerFactory {
                         if (!mailbox.can("MAIL_SEND_EXTERNAL")) {
                             throw new RejectException(550, "Relay denied");
                         }
-                        recipients.add(normalized);
+                        accept(normalized, LocalDomainPolicy.Kind.FOREIGN);
                     }
                 }
             }
@@ -121,12 +132,11 @@ public class SubmissionMessageHandlerFactory implements MessageHandlerFactory {
                 if (mailFrom == null || recipients.isEmpty()) {
                     throw new RejectException(554, "No valid recipients");
                 }
-                // Домены фиксируются на этапе RCPT; повторная классификация здесь
-                // могла бы разложить одно и то же письмо по-разному.
+                // Домены зафиксированы на этапе RCPT (см. recipientKinds).
                 List<String> local = recipients.stream()
-                        .filter(r -> kindOf(r) == LocalDomainPolicy.Kind.LOCAL).toList();
+                        .filter(r -> recipientKinds.get(r) == LocalDomainPolicy.Kind.LOCAL).toList();
                 List<String> external = recipients.stream()
-                        .filter(r -> kindOf(r) == LocalDomainPolicy.Kind.FOREIGN).toList();
+                        .filter(r -> recipientKinds.get(r) == LocalDomainPolicy.Kind.FOREIGN).toList();
                 if (local.size() + external.size() != recipients.size()) {
                     throw new RejectException(451, "Temporary local problem - please try later");
                 }

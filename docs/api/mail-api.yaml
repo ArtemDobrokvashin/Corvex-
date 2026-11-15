@@ -509,6 +509,9 @@ components:
             STATIC — домен в CORVEX_MAIL_DOMAINS, DYNAMIC — подтверждён в James и
             включён в реестре, ABSENT — не принимается, UNAVAILABLE — реестр
             недоступен, поэтому подтвердить приём нельзя (это не «домен чужой»).
+            DYNAMIC сохраняется и во время аварии реестра: домен из последнего
+            успешного снимка продолжает приниматься, пока SMTP отвечает 451 на
+            домены, которых в этом снимке не было.
         dnsChecked: { type: boolean }
         checkedAt: { type: string, format: date-time, nullable: true }
         fresh: { type: boolean, description: Проверка не старше corvex.domains.max-check-age-seconds }

@@ -550,10 +550,12 @@ Corvex-пути это смягчено: `ProtocolMailService.append` помеч
    `550`; письмо на `CORVEX_MAIL_DOMAINS`-домен по-прежнему принимается.
    В webmail отправка на такой адрес → `503` с причиной, внешней очереди нет.
 10. Мультидоменный DKIM: положить `infra/secrets/dkim/<domain>.pem` (+
-    `<domain>.selector`), перезапустить `mail-smtp-service`, отправить письмо с
-    этого домена → в письме `d=<domain>`, подпись проверяется, а
-    `GET /api/v1/mail/admin/domains/{domain}/dns` содержит `p=` этого ключа и
-    `POST /{domain}/verify` даёт `DKIM=PASS`. Проверить, что ключ одного домена
+    `<domain>.selector`, владелец файла — uid 100, иначе ключ будет пропущен),
+    перезапустить `mail-smtp-service`, отправить письмо с этого домена → в
+    письме `d=<domain>` и `s=` селектора этого домена, подпись проверяется;
+    `GET /api/v1/mail/admin/domains/{domain}/dns` печатает запись
+    `<selector>._domainkey` с `p=` этого ключа, `POST /{domain}/verify` даёт
+    `DKIM=PASS`. Проверить, что ключ одного домена
     не применяется к другому (`/internal/dkim/public-key?domain=` → 404).
 
 Ограничения, которые нельзя обходить в приёмке: `james-admin` публикует только

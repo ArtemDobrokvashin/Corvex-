@@ -78,7 +78,11 @@ public final class DkimKeyRing {
     public static DkimKeyRing of(List<Key> keys) {
         Map<String, Key> map = new LinkedHashMap<>();
         for (Key key : keys) {
-            map.put(normalize(key.domain()), new Key(normalize(key.domain()), key.selector(), key.privateKey()));
+            String domain = firstDomain(key.domain());
+            if (domain.isEmpty()) {
+                continue;
+            }
+            map.put(domain, new Key(domain, key.selector(), key.privateKey()));
         }
         return new DkimKeyRing(map);
     }
@@ -86,7 +90,10 @@ public final class DkimKeyRing {
     public static DkimKeyRing single(String domain, String selector, PrivateKey key) {
         Map<String, Key> map = new LinkedHashMap<>();
         if (key != null) {
-            map.put(normalize(domain), new Key(normalize(domain), selector, key));
+            String first = firstDomain(domain);
+            if (!first.isEmpty()) {
+                map.put(first, new Key(first, selector, key));
+            }
         }
         return new DkimKeyRing(map);
     }
@@ -98,7 +105,7 @@ public final class DkimKeyRing {
     public static DkimKeyRing load(String legacyDomain, String legacySelector, String legacyKeyFile,
                                    String directory) {
         Map<String, Key> map = new LinkedHashMap<>();
-        String domain = normalize(legacyDomain);
+        String domain = firstDomain(legacyDomain);
         if (legacyKeyFile != null && !legacyKeyFile.isBlank()) {
             Path path = Path.of(legacyKeyFile);
             if (Files.isRegularFile(path)) {
@@ -215,5 +222,16 @@ public final class DkimKeyRing {
 
     private static String normalize(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Старая конфигурация допускала список доменов через запятую
+     * (`CORVEX_DKIM_DOMAIN=a,b`); действующим был первый. Такое поведение
+     * сохраняется, чтобы обновление не сломало существующий `.env`.
+     */
+    private static String firstDomain(String value) {
+        String normalized = normalize(value);
+        int comma = normalized.indexOf(',');
+        return comma < 0 ? normalized : normalized.substring(0, comma).trim();
     }
 }

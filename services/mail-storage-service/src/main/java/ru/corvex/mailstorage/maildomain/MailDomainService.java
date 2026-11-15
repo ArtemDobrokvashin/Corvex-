@@ -196,9 +196,15 @@ public class MailDomainService {
         }
         instructions.add(new DnsInstruction("TXT", "@", "v=spf1 mx -all", null,
                 "Если SPF уже существует, добавьте механизм mx в него: две SPF-записи недопустимы"));
-        String dkimName = dkimSelector + "._domainkey";
         Optional<DkimKeyProbe.SigningKey> domainKey =
                 key.filter(signing -> signing.domain().equalsIgnoreCase(row.domain()));
+        // Домен может подписываться своим селектором (`<domain>.selector`);
+        // подставлять общий corvex1 в имя записи значило бы выдать запись,
+        // которой сервер не пользуется.
+        String dkimName = domainKey
+                .map(DkimKeyProbe.SigningKey::selector)
+                .filter(value -> value != null && !value.isBlank())
+                .orElse(dkimSelector) + "._domainkey";
         if (domainKey.isPresent()) {
             instructions.add(new DnsInstruction("TXT", dkimName,
                     "v=DKIM1; k=rsa; p=" + domainKey.get().publicKeyBase64(), null,

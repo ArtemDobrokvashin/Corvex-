@@ -28,7 +28,8 @@ import java.util.Set;
  * <p>Третий ответ — UNKNOWN — обязателен. Недоступность mail-storage не должна
  * превращать собственный домен в чужой (это открыло бы релей) и не должна
  * молча отбрасывать письмо: входящая почта получает временный отказ 451,
- * submission — тоже временный отказ.
+ * submission — тоже временный отказ. Незаданный внутренний токен — такая же
+ * недоступность реестра, а не разрешение считать все домены чужими.
  */
 public final class LocalDomainPolicy {
 
@@ -99,9 +100,16 @@ public final class LocalDomainPolicy {
         if (configured.contains(value)) {
             return Kind.LOCAL;
         }
-        if (endpoint == null || endpoint.isBlank() || internalToken == null || internalToken.isBlank()) {
-            // Динамического источника нет вовсе: это не «неизвестно», а отсутствие реестра.
+        if (endpoint == null || endpoint.isBlank()) {
+            // Реестра нет вовсе (тесты, статический режим): неизвестных доменов
+            // не существует, любой нестатический домен действительно чужой.
             return Kind.FOREIGN;
+        }
+        if (internalToken == null || internalToken.isBlank()) {
+            // Реестр ожидается, но недоступен из-за конфигурации. Отвечать в этом
+            // случае «чужой» значило бы релеить собственный домен наружу и
+            // терять входящую почту: выбираем временный отказ.
+            return Kind.UNKNOWN;
         }
         Registry current = current();
         if (current == null) {

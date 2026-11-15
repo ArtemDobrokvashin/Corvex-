@@ -63,8 +63,10 @@ class AcceptedDomainsTest {
         assertEquals(1, calls.get(), "недоступная БД не должна опрашиваться на каждое письмо");
     }
 
-    @Test void staleSnapshotStopsCountingAsEvidence() {
+    @Test void staleSnapshotKeepsOwnDomainButStopsProvingForeignDomains() {
         // Часы двигаются вручную: сначала успешное чтение, затем БД падает.
+        // Смысл max-stale: подтверждённый домен продолжает приниматься, но по
+        // устаревшему списку нельзя объявлять другой домен чужим.
         AtomicReference<Instant> now = new AtomicReference<>(NOW);
         Clock clock = new Clock() {
             @Override public ZoneId getZone() { return ZoneOffset.UTC; }
@@ -78,8 +80,10 @@ class AcceptedDomainsTest {
 
         when(store.deliveryDomains()).thenThrow(new IllegalStateException("db down"));
         now.set(NOW.plus(Duration.ofMinutes(2)));
-        assertEquals(AcceptedDomains.Verdict.UNKNOWN, policy.classify("new.example"),
-                "устаревшее значение не должно доказывать, что домен локальный");
+        assertEquals(AcceptedDomains.Verdict.LOCAL, policy.classify("new.example"),
+                "подтверждённый домен не перестаёт быть своим из-за недоступного реестра");
+        assertEquals(AcceptedDomains.Verdict.UNKNOWN, policy.classify("partner.example"),
+                "устаревший список не доказывает, что другой домен чужой");
 
         when(store.deliveryDomains()).thenReturn(List.of("other.example"));
         now.set(NOW.plus(Duration.ofMinutes(3)));

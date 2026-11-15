@@ -338,6 +338,43 @@ class SubmissionMessageHandlerFactoryTest {
         verifyNoInteractions(storage);
     }
 
+    @Test
+    void recipientClassificationDoesNotFlipIfRegistryChangesBeforeData() throws Exception {
+        var registry = com.sun.net.httpserver.HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        var domainsBody = new java.util.concurrent.atomic.AtomicReference<>("{\"domains\":[\"new.example\"]}");
+        registry.createContext("/internal/mail/domains/accepted", exchange -> {
+            byte[] payload = domainsBody.get().getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, payload.length);
+            exchange.getResponseBody().write(payload);
+            exchange.close();
+        });
+        registry.start();
+        try {
+            var domains = LocalDomainPolicy.withRegistry("company.local",
+                    "http://127.0.0.1:" + registry.getAddress().getPort() + "/internal/mail/domains/accepted",
+                    "token", mapper);
+            var policy = (InboundMessageHandlerFactory.RecipientPolicy) address ->
+                    InboundMessageHandlerFactory.RecipientPolicy.Decision.ACCEPT;
+            MessageHandler handler = factory(policy, domains).create(context("alice@company.local"));
+            when(storage.storeRaw(any(InputStream.class))).thenReturn(stored("ref", "sha", 1L));
+            when(identities.lookupCached(anyString())).thenReturn(
+                    Optional.of(mailbox("MAIL_SEND_INTERNAL", "MAIL_SEND_EXTERNAL")));
+
+            handler.from("alice@company.local");
+            handler.recipient("bob@new.example");
+            // Между RCPT и DATA реестр «забыл» домен: письмо всё равно должно
+            // остаться локальным и не уйти внешним релеем.
+            domainsBody.set("{\"domains\":[\"company.local\"]}");
+            domains.refresh();
+            handler.data(stream());
+
+            assertEquals(List.of("mail.inbound.received"),
+                    rabbit.published.stream().map(ConfirmedRabbit.Published::routingKey).toList());
+        } finally {
+            registry.stop(0);
+        }
+    }
+
     private static int closedPort() throws IOException {
         try (java.net.ServerSocket socket = new java.net.ServerSocket(0)) {
             return socket.getLocalPort();

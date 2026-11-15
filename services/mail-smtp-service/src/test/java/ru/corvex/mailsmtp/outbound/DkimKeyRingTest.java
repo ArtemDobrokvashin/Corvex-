@@ -163,10 +163,24 @@ class DkimKeyRingTest {
         assertArrayEquals(raw, result);
     }
 
+    /** Заголовок подписи разворачивается целиком: b= разрезан на строки по RFC 5322. */
+    private static String unfoldDkimHeader(String message) {
+        int end = -1;
+        for (int i = message.indexOf("\r\n"); i >= 0; i = message.indexOf("\r\n", i + 2)) {
+            if (i + 2 >= message.length()
+                    || (message.charAt(i + 2) != ' ' && message.charAt(i + 2) != '\t')) {
+                end = i;
+                break;
+            }
+        }
+        return message.substring("DKIM-Signature: ".length(), end)
+                .replace("\r\n\t", "")
+                .replace("\r\n ", "");
+    }
+
     /** Проверка подписи настоящим публичным ключом: тест не доверяет наличию заголовка. */
     private static boolean verify(String message, PrivateKey privateKey) throws Exception {
-        String header = message.substring("DKIM-Signature: ".length(), message.indexOf("\r\n"));
-        String unfolded = header.replace("\r\n\t", "");
+        String unfolded = unfoldDkimHeader(message);
         int bIndex = unfolded.lastIndexOf("; b=");
         String withoutSignature = unfolded.substring(0, bIndex + 5);
         String signatureValue = unfolded.substring(bIndex + 5);

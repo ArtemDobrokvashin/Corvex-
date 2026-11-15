@@ -84,10 +84,17 @@ notepad .env              # домены, LDAP при наличии AD, пол�
 
 ```powershell
 # infra\secrets\dkim\<domain>.pem + необязательный <domain>.selector
-openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out infra\secrets\dkim\company.ru.pem
+New-Item -ItemType Directory -Force infra\secrets\dkim | Out-Null
+docker run --rm -v "${PWD}\infra\secrets\dkim:/out" alpine sh -c "apk add --no-cache openssl >/dev/null && openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /out/company.ru.pem && chown 100:101 /out/company.ru.pem && chmod 600 /out/company.ru.pem"
 "corvex1" | Out-File -Encoding ascii infra\secrets\dkim\company.ru.selector
 docker compose restart mail-smtp-service
 ```
+
+`chown 100:101` обязателен: сервис работает не от root, и ключ с правами
+`0600 root:root` будет пропущен с ошибкой в логе (подпись домена молча
+отключится). Селектор можно не создавать — тогда используется
+`CORVEX_DKIM_SELECTOR` (`corvex1`); после смены ключа меняйте и селектор, чтобы
+старая DNS-запись не мешала проверке.
 
 Каталог `infra/secrets/dkim` монтируется в `mail-smtp-service` read-only
 (`CORVEX_DKIM_KEYS_DIR`). Ключ выбирается по домену From; ключ одного домена

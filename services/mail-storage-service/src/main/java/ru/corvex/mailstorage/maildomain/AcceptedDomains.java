@@ -22,6 +22,11 @@ import org.slf4j.LoggerFactory;
  * трактовать его как «чужой домен»: для входящей почты это временный отказ
  * (отправитель повторит), для отправки — явная ошибка, а не молчаливая попытка
  * релея на собственный домен.
+ *
+ * <p>Устаревание работает только в одну сторону: снимок старше max-stale
+ * больше не доказывает, что домен чужой, но домен из последнего успешного
+ * снимка продолжает считаться своим. Обратное правило останавливало бы
+ * доставку работающим доменам из-за аварии БД.
  */
 public final class AcceptedDomains {
 
@@ -100,10 +105,17 @@ public final class AcceptedDomains {
             return Source.ABSENT;
         }
         State current = current();
+        // Последнее успешное значение доказывает «свой домен» и после истечения
+        // max-stale: иначе админка показывала бы «не принимается» там, где SMTP
+        // продолжает принимать письма. Устаревание запрещает только обратное —
+        // объявлять домен чужим или отсутствующим.
+        if (current != null && current.domains().contains(value)) {
+            return Source.DYNAMIC;
+        }
         if (current == null || isStale(current)) {
             return Source.UNAVAILABLE;
         }
-        return current.domains().contains(value) ? Source.DYNAMIC : Source.ABSENT;
+        return Source.ABSENT;
     }
 
     /** Последнее успешное содержимое реестра; пусто, если его ещё не читали. */

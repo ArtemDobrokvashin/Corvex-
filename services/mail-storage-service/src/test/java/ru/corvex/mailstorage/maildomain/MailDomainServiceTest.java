@@ -46,6 +46,44 @@ class MailDomainServiceTest {
         @Override public List<String> addresses(String name) { return List.of(); }
     }
 
+    @Test void dnsInstructionsUseTheSelectorReportedForTheDomain() {
+        when(store.find("company.local")).thenReturn(Optional.of(row("CREATED", null)));
+        String key = "A".repeat(216);
+        DkimKeyProbe probe = domain -> Optional.of(
+                new DkimKeyProbe.SigningKey("company.local", "branch2", key));
+        MailDomainService service = new MailDomainService(store, Optional.empty(),
+                new MailDomainVerifier(new EmptyDns(), List.of("mail.company.local"), "corvex1"),
+                Optional.of(probe), AcceptedDomains.staticOnly("company.local"),
+                List.of("mail.company.local"), "corvex1",
+                Duration.ofHours(1), Duration.ofMinutes(2), CLOCK);
+
+        var dkim = service.dnsInstructions("company.local").stream()
+                .filter(instruction -> "branch2._domainkey".equals(instruction.name()))
+                .findFirst().orElseThrow();
+
+        assertEquals("TXT", dkim.type());
+        assertEquals("v=DKIM1; k=rsa; p=" + key, dkim.value());
+    }
+
+    @Test void domainKnownOnlyToTheRegistryIsReportedAsDynamicallyAccepted() {
+        when(store.find("company.local")).thenReturn(Optional.of(row("CREATED", NOW)));
+        when(store.deliveryDomains()).thenReturn(List.of("company.local"));
+        when(store.checks(DOMAIN_ID)).thenReturn(List.of());
+        MailDomainService service = new MailDomainService(store, Optional.of(admin),
+                new MailDomainVerifier(new EmptyDns(), List.of("mail.company.local"), "corvex1"),
+                Optional.empty(),
+                new AcceptedDomains(java.util.Set.of(), store, Duration.ofSeconds(30),
+                        Duration.ofMinutes(5), CLOCK),
+                List.of("mail.company.local"), "corvex1",
+                Duration.ofHours(1), Duration.ofMinutes(2), CLOCK);
+
+        var view = service.get("company.local");
+
+        assertTrue(view.acceptanceEnabled(),
+                "домен без правки .env принимается, если он подтверждён в реестре");
+        assertEquals("DYNAMIC", view.acceptanceSource());
+    }
+
     @Test void duplicateRegistrationIsConflict() {
         when(store.create(eq("company.local"), any())).thenThrow(new MailDomainStore.AlreadyExistsException());
         var error = assertThrows(ResponseStatusException.class,
