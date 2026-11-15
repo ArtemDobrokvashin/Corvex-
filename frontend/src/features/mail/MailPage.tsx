@@ -42,6 +42,7 @@ import {
 } from './mailListControls';
 import { formatMailRecipients } from './mailRecipients';
 import MailHtmlFrame from './MailHtmlFrame';
+import { hasRemoteImages } from './mailHtml';
 import { activeMailAfterRefresh, replaceFolderMessages } from './mailRefresh';
 import { Avatar, EmptyState, IconButton, cleanPersonName, emailFromHeader } from '../../components/ui';
 import { countLabel, formatDateTime, useI18n } from '../../i18n';
@@ -144,6 +145,7 @@ export default function MailPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadedHtml, setLoadedHtml] = useState<Record<string, string | null>>({});
   const [showPlainText, setShowPlainText] = useState(false);
+  const [showImages, setShowImages] = useState(false);
   const [loadedBodies, setLoadedBodies] = useState<Record<string, string>>({});
   const [loadedAttachments, setLoadedAttachments] = useState<Record<string, MailAttachmentView[]>>({});
   const [downloadBusy, setDownloadBusy] = useState<string | null>(null);
@@ -202,7 +204,8 @@ export default function MailPage() {
   const active = mails.find((m) => m.id === activeId && m.folder === folder) ?? visible[0] ?? null;
   const activeBody = active ? (loadedBodies[active.id] ?? active.body) : '';
   const activeHtml = active ? loadedHtml[active.id] : null;
-  useEffect(() => { setShowPlainText(false); }, [active?.id]);
+  useEffect(() => { setShowPlainText(false); setShowImages(false); }, [active?.id]);
+  const remoteImages = useMemo(() => hasRemoteImages(activeHtml ?? ''), [activeHtml]);
   const downloadAttachment = async (messageId: string, attachment: MailAttachmentView) => {
     const key = `${messageId}:${attachment.partIndex}`;
     if (downloadBusy) return;
@@ -943,10 +946,15 @@ export default function MailPage() {
                   />}
 
                   {activeHtml && <div className="mt-5 flex flex-wrap items-center gap-3 text-xs text-muted">
-                    <span>{t('Внешние изображения и ссылки отключены для безопасности.')}</span>
+                    <span>{showImages
+                      ? t('Изображения загружаются с серверов отправителя: он увидит ваш IP-адрес.')
+                      : t('Внешние изображения и ссылки отключены для безопасности.')}</span>
+                    {remoteImages && <button type="button" className="font-medium text-accent-dark underline" onClick={() => setShowImages(!showImages)}>
+                      {t(showImages ? 'Скрыть изображения' : 'Показать изображения')}
+                    </button>}
                     <button type="button" className="font-medium text-accent-dark underline" onClick={() => setShowPlainText(!showPlainText)}>{t(showPlainText ? 'Показать HTML' : 'Показать обычный текст')}</button>
                   </div>}
-                  {activeHtml && !showPlainText ? <MailHtmlFrame html={activeHtml} />
+                  {activeHtml && !showPlainText ? <MailHtmlFrame html={activeHtml} allowRemoteImages={showImages} />
                     : <div className="mt-7 text-[15.5px] leading-[1.75] text-ink-soft">
                       {activeBody.split('\n').map((paragraph, i) => paragraph.trim() ? <p key={i} className="mb-4 whitespace-pre-wrap">{paragraph}</p> : null)}
                     </div>}

@@ -21,4 +21,17 @@ describe('isolated HTML frame', () => {
     await act(async () => send(frame.contentWindow, nonce, 20)); expect(frame.style.height).toBe('80px');
     await act(async () => root.unmount()); host.remove();
   });
+
+  it('opens remote images only when the caller passes explicit consent', async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const host = document.createElement('div'); document.body.appendChild(host); const root = createRoot(host);
+    const html = '<img src="https://images.test/a.png" alt="A">';
+    await act(async () => root.render(<MailHtmlFrame html={html} />));
+    expect(host.querySelector('iframe')!.srcdoc).toContain("img-src data:;");
+    await act(async () => root.render(<MailHtmlFrame html={html} allowRemoteImages />));
+    const frame = host.querySelector('iframe')!;
+    expect(frame.srcdoc).toContain('img-src data: https: http:');
+    expect(frame.srcdoc).toContain('src="https://images.test/a.png"');
+    await act(async () => root.unmount()); host.remove();
+  });
 });

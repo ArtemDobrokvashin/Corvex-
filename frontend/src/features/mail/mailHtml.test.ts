@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { mailHtmlDocument, sanitizeMailHtml } from './mailHtml';
+import { hasRemoteImages, mailHtmlDocument, sanitizeMailHtml } from './mailHtml';
 
 const nonce = '1234567890abcdef1234567890abcdef';
 describe('mail HTML isolation', () => {
@@ -31,5 +31,26 @@ describe('mail HTML isolation', () => {
     expect(html).toContain("default-src 'none'; img-src data:"); expect(html).toContain(`script-src 'nonce-${nonce}'`);
     expect(html).not.toContain('@import'); expect(html).not.toContain('alert(1)'); expect(html).not.toContain('<iframe');
     expect(() => mailHtmlDocument('', "x' unsafe-inline", 'Blocked')).toThrow();
+  });
+
+  it('shows remote images only after explicit consent and keeps the rest isolated', () => {
+    const html = '<img src="https://images.test/a.png" alt="A"><img src="javascript:alert(1)"><img src="cid:inline">';
+    expect(hasRemoteImages(html)).toBe(true);
+    expect(hasRemoteImages('<img src="data:image/png;base64,YWJj">')).toBe(false);
+    const allowed = sanitizeMailHtml(html, 'Blocked', { allowRemoteImages: true });
+    expect(allowed).toContain('src="https://images.test/a.png"');
+    expect(allowed).toContain('referrerpolicy="no-referrer"');
+    expect(allowed).not.toContain('javascript:');
+    expect(allowed).not.toContain('cid:inline');
+    const doc = mailHtmlDocument(html, nonce, 'Blocked', { allowRemoteImages: true });
+    expect(doc).toContain("img-src data: https: http:");
+    expect(mailHtmlDocument(html, nonce, 'Blocked')).toContain("img-src data:;");
+  });
+
+  it('never keeps srcset or inline sizes when images are allowed', () => {
+    const clean = sanitizeMailHtml('<img src="https://images.test/a.png" srcset="https://images.test/b.png 2x" width="900" height="400">', 'Blocked', { allowRemoteImages: true });
+    expect(clean).not.toContain('srcset');
+    expect(clean).not.toContain('height=');
+    expect(clean).not.toContain('width="900"');
   });
 });

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { mailHtmlDocument } from './mailHtml';
 
-export default function MailHtmlFrame({ html }: { html: string }) {
+export default function MailHtmlFrame({ html, allowRemoteImages = false }: { html: string; allowRemoteImages?: boolean }) {
   const { t } = useI18n();
   const frame = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(120);
@@ -11,7 +11,10 @@ export default function MailHtmlFrame({ html }: { html: string }) {
     crypto.getRandomValues(bytes);
     return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
   }, [html]);
-  const doc = useMemo(() => mailHtmlDocument(html, nonce, t('Изображение заблокировано')), [html, nonce, t]);
+  const doc = useMemo(
+    () => mailHtmlDocument(html, nonce, t('Изображение заблокировано'), { allowRemoteImages }),
+    [html, nonce, t, allowRemoteImages],
+  );
   useEffect(() => {
     setHeight(120);
     const receive = (event: MessageEvent) => {

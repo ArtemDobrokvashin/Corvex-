@@ -321,6 +321,10 @@ const EN: Record<string, string> = {
   'Скрипты, изображения и неподдерживаемые стили удаляются при отправке; некоторые почтовые клиенты не поддерживают кнопки.': 'Scripts, images and unsupported styles are removed before sending; some email clients do not support buttons.',
   'При возврате в визуальный редактор неподдерживаемая разметка будет удалена. Продолжить?': 'Returning to the visual editor removes unsupported markup. Continue?',
   'Изображение заблокировано': 'Image blocked',
+  'Показать изображения': 'Show images',
+  'Скрыть изображения': 'Hide images',
+  'Изображения загружаются с серверов отправителя: он увидит ваш IP-адрес.':
+    'Images load from the sender’s servers: the sender can see your IP address.',
   'Развернуть окно письма': 'Expand compose window',
   'Уменьшить окно письма': 'Restore compose window',
   'Закрыть письмо? Несохранённый текст и вложения будут потеряны.': 'Close this email? Unsaved text and attachments will be lost.',
