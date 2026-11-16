@@ -59,7 +59,9 @@ public class MailDomainConfiguration {
             @Value("${corvex.security.internal-token:${CORVEX_INTERNAL_API_TOKEN:}}") String token) {
         if (url == null || url.isBlank()) {
             // Без адреса проверка DKIM честно остаётся «соответствие не подтверждено».
-            return Optional::empty;
+            // Именно лямбда: DkimKeyProbe.signingKey принимает домен, а Optional::empty
+            // без аргументов не совпадает с этой сигнатурой.
+            return domain -> Optional.empty();
         }
         return new HttpDkimKeyProbe(URI.create(url), token, mapper);
     }

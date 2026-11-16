@@ -119,7 +119,7 @@ public final class JamesDomainAdminClient implements JamesDomainAdmin, AutoClose
         var future = executor.submit(() -> {
             try (var response = http.executeOpen(null, request, null)) {
                 int code = response.getCode();
-                request.cancel();
+                cancel(request);
                 return new Response(code);
             }
         });
@@ -132,9 +132,25 @@ public final class JamesDomainAdminClient implements JamesDomainAdmin, AutoClose
         } catch (ExecutionException | TimeoutException e) {
             throw new IOException("James domain operation outcome uncertain");
         } finally {
-            request.cancel();
+            cancel(request);
             future.cancel(true);
             executor.shutdownNow();
+        }
+    }
+
+    /**
+     * Прерывает активный обмен, если тип запроса это поддерживает.
+     *
+     * <p>У {@code ClassicHttpRequest} в httpcore5 нет метода {@code cancel()}: отмена
+     * объявлена в {@code org.apache.hc.core5.concurrent.Cancellable}, который реализуют
+     * конкретные запросы httpclient5 ({@code HttpPut}/{@code HttpGet}). Проверка через
+     * {@code instanceof} не ломает контракт метода и остаётся корректной, если тип
+     * реализации сменится; жёсткий предел дополнительно задан connect/response
+     * timeout и ожиданием future.</p>
+     */
+    private static void cancel(org.apache.hc.core5.http.ClassicHttpRequest request) {
+        if (request instanceof org.apache.hc.core5.concurrent.Cancellable cancellable) {
+            cancellable.cancel();
         }
     }
 
