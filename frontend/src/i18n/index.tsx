@@ -1286,6 +1286,18 @@ const EN: Record<string, string> = {
   'бессрочная': 'no expiry',
   'После отзыва или истечения срока ссылка открывается как 404 — это нормально, доступ закрыт.': 'After revocation or expiry the link returns 404 — this is expected, access is closed.',
   'Готово': 'Done',
+
+  // Route error boundary
+  'Нет подключения к сети': 'No network connection',
+  'Проверьте интернет и попробуйте снова.': 'Check your connection and try again.',
+  'Не удалось загрузить часть приложения': 'Part of the app could not be loaded',
+  'Возможно, приложение обновилось. Загрузите страницу ещё раз — так вы получите актуальную версию.': 'The app may have been updated. Reload the page to get the current version.',
+  'Что-то пошло не так': 'Something went wrong',
+  'Страница не открылась. Обновите её или вернитесь в почту.': 'The page did not open. Reload it or return to mail.',
+  'Обновляем приложение…': 'Reloading the app…',
+  'Обновить страницу': 'Reload page',
+  'На главную': 'Go to Mail',
+  'Технические подробности': 'Technical details',
 };
 
 const API_PATTERNS: Array<{ pattern: RegExp; en: string; ru?: string }> = [
