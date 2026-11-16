@@ -1292,6 +1292,19 @@ const EN: Record<string, string> = {
   'Выбрано': 'Selected',
   'Не выбрана': 'Not selected',
   'Файл уже находится в этой папке': 'The file is already in this folder',
+
+  // Route error boundary
+  'Нет подключения к сети': 'No network connection',
+  'Проверьте интернет и попробуйте снова.': 'Check your connection and try again.',
+  'Не удалось загрузить часть приложения': 'Part of the app could not be loaded',
+  'Возможно, приложение обновилось. Загрузите страницу ещё раз — так вы получите актуальную версию.': 'The app may have been updated. Reload the page to get the current version.',
+  'Что-то пошло не так': 'Something went wrong',
+  'Страница не открылась. Обновите её или вернитесь в почту.': 'The page did not open. Reload it or return to mail.',
+  'Обновляем приложение…': 'Reloading the app…',
+  'Обновить страницу': 'Reload page',
+  'На главную': 'Go to Mail',
+  'Технические подробности': 'Technical details',
+
 };
 
 const API_PATTERNS: Array<{ pattern: RegExp; en: string; ru?: string }> = [

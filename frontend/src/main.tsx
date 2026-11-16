@@ -2,9 +2,11 @@ import React, { lazy, Suspense } from 'react';
 import ReactDOM from 'react-dom/client';
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom';
 import AppShell from './app/AppShell';
+import RouteError from './app/RouteError';
 import LoginPage from './features/auth/LoginPage';
 import { useT } from './i18n';
 import { ThemeProvider } from './components/ThemeProvider';
+import { tryReloadForStaleChunk } from './lib/chunkReload';
 import '@fontsource-variable/inter';
 import './index.css';
 
@@ -20,11 +22,18 @@ function RouteLoading({ source }: { source: string }) {
   return <div className="flex h-full items-center justify-center text-sm text-muted">{t(source)}</div>;
 }
 
+// Передеплой удаляет старые чанки. Vite сообщает об этом отдельным событием,
+// но перезагружаемся не более одного раза за кулдаун (см. chunkReload).
+window.addEventListener('vite:preloadError', (event) => {
+  if (tryReloadForStaleChunk() === 'reloaded') event.preventDefault();
+});
+
 const router = createBrowserRouter([
-  { path: '/login', element: <LoginPage /> },
+  { path: '/login', element: <LoginPage />, errorElement: <RouteError /> },
   {
     path: '/',
     element: <AppShell />,
+    errorElement: <RouteError />,
     children: [
       { index: true, element: <Navigate to="/mail" replace /> },
       { path: 'mail', element: <Suspense fallback={<RouteLoading source="Загружаем почту…" />}><MailPage /></Suspense> },
@@ -34,7 +43,7 @@ const router = createBrowserRouter([
       { path: 'admin/:section?', element: <Suspense fallback={<RouteLoading source="Загружаем администрирование…" />}><AdminPage /></Suspense> },
     ],
   },
-  { path: '*', element: <Navigate to="/login" replace /> },
+  { path: '*', element: <Navigate to="/login" replace />, errorElement: <RouteError /> },
 ]);
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

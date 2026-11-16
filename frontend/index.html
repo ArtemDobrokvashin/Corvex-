@@ -5,9 +5,70 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/corvex.svg" />
     <title>Corvex — корпоративная почта и чат</title>
+    <!-- Передеплой удаляет старые чанки: если браузер сохранил прежний index.html,
+         входной модуль не загрузится и приложение даже не стартует. Ловим ошибку
+         загрузки скрипта из /assets/ и один раз перезагружаем страницу за кулдаун,
+         чтобы не уйти в цикл при недоступном сервере. -->
+    <script>
+      (function () {
+        var KEY = 'corvex.stale-chunk-reload';
+        var COOLDOWN = 15000;
+
+        // Тексты продублированы намеренно: если основной бандл не загрузился,
+        // словарь i18n тоже недоступен.
+        function showBootError() {
+          var box = document.getElementById('boot-error');
+          if (!box) return;
+          var en = /^en/i.test(navigator.language || '');
+          document.getElementById('boot-error-title').textContent = en
+            ? 'The app could not be loaded'
+            : 'Не удалось загрузить приложение';
+          document.getElementById('boot-error-text').textContent = en
+            ? 'The app has probably been updated. Reload the page to get the current version. If that does not help, press Ctrl+F5 (Cmd+Shift+R on macOS).'
+            : 'Скорее всего, приложение обновилось. Обновите страницу, чтобы получить актуальную версию. Если не помогает — нажмите Ctrl+F5 (на macOS Cmd+Shift+R).';
+          document.getElementById('boot-error-button').textContent = en
+            ? 'Reload page'
+            : 'Обновить страницу';
+          box.hidden = false;
+        }
+
+        window.addEventListener('error', function (event) {
+          var target = event.target;
+          if (!target || target.tagName !== 'SCRIPT') return;
+          if ((target.src || '').indexOf('/assets/') === -1) return;
+          try {
+            var last = Number(sessionStorage.getItem(KEY) || 0);
+            var now = Date.now();
+            if (last && now - last < COOLDOWN) {
+              showBootError();
+              return;
+            }
+            sessionStorage.setItem(KEY, String(now));
+          } catch (error) {
+            showBootError();
+            return;
+          }
+          window.location.reload();
+        }, true);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <div
+      id="boot-error"
+      hidden
+      style="max-width:520px;margin:10vh auto;padding:24px;border:1px solid #E2E8F0;border-radius:16px;background:#FFFFFF;color:#0F172A;font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif"
+    >
+      <h1 id="boot-error-title" style="margin:0 0 8px;font-size:19px;line-height:1.35"></h1>
+      <p id="boot-error-text" style="margin:0 0 18px;font-size:14px;line-height:1.6;color:#475569"></p>
+      <button
+        id="boot-error-button"
+        type="button"
+        onclick="window.location.reload()"
+        style="height:40px;padding:0 16px;border:0;border-radius:8px;background:#1D63ED;color:#FFFFFF;font-size:14px;font-weight:500;cursor:pointer"
+      ></button>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
