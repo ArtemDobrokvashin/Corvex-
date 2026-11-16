@@ -84,7 +84,7 @@ services:
     networks: [data]
 
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.23
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.25
     restart: unless-stopped
     environment:
       discovery.type: single-node
@@ -493,7 +493,7 @@ services:
 
   # ------------------------- Мониторинг (профиль monitoring) ---------------
   prometheus:
-    image: prom/prometheus:v3.15.1
+    image: prom/prometheus:v3.16.0
     profiles: [monitoring]
     restart: unless-stopped
     command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=30d"]
@@ -542,7 +542,7 @@ services:
       options: { max-size: "10m", max-file: "5" }
 
   alertmanager:
-    image: prom/alertmanager:v0.34.2
+    image: prom/alertmanager:v0.35.0
     profiles: [monitoring]
     restart: unless-stopped
     entrypoint: ["/bin/sh", "/etc/corvex/alertmanager-entrypoint.sh"]
@@ -554,7 +554,7 @@ services:
     networks: [monitoring, app]
 
   grafana:
-    image: grafana/grafana:13.3.0
+    image: grafana/grafana:13.3.1
     profiles: [monitoring]
     restart: unless-stopped
     environment:
