@@ -6,6 +6,8 @@ info:
     REST API веб-клиента почты поверх mail-storage-service (отправка уходит в mail-smtp-service через RabbitMQ).
     Внешние клиенты ходят не сюда, а по IMAP/POP3/SMTP. Списки — курсорная пагинация, тела писем отдаются
     санитизированным HTML (XSS) + plain text.
+    Операции с расширением x-corvex-status: planned описаны как замысел: в коде их нет,
+    и вызывать их не следует.
 servers:
   - url: https://mail.company.local/api/v1
 paths:
@@ -124,6 +126,7 @@ paths:
               properties: { seen: { type: boolean }, flagged: { type: boolean } }
       responses: { '200': { description: Флаги обновлены } }
   /mail/messages/bulk-move:
+    x-corvex-status: planned
     post:
       summary: Пакетное перемещение писем в папку
       requestBody:
@@ -192,6 +195,7 @@ paths:
       summary: Создать/обновить черновик (автосохранение редактора)
       responses: { '201': { description: Черновик сохранён } }
   /mail/attachments:
+    x-corvex-status: planned
     post:
       summary: Загрузить вложение до отправки (потоково, AV-сканирование до публикации)
       requestBody:
@@ -218,6 +222,7 @@ paths:
         '503': { description: Проверка недоступна }
         '404': { description: Письмо или вложение не найдено либо принадлежит другому пользователю }
   /mail/search:
+    x-corvex-status: planned
     get:
       summary: Полнотекстовый поиск (Elasticsearch — тема, отправитель, получатель, тело, имена/текст вложений)
       parameters:
@@ -346,15 +351,19 @@ paths:
   /mail/external-accounts/{accountId}/audit:
     get: { summary: Аудит внешнего ящика без секретов (ADMIN_MAIL_POLICY), parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Аудит } } }
   /mail/rules:
+    x-corvex-status: planned
     get: { summary: Правила автосортировки пользователя, responses: { '200': { description: Список по позиции } } }
     post: { summary: Создать правило (условия/действия JSON — см. схему mail_rules), responses: { '201': { description: Создано } } }
   /mail/contacts:
+    x-corvex-status: planned
     get: { summary: Адресная книга с группами, responses: { '200': { description: Контакты } } }
     post: { summary: Добавить контакт, responses: { '201': { description: Добавлен } } }
   /mail/signatures:
+    x-corvex-status: planned
     get: { summary: Подписи пользователя, responses: { '200': { description: Список } } }
     post: { summary: Создать подпись, responses: { '201': { description: Создана } } }
   /mail/vacation:
+    x-corvex-status: planned
     get: { summary: Настройки автоответа (отпуск), responses: { '200': { description: Настройки } } }
     put: { summary: Включить/изменить автоответ, responses: { '200': { description: Сохранено } } }
   # --- Собственные домены (ADMIN_MAIL_POLICY) ---------------------------------

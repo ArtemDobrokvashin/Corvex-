@@ -84,7 +84,7 @@ flowchart TB
 | `mail-smtp-service` | 8082, 25/587 | — | приём и отправка SMTP, DKIM, очередь исходящих |
 | `mail-imap-service` | 8083, 143/993 | — | IMAP поверх storage API (движок Apache James) |
 | `mail-pop3-service` | 8084, 110/995 | — | POP3 поверх storage API |
-| `mail-storage-service` | 8085 | `mail_db` | папки, письма, Maildir и CAS, правила, квоты, поиск, календарь |
+| `mail-storage-service` | 8085 | `mail_db` | папки, письма, Maildir и CAS, квоты, индекс поиска, календарь, внешние ящики |
 | `mail-spam-service` | 8086 | — | SPAMC → spamd, fail-open |
 | `mail-antivirus-service` | 8087 | — | INSTREAM → clamd, fail-closed |
 | `chat-service` | 8088 | `chat_db` | комнаты, сообщения, реакции, STOMP, presence |
