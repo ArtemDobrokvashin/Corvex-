@@ -18,7 +18,7 @@
         <java.version>17</java.version>
         <spring-cloud.version>2023.0.6</spring-cloud.version>
         <!-- Spring Boot не управляет версией BouncyCastle — фиксируем явно (нужен Argon2PasswordEncoder) -->
-        <bouncycastle.version>1.86</bouncycastle.version>
+        <bouncycastle.version>1.87</bouncycastle.version>
         <!-- Spring Boot с 2.6 не управляет Nimbus JOSE; 9.37.4 — линия Spring Security 6.5 с фиксом CVE-2025-53864 -->
         <nimbus-jose-jwt.version>9.48</nimbus-jose-jwt.version>
     </properties>
@@ -60,7 +60,7 @@
         <plugins>
             <plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin>
             <plugin>
-                <groupId>org.jacoco</groupId><artifactId>jacoco-maven-plugin</artifactId><version>0.8.15</version>
+                <groupId>org.jacoco</groupId><artifactId>jacoco-maven-plugin</artifactId><version>0.8.16</version>
                 <executions>
                     <execution><goals><goal>prepare-agent</goal></goals></execution>
                     <execution><id>report</id><phase>verify</phase><goals><goal>report</goal><goal>check</goal></goals>
