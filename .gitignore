@@ -23,3 +23,6 @@ artifacts/
 /corvex-*.patch
 /james-git-download.patch
 /collaboration.png
+
+# unpublishable working log of the local session
+LOCAL_SESSION_HISTORY.md
