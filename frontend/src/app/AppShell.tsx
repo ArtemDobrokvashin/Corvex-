@@ -3,6 +3,7 @@ import {
   Bell,
   Calendar as CalendarIcon,
   ChevronUp,
+  FolderOpen,
   Clock as ClockIcon,
   LogOut,
   Mail,
@@ -434,6 +435,21 @@ export default function AppShell() {
                   {unreadChat}
                 </span>
               )}
+            </NavLink>
+
+            <NavLink
+              to="/files"
+              title={t('Файлы')}
+              className={({ isActive }) =>
+                `sidebar-item ${isActive ? 'sidebar-item-active' : ''} ${
+                  sidebarCollapsed ? 'md:justify-center md:px-0' : ''
+                }`
+              }
+            >
+              <FolderOpen size={17} strokeWidth={1.85} className="shrink-0" />
+              <span className={`min-w-0 flex-1 truncate ${sidebarCollapsed ? 'md:hidden' : ''}`}>
+                {t('Файлы')}
+              </span>
             </NavLink>
 
             {/* Календарь: открывает боковой виджет поверх работы + быстрый переход в /calendar */}

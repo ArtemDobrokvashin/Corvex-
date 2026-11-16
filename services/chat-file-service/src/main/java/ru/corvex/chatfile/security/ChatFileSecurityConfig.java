@@ -19,6 +19,11 @@ import java.util.List;
 /**
  * Файлы чата выдаются только по Bearer JWT: прямая публичная ссылка на blob недопустима,
  * потому что право скачивания зависит от актуального членства пользователя в комнате.
+ *
+ * <p>Единственное исключение — {@code /api/v1/drive/shared/**}: это явно выданная владельцем
+ * ссылка на файл собственного диска. Она не даёт доступа к каталогу, проверяется на каждый
+ * запрос внутри {@code DriveService} (отзыв, срок, корзина) и отдаёт файл только как attachment.
+ * Любой другой путь диска требует JWT.</p>
  */
 @Configuration
 @EnableMethodSecurity
@@ -33,6 +38,7 @@ public class ChatFileSecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus").permitAll()
+                        .requestMatchers("/api/v1/drive/shared/**").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth.jwt(jwt -> jwt
                         .decoder(jwtDecoder)

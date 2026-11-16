@@ -31,6 +31,11 @@ corvex:
     max-bytes: ${CORVEX_CHAT_FILE_MAX_BYTES:26214400}
     # Fail-closed по умолчанию: при недоступном ClamAV файл не публикуется.
     av-required: ${CORVEX_CHAT_FILE_AV_REQUIRED:true}
+  drive:
+    # Личный диск живёт на том же volume, что и вложения чата (objects/ + drive/),
+    # поэтому существующие backup-скрипты покрывают его без изменений.
+    quota-bytes: ${CORVEX_DRIVE_QUOTA_BYTES:5368709120}
+    max-file-bytes: ${CORVEX_DRIVE_MAX_FILE_BYTES:26214400}
   security:
     internal-token: ${CORVEX_INTERNAL_API_TOKEN:}
     # Публичный ключ auth-service (JWKS): каждый сервис сам валидирует JWT (RS256)

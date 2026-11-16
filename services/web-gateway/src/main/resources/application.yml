@@ -50,6 +50,10 @@ spring:
             - id: chat-files
               uri: http://chat-file-service:8089
               predicates: [Path=/api/v1/files/**]
+            - id: drive
+              # Личный диск того же сервиса: общий CAS, AV и volume с вложениями чата.
+              uri: http://chat-file-service:8089
+              predicates: [Path=/api/v1/drive/**]
             - id: admin
               uri: http://admin-service:8090
               predicates: [Path=/api/v1/admin/**]
