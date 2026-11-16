@@ -134,7 +134,7 @@ Corvex придумал и сейчас ведёт один разработчи
 | 4 | Persistent realtime-чат, файлы, presence | 🟡 базовый realtime подтверждён; двухпользовательский chat/file/security-smoke впереди |
 | 6 | Календарь и серверные напоминания | 🟡 реализовано и собрано на `ad42ff2`; живая приёмка на ПК впереди |
 | 7 | «Файлы»: личный диск и ссылки | 🟡 backend, UI и тесты написаны; Maven-сборка и живая приёмка на ПК впереди |
-| G0 | Frontend и статические ворота | ✅ в ветке с «Файлами» 69 файлов / 322 теста, `tsc -b`, modern+legacy build, production audit 0 |
+| G0 | Frontend и статические ворота | ✅ в ветке с «Файлами» 69 файлов / 343 теста, `tsc -b`, modern+legacy build, production audit 0 |
 | G1 | Maven по всем сервисам | 🟢 `ad42ff2`: `admin`, `mail-storage`, `notification`, `web-gateway` — `BUILD SUCCESS` с тестами; 🔁 полный reactor 12 сервисов + parent |
 | G2 | Docker, Flyway и первый запуск | ✅ `ad42ff2`: 16/16 build-контекстов собраны, контейнеры `Started`/`healthy`, миграции `V6`/`V8` применились; ⏳ чистая установка без volumes |
 | G3 | Функциональная приёмка | 🚧 External Mail ongoing и базовый чат проверены; остальное перечислено в [`docs/READINESS.md`](docs/READINESS.md) |

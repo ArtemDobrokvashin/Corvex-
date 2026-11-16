@@ -15,10 +15,10 @@ export interface DriveNode {
   kind: DriveNodeKind;
   name: string;
   sizeBytes: number;
-  contentType: string | null;
+  contentType?: string | null;
   createdAt: string;
   updatedAt: string;
-  trashedAt: string | null;
+  trashedAt?: string | null;
 }
 
 export interface DriveUsage {
@@ -30,8 +30,8 @@ export interface DriveShare {
   id: string;
   nodeId: string;
   createdAt: string;
-  expiresAt: string | null;
-  revokedAt: string | null;
+  expiresAt?: string | null;
+  revokedAt?: string | null;
 }
 
 export interface DriveShareCreated {
@@ -43,6 +43,7 @@ export interface DriveShareCreated {
 export type DriveView = 'files' | 'trash';
 
 const BASE = '/api/v1/drive';
+const nodePath = (id: string) => `${BASE}/${encodeURIComponent(id)}`;
 
 export const driveApi = {
   list(parentId: string | null, view: DriveView, query = ''): Promise<DriveNode[]> {
@@ -71,48 +72,48 @@ export const driveApi = {
   },
 
   rename(id: string, name: string): Promise<DriveNode> {
-    return apiFetch<DriveNode>(`${BASE}/${id}/name`, {
+    return apiFetch<DriveNode>(`${nodePath(id)}/name`, {
       method: 'PATCH',
       body: JSON.stringify({ name }),
     });
   },
 
   move(id: string, parentId: string | null): Promise<DriveNode> {
-    return apiFetch<DriveNode>(`${BASE}/${id}/move`, {
+    return apiFetch<DriveNode>(`${nodePath(id)}/move`, {
       method: 'POST',
       body: JSON.stringify({ parentId }),
     });
   },
 
   trash(id: string): Promise<void> {
-    return apiFetch<void>(`${BASE}/${id}/trash`, { method: 'POST' });
+    return apiFetch<void>(`${nodePath(id)}/trash`, { method: 'POST' });
   },
 
   restore(id: string): Promise<void> {
-    return apiFetch<void>(`${BASE}/${id}/restore`, { method: 'POST' });
+    return apiFetch<void>(`${nodePath(id)}/restore`, { method: 'POST' });
   },
 
   purge(id: string): Promise<void> {
-    return apiFetch<void>(`${BASE}/${id}`, { method: 'DELETE' });
+    return apiFetch<void>(nodePath(id), { method: 'DELETE' });
   },
 
   download(id: string): Promise<Blob> {
-    return apiBlob(`${BASE}/${id}/content`);
+    return apiBlob(`${nodePath(id)}/content`);
   },
 
   shares(id: string): Promise<DriveShare[]> {
-    return apiFetch<DriveShare[]>(`${BASE}/${id}/shares`);
+    return apiFetch<DriveShare[]>(`${nodePath(id)}/shares`);
   },
 
   createShare(id: string, expiresInDays: number | null): Promise<DriveShareCreated> {
-    return apiFetch<DriveShareCreated>(`${BASE}/${id}/shares`, {
+    return apiFetch<DriveShareCreated>(`${nodePath(id)}/shares`, {
       method: 'POST',
       body: JSON.stringify({ expiresInDays }),
     });
   },
 
   revokeShare(shareId: string): Promise<void> {
-    return apiFetch<void>(`${BASE}/shares/${shareId}`, { method: 'DELETE' });
+    return apiFetch<void>(`${BASE}/shares/${encodeURIComponent(shareId)}`, { method: 'DELETE' });
   },
 };
 
@@ -141,16 +142,15 @@ export function formatBytes(bytes: number, locale: 'ru' | 'en' = 'ru'): string {
 /** Скачивание blob'а без публичной ссылки: имя берётся из узла, а не из заголовка ответа. */
 export async function saveBlob(blob: Blob, name: string): Promise<void> {
   const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
   try {
-    const link = document.createElement('a');
     link.href = url;
     link.download = name;
     document.body.appendChild(link);
     link.click();
-    link.remove();
   } finally {
-    // Немедленный revoke в Safari/Chrome 109 может отменить скачивание, поэтому отдаём
-    // браузеру кадр на старт загрузки.
+    link.remove();
+    // A delayed revoke lets Chrome 109 start the download before the URL disappears.
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
 }

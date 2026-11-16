@@ -3,8 +3,8 @@ import {
   Bell,
   Calendar as CalendarIcon,
   ChevronUp,
-  FolderOpen,
   Clock as ClockIcon,
+  FolderOpen,
   LogOut,
   Mail,
   Maximize2,
@@ -23,7 +23,6 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { logout as apiLogout, restoreSession } from '../api/authApi';
 import { DEMO_MAILS, DEMO_ROOMS, getDemoUser } from '../api/demoData';
 import { setAccessToken } from '../api/httpClient';
-import { isDemoRequested } from './demoLink';
 import { AppearanceSettings } from '../components/AppearanceSettings';
 import CalendarSidebarWidget from '../components/CalendarSidebarWidget';
 import Clock from '../components/Clock';
@@ -126,18 +125,13 @@ export default function AppShell() {
         setBootstrapped();
         return;
       }
-      const storedDemo = sessionStorage.getItem('corvex.demo') === '1';
-      const linkedDemo = isDemoRequested(window.location.search);
-      if (storedDemo) {
+      if (sessionStorage.getItem('corvex.demo') === '1') {
         setSession(getDemoUser(locale), true);
         return;
       }
       const restored = await restoreSession();
       if (restored) {
-        // Настоящая сессия всегда важнее ссылки: ?demo=1 не выкидывает из аккаунта.
         setSession(restored, false);
-      } else if (linkedDemo) {
-        setSession(getDemoUser(locale), true);
       } else {
         setBootstrapped();
         navigate('/login', { replace: true });
@@ -440,13 +434,14 @@ export default function AppShell() {
             <NavLink
               to="/files"
               title={t('Файлы')}
+              aria-label={t('Файлы')}
               className={({ isActive }) =>
                 `sidebar-item ${isActive ? 'sidebar-item-active' : ''} ${
                   sidebarCollapsed ? 'md:justify-center md:px-0' : ''
                 }`
               }
             >
-              <FolderOpen size={17} strokeWidth={1.85} className="shrink-0" />
+              <FolderOpen size={17} strokeWidth={1.85} className="shrink-0" aria-hidden="true" />
               <span className={`min-w-0 flex-1 truncate ${sidebarCollapsed ? 'md:hidden' : ''}`}>
                 {t('Файлы')}
               </span>
