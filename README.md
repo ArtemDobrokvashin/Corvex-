@@ -173,6 +173,9 @@ docker compose up -d                       # на существующих volum
 откат образов на предыдущий SHA, алерт при остановке сервиса, ротация сертификата.
 Затем 72 часа наблюдения: очереди, DLQ, диск, bounce-rate.
 
+Пошаговый план с датами, зависимостями и критериями выхода на каждый день —
+[`docs/SERVER-ROLLOUT.md`](docs/SERVER-ROLLOUT.md).
+
 **4. Подготовить сам сервер.** Тестовый домен и DNS (MX/SPF/DKIM/DMARC), TLS-сертификат,
 `first-run.ps1` с новыми секретами, `CORVEX_INTERNAL_API_TOKEN` одинаковый во всех сервисах,
 NTP, брандмауэр, получатели алертов. Почтовые протоколы (`CORVEX_SMTP_ENABLED` и т. п.)
@@ -329,6 +332,7 @@ docker compose logs auth-service | Select-String BOOTSTRAP
 | [`docs/RELEASE-DEPENDENCIES.md`](docs/RELEASE-DEPENDENCIES.md) | зафиксированные версии, осознанные исключения и порядок G0–G5 |
 | [`docs/TESTING-ON-YOUR-PC.md`](docs/TESTING-ON-YOUR-PC.md) | пошаговая первая приёмка на вашем ПК: от frontend до Maven, Docker и почтовых клиентов |
 | [`docs/EXTERNAL-MAIL.md`](docs/EXTERNAL-MAIL.md) | подключение Mail.ru, Яндекса и других старых ящиков: сбор, миграция архива и send-as |
+| [`docs/SERVER-ROLLOUT.md`](docs/SERVER-ROLLOUT.md) | план переноса на тестовый сервер на неделю: дни, зависимости, критерии выхода, порядок включения |
 | [`docs/CALENDAR.md`](docs/CALENDAR.md) | календарь: модель данных, API, доставка напоминаний, развёртывание и ограничения |
 | [`docs/FILES_PLAN.md`](docs/FILES_PLAN.md) | «Файлы»: проектирование личного диска и модель ссылок |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | участие в разработке: код, тесты, документация, переводы и требования к PR |
@@ -491,6 +495,9 @@ Without that, the first server start can fail on Flyway.
 to the previous SHA, an alert when a service stops, certificate rotation. Then 72 hours of
 observation: queues, DLQ, disk, bounce rate.
 
+A step-by-step plan with dates, dependencies and exit criteria per day is in
+[`docs/SERVER-ROLLOUT.md`](docs/SERVER-ROLLOUT.md) (Russian).
+
 **4. Prepare the server itself.** Test domain and DNS (MX/SPF/DKIM/DMARC), TLS certificate,
 `first-run.ps1` with fresh secrets, the same `CORVEX_INTERNAL_API_TOKEN` in every service, NTP,
 firewall, alert recipients. Mail protocols (`CORVEX_SMTP_ENABLED` and friends) are enabled
@@ -637,6 +644,7 @@ Full audit: [`docs/12-full-audit-2026-10.md`](docs/12-full-audit-2026-10.md).
 | [`docs/RELEASE-DEPENDENCIES.md`](docs/RELEASE-DEPENDENCIES.md) | recorded versions, explicit exceptions, and the G0–G5 order (Russian) |
 | [`docs/TESTING-ON-YOUR-PC.md`](docs/TESTING-ON-YOUR-PC.md) | step-by-step first acceptance on your PC: frontend, Maven, Docker, and mail clients (Russian) |
 | [`docs/EXTERNAL-MAIL.md`](docs/EXTERNAL-MAIL.md) | connecting Mail.ru, Yandex, and other legacy mailboxes: collection, archive migration, and send-as |
+| [`docs/SERVER-ROLLOUT.md`](docs/SERVER-ROLLOUT.md) | week plan for moving to a test server: days, dependencies, exit criteria, enablement order |
 | [`docs/CALENDAR.md`](docs/CALENDAR.md) | calendar: data model, API, reminder delivery, deployment, and limits |
 | [`docs/FILES_PLAN.md`](docs/FILES_PLAN.md) | Files: personal drive design and the link model |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | participating in development: code, tests, documentation, translations, and PR expectations |

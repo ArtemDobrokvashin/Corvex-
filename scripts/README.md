@@ -13,7 +13,9 @@
 | `mail_smoke.py` | SMTP 587, IMAP 143/993, POP3 995 через стандартные клиенты Python | **Нет**: не отправляет письма и не выполняет MOVE/DELE/EXPUNGE |
 | `mail_e2e.py` | SMTP send → Sent APPEND → INBOX получателя → Sent отправителя, text/HTML + SHA-256 вложения | **Да, ограниченно**: создаёт одно новое письмо и его Sent-копию с уникальным run ID; старые письма не трогает |
 | `mail_persistence.py` | IMAP MOVE, flags/reconnect, restart-persistence и UID EXPUNGE для письма из e2e | **По умолчанию нет**: без флагов только precheck; полный режим требует двух явных разрешений и работает только с собственным run ID/временной папкой |
-| `mail_inventory.py` | Сверка путей метаданных с файлами Maildir и поиск файлов-кандидатов без ссылки | **Нет**: не читает содержимое писем, не удаляет и не восстанавливает файлы |
+| `mail_inventory.py` | Сверка путей метаданных с файлами Maildir и поиск файлов-кандидатов без ссылки |
+| `calendar_smoke.py` | Календарь через gateway: вход, права, создание события, 409 на устаревшую `revision`, письмо-напоминание в INBOX, удаление | **Да, ограниченно**: создаёт одно событие с уникальным run ID и удаляет его; письма не читает, ищет только свою тему |
+| `acceptance.ps1` | Последовательный прогон приёмки сервера с единым журналом и PASS/FAIL по шагам | Только то, что делают вызываемые им скрипты; сам ничего не меняет | **Нет**: не читает содержимое писем, не удаляет и не восстанавливает файлы |
 
 Для Python-скриптов нужен **Python 3.10+**, сторонние pip-пакеты не требуются.
 Windows: `py -3`; Linux/macOS: `python3`. Все команды ниже выполняются из корня
@@ -129,6 +131,49 @@ notification-service: проверяет, что внутренний канал
 Сервисы не останавливаются. INBOX открывается через `EXAMINE`, тело читается через
 `BODY.PEEK[]`; существующие письма не изменяются и не удаляются. Тестовое alert-письмо
 сохраняется для диагностики, а JSON содержит только технические статусы, TLS и run ID.
+
+## 2C. Единый прогон приёмки (рекомендуется на сервере)
+
+Один вызов выполняет обязательные проверки по порядку и останавливается на первом
+провале. Единый журнал и JSON лежат в `artifacts\smoke\`, SHA фиксируется в отчёте.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\acceptance.ps1 `
+  -BaseUrl https://mail.company.local `
+  -CaFile C:\corvex-pki\corvex-test-ca.crt `
+  -Sender i.ivanov@company.local -Recipient a.petrova@company.local `
+  -CalendarUser i.ivanov@company.local `
+  -Maven -Alert -AlertUser admin@company.local
+```
+
+Шаги: toolchain → `compose config` + runtime (`runtime_smoke.py`) → полный Maven
+(только с `-Maven`) → почтовый e2e (`mail_e2e.py`) → календарь (`calendar_smoke.py`)
+→ synthetic alert (`alert_e2e.py`, только с `-Alert`). `-SkipMail`/`-SkipCalendar`
+явно убирают шаг, а не молча делают вид, что он пройден. Коды выхода: `0` — всё
+пройдено, `1` — есть FAIL, `3` — есть SKIP (неполнота, а не успех).
+
+## 2D. Календарь и серверные напоминания
+
+Скрипт проверяет не интерфейс, а серверную цепочку: право `CALENDAR_WRITE` у
+пользователя, создание события, попадание в выборку за период, `409` при устаревшей
+`revision`, рост `revision` после изменения, **письмо-напоминание в INBOX** (значит,
+сработали планировщик, `notification-service`, SMTP и доставка) и `404` после удаления.
+
+```powershell
+py -3 scripts/calendar_smoke.py `
+  --base-url https://mail.company.local `
+  --username i.ivanov@company.local `
+  --ca-file C:\corvex-pki\corvex-test-ca.crt `
+  --wait-seconds 600 `
+  --report artifacts\smoke\calendar.json
+```
+
+Пароль запрашивается скрыто или берётся из `CORVEX_TEST_PASSWORD`. Событие начинается
+через `--lead-minutes` (по умолчанию 4), напоминание — за 1 минуту, поэтому письмо
+обычно приходит в первые 3–4 минуты. `--skip-reminder` даёт быструю проверку только
+API и статус SKIP для доставки. Аккаунт с включённой 2FA скрипт не принимает: без
+второго фактора он не получит access token — для приёмки нужен отдельный пользователь.
+Созданное событие удаляется в `finally`; `--keep` оставляет его для ручной проверки.
 
 ## 3. Read-only SMTP/IMAP/POP3 smoke
 

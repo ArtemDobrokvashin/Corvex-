@@ -425,6 +425,17 @@ docker compose logs auth-service | Select-String BOOTSTRAP
 
 ### Календарь и серверные напоминания
 
+Часть пунктов проверяется скриптом без браузера — быстрее и с одинаковым результатом:
+
+```powershell
+py -3 scripts\calendar_smoke.py --base-url https://mail.company.local `
+  --username i.ivanov@company.local --report artifacts\smoke\calendar.json
+```
+
+Он создаёт событие через API, проверяет выборку за период, `409` на устаревшую `revision`,
+рост `revision`, письмо-напоминание в INBOX и `404` после удаления. Ручными остаются
+пункты про второе окно, F5 и отображение — они ниже.
+
 Подробности реализации и ограничений — `docs/CALENDAR.md`.
 
 - [ ] Создаётся событие с датой, временем и напоминанием «за 5 минут»; после F5 оно на месте.
