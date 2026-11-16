@@ -653,6 +653,7 @@ Full audit: [`docs/12-full-audit-2026-10.md`](docs/12-full-audit-2026-10.md).
 | [`docs/SERVER-ROLLOUT.md`](docs/SERVER-ROLLOUT.md) | week plan for moving to a test server: days, dependencies, exit criteria, enablement order |
 | [`docs/SIZING.md`](docs/SIZING.md) | server sizing for a given mailbox count: disk, RAM, CPU, backups; the `scripts/capacity.py` calculator |
 | [`docs/CALENDAR.md`](docs/CALENDAR.md) | calendar: data model, API, reminder delivery, deployment, and limits |
+| [`docs/SERVER-REQUIREMENTS.md`](docs/SERVER-REQUIREMENTS.md) | что запросить у ИТ для запуска на сервере: железо, сеть, домен, доступы, приёмка |
 | [`docs/FILES_PLAN.md`](docs/FILES_PLAN.md) | Files: personal drive design and the link model |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | participating in development: code, tests, documentation, translations, and PR expectations |
 | [`docs/INSTALL.en.md`](docs/INSTALL.en.md) | installation and operations; Russian: [`INSTALL.md`](docs/INSTALL.md) |
