@@ -178,21 +178,21 @@ public class AdminMigrationService {
             invitation.setUpdatedAt(Instant.now());
             invitations.save(invitation);
 
-            UserOnboarding row2 = onboarding.findById(owner.get().id()).orElseGet(() -> {
+            UserOnboarding onboardingRow = onboarding.findById(owner.get().id()).orElseGet(() -> {
                 UserOnboarding created = new UserOnboarding();
                 created.setUserId(owner.get().id());
                 return created;
             });
             // Решение «мне нечего переносить» администратор своим CSV перекрывает:
             // иначе приглашение не показалось бы сотруднику вовсе.
-            if (row2.getMigrationState() == UserOnboarding.MigrationState.DISMISSED
-                    || row2.getMigrationState() == UserOnboarding.MigrationState.NOT_NEEDED) {
-                row2.setMigrationState(UserOnboarding.MigrationState.PENDING);
-                row2.setDismissedAt(null);
-                row2.setNotNeededAt(null);
+            if (onboardingRow.getMigrationState() == UserOnboarding.MigrationState.DISMISSED
+                    || onboardingRow.getMigrationState() == UserOnboarding.MigrationState.NOT_NEEDED) {
+                onboardingRow.setMigrationState(UserOnboarding.MigrationState.PENDING);
+                onboardingRow.setDismissedAt(null);
+                onboardingRow.setNotNeededAt(null);
             }
-            row2.setUpdatedAt(Instant.now());
-            onboarding.save(row2);
+            onboardingRow.setUpdatedAt(Instant.now());
+            onboarding.save(onboardingRow);
             invited++;
         }
         invitations.flush();
