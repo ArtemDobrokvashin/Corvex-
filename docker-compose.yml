@@ -356,7 +356,7 @@ services:
     environment:
       <<: *common-env
       # ВНИМАНИЕ: Stage 2A inbound pipeline уже пишет durable spool и ждёт publisher confirm,
-      # но включать на проде только после smoke на JDK/Docker-хосте. См. docs/READINESS.md
+      # но включать на проде только после smoke на JDK/Docker-хосте. См. docs/STATUS.md
       CORVEX_SMTP_ENABLED: ${CORVEX_SMTP_ENABLED:-false}
       CORVEX_AUTH_SERVICE_URL: http://auth-service:8081
       CORVEX_ADMIN_SERVICE_URL: http://admin-service:8090
@@ -381,7 +381,7 @@ services:
     build: ./services/mail-imap-service
     environment:
       <<: *common-env
-      # IMAP на Apache James: включать только после Maven-сборки и клиентского smoke (docs/READINESS.md).
+      # IMAP на Apache James: включать только после Maven-сборки и клиентского smoke (docs/STATUS.md).
       CORVEX_IMAP_ENABLED: ${CORVEX_IMAP_ENABLED:-false}
       CORVEX_IMAP_PLAIN_ENABLED: ${CORVEX_IMAP_PLAIN_ENABLED:-true}
       CORVEX_IMAP_STARTTLS: ${CORVEX_IMAP_STARTTLS:-true}
@@ -402,7 +402,7 @@ services:
     build: ./services/mail-pop3-service
     environment:
       <<: *common-env
-      # POP3 на James protocols: включать только после Maven-сборки и клиентского smoke (docs/READINESS.md).
+      # POP3 на James protocols: включать только после Maven-сборки и клиентского smoke (docs/STATUS.md).
       CORVEX_POP3_ENABLED: ${CORVEX_POP3_ENABLED:-false}
       CORVEX_POP3_PLAIN_ENABLED: ${CORVEX_POP3_PLAIN_ENABLED:-false}
       CORVEX_AUTH_SERVICE_URL: http://auth-service:8081

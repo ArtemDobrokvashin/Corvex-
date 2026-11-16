@@ -3,7 +3,7 @@ package ru.corvex.mailspam.pipeline;
 import java.time.Instant;
 import java.util.List;
 
-/** Локальные копии JSON-контрактов конвейера (см. docs/03-api-contracts.md). */
+/** Локальные копии JSON-контрактов конвейера (см. docs/API.md). */
 public final class MailPipelineEvents {
 
     private MailPipelineEvents() {

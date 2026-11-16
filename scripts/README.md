@@ -66,8 +66,8 @@ powershell -ExecutionPolicy Bypass -File scripts\preflight-server.ps1 `
 
 `capacity.py` отвечает на вопрос «сколько диска»: для 50 ящиков при квоте 5 ГиБ это
 ~61 ГиБ данных (диск 100 ГБ) и ~93 ГиБ под полные копии на отдельном носителе.
-Подробно — [`docs/SIZING.md`](../docs/SIZING.md). Фактическую память стенда снимает
-`runtime_usage.py`, чтобы рекомендация по RAM была измеренной.
+Подробно — [`docs/SERVER-REQUIREMENTS.md`](../docs/SERVER-REQUIREMENTS.md). Фактическую
+память стенда снимает `runtime_usage.py`, чтобы рекомендация по RAM была измеренной.
 
 ## 1. Сборочные ворота G0–G2
 
@@ -147,7 +147,7 @@ powershell -ExecutionPolicy Bypass -File scripts\alerts.ps1 unsilence -SilenceId
 Независимый `alert-relay` отправляет внешний SMTP/Telegram/MAX без RabbitMQ и Corvex SMTP.
 Его каналы выключены по умолчанию. `scripts\alerts.ps1 status` показывает effective relay
 revision, интервалы и выключенные категории, а не только сырой `.env`. Настройка, границы
-отказоустойчивости и команды targeted recreate: [`docs/ALERTING.md`](../docs/ALERTING.md).
+отказоустойчивости и команды targeted recreate: [`docs/OPERATIONS.md`](../docs/OPERATIONS.md).
 Перед созданием controlled alert `alert_e2e.py` читает фактический runtime snapshot
 notification-service: проверяет, что внутренний канал включён и тестовый ящик входит в
 `internalRecipients`. PASS доказывает внутреннюю IMAP-цепочку, но сам по себе не
@@ -431,4 +431,4 @@ monitoring alert→email и реальный Chrome 109. Любой следую
 проверка вывода. Не использовать `docker system prune` или `down -v`.
 
 Профиль `james-transition` в основном Compose — подготовка к подключению к
-существующему Corvex, пока не включать: [ограничения и обязательная конфигурация](../docs/JAMES-CORVEX-TRANSITION.md).
+существующему Corvex, пока не включать: [ограничения и обязательная конфигурация](../docs/MAIL.md).

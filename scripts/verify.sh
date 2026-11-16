@@ -50,4 +50,4 @@ if [ "$DOCKER_BUILD" = "1" ]; then
 fi
 
 step "ALL LOCAL GATES PASSED"
-echo "Next: docker compose up -d on a test host, then the runtime smokes in docs/READINESS.md."
+echo "Next: docker compose up -d on a test host, then the runtime smokes in docs/STATUS.md."

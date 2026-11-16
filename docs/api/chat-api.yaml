@@ -8,7 +8,7 @@ info:
   description: |
     Persistent chat Stage 4: REST is the source of truth for rooms, history, membership,
     search, read receipts, presence and files. STOMP/WebSocket carries realtime copies of
-    already-authorized operations; its contract is documented in docs/03-api-contracts.md.
+    already-authorized operations; its contract is documented in docs/API.md.
 
     STOMP summary: CONNECT /ws/chat with `Authorization: Bearer <JWT>`; subscribe to
     /topic/rooms.{roomId}, /user/queue/notifications and /user/queue/errors; send to

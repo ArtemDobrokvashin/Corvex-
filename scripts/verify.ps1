@@ -48,4 +48,4 @@ if ($DockerBuild) {
 }
 
 Step "ALL LOCAL GATES PASSED"
-Write-Host "Next: docker compose up -d on a test host, then the runtime smokes in docs/READINESS.md."
+Write-Host "Next: docker compose up -d on a test host, then the runtime smokes in docs/STATUS.md."

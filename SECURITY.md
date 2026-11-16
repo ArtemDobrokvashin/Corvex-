@@ -3,7 +3,7 @@
 ## Русский
 
 Corvex находится в стадии pre-1.0 и **пока не является production-ready** (см.
-[`docs/READINESS.md`](docs/READINESS.md)): не направляйте на него боевые MX-записи
+[`docs/STATUS.md`](docs/STATUS.md)): не направляйте на него боевые MX-записи
 и не переносите настоящие ящики до прохождения ворот готовности. SMTP по умолчанию
 выключен (`CORVEX_SMTP_ENABLED=false`).
 
@@ -28,7 +28,7 @@ Corvex находится в стадии pre-1.0 и **пока не являе�
 ## English
 
 Corvex is pre-1.0 and **not production-ready yet** (see
-[`docs/READINESS.md`](docs/READINESS.md)): do not point production MX records at it
+[`docs/STATUS.md`](docs/STATUS.md)): do not point production MX records at it
 or migrate real mailboxes until the readiness gates pass. SMTP is disabled by
 default (`CORVEX_SMTP_ENABLED=false`).
 
