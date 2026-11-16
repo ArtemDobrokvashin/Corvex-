@@ -26,6 +26,7 @@ import {
   Search,
   Send,
   Settings2,
+  MailPlus,
   SlidersHorizontal,
   Users,
   Sparkles,
@@ -36,6 +37,7 @@ import {
 import { demoFolders, demoMails, DemoMail } from '../../api/demoData';
 import { externalMailApi, ExternalMailAccount } from '../../api/externalMailApi';
 import { contactsApi } from '../../api/contactsApi';
+import { onboardingApi, type OnboardingView } from '../../api/onboardingApi';
 import { ApiError } from '../../api/httpClient';
 import {
   mailApi,
@@ -61,6 +63,7 @@ import { demoMailIsSeen, useSession } from '../../store/sessionStore';
 import EventModal from '../calendar/EventModal';
 import ExternalMailAccountsModal from './ExternalMailAccountsModal';
 import ContactsModal from './ContactsModal';
+import MigrationWizard from './MigrationWizard';
 import CreateFolderModal from './CreateFolderModal';
 import MailSettingsModal from './MailSettingsModal';
 import { bodyWithSignature, loadMailPreferences, mailPreferencesKey, saveMailPreferences, type MailPreferences } from './mailPreferences';
@@ -204,6 +207,37 @@ export default function MailPage() {
   const [composeDraft, setComposeDraft] = useState<ComposeDraft | null>(null);
   const [contactsOpen, setContactsOpen] = useState(false);
   const [contactEmails, setContactEmails] = useState<string[]>([]);
+  const [migrationOpen, setMigrationOpen] = useState(false);
+  const [onboarding, setOnboarding] = useState<OnboardingView | null>(null);
+  const migrationOfferedRef = useRef(false);
+
+  // Предложение переноса показывается один раз за сессию: сервер решает, уместно ли оно,
+  // а браузер не должен открывать мастер при каждом переходе в почту.
+  useEffect(() => {
+    if (demoMode) return;
+    let cancelled = false;
+    onboardingApi.state()
+      .then((state) => {
+        if (cancelled) return;
+        setOnboarding(state);
+        if (state.migrationSuggested && !migrationOfferedRef.current) {
+          migrationOfferedRef.current = true;
+          setMigrationOpen(true);
+        }
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [demoMode]);
+
+  const dismissMigration = () => {
+    onboardingApi.dismiss().then(setOnboarding).catch(() => undefined);
+    setMigrationOpen(false);
+  };
+
+  const notNeededMigration = () => {
+    onboardingApi.notNeeded().then(setOnboarding).catch(() => undefined);
+    setMigrationOpen(false);
+  };
 
   // Подсказки адресов в композере. Ошибка загрузки не должна мешать почте:
   // без адресной книги поле «Кому» просто остаётся обычным вводом.
@@ -1325,6 +1359,11 @@ export default function MailPage() {
               </button>
               {!canManageFolders && <p className="px-2.5 pb-1 text-[11px] text-sidebar-muted">{t('Нет права на создание папок.')}</p>}
             </div>
+            {!demoMode && canExternalAccounts && (
+              <button type="button" onClick={() => { onCloseNavigation?.(); setMigrationOpen(true); }} className="sidebar-subitem w-full text-sidebar-muted">
+                <MailPlus size={15} strokeWidth={1.85} className="shrink-0" /><span className="min-w-0 flex-1 truncate text-left">{t('Перенести почту')}</span>
+              </button>
+            )}
             <button type="button" onClick={() => { onCloseNavigation?.(); setContactsOpen(true); }} className="sidebar-subitem w-full text-sidebar-muted">
               <Users size={15} strokeWidth={1.85} className="shrink-0" /><span className="min-w-0 flex-1 truncate text-left">{t('Адресная книга')}</span>
             </button>
@@ -2073,6 +2112,19 @@ export default function MailPage() {
           }
           onClose={() => setExternalOpen(false)}
           onAccountsChanged={setExternalAccounts}
+        />
+      )}
+
+      {migrationOpen && !demoMode && (
+        <MigrationWizard
+          existingAccount={onboarding?.accounts[0] ?? null}
+          onClose={() => {
+            setMigrationOpen(false);
+            onboardingApi.state().then(setOnboarding).catch(() => undefined);
+          }}
+          onDismiss={dismissMigration}
+          onNotNeeded={notNeededMigration}
+          onOpenContacts={() => { setMigrationOpen(false); setContactsOpen(true); }}
         />
       )}
 

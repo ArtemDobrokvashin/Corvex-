@@ -45,6 +45,9 @@
 `GET /mail/migration/{id}/report`, `POST /mail/migration/{id}/pause|resume|cancel`.
 Право — `MAIL_EXTERNAL_ACCOUNTS` для своего ящика, `ADMIN_MAIL_POLICY` — для чужого.
 
+Онбординг: `GET /api/v1/onboarding`, `POST /api/v1/onboarding/migration/dismiss|not-needed|reset`.
+Состояние персональное, право `MAIL_READ_OWN`; «выполнено» выводится из заданий переноса.
+
 ## 3. Что реализовано в webmail
 
 `GET /mail/folders`, `POST /mail/folders {name, parentId?}` (право `MAIL_MANAGE_FOLDERS`),

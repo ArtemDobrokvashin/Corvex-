@@ -433,6 +433,44 @@ paths:
     x-corvex-status: planned
     get: { summary: Настройки автоответа (отпуск), responses: { '200': { description: Настройки } } }
     put: { summary: Включить/изменить автоответ, responses: { '200': { description: Сохранено } } }
+  # --- Онбординг после первого входа -------------------------------------------
+  # Состояние персональное: администратор его не читает и не меняет.
+  /onboarding:
+    get:
+      summary: Состояние предложения «Перенести почту»
+      description: |
+        `migrationSuggested` — показывать ли мастер. После «позже» остаётся true
+        (напоминание баннером), после «мне нечего переносить» — false. После успешного
+        задания состояние становится DONE и выводится из заданий, а не выставляется вручную.
+      responses:
+        '200':
+          description: Состояние онбординга
+          content: { application/json: { schema: { $ref: '#/components/schemas/OnboardingView' } } }
+        '403': { description: Нет права MAIL_READ_OWN }
+  /onboarding/migration/dismiss:
+    post:
+      summary: Отложить предложение переноса
+      responses:
+        '200':
+          description: Состояние после решения
+          content: { application/json: { schema: { $ref: '#/components/schemas/OnboardingView' } } }
+        '403': { description: Нет права MAIL_READ_OWN }
+  /onboarding/migration/not-needed:
+    post:
+      summary: Отметить «мне нечего переносить»
+      responses:
+        '200':
+          description: Состояние после решения
+          content: { application/json: { schema: { $ref: '#/components/schemas/OnboardingView' } } }
+        '403': { description: Нет права MAIL_READ_OWN }
+  /onboarding/migration/reset:
+    post:
+      summary: Вернуть предложение переноса
+      responses:
+        '200':
+          description: Состояние снова PENDING
+          content: { application/json: { schema: { $ref: '#/components/schemas/OnboardingView' } } }
+        '409': { description: Перенос уже выполнялся }
   # --- Перенос почты из внешнего ящика -----------------------------------------
   # Задание — отдельная сущность, а не «ещё одна синхронизация»: у него есть план,
   # пауза, продолжение и отчёт. Перезапуск идемпотентен по SHA-256 письма.
@@ -600,6 +638,23 @@ components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
   schemas:
+    OnboardingAccountRef:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        emailAddress: { type: string, format: email }
+        provider: { type: string }
+    OnboardingView:
+      type: object
+      properties:
+        migrationState: { type: string, enum: [PENDING, DISMISSED, NOT_NEEDED, DONE] }
+        migrationSuggested: { type: boolean }
+        activeJobId: { type: string, format: uuid, nullable: true }
+        lastJobStatus: { type: string, nullable: true }
+        dismissedAt: { type: string, format: date-time, nullable: true }
+        accounts:
+          type: array
+          items: { $ref: '#/components/schemas/OnboardingAccountRef' }
     MigrationScopeRequest:
       type: object
       required: [accountId]

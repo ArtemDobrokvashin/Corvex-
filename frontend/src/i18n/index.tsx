@@ -1344,6 +1344,64 @@ const EN: Record<string, string> = {
   'Строка {line}': 'Line {line}',
   'Импорт не перезаписывает уже заполненные поля: одинаковые адреса дополняются, ручные правки сохраняются. Лимит — 10 000 контактов.':
     'Import never overwrites filled fields: matching addresses are completed and manual edits are kept. Limit: 10,000 contacts.',
+  'Перенести почту': 'Move your mail',
+  'Скопируем письма и папки из старого ящика. Старый ящик продолжит работать — мы ничего не удаляем.':
+    'We will copy messages and folders from your old mailbox. The old mailbox keeps working — nothing is deleted.',
+  'Откуда переносим?': 'Where do we move from?',
+  'Mail.ru': 'Mail.ru',
+  'Яндекс 360': 'Yandex 360',
+  'Хостинг или свой сервер': 'Hosting or your own server',
+  'Пароль приложения при включённой двухфакторной защите': 'App password when two-factor protection is enabled',
+  'Отдельный пароль для почтовых программ': 'A separate password for mail clients',
+  'Пароль приложения; в организации IMAP может быть выключен': 'App password; IMAP may be disabled in the organization',
+  'Адрес IMAP-сервера, порт и пароль ящика': 'IMAP server address, port and mailbox password',
+  'Outlook и Microsoft 365 пока не поддерживаются: они требуют входа через OAuth. Такой ящик можно подключить позже, архивом — через MBOX/EML.':
+    'Outlook and Microsoft 365 are not supported yet: they require OAuth sign-in. Such a mailbox can be connected later from an MBOX/EML archive.',
+  'Уже подключён ящик {email}.': 'Mailbox {email} is already connected.',
+  'Продолжить с ним': 'Continue with it',
+  '← Выбрать другой источник': '← Choose another source',
+  'Адрес старого ящика': 'Old mailbox address',
+  'Обычный пароль часто не подходит: Mail.ru, Яндекс и Gmail требуют отдельный пароль для почтовых программ. Пароль шифруется и недоступен администратору.':
+    'A regular password often does not work: Mail.ru, Yandex and Gmail require a separate app password. The password is encrypted and unavailable to the administrator.',
+  'Указать сервер и порт вручную': 'Enter server and port manually',
+  'Скрыть сервер и порт': 'Hide server and port',
+  'Сервер IMAP': 'IMAP server',
+  'Шифрование': 'Encryption',
+  'Проверить и продолжить': 'Test and continue',
+  'Подключение идёт с сервера, пароль не сохраняется в браузере':
+    'The connection is made from the server; the password is not stored in the browser',
+  'Что переносим': 'What we move',
+  '{messages} писем · {size}': '{messages} messages · {size}',
+  '{count} писем · {size}': '{count} messages · {size}',
+  '{migrated} из {total} писем · оценка {size}': '{migrated} of {total} messages · estimated {size}',
+  'квота {size}': 'quota {size}',
+  'Переносить All Mail, Important и Starred (иначе письма не задвоятся, но метки не сохранятся)':
+    'Move All Mail, Important and Starred (otherwise messages are not duplicated, but labels are not preserved)',
+  'Контакты в IMAP не хранятся. Их можно импортировать отдельно: vCard или CSV из старого сервиса.':
+    'Contacts are not stored in IMAP. They can be imported separately: vCard or CSV from the old service.',
+  'Открыть адресную книгу': 'Open the address book',
+  'Запустить перенос': 'Start the transfer',
+  'Задание выполняется на сервере: вкладку можно закрыть': 'The job runs on the server: you can close the tab',
+  'Позже': 'Later',
+  'Мне нечего переносить': 'I have nothing to move',
+  'Отложенное предложение вернётся баннером в почте.': 'A postponed offer returns as a banner in the mailbox.',
+  'Пауза': 'Pause',
+  'Продолжить': 'Resume',
+  'Задание в очереди': 'The job is queued',
+  'Перенос идёт': 'Transfer in progress',
+  'Перенос приостановлен': 'Transfer paused',
+  'Перенос завершён': 'Transfer complete',
+  'Перенос завершён с замечаниями': 'Transfer complete with notes',
+  'Перенос остановился с ошибкой': 'Transfer stopped with an error',
+  'Перенос отменён': 'Transfer cancelled',
+  'Перенос завершён. Новые письма из старого ящика продолжат приходить, пока подключение включено.':
+    'Transfer complete. New messages from the old mailbox keep arriving while the connection is enabled.',
+  'Пауза. Продолжение начнётся с последнего перенесённого письма.':
+    'Paused. Resuming starts from the last transferred message.',
+  'Не удалось оценить объём архива': 'Could not estimate the archive size',
+  'Не удалось подключить ящик': 'Could not connect the mailbox',
+  'Не удалось создать задание переноса': 'Could not create the transfer job',
+  'Действие не выполнено': 'The action was not performed',
 };
 
 const API_PATTERNS: Array<{ pattern: RegExp; en: string; ru?: string }> = [

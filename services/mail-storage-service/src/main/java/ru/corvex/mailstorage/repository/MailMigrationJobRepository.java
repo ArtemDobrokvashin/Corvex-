@@ -12,6 +12,9 @@ public interface MailMigrationJobRepository extends JpaRepository<MailMigrationJ
 
     List<MailMigrationJob> findTop20ByOwnerIdOrderByCreatedAtDesc(UUID ownerId);
 
+    Optional<MailMigrationJob> findFirstByOwnerIdAndStatusIn(UUID ownerId,
+                                                            Collection<MailMigrationJob.Status> statuses);
+
     Optional<MailMigrationJob> findFirstByAccount_IdAndStatusIn(UUID accountId,
                                                                Collection<MailMigrationJob.Status> statuses);
 

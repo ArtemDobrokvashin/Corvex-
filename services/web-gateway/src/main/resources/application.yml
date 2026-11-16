@@ -30,6 +30,14 @@ spring:
               filters:
                 - name: RequestRateLimiter
                   args: { redis-rate-limiter.replenishRate: 50, redis-rate-limiter.burstCapacity: 100, key-resolver: "#{@userKeyResolver}" }
+            - id: onboarding
+              # Состояние «предложить перенос почты» живёт в mail-storage рядом с заданиями
+              # миграции; отдельный сервис ради одной таблицы не нужен.
+              uri: http://mail-storage-service:8085
+              predicates: ["Path=/api/v1/onboarding,/api/v1/onboarding/**"]
+              filters:
+                - name: RequestRateLimiter
+                  args: { redis-rate-limiter.replenishRate: 20, redis-rate-limiter.burstCapacity: 40, key-resolver: "#{@userKeyResolver}" }
             - id: calendar
               uri: http://mail-storage-service:8085
               predicates: [Path=/api/v1/calendar/**]
