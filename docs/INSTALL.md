@@ -236,7 +236,14 @@ Grafana: `https://mail.<домен>/grafana/` — только из подсет
    `mail-storage-service`.
 5. **SMTP выключен (так задумано).** `docker compose logs mail-smtp-service`
    содержит `SMTP listener disabled`. Это норма до этапа 2.
-6. **Алертинг.** Не останавливайте рабочий сервис ради проверки: используйте controlled
+6. **Календарь и напоминания.** В боковой панели создайте событие с напоминанием «за
+   5 минут» и обновите страницу — событие должно остаться (оно в PostgreSQL
+   `mail-storage-service`, миграция `V8`). Затем `docker compose logs -f notification-service`
+   и дождитесь строки об отправке напоминания: письмо приходит на вашу почту Corvex.
+   Если вместо этого в журнале `mail-storage-service` ошибка доставки, проверьте, что
+   `CORVEX_INTERNAL_API_TOKEN` одинаковый у обоих сервисов и что `CORVEX_CALENDAR_FROM`
+   указывает на существующий домен. Подробности и ограничения — [`CALENDAR.md`](CALENDAR.md).
+7. **Алертинг.** Не останавливайте рабочий сервис ради проверки: используйте controlled
    `scripts/alert_e2e.py` из [`scripts/README.md`](../scripts/README.md). Он создаёт один
    synthetic alert с ограниченным сроком и затем завершает его. Для временной тишины —
    `scripts\alerts.ps1 silence -Minutes 60`; внешние каналы — [`docs/ALERTING.md`](ALERTING.md).

@@ -22,6 +22,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { logout as apiLogout, restoreSession } from '../api/authApi';
 import { DEMO_MAILS, DEMO_ROOMS, getDemoUser } from '../api/demoData';
 import { setAccessToken } from '../api/httpClient';
+import { isDemoRequested } from './demoLink';
 import { AppearanceSettings } from '../components/AppearanceSettings';
 import CalendarSidebarWidget from '../components/CalendarSidebarWidget';
 import Clock from '../components/Clock';
@@ -124,13 +125,18 @@ export default function AppShell() {
         setBootstrapped();
         return;
       }
-      if (sessionStorage.getItem('corvex.demo') === '1') {
+      const storedDemo = sessionStorage.getItem('corvex.demo') === '1';
+      const linkedDemo = isDemoRequested(window.location.search);
+      if (storedDemo) {
         setSession(getDemoUser(locale), true);
         return;
       }
       const restored = await restoreSession();
       if (restored) {
+        // Настоящая сессия всегда важнее ссылки: ?demo=1 не выкидывает из аккаунта.
         setSession(restored, false);
+      } else if (linkedDemo) {
+        setSession(getDemoUser(locale), true);
       } else {
         setBootstrapped();
         navigate('/login', { replace: true });

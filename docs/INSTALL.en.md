@@ -185,7 +185,15 @@ cannot provide an independent notification path when Corvex mail itself is down.
 4. **Migrations applied:** `docker compose logs auth-service | Select-String Flyway` (repeat for admin/chat/mail-storage services).
 5. **SMTP intentionally off:** `docker compose logs mail-smtp-service` contains
    `SMTP listener disabled`. This is correct until stage 2.
-6. **Alerting:** do not stop a production service just for a test. Use the bounded
+6. **Calendar and reminders:** create an event with a 5-minute reminder in the sidebar,
+   then reload the page — the event must survive (it lives in PostgreSQL inside
+   `mail-storage-service`, migration `V8`). Watch `docker compose logs -f notification-service`
+   for the reminder delivery line: the mail arrives in your Corvex mailbox. If
+   `mail-storage-service` logs a delivery error instead, verify that
+   `CORVEX_INTERNAL_API_TOKEN` is identical in both services and that
+   `CORVEX_CALENDAR_FROM` points at an existing domain. Details and limits:
+   [`CALENDAR.md`](CALENDAR.md).
+7. **Alerting:** do not stop a production service just for a test. Use the bounded
    synthetic alert in `scripts/alert_e2e.py` as described in [`scripts/README.md`](../scripts/README.md).
    For a temporary silence, run `scripts\alerts.ps1 silence -Minutes 60`; external channels
    are documented in [`docs/ALERTING.en.md`](ALERTING.en.md).

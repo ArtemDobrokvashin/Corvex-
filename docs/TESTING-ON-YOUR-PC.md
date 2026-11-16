@@ -1,13 +1,17 @@
 # Corvex: поэтапная инструкция по тестированию на вашем ПК
 
-> **Дата актуализации:** 2 ноября 2026 года.
-> **Проверяемый исходный код:** актуальный `main`; точный SHA запишите до старта.
+> **Дата актуализации:** 19 октября 2026 года.
+> **Проверяемый исходный код:** `main` = `ad42ff2` (PR #149, серверный календарь); точный SHA запишите до старта.
 > Backend использует Boot 3.5.16, dependency-пины — в `RELEASE-DEPENDENCIES.md`.
-> **Полный PC-pass G1/G2:** `8cccaee`; G2 выполнен на существующих volumes,
-> clean-volume install не выполнялся. POP3-исправление и клиентский smoke относятся
-> к `d75fb97`. G3 частично идёт: External Mail ongoing, базовый realtime-чат,
-> ограниченные SMTP/IMAP и согласованный POP3 995 smoke уже проверены; полный IMAP,
-> чат, архив, restore и Chrome 109 ещё не приняты. Это **не production-ready**.
+> **G1 на `ad42ff2`:** `admin-service`, `mail-storage-service`, `notification-service`,
+> `web-gateway` — `BUILD SUCCESS` с тестами модулей; полный reactor по 12 сервисам
+> остаётся следующим шагом (последний полный PC-pass — `8cccaee`).
+> **G2 на `ad42ff2`:** `docker compose up -d --build` — 16/16 build-контекстов, контейнеры
+> `Started`/`healthy`, миграции `V6`/`V8` применились; установка на пустых volumes не
+> выполнялась. G3 частично идёт: External Mail ongoing, базовый realtime-чат,
+> ограниченные SMTP/IMAP, согласованный POP3 995 smoke и серверный календарь собраны,
+> но полный IMAP, чат, календарь, архив, restore и Chrome 109 ещё не приняты.
+> Это **не production-ready**.
 
 Эта инструкция позволяет воспроизвести проверки на вашем точном SHA и продолжить приёмку.
 Идите сверху вниз и **не переходите к следующему уровню, если предыдущий красный**: так
@@ -19,12 +23,12 @@
 | Проверка | Результат | Комментарий |
 |---|---|---|
 | Frontend `npm ci` | ✅ PASS | Повторено на текущем `main` 28.10.2026, Node 22.22.3 / npm 10.9.8 |
-| Frontend unit-тесты | ✅ PASS | **63 файла, 292/292 теста** после слияния UI (15.11.2026) |
+| Frontend unit-тесты | ✅ PASS | **67 файлов, 310/310 тестов** на `ad42ff2` (19.10.2026) |
 | TypeScript + production build | ✅ PASS | Modern и `*-legacy-*.js` bundles созданы |
 | Production `npm audit` | ✅ PASS | **0 уязвимостей** на текущем lockfile |
-| Корневой `mvn -B clean verify` | ✅ PASS на `8cccaee` | 12 сервисов + parent, Boot 3.5.16; повторять для каждого release SHA |
-| Docker build / Compose | ✅ PASS на `8cccaee` | 13 образов, Compose config, базовый старт на существующих volumes; clean-volume install не выполнялся |
-| Spring/Flyway/БД/очереди | ✅ Базовый PASS на `8cccaee` | 20/20 основных контейнеров; healthchecked — `healthy`, `nginx`/`frontend`/`spamd` — `Up`; существующие volumes |
+| Maven на `ad42ff2` | 🟢 PASS по затронутым модулям | `admin-service`, `mail-storage-service`, `notification-service`, `web-gateway` — `BUILD SUCCESS` с тестами; полный reactor по 12 сервисам остаётся (последний полный — `8cccaee`) |
+| Docker build / Compose | ✅ PASS на `ad42ff2` | `up -d --build` — 16/16 build-контекстов; clean-volume install не выполнялся |
+| Spring/Flyway/БД/очереди | ✅ Базовый PASS на `ad42ff2` | 16/16 локальных образов, 20 контейнеров без профилей `Started`/`healthy`, миграции `V6`/`V8` применились; существующие volumes |
 | Web runtime и базовый чат | 🟡 Частично | Вход, админка, webmail, история/SockJS/сообщения/emoji проверены; полный двухпользовательский сценарий остаётся. 02.11 одна отправка webmail вернула HTTP 401 — причина не локализована |
 | External Mail ongoing | 🟡 Частично | Mail.ru/Яндекс на тестовых ящиках, polling и dedupe; на `8cccaee` MANUAL/SCHEDULED regression SUCCESS без ошибок; архив и остальные провайдеры не приняты |
 | Собственный SMTP | 🟡 Ограниченный PASS | Submission 587 STARTTLS, локальная доставка и Sent в Thunderbird; полный inbound/outbound/spam/AV/EICAR/search ещё не закрыт |

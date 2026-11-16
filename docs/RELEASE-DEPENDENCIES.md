@@ -1,6 +1,6 @@
 # Release dependencies и ворота Corvex
 
-_Последняя сверка dependency-версий и повторный frontend-прогон: 2 ноября 2026 года._
+_Последняя сверка dependency-версий и повторный frontend-прогон: 19 октября 2026 года, `main` = `ad42ff2`._
 
 Этот документ фиксирует версии в текущих файлах `main`. Они взяты из POM,
 `package-lock.json`, Dockerfile и `docker-compose.yml`, а не из предполагаемого будущего
@@ -25,7 +25,7 @@ upgrade. Исторические runtime-результаты не перено
 | Компонент | Зафиксировано сейчас | Комментарий |
 |---|---|---|
 | JDK | **17** | Все 12 сервисов используют `<java.version>17</java.version>`; Docker runtime — `eclipse-temurin:17-jre-alpine` |
-| Maven build image | `maven:3.9-eclipse-temurin-17` | Полный PC reactor на `8cccaee` с Boot 3.5.16 завершился `BUILD SUCCESS`; повторять для каждого release SHA |
+| Maven build image | `maven:3.9-eclipse-temurin-17` | На `ad42ff2` затронутые модули (`admin`, `mail-storage`, `notification`, `web-gateway`) дают `BUILD SUCCESS` с тестами; полный PC reactor последний раз был зелёным на `8cccaee` и повторяется для каждого release SHA |
 | Spring Boot parent | **3.5.16** | Одинаковая версия во всех 12 service POM |
 | Spring Cloud BOM, gateway | **2025.0.3** | Используется `web-gateway` с Boot 3.5 |
 | Spring Cloud BOM, остальные POM | **2023.0.6** | Остаточный неоднородный dependency-management baseline; унификация относится к G4, не выдаётся за завершённую |
@@ -35,11 +35,12 @@ upgrade. Исторические runtime-результаты не перено
 | Jakarta Mail API / Angus Mail | **2.1.5 / 2.0.5** | External Mail IMAP/POP3/SMTP; точные сигнатуры reconnect/fetch проверялись по исходникам |
 | JaCoCo | **0.8.15** | Coverage-гейты не понижались |
 
-**Граница доказательств:** полный PC-pass G1/G2 получен на `8cccaee` с Boot 3.5.16,
-gateway Cloud 2025.0.3 и James 3.8.2. G2 выполнен на существующих volumes;
-clean-volume install не выполнялся. Более ранний `b37db56` остаётся историческим
-результатом. На `d75fb97` выполнен targeted POP3-модульный прогон и Docker/client
-smoke, а не новый полный reactor: G1/G2 повторяются для каждого release SHA.
+**Граница доказательств:** на `ad42ff2` с Boot 3.5.16, gateway Cloud 2025.0.3 и
+James 3.8.2 затронутые модули собираются с тестами, а `docker compose up -d --build`
+поднимает 16/16 build-контекстов на существующих volumes. Полный reactor по 12 сервисам
+последний раз был зелёным на `8cccaee`; clean-volume install не выполнялся ни разу.
+`d75fb97` покрыт targeted POP3-прогоном и клиентским smoke, а не полным reactor:
+G1/G2 повторяются для каждого release SHA.
 Смешанные Cloud BOM, James 3.8.2 и Java 17 также показывают, почему нужен G4.
 
 ### Запланированный G4
@@ -70,9 +71,11 @@ Boot/Cloud/Jackson, James и JDK, обновление observability-стека 
 
 Повторная проверка обновления PR #106 02.11.2026 на Node 22.22.3 / npm 10.9.8:
 
-- `npm ci` — успешно;
-- `npm test` — **9 test-файлов, 33/33 теста**;
-- `npm run build` — TypeScript, modern и `*-legacy-*.js` bundles успешно;
+19.10.2026 на `main` = `ad42ff2`:
+
+- `npm ci` — успешно (364 пакета);
+- `npm test` — **67 test-файлов, 310/310 тестов**;
+- `npm run build` — `tsc -b`, modern и `*-legacy-*.js` bundles успешно;
 - `npm audit --omit=dev` — **0 уязвимостей**.
 
 ### Осознанные исключения
@@ -146,17 +149,19 @@ coupled upgrades.
 локальные Markdown-ссылки и `git diff --check`. Реальный Chrome 109 остаётся отдельным
 ручным G3-тестом — наличие legacy bundle его не заменяет.
 
-### G1 — Maven на JDK-хосте: ✅ `b37db56`; 🔁 повторить на текущем `main`
+### G1 — Maven на JDK-хосте: 🟢 затронутые модули на `ad42ff2`, 🔁 полный reactor
 
 ```bash
 mvn -B clean verify
 ```
 
-На `b37db56` с Boot 3.2.12 получен `BUILD SUCCESS` для 12 сервисов и parent.
-PR #95 уже содержал Boot 3.5.16 при merge, поэтому для текущего `main` нужен новый
-полный reactor; targeted test не выдаётся за полный прогон.
+На `ad42ff2` (Boot 3.5.16) `admin-service`, `mail-storage-service`,
+`notification-service` и `web-gateway` дают `BUILD SUCCESS` с тестами модулей.
+Полный reactor по 12 сервисам и parent в последний раз был зелёным на `8cccaee`;
+для текущего SHA он остаётся обязательным шагом, и targeted test не выдаётся за
+полный прогон.
 
-### G2 — Docker и первый запуск: ✅ `b37db56`; 🔁 повторить на текущем `main`
+### G2 — Docker и первый запуск: ✅ на существующих volumes (`ad42ff2`), ⏳ clean-volume
 
 ```bash
 docker compose config -q
@@ -165,17 +170,20 @@ docker compose up -d
 docker compose ps
 ```
 
-На `b37db56` собраны 13 образов, применены Flyway-миграции и поднят базовый стек.
-Поздние targeted gateway/chat-пересборки не являются полным G2 текущего `main`.
-После смены Boot нужно повторить запуск. Для нового стенда сначала выполняется
+На `ad42ff2` `docker compose up -d --build` поднял **16 из 16** build-контекстов,
+контейнеры перешли в `Started`/`healthy`, миграции `V6`/`V8` применились.
+Установка на пустых volumes (`down -v` только на пустом стенде) не выполнялась и
+остаётся отдельным шагом. Для нового стенда сначала выполняется
 `scripts/first-run.ps1` (Windows) либо эквивалент из `docs/INSTALL.md`.
 
 ### G3 — функциональная приёмка: 🚧 в работе
 
-Подтверждены ограниченный External Mail ongoing и базовый realtime chat. Остаются
-собственные SMTP/IMAP/POP3 и почтовые клиенты, полный двухпользовательский чат/файлы,
-webmail/вложения, archive migration, backup/restore, мониторинг/alerting, реальный
-Chrome 109 и остальные сценарии из `READINESS.md`.
+Подтверждены ограниченный External Mail ongoing, базовый realtime chat, файлы чата,
+скачивание вложений webmail и согласованный POP3 995 smoke. Серверный календарь
+(`ad42ff2`) собран и ждёт живой приёмки. Остаются собственный сквозной SMTP, IMAP и
+почтовые клиенты, полный двухпользовательский чат/файлы, calendar live, archive
+migration, backup/restore, мониторинг/alerting, реальный Chrome 109 и остальные
+сценарии из `READINESS.md`.
 
 ### G4 — поддерживаемая платформа: ⏳ впереди
 
