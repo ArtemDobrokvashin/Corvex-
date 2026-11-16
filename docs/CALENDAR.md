@@ -170,3 +170,15 @@ mvn -pl services/mail-storage-service -Dtest=CalendarSchemaPostgresIT test
 Ожидаемо: 4 теста PASS при запущенном Docker.
 - Java-компиляция в sandbox недоступна (нет JDK/Maven) — прогон `mvn test` выполняется на
   ПК пользователя.
+
+## Дополнительные тесты сервиса уведомлений
+
+`CalendarReminderControllerTest` проверяет без поднятия Spring-контекста: время в зоне
+события (07:00Z → 09:00 Europe/Amsterdam), отказ без токена и при пустом токене
+(fail-closed), отказ на некорректный адрес до обращения к SMTP, `503` при ошибке SMTP
+(чтобы планировщик повторил доставку) и честный текст «Событие уже началось» для
+просроченного напоминания.
+
+```bash
+mvn -pl services/notification-service test
+```
