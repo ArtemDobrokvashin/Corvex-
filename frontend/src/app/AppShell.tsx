@@ -105,9 +105,10 @@ export default function AppShell() {
   const snoozeEventReminder = useCalendarStore((s) => s.snoozeEventReminder);
   const setSelectedDate = useCalendarStore((s) => s.setSelectedDate);
 
-  // Calendar data is kept per signed-in account in this browser, not on a server.
+  // Календарь синхронизируется с сервером у настоящего пользователя; демо-режим
+  // остаётся локальным, чтобы показ интерфейса не требовал backend.
   useEffect(() => {
-    setCalendarOwner(user?.id ?? null, demoMode);
+    setCalendarOwner(user?.id ?? null, demoMode, Boolean(user?.id) && !demoMode);
   }, [user?.id, demoMode, setCalendarOwner]);
 
   useEffect(() => {

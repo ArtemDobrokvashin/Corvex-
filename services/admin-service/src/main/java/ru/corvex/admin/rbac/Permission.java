@@ -27,6 +27,10 @@ public enum Permission {
     CHAT_SEND_FILES,
     CHAT_VOICE_VIDEO,       // голосовые/видеосообщения
 
+    // --- Календарь ---
+    CALENDAR_READ,          // видеть свои события и напоминания
+    CALENDAR_WRITE,         // создавать, изменять и удалять свои события
+
     // --- Администрирование ---
     ADMIN_USERS_MANAGE,     // CRUD пользователей, блокировка
     ADMIN_GROUPS_MANAGE,    // группы и их права

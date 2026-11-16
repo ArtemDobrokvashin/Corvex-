@@ -47,6 +47,7 @@ export default function EventModal({
 }) {
   const { t } = useI18n();
   const events = useCalendarStore((s) => s.events);
+  const serverSynced = useCalendarStore((s) => s.serverSynced);
   const demoMode = useSession((s) => s.demoMode);
   const [draft, setDraft] = useState<CalendarEventDraft>(initial);
   const [attendeeInput, setAttendeeInput] = useState('');
@@ -302,6 +303,11 @@ export default function EventModal({
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}
               </select>
+              {serverSynced && draft.reminderMinutes !== null && (
+                <p className="mt-1 text-[11px] leading-relaxed text-faint">
+                  {t('Напоминание придёт на почту и при закрытом браузере.')}
+                </p>
+              )}
             </div>
 
             <div>

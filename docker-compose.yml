@@ -200,11 +200,14 @@ services:
       # проверить опубликованную DNS-запись домена и показать точное значение p=.
       CORVEX_DKIM_SELECTOR: ${CORVEX_DKIM_SELECTOR:-corvex1}
       CORVEX_DKIM_KEY_URL: ${CORVEX_DKIM_KEY_URL:-http://mail-smtp-service:8082/internal/dkim/public-key}
+      # Куда отправлять серверные напоминания календаря (SMTP-канал уведомлений).
+      CORVEX_NOTIFICATION_SERVICE_URL: http://notification-service:8091
+      CORVEX_CALENDAR_FROM: ${CORVEX_CALENDAR_FROM:-corvex-calendar@company.local}
     volumes:
       - mail-data:/data/mail
       - attachment-data:/data/attachments
       - "${CORVEX_JAMES_ADAPTER_DIR:-./infra/secrets/james-adapter}:/run/james-adapter:ro"
-    depends_on: { postgres: { condition: service_healthy }, elasticsearch: { condition: service_healthy }, rabbitmq: { condition: service_healthy }, auth-service: { condition: service_healthy } }
+    depends_on: { postgres: { condition: service_healthy }, elasticsearch: { condition: service_healthy }, rabbitmq: { condition: service_healthy }, auth-service: { condition: service_healthy }, notification-service: { condition: service_started } }
 
   # Candidate engine in the SAME Corvex project; OFF by default. No published
   # ports and no mail route changes. Configuration must be provisioned explicitly.
@@ -467,6 +470,9 @@ services:
       CORVEX_ADMIN_SERVICE_URL: http://admin-service:8090
       CORVEX_INTERNAL_API_TOKEN: ${CORVEX_INTERNAL_API_TOKEN:?Set CORVEX_INTERNAL_API_TOKEN in .env}
       ALERT_SMTP_HOST: ${ALERT_SMTP_HOST:-mail-smtp-service}  # рекомендуется ВНЕШНИЙ резервный SMTP
+      # Отправитель серверных напоминаний календаря; адрес получателя приходит
+      # из календаря, поэтому здесь только From.
+      CORVEX_CALENDAR_FROM: ${CORVEX_CALENDAR_FROM:-corvex-calendar@company.local}
     depends_on: { rabbitmq: { condition: service_healthy }, admin-service: { condition: service_started } }
 
   web-gateway:

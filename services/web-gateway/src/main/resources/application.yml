@@ -30,6 +30,12 @@ spring:
               filters:
                 - name: RequestRateLimiter
                   args: { redis-rate-limiter.replenishRate: 50, redis-rate-limiter.burstCapacity: 100, key-resolver: "#{@userKeyResolver}" }
+            - id: calendar
+              uri: http://mail-storage-service:8085
+              predicates: [Path=/api/v1/calendar/**]
+              filters:
+                - name: RequestRateLimiter
+                  args: { redis-rate-limiter.replenishRate: 50, redis-rate-limiter.burstCapacity: 100, key-resolver: "#{@userKeyResolver}" }
             - id: chat-rest
               uri: http://chat-service:8088
               predicates: [Path=/api/v1/chat/**]
