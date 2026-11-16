@@ -1286,6 +1286,12 @@ const EN: Record<string, string> = {
   'бессрочная': 'no expiry',
   'После отзыва или истечения срока ссылка открывается как 404 — это нормально, доступ закрыт.': 'After revocation or expiry the link returns 404 — this is expected, access is closed.',
   'Готово': 'Done',
+
+  // Files: move dialog
+  'Выберите папку…': 'Choose a folder…',
+  'Выбрано': 'Selected',
+  'Не выбрана': 'Not selected',
+  'Файл уже находится в этой папке': 'The file is already in this folder',
 };
 
 const API_PATTERNS: Array<{ pattern: RegExp; en: string; ru?: string }> = [

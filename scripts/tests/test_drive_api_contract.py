@@ -128,25 +128,73 @@ class DriveApiContractTest(unittest.TestCase):
     def test_gateway_routes_the_drive_root(self):
         # Список файлов и квота запрашиваются как /api/v1/drive?view=files и
         # /api/v1/drive/usage. Маршрут только с /api/v1/drive/** отдаёт на них 404.
-        # Проверяется именно распознанный YAML-элемент, а не подстрока: запятая
-        # внутри flow-списка режет строку на два предиката, и шлюз падает на старте.
-        gateway = self._gateway_config()
-        predicated = gateway["spring"]["cloud"]["gateway"]["server"]["webflux"]["routes"]
-        drive = next((route for route in predicated if route["id"] == "drive"), None)
-        self.assertIsNotNone(drive, "gateway has no drive route")
-        self.assertEqual(["Path=/api/v1/drive,/api/v1/drive/**"], drive["predicates"])
+        #
+        # Проверка обязана работать без PyYAML: тест, который молча пропускается,
+        # уже пропустил реальную ошибку — неэкранированную запятую в списке предикатов.
+        patterns = self._drive_predicate_patterns()
+        self.assertIn("/api/v1/drive", patterns)
+        self.assertIn("/api/v1/drive/**", patterns)
 
     def test_no_route_splits_a_predicate_on_a_comma(self):
-        # Общий сторож: "predicates: [Name=a,b]" без кавычек — это два элемента,
-        # второй из которых не является именем предиката. Такой конфиг валиден как
-        # YAML, но роняет gateway на старте, поэтому ошибку видно только в логах.
-        for line in self._gateway_text().splitlines():
+        # Общий сторож по всем маршрутам: "predicates: [Name=a,b]" без кавычек —
+        # это два элемента списка, второй из которых читается как имя предиката.
+        # Конфиг при этом валиден как YAML и роняет gateway только на старте.
+        for number, line in enumerate(self._gateway_text().splitlines(), start=1):
             stripped = line.strip()
             if not stripped.startswith("predicates: ["):
                 continue
             inner = stripped[len("predicates: ["):].rstrip("]")
-            if "," in inner and '"' not in inner and "'" not in inner:
-                self.fail(f"unquoted comma in predicate list: {stripped}")
+            quoted = ('"' in inner) or ("'" in inner)
+            if "," in inner and not quoted:
+                self.fail(f"line {number}: quote the predicate list — "
+                          f"an unquoted comma splits it into two predicates: {stripped}")
+
+    def _drive_predicate_patterns(self) -> list[str]:
+        """Шаблоны Path для маршрута drive, полученные из разобранного YAML или построчно."""
+        text = self._gateway_text()
+        try:
+            import yaml
+        except ImportError:
+            yaml = None
+
+        if yaml is not None:
+            config = yaml.safe_load(text)
+            routes = config["spring"]["cloud"]["gateway"]["server"]["webflux"]["routes"]
+            drive = next((route for route in routes if route["id"] == "drive"), None)
+            self.assertIsNotNone(drive, "gateway has no drive route")
+            predicates = drive["predicates"]
+            self.assertEqual(1, len(predicates),
+                             "drive route must have exactly one Path predicate, "
+                             f"got {predicates}")
+            return [value.strip() for value in predicates[0].split("=", 1)[1].split(",")]
+
+        lines = text.splitlines()
+        start = next(
+            (index for index, line in enumerate(lines) if line.strip() == "- id: drive"),
+            None,
+        )
+        self.assertIsNotNone(start, "gateway has no drive route")
+        predicate_line = next(
+            (line.strip() for line in lines[start + 1:start + 12]
+             if line.strip().startswith("predicates:")),
+            None,
+        )
+        self.assertIsNotNone(predicate_line, "drive route has no predicates")
+        raw = predicate_line.split("predicates:", 1)[1].strip()
+        self.assertTrue(raw.startswith("[") and raw.endswith("]"),
+                        f"unexpected predicate format: {predicate_line}")
+        inner = raw[1:-1]
+        quoted = (inner.startswith('"') and inner.endswith('"')) or (
+            inner.startswith("'") and inner.endswith("'"))
+        if quoted:
+            inner = inner[1:-1]
+        else:
+            # Без кавычек запятая — разделитель элементов YAML-списка, и шлюз
+            # получает два предиката вместо одного. Это и роняло gateway на старте.
+            self.assertNotIn(",", inner,
+                             "quote the predicate list: an unquoted comma splits it "
+                             f"into two predicates ({predicate_line})")
+        return [value.strip() for value in inner.split("=", 1)[1].split(",")]
 
     def _gateway_text(self) -> str:
         return (

@@ -15,6 +15,7 @@ vi.mock('../../api/driveApi', async () => {
     saveBlob: vi.fn().mockResolvedValue(undefined),
     driveApi: {
       list: vi.fn(),
+      folders: vi.fn(),
       usage: vi.fn(),
       createFolder: vi.fn(),
       upload: vi.fn(),
@@ -115,6 +116,18 @@ async function click(element: HTMLButtonElement | null | undefined) {
   await settle();
 }
 
+function moveSelect(): HTMLSelectElement | null {
+  return dialog()?.querySelector('select#drive-move-target') as HTMLSelectElement | null;
+}
+
+async function chooseOption(select: HTMLSelectElement, value: string) {
+  await act(async () => {
+    select.value = value;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await settle();
+}
+
 async function typeInto(input: HTMLInputElement, value: string) {
   await act(async () => {
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
@@ -128,6 +141,7 @@ beforeEach(() => {
   localStorage.clear();
   useLocaleStore.setState({ locale: 'ru' });
   vi.mocked(driveApi.list).mockResolvedValue([folder, pdfFile]);
+  vi.mocked(driveApi.folders).mockResolvedValue([folder]);
   vi.mocked(driveApi.usage).mockResolvedValue({ usedBytes: 2048, quotaBytes: 5_000_000_000 });
   vi.mocked(driveApi.shares).mockResolvedValue([]);
   vi.mocked(driveApi.trash).mockResolvedValue(undefined);
@@ -291,30 +305,56 @@ describe('Файлы: личный диск', () => {
     expect(dialog()).toBeNull();
   });
 
-  it('перемещает файл во вложенную папку через выбор в диалоге', async () => {
-    vi.mocked(driveApi.list).mockImplementation(async (parentId) => {
-      if (parentId === 'folder-1') return [childFolder];
-      if (parentId === null) return [folder, pdfFile];
-      return [];
-    });
+  it('перемещает файл в выбранную папку через список, а не кликом по имени', async () => {
+    vi.mocked(driveApi.folders).mockResolvedValue([folder, childFolder]);
     vi.mocked(driveApi.move).mockResolvedValue({ ...pdfFile, parentId: 'folder-2' });
     await render();
 
     await click(rowButton('Счёт.pdf', 'Переместить'));
-    expect(dialog()?.textContent).toContain('Корень диска');
 
-    await click(buttonInDialog('Договоры'));
-    expect(driveApi.list).toHaveBeenLastCalledWith('folder-1', 'files', '');
-    expect(dialog()?.textContent).toContain('Архив');
+    const select = moveSelect();
+    expect(select).toBeTruthy();
+    // Пока папка не выбрана, подтверждение недоступно: иначе кнопка «перемещает»
+    // файл в корень и рапортует об успехе, ничего не изменив.
+    expect(select?.value).toBe('');
+    expect(buttonInDialog('Переместить')?.disabled).toBe(true);
 
-    expect(buttonInDialog('Архив'), dialog()?.innerHTML).toBeTruthy();
-    await click(buttonInDialog('Архив'));
-    expect(dialog()?.textContent).toContain('Папка назначения: Архив');
+    // Подпапка видна полным путём и отсортирована по имени.
+    const labels = Array.from(select!.options, (option) => option.textContent);
+    expect(labels).toContain('Договоры / Архив');
+    expect(labels.filter((label) => label === 'Договоры' || label === 'Договоры / Архив'))
+      .toEqual(['Договоры', 'Договоры / Архив']);
+
+    await chooseOption(select!, 'folder-2');
+    expect(dialog()?.textContent).toContain('Договоры / Архив');
+    expect(buttonInDialog('Переместить')?.disabled).toBe(false);
 
     await click(buttonInDialog('Переместить'));
     expect(driveApi.move).toHaveBeenCalledWith('file-1', 'folder-2');
-    expect(driveApi.list).toHaveBeenCalledTimes(5);
-    expect(driveApi.list).toHaveBeenLastCalledWith(null, 'files', '');
+    expect(dialog()).toBeNull();
+  });
+
+  it('не предлагает перемещение в текущую папку и в собственное поддерево', async () => {
+    const parent: DriveNode = { ...folder, id: 'folder-9', name: 'Родитель', parentId: null };
+    const moving: DriveNode = { ...folder, id: 'folder-10', name: 'Цель', parentId: 'folder-9' };
+    const inside: DriveNode = { ...folder, id: 'folder-11', name: 'Внутри', parentId: 'folder-10' };
+    vi.mocked(driveApi.list).mockResolvedValue([parent, moving]);
+    vi.mocked(driveApi.folders).mockResolvedValue([parent, moving, inside]);
+    await render();
+
+    await click(rowButton('Цель', 'Переместить'));
+    const select = moveSelect();
+    const values = Array.from(select!.options, (option) => option.value);
+
+    // Сама папка и её потомки недоступны: перенос внутрь себя — гарантированная ошибка.
+    expect(values).not.toContain('folder-10');
+    expect(values).not.toContain('folder-11');
+    expect(values).toContain('folder-9');
+
+    // Текущий родитель — валидная цель по контракту, но бессмысленная операция.
+    await chooseOption(select!, 'folder-9');
+    expect(dialog()?.textContent).toContain('Файл уже находится в этой папке');
+    expect(buttonInDialog('Переместить')?.disabled).toBe(true);
   });
 
   it('выдаёт ссылку только по явному действию и показывает адрес один раз', async () => {

@@ -83,6 +83,7 @@ Maildir пока использует плоские санитизирован�
 |---|---|
 | `GET /drive?parentId=&view=files|trash&q=` | содержимое папки (без `parentId` — корень) или верхний уровень корзины; `q` — поиск по имени |
 | `GET /drive/usage` | `{usedBytes, quotaBytes}` — отдельно от квоты почты |
+| `GET /drive/folders` | плоский список всех папок владельца без корзины — для выбора назначения при перемещении |
 | `POST /drive/folders {parentId, name}` | создать папку |
 | `POST /drive/files?parentId=` (multipart `file`) | загрузка; AV fail-closed, квота проверяется до публикации blob'а |
 | `PATCH /drive/{id}/name {name}` | переименовать |

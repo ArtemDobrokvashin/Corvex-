@@ -59,6 +59,14 @@ public class DriveController {
                 .toList();
     }
 
+    /** Плоский список папок для выбора назначения при перемещении. */
+    @GetMapping("/folders")
+    List<DriveDtos.NodeView> folders(@AuthenticationPrincipal Jwt jwt) {
+        return drive.folders(userId(jwt)).stream()
+                .map(DriveDtos.NodeView::from)
+                .toList();
+    }
+
     @GetMapping("/usage")
     DriveDtos.UsageView usage(@AuthenticationPrincipal Jwt jwt) {
         return DriveDtos.UsageView.from(drive.usage(userId(jwt)));

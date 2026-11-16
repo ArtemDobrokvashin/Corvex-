@@ -974,6 +974,62 @@ function NameDialog({
   );
 }
 
+/**
+ * Пункты назначения для перемещения.
+ *
+ * Плоский список с полными путями вместо «захода» в папки кликами: клик по имени
+ * папки читался как выбор, хотя был навигацией, а кнопка подтверждения оставалась
+ * активной и перемещала файл в корень — то есть «успешно» ничего не делала.
+ *
+ * Исключаются сама перемещаемая папка и всё её поддерево: внутрь себя перемещаться
+ * нельзя, и предлагать такой вариант в списке — гарантированная ошибка.
+ */
+export interface MoveTarget {
+  id: string;
+  label: string;
+}
+
+export function buildMoveTargets(all: DriveNode[], moving: DriveNode, locale: Locale): MoveTarget[] {
+  const folders = new Map(all.filter((node) => node.kind === 'FOLDER').map((node) => [node.id, node]));
+
+  const excluded = new Set<string>();
+  if (moving.kind === 'FOLDER') {
+    excluded.add(moving.id);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const folder of folders.values()) {
+        if (!excluded.has(folder.id) && folder.parentId && excluded.has(folder.parentId)) {
+          excluded.add(folder.id);
+          grew = true;
+        }
+      }
+    }
+  }
+
+  const fullPath = (folder: DriveNode): string => {
+    const parts: string[] = [];
+    const seen = new Set<string>();
+    let cursor: DriveNode | undefined = folder;
+    while (cursor && !seen.has(cursor.id)) {
+      seen.add(cursor.id);
+      parts.unshift(cursor.name);
+      cursor = cursor.parentId ? folders.get(cursor.parentId) : undefined;
+    }
+    return parts.join(' / ');
+  };
+
+  return [...folders.values()]
+    .filter((folder) => !excluded.has(folder.id))
+    .map((folder) => ({ id: folder.id, label: fullPath(folder) }))
+    .sort((left, right) =>
+      left.label.localeCompare(right.label, locale === 'en' ? 'en' : 'ru', {
+        numeric: true,
+        sensitivity: 'base',
+      }),
+    );
+}
+
 function MoveDialog({
   node,
   onSubmit,
@@ -983,34 +1039,30 @@ function MoveDialog({
   onSubmit: (targetId: string | null) => Promise<string | null>;
   onClose: () => void;
 }) {
-  const { t } = useI18n();
-  const [trail, setTrail] = useState<Crumb[]>([]);
-  const [folders, setFolders] = useState<DriveNode[]>([]);
+  const { t, locale } = useI18n();
+  const [targets, setTargets] = useState<MoveTarget[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
-
-  const current = trail.length > 0 ? trail[trail.length - 1] : null;
-  const targetId = current ? current.id : null;
+  // null — пользователь ещё не выбрал папку. Отдельное состояние нужно, потому что
+  // «корень диска» — такой же допустимый вариант, как и любая папка.
+  const [selected, setSelected] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
     setLoadError('');
     driveApi
-      .list(targetId, 'files', '')
+      .folders()
       .then((items) => {
-        if (!alive) return;
-        // Собственную папку в списке нет: внутрь себя переместиться нельзя,
-        // а значит недоступны и её потомки.
-        setFolders(sortNodes(items).filter((item) => item.kind === 'FOLDER' && item.id !== node.id));
+        if (alive) setTargets(buildMoveTargets(items, node, locale));
       })
       .catch((e) => {
         if (!alive) return;
-        setFolders([]);
-        setLoadError(driveErrorMessage(e, t));
+        setTargets([]);
+        setLoadError(driveErrorMessage(e, t, locale));
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -1018,90 +1070,77 @@ function MoveDialog({
     return () => {
       alive = false;
     };
-  }, [targetId, node.id, attempt, t]);
+  }, [node, attempt, locale, t]);
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (busy) return;
-    setError('');
-    setBusy(true);
-    try {
-      const failure = await onSubmit(targetId);
-      setError(failure ?? '');
-    } finally {
-      setBusy(false);
-    }
-  };
+  const chosenLabel =
+    selected === undefined
+      ? t('Не выбрана')
+      : selected === null
+        ? t('Корень диска')
+        : targets.find((target) => target.id === selected)?.label ?? t('Не выбрана');
+  const sameParent = selected !== undefined && selected === (node.parentId ?? null);
+  const canSubmit = selected !== undefined && !sameParent && !busy;
 
   return (
-    <form onSubmit={(event) => void submit(event)}>
+    <form
+      onSubmit={async (event) => {
+        event.preventDefault();
+        if (!canSubmit) return;
+        setError('');
+        setBusy(true);
+        try {
+          setError((await onSubmit(selected ?? null)) ?? '');
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
       <h2 className="text-[15px] font-semibold text-ink">{t('Переместить')}</h2>
       <p className="mt-1 break-words text-[12.5px] text-muted">{node.name}</p>
 
-      <nav aria-label={t('Путь')} className="mt-3 flex flex-wrap items-center gap-1 text-[12px]">
-        <button
-          type="button"
-          onClick={() => setTrail([])}
-          aria-current={trail.length === 0 ? 'page' : undefined}
-          className={`rounded px-1.5 py-0.5 hover:bg-line-subtle ${trail.length === 0 ? 'font-medium text-ink' : 'text-muted'}`}
-        >
-          {t('Корень диска')}
-        </button>
-        {trail.map((crumb, index) => (
-          <span key={crumb.id ?? 'root'} className="flex items-center gap-1">
-            <ChevronRight size={12} className="text-faint" aria-hidden="true" />
-            <button
-              type="button"
-              onClick={() => setTrail(trail.slice(0, index + 1))}
-              className={`max-w-[10rem] truncate rounded px-1.5 py-0.5 hover:bg-line-subtle ${
-                index === trail.length - 1 ? 'font-medium text-ink' : 'text-muted'
-              }`}
-            >
-              {crumb.name}
-            </button>
-          </span>
+      <label className="mt-3 block text-[12.5px] font-medium text-ink" htmlFor="drive-move-target">
+        {t('Папка назначения')}
+      </label>
+      <select
+        id="drive-move-target"
+        value={selected === undefined ? '' : selected ?? '__root__'}
+        disabled={loading || Boolean(loadError)}
+        onChange={(event) => {
+          const value = event.target.value;
+          setError('');
+          setSelected(value === '' ? undefined : value === '__root__' ? null : value);
+        }}
+        className="mt-1 h-10 w-full rounded-lg border border-line-control bg-surface px-2 text-[13.5px] text-ink focus:border-accent focus:outline-none disabled:opacity-60"
+      >
+        <option value="">{t('Выберите папку…')}</option>
+        <option value="__root__">{t('Корень диска')}</option>
+        {targets.map((target) => (
+          <option key={target.id} value={target.id}>
+            {target.label}
+          </option>
         ))}
-      </nav>
+      </select>
 
-      <div className="mt-2 max-h-56 overflow-y-auto rounded-lg border border-line">
-        {loading ? (
-          <p className="px-3 py-3 text-[12.5px] text-muted">{t('Загружаем папки…')}</p>
-        ) : loadError ? (
-          <div className="px-3 py-3 text-[12.5px]">
-            <p role="alert" className="text-badge-critical-text">{loadError}</p>
-            <button
-              type="button"
-              onClick={() => setAttempt((value) => value + 1)}
-              className="mt-1 rounded px-1.5 py-0.5 font-medium text-accent hover:bg-accent-soft"
-            >
-              {t('Повторить')}
-            </button>
-          </div>
-        ) : folders.length === 0 ? (
-          <p className="px-3 py-3 text-[12.5px] text-muted">{t('Вложенных папок нет')}</p>
-        ) : (
-          <ul className="divide-y divide-line-subtle">
-            {folders.map((folder) => (
-              <li key={folder.id}>
-                <button
-                  type="button"
-                  onClick={() => setTrail([...trail, { id: folder.id, name: folder.name }])}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-ink hover:bg-canvas"
-                >
-                  <Folder size={16} className="shrink-0 text-accent" aria-hidden="true" />
-                  <span className="min-w-0 flex-1 truncate">{folder.name}</span>
-                  <ChevronRight size={14} className="shrink-0 text-faint" aria-hidden="true" />
-                  <span className="sr-only">{t('Открыть папку')}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {loading && <p className="mt-2 text-[12px] text-muted">{t('Загружаем папки…')}</p>}
+      {loadError && (
+        <div className="mt-2 flex items-center gap-2 text-[12px]">
+          <p role="alert" className="text-badge-critical-text">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => setAttempt((value) => value + 1)}
+            className="rounded px-1.5 py-0.5 font-medium text-accent hover:bg-accent-soft"
+          >
+            {t('Повторить')}
+          </button>
+        </div>
+      )}
 
       <p className="mt-2 text-[12.5px] text-muted">
-        {t('Папка назначения')}: <span className="font-medium text-ink">{current ? current.name : t('Корень диска')}</span>
+        {t('Выбрано')}: <span className="font-medium text-ink">{chosenLabel}</span>
       </p>
+      {sameParent && (
+        <p className="mt-1 text-[12px] text-warning">{t('Файл уже находится в этой папке')}</p>
+      )}
 
       {error && (
         <p role="alert" className="mt-2 rounded-lg bg-badge-critical-bg px-3 py-2 text-[12px] text-badge-critical-text">
@@ -1109,7 +1148,7 @@ function MoveDialog({
         </p>
       )}
 
-      <DialogFooter onClose={onClose} submitLabel={t('Переместить')} busy={busy} />
+      <DialogFooter onClose={onClose} submitLabel={t('Переместить')} busy={busy} disabled={!canSubmit} />
     </form>
   );
 }

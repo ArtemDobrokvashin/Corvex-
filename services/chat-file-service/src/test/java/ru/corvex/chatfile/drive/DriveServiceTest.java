@@ -143,6 +143,21 @@ class DriveServiceTest {
     }
 
     @Test
+    void foldersListingFeedsTheMovePicker() {
+        DriveNode root = service.createFolder(user, null, "Договоры");
+        DriveNode nested = service.createFolder(user, root.id(), "Архив");
+        DriveNode trashed = service.createFolder(user, null, "Старое");
+        service.trash(user, trashed.id());
+
+        List<UUID> ids = service.folders(user).stream().map(DriveNode::id).toList();
+
+        assertTrue(ids.contains(root.id()));
+        assertTrue(ids.contains(nested.id()));
+        // Корзина в списке назначений не нужна: перенос «в удалённое» невозможен.
+        assertFalse(ids.contains(trashed.id()));
+    }
+
+    @Test
     void moveRejectsOwnDescendant() {
         DriveNode parent = service.createFolder(user, null, "A");
         DriveNode child = service.createFolder(user, parent.id(), "B");

@@ -35,6 +35,11 @@ describe('диск: размеры и ссылки', () => {
 });
 
 describe('диск: контракт /api/v1/drive', () => {
+  it('запрашивает плоский список папок для диалога перемещения', async () => {
+    await driveApi.folders();
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/drive/folders');
+  });
+
   it('запрашивает список с view, parentId и поиском в query', async () => {
     await driveApi.list(null, 'files', '  ');
     expect(apiFetchMock).toHaveBeenNthCalledWith(1, '/api/v1/drive?view=files');

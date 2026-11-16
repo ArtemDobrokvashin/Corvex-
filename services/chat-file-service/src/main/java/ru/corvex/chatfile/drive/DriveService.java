@@ -120,6 +120,18 @@ public class DriveService {
                 .toList();
     }
 
+    /**
+     * Все папки владельца, кроме корзины. Нужны диалогу перемещения: он показывает
+     * плоский список с полными путями, а не заставляет пользователя «заходить» в папки
+     * кликами — иначе клик по имени читается как выбор и кнопка подтверждения врёт.
+     */
+    public List<DriveNode> folders(UUID ownerId) {
+        return readNodes(ownerId).stream()
+                .filter(node -> node.kind() == DriveNode.Kind.FOLDER)
+                .filter(node -> !node.isTrashed())
+                .toList();
+    }
+
     public Usage usage(UUID ownerId) {
         long used = readNodes(ownerId).stream()
                 .filter(node -> node.kind() == DriveNode.Kind.FILE)

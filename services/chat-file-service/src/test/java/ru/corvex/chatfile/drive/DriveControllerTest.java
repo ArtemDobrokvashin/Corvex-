@@ -115,6 +115,19 @@ class DriveControllerTest {
     }
 
     @Test
+    void folderPickerEndpointIsMapped() throws Exception {
+        // Отдельный список папок нужен диалогу перемещения: без него клиент либо
+        // ходит по уровням кликами (и путает навигацию с выбором), либо не может
+        // показать подпапки одним списком.
+        when(drive.folders(USER)).thenReturn(List.of(folder()));
+
+        mvc.perform(get("/api/v1/drive/folders"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .jsonPath("$[0].kind").value("FOLDER"));
+    }
+
+    @Test
     void mutationsUseTheDocumentedVerbsAndPaths() throws Exception {
         when(drive.createFolder(USER, null, "Отчёты")).thenReturn(folder());
         when(drive.rename(eq(USER), eq(NODE), eq("Новое"))).thenReturn(folder());

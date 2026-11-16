@@ -53,6 +53,11 @@ export const driveApi = {
     return apiFetch<DriveNode[]>(`${BASE}?${params.toString()}`);
   },
 
+  /** Все папки владельца (без корзины) — для выбора назначения при перемещении. */
+  folders(): Promise<DriveNode[]> {
+    return apiFetch<DriveNode[]>(`${BASE}/folders`);
+  },
+
   usage(): Promise<DriveUsage> {
     return apiFetch<DriveUsage>(`${BASE}/usage`);
   },
