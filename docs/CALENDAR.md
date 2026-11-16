@@ -120,7 +120,29 @@ cd C:\Corvex-test
 git fetch origin
 git checkout arena/ed5ab7db-corvex
 git pull
+```
 
+Если `git checkout` отвечает `pathspec ... did not match any file(s)`, значит клон
+single-branch: `git fetch origin` забирает только свою ветку (exit code 0 и пустой вывод),
+поэтому чужих веток в `branch -r` нет. Ветка на сервере при этом существует — проверка и
+одноразовый обход без правки конфигурации:
+
+```powershell
+git config --get-all remote.origin.fetch        # обычно одна своя ветка
+git ls-remote origin | Select-String ed5ab7db  # ветка есть на сервере?
+git fetch origin arena/ed5ab7db-corvex:refs/heads/arena/ed5ab7db-corvex
+git checkout arena/ed5ab7db-corvex
+```
+
+Если ничего из этого не помогло, клон мог быть с ограниченной историей:
+
+```powershell
+git rev-parse --is-shallow-repository
+git fetch --unshallow origin
+git fetch origin arena/ed5ab7db-corvex:refs/heads/arena/ed5ab7db-corvex
+```
+
+```powershell
 docker compose up -d --build admin-service mail-storage-service notification-service web-gateway frontend
 docker compose ps
 ```
