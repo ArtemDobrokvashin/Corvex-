@@ -110,15 +110,46 @@ SMTP-каналом служебных сообщений.
 `CORVEX_NOTIFICATION_SERVICE_URL` и `CORVEX_CALENDAR_FROM`; у `notification-service` —
 `CORVEX_CALENDAR_FROM`. Токен `CORVEX_INTERNAL_API_TOKEN` уже требовался обоим сервисам.
 
-После обновления:
+### Обновление на ПК (Windows, `C:\Corvex-test`)
 
-```bash
-docker compose up -d --build mail-storage-service notification-service web-gateway frontend
-docker compose logs --tail=100 mail-storage-service notification-service
+Фронтенд и backend должны быть пересобраны вместе: новый интерфейс сразу вызывает
+`/api/v1/calendar/events`, и на старом gateway этот путь вернёт 404.
+
+```powershell
+cd C:\Corvex-test
+git fetch origin
+git checkout arena/ed5ab7db-corvex
+git pull
+
+docker compose up -d --build admin-service mail-storage-service notification-service web-gateway frontend
+docker compose ps
 ```
 
-Ожидаемо в логах: успешная миграция `V8__calendar.sql`, отсутствие ошибок Flyway, старт
-`mail-storage-service` без `BeanCreationException`.
+Проверка, что миграции применились:
+
+```powershell
+docker compose logs --tail=200 mail-storage-service | Select-String "V8|Successfully applied|Migrating"
+docker compose logs --tail=200 admin-service | Select-String "V6|Successfully applied"
+```
+
+Ожидаемо: `Successfully applied 1 migration` в обоих сервисах, старт без
+`BeanCreationException`. Если Flyway падает — сервис не поднимется, и календарь будет
+отвечать 502 через gateway.
+
+После обновления **войдите заново**: права `CALENDAR_*` попадают в JWT при входе, а
+access-токен живёт 15 минут. До повторного входа интерфейс покажет «Нет права изменять
+календарь». Затем обновите страницу с `Ctrl+F5` — старый `index.html` мог остаться в кэше.
+
+Только фронтенд (когда backend уже пересобран и миграции применены):
+
+```powershell
+docker compose up -d --build frontend
+```
+
+Dev-сервер (`npm run dev`) для этой проверки не подходит: он проксирует `/api` в
+`localhost:8080`, а gateway в Compose наружу не публикуется. Vite удобен для визуальной
+проверки демо-режима, реальные события календаря видны только через
+`https://<ваш-домен>/calendar`.
 
 ## Проверка на ПК
 
@@ -185,7 +216,11 @@ curl -s -H "Authorization: Bearer $ACCESS" \
 mvn -pl services/mail-storage-service -Dtest=CalendarSchemaPostgresIT test
 ```
 
-Ожидаемо: 4 теста PASS при запущенном Docker.
+Ожидаемо: 4 теста PASS при запущенном Docker (нужен `git pull`: тест добавлен отдельным
+коммитом). Если Maven отвечает `No tests matching pattern "CalendarSchemaPostgresIT"`,
+то файла нет в рабочей копии — проверьте
+`dir services\mail-storage-service\src\test\java\ru\corvex\mailstorage\calendar` и
+что команда запускается из корня репозитория, а не из каталога модуля.
 - Java-компиляция в sandbox недоступна (нет JDK/Maven) — прогон `mvn test` выполняется на
   ПК пользователя.
 
