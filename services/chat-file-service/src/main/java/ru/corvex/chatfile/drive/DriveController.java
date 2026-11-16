@@ -36,7 +36,7 @@ import java.util.UUID;
  * {@link #shared(String)}. Она проверяет отзыв и срок на каждый запрос.</p>
  */
 @RestController
-@RequestMapping("/api/v1/drive")
+@RequestMapping({"/api/v1/drive", "/api/v1/drive/"})
 public class DriveController {
 
     private final DriveService drive;
