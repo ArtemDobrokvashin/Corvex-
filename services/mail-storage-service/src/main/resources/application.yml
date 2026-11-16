@@ -49,6 +49,11 @@ corvex:
     spool: ${CORVEX_MAIL_SPOOL:/data/mail/_spool}
     # Единый лимит входящего .eml: storage проверяет его потоково ДО попадания письма в heap/Maildir.
     max-message-bytes: ${CORVEX_MAIL_MAX_MESSAGE_BYTES:26214400}
+  # Календарь: события в этой БД, напоминания отправляет notification-service.
+  calendar:
+    reminders-enabled: ${CORVEX_CALENDAR_REMINDERS_ENABLED:true}
+    reminder-delay-ms: ${CORVEX_CALENDAR_REMINDER_DELAY_MS:60000}
+    notification-base-url: ${CORVEX_NOTIFICATION_SERVICE_URL:http://notification-service:8091}
   # Подключение собственных доменов: MX/SPF/DKIM проверяются по реальным DNS.
   domains:
     expected-mx-hosts: ${CORVEX_DOMAIN:mail.company.local}

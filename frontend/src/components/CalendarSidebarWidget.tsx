@@ -373,6 +373,8 @@ export default function CalendarSidebarWidget({
                                 attendees: ev.attendees,
                                 busyStatus: ev.busyStatus,
                                 description: ev.description,
+                                // Ревизия нужна серверу, чтобы не перезаписать правку из другого окна.
+                                revision: ev.revision,
                                 fromMail: ev.fromMail,
                                 sourceMailId: ev.sourceMailId,
                                 sourceMailSubject: ev.sourceMailSubject,

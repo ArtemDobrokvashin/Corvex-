@@ -1,15 +1,18 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
 import { localeTag, useI18n } from '../i18n';
+import { useCalendarStore } from '../store/calendarStore';
 
 /**
  * Минималистичный календарь-виджет.
  * Открывается по кнопке в навигации (popover), показывает текущий месяц,
  * позволяет переключаться на предыдущий/следующий, выделяет сегодняшний день.
- * Не симулирует сохранение событий и не заявляет о серверном хранении.
+ * Показывает только сетку месяца; подпись о локальном режиме видна, когда
+ * календарь не синхронизирован с сервером.
  */
 export function CalendarWidget({ className = '', compact = false }: { className?: string; compact?: boolean }) {
   const { locale, t } = useI18n();
+  const serverSynced = useCalendarStore((state) => state.serverSynced);
   const [open, setOpen] = useState(false);
   const [viewMonth, setViewMonth] = useState(new Date());
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -158,9 +161,11 @@ export function CalendarWidget({ className = '', compact = false }: { className?
               </tbody>
             </table>
           </div>
-          <p className="mt-2 text-[10px] text-faint">
-            {t('Локальный календарь без серверных событий.')}
-          </p>
+          {!serverSynced && (
+            <p className="mt-2 text-[10px] text-faint">
+              {t('Локальный календарь без серверных событий.')}
+            </p>
+          )}
           <a href="/calendar" className="mt-2 block text-[11px] font-medium text-accent-dark" onClick={() => setOpen(false)}>
             {t('Открыть календарь')}
           </a>

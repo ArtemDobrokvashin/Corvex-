@@ -2,6 +2,11 @@ import { create } from 'zustand';
 import { cleanPersonName, emailFromHeader } from '../components/ui';
 import { getCurrentLocale, translate, type Locale } from '../i18n';
 import { demoMails } from '../api/demoData';
+import {
+  calendarApi, isServerEventId, itemToSave, syncWindow, viewToItem,
+  type CalendarEventSave, type CalendarEventView,
+} from '../api/calendarApi';
+import { ApiError } from '../api/httpClient';
 
 export const CALENDAR_STORAGE_KEY = 'corvex.calendar.events';
 
@@ -30,6 +35,8 @@ export interface CalendarEventItem {
   attendees: string[];
   description: string;
   createdAt: string;
+  /** Ревизия серверного события: защищает от перезаписи чужой правки в другой вкладке. */
+  revision?: number;
 }
 
 export type CalendarEvent = CalendarEventItem;
@@ -245,6 +252,7 @@ function loadStoredEvents(key: string, demoMode: boolean): CalendarEventItem[] {
         attendees: Array.isArray(event.attendees) ? event.attendees.filter((value): value is string => typeof value === 'string') : [],
         description: typeof event.description === 'string' ? event.description : '',
         createdAt: typeof event.createdAt === 'string' ? event.createdAt : new Date().toISOString(),
+        revision: typeof event.revision === 'number' && Number.isFinite(event.revision) ? event.revision : undefined,
       });
     }
     return [...unique.values()];
@@ -590,6 +598,36 @@ export function downloadEventAsIcs(event: CalendarEventItem) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** Транспорт календаря подменяется в тестах, чтобы не поднимать сеть. */
+export interface CalendarTransport {
+  list: (from: string, to: string) => Promise<CalendarEventView[]>;
+  create: (body: CalendarEventSave) => Promise<CalendarEventView>;
+  update: (id: string, body: CalendarEventSave) => Promise<CalendarEventView>;
+  remove: (id: string, revision?: number) => Promise<void>;
+}
+
+const defaultTransport: CalendarTransport = {
+  list: calendarApi.list,
+  create: calendarApi.create,
+  update: calendarApi.update,
+  remove: calendarApi.remove,
+};
+
+let transport: CalendarTransport = defaultTransport;
+
+/** null возвращает настоящий HTTP-клиент. */
+export function setCalendarTransportForTests(next: CalendarTransport | null) {
+  transport = next ?? defaultTransport;
+}
+
+function syncFailureMessage(error: unknown, action: 'save' | 'delete'): string {
+  if (error instanceof ApiError && error.status === 409) return 'Событие изменено в другом окне. Обновите календарь.';
+  if (error instanceof ApiError && error.status === 403) return 'Нет права изменять календарь.';
+  return action === 'delete'
+    ? 'Не удалось удалить событие на сервере. Оно появится снова после обновления.'
+    : 'Событие сохранено только в этом браузере: сервер календаря недоступен.';
+}
+
 interface CalendarState {
   ownerKey: string | null;
   events: CalendarEventItem[];
@@ -599,7 +637,13 @@ interface CalendarState {
   layers: CalendarLayerFilters;
   dismissedReminderKeys: string[];
   snoozedUntilMs: Record<string, number>;
-  setOwner: (userId: string | null, demoMode?: boolean) => void;
+  /** true — события читаются и пишутся через сервер, а не только в localStorage. */
+  serverSynced: boolean;
+  syncing: boolean;
+  syncError: string | null;
+  setOwner: (userId: string | null, demoMode?: boolean, serverMode?: boolean) => void;
+  loadServerEvents: () => Promise<void>;
+  clearSyncError: () => void;
   setDemoLocale: (locale: Locale) => void;
   setWidgetOpen: (open: boolean) => void;
   toggleWidget: () => void;
@@ -621,7 +665,10 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
   layers: { high: true, medium: true, low: true, fromMail: true },
   dismissedReminderKeys: [],
   snoozedUntilMs: {},
-  setOwner: (userId, demoMode = false) => {
+  serverSynced: false,
+  syncing: false,
+  syncError: null,
+  setOwner: (userId, demoMode = false, serverMode = false) => {
     const ownerKey = userId ? `${CALENDAR_STORAGE_KEY}:${demoMode ? 'demo' : 'user'}:${encodeURIComponent(userId)}` : null;
     if (get().ownerKey === ownerKey) return;
     let dismissedReminderKeys: string[] = [];
@@ -643,8 +690,34 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       snoozedUntilMs,
       selectedDate: formatIsoDate(new Date()),
       widgetOpen: false,
+      serverSynced: Boolean(ownerKey) && serverMode && !demoMode,
+      syncError: null,
     });
+    if (ownerKey && serverMode && !demoMode) {
+      // Кэш из localStorage показан сразу, серверная версия заменяет его без мигания.
+      void get().loadServerEvents();
+    }
   },
+  loadServerEvents: async () => {
+    if (!get().serverSynced) return;
+    const { from, to } = syncWindow();
+    set({ syncing: true, syncError: null });
+    try {
+      const views = await transport.list(from, to);
+      const serverEvents = views.map(viewToItem);
+      set((state) => {
+        // Локальные события, ещё не получившие серверный id, не теряем: иначе
+        // событие, созданное при недоступном сервере, исчезло бы при перезагрузке.
+        const pendingLocal = state.events.filter((event) => !isServerEventId(event.id));
+        const events = [...serverEvents, ...pendingLocal];
+        persistValue(state.ownerKey, events);
+        return { events, syncing: false };
+      });
+    } catch (error) {
+      set({ syncing: false, syncError: syncFailureMessage(error, 'save') });
+    }
+  },
+  clearSyncError: () => set({ syncError: null }),
   setDemoLocale: (locale) => set((state) => {
     if (!state.ownerKey?.includes(':demo:')) return state;
     const russian = buildSeedEvents(new Date(), 'ru');
@@ -694,16 +767,45 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       persistValue(s.ownerKey && `${s.ownerKey}.reminders`, { dismissed: dismissedReminderKeys, snoozed: snoozedUntilMs });
       return { events: next, selectedDate: item.date, dismissedReminderKeys, snoozedUntilMs };
     });
+    const state = get();
+    if (state.serverSynced) {
+      // Локальное состояние обновлено сразу, сервер — в фоне: интерфейс не ждёт сеть.
+      const body = itemToSave(item);
+      const request = isServerEventId(item.id)
+        ? transport.update(item.id, body)
+        : transport.create(body);
+      request.then((view) => {
+        const saved = viewToItem(view);
+        set((current) => {
+          const events = current.events.map((event) => (event.id === item.id ? saved : event));
+          persistValue(current.ownerKey, events);
+          return { events, syncError: null };
+        });
+      }).catch((error: unknown) => {
+        set({ syncError: syncFailureMessage(error, 'save') });
+      });
+    }
     return item;
   },
-  deleteEvent: (id) => set((s) => {
-    const events = s.events.filter((event) => event.id !== id);
-    const dismissedReminderKeys = s.dismissedReminderKeys.filter((key) => !key.startsWith(`${id}:`));
-    const snoozedUntilMs = Object.fromEntries(Object.entries(s.snoozedUntilMs).filter(([key]) => !key.startsWith(`${id}:`)));
-    persistValue(s.ownerKey, events);
-    persistValue(s.ownerKey && `${s.ownerKey}.reminders`, { dismissed: dismissedReminderKeys, snoozed: snoozedUntilMs });
-    return { events, dismissedReminderKeys, snoozedUntilMs };
-  }),
+  deleteEvent: (id) => {
+    let removed: CalendarEventItem | undefined;
+    set((s) => {
+      removed = s.events.find((event) => event.id === id);
+      const events = s.events.filter((event) => event.id !== id);
+      const dismissedReminderKeys = s.dismissedReminderKeys.filter((key) => !key.startsWith(`${id}:`));
+      const snoozedUntilMs = Object.fromEntries(Object.entries(s.snoozedUntilMs).filter(([key]) => !key.startsWith(`${id}:`)));
+      persistValue(s.ownerKey, events);
+      persistValue(s.ownerKey && `${s.ownerKey}.reminders`, { dismissed: dismissedReminderKeys, snoozed: snoozedUntilMs });
+      return { events, dismissedReminderKeys, snoozedUntilMs };
+    });
+    if (get().serverSynced && isServerEventId(id)) {
+      transport.remove(id, removed?.revision).then(() => {
+        set({ syncError: null });
+      }).catch((error: unknown) => {
+        set({ syncError: syncFailureMessage(error, 'delete') });
+      });
+    }
+  },
   dismissReminder: (key) => set((s) => {
     const dismissedReminderKeys = s.dismissedReminderKeys.includes(key) ? s.dismissedReminderKeys : [...s.dismissedReminderKeys, key];
     const snoozedUntilMs = { ...s.snoozedUntilMs };

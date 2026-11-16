@@ -33,3 +33,8 @@ corvex:
   security:
     # Публичный ключ auth-service (JWKS): каждый сервис сам валидирует JWT (RS256)
     jwk-set-uri: ${CORVEX_JWK_SET_URI:http://auth-service:8081/oauth2/jwks}
+    # /internal/** принимается только с этим токеном; пустое значение = 503.
+    internal-token: ${CORVEX_INTERNAL_API_TOKEN:}
+  calendar:
+    # Адрес отправителя серверных напоминаний календаря.
+    from: ${CORVEX_CALENDAR_FROM:corvex-calendar@company.local}

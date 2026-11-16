@@ -67,6 +67,11 @@ export default function CalendarPage() {
   const toggleLayer = useCalendarStore((s) => s.toggleLayer);
   const upsertEvent = useCalendarStore((s) => s.upsertEvent);
   const deleteEvent = useCalendarStore((s) => s.deleteEvent);
+  const serverSynced = useCalendarStore((s) => s.serverSynced);
+  const syncing = useCalendarStore((s) => s.syncing);
+  const syncError = useCalendarStore((s) => s.syncError);
+  const clearSyncError = useCalendarStore((s) => s.clearSyncError);
+  const loadServerEvents = useCalendarStore((s) => s.loadServerEvents);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [modalDraft, setModalDraft] = useState<CalendarEventDraft | null>(null);
@@ -276,6 +281,8 @@ export default function CalendarPage() {
       attendees: ev.attendees,
       busyStatus: ev.busyStatus,
       description: ev.description,
+      // Ревизия нужна серверу, чтобы не перезаписать правку из другого окна.
+      revision: ev.revision,
       fromMail: ev.fromMail,
       sourceMailId: ev.sourceMailId,
       sourceMailSubject: ev.sourceMailSubject,
@@ -339,11 +346,28 @@ export default function CalendarPage() {
               })}
             </div>
           </div>
-          <p className="px-1.5 text-[11px] leading-relaxed text-sidebar-muted">{t('События сохраняются только в этом браузере и не синхронизируются. Напоминания работают, пока приложение открыто.')}</p>
+          <p className="px-1.5 text-[11px] leading-relaxed text-sidebar-muted">
+            {serverSynced
+              ? t('Серверные напоминания включены: они приходят на почту даже при закрытом браузере.')
+              : t('События сохраняются только в этом браузере и не синхронизируются. Напоминания работают, пока приложение открыто.')}
+          </p>
         </div>
       </SidebarSlot>
 
       {/* Верхний тулбар 56px (#FFFFFF, border-b #E5E7EB) */}
+      {syncError && (
+        <div role="alert" className="z-10 flex shrink-0 items-start justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-[12px] text-amber-900">
+          <span className="min-w-0">{t(syncError)}</span>
+          <span className="flex shrink-0 items-center gap-2">
+            {serverSynced && (
+              <button type="button" onClick={() => { void loadServerEvents(); }} className="font-medium underline">
+                {t('Обновить')}
+              </button>
+            )}
+            <button type="button" onClick={clearSyncError} aria-label={t('Закрыть')} className="px-1 text-amber-700">×</button>
+          </span>
+        </div>
+      )}
       <header className="z-10 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-line bg-surface px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
           {/* Search */}

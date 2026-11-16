@@ -1124,6 +1124,13 @@ const EN: Record<string, string> = {
   // Calendar
   'Локальный календарь без серверных событий.': 'Local calendar without server events.',
   'Локальный календарь без серверных событий. Создание и сохранение встреч появятся после подключения сервера календаря.': 'Local calendar without server events. Creating and saving meetings will appear after connecting the calendar server.',
+  'Событие сохранено только в этом браузере: сервер календаря недоступен.': 'The event is saved in this browser only: the calendar server is unavailable.',
+  'Событие изменено в другом окне. Обновите календарь.': 'The event was changed in another window. Reload the calendar.',
+  'Нет права изменять календарь.': 'You do not have permission to change the calendar.',
+  'Не удалось удалить событие на сервере. Оно появится снова после обновления.': 'The event could not be deleted on the server. It will reappear after a reload.',
+  'Серверные напоминания включены: они приходят на почту даже при закрытом браузере.': 'Server reminders are enabled: they arrive by email even when the browser is closed.',
+  'Напоминание придёт на почту и при закрытом браузере.': 'The reminder arrives by email even when the browser is closed.',
+  'Синхронизация календаря…': 'Syncing the calendar…',
   // Внешний вид / кастомизация интерфейса
   'Настройки применяются только в этом браузере и не отправляются на сервер.': 'Settings apply only in this browser and are not sent to the server.',
   'Тема оформления': 'Theme',
