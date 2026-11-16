@@ -4,10 +4,10 @@
 
 # Corvex
 
-**Corporate mail & team chat that stays on your server.**<br />
-**Корпоративная почта и сообщения, которые остаются дома.**<br />
-<sub>Free &amp; open source (Apache-2.0): raise and run your own corporate mail service on your own servers.<br />
-Бесплатный open-source проект (Apache-2.0): поднимите и настройте собственный корпоративный почтовый сервис на своих серверах.</sub>
+**Corporate mail, chat, calendar and files that stay on your server.**<br />
+**Корпоративная почта, чат, календарь и файлы, которые остаются дома.**<br />
+<sub>Free &amp; open source (Apache-2.0): 12 Java services and one React frontend in a single Compose stack, for up to 1,000 employees on your own Windows Server.<br />
+Бесплатный open-source проект (Apache-2.0): 12 Java-сервисов и один React-фронтенд в едином Compose-стеке, до 1000 сотрудников на вашем Windows Server.</sub>
 
 [Русский](#русский) · [English](#english) · [Production status](#production-ready-пока-нет) · [Screenshots](#скриншоты) · [Quick start](#попробовать-за-2-минуты) · [First full test](docs/TESTING-ON-YOUR-PC.md) · [Contribute](CONTRIBUTING.md) · [Install](#установка-на-windows-server) · [Docs](#документация) · [Author](#автор-и-связь)
 
