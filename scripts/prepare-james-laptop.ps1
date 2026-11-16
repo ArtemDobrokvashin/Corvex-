@@ -1,6 +1,6 @@
 <# Prepare dedicated James config in an empty ignored local directory.
    Does not run Docker, change .env, enable a service or touch mail data.
-   Read docs/JAMES-CORVEX-TRANSITION.md before use. #>
+   Read docs/MAIL.md before use. #>
 param([switch]$ConfirmLaptop)
 $ErrorActionPreference = 'Stop'
 if (-not $ConfirmLaptop) { throw 'Refusing: -ConfirmLaptop required; configuration is only for the current laptop transition.' }

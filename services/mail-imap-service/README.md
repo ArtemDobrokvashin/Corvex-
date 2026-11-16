@@ -39,8 +39,8 @@ TCP/RFC-парсер не пишется вручную: Corvex реализуе
   Outlook отложен и не заявляется проверенным.
 - James 3.8.2 — фактический baseline; переход на согласованную поддерживаемую
   James/JDK-платформу выполняется отдельным G4-апгрейдом. Подробности:
-  [`../../docs/READINESS.md`](../../docs/READINESS.md) и
-  [`../../docs/RELEASE-DEPENDENCIES.md`](../../docs/RELEASE-DEPENDENCIES.md).
+  [`../../docs/STATUS.md`](../../docs/STATUS.md) и
+  [`../../docs/DEPENDENCIES.md`](../../docs/DEPENDENCIES.md).
 
 ## Запуск и TLS
 

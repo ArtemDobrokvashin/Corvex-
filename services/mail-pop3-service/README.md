@@ -15,8 +15,8 @@ implicit TLS 995 без per-server exception, LOGIN/STAT/LIST/UIDL/RETR, сох�
 (`CORVEX_POP3_ENABLED=false`): включение относится к изолированному стенду и release
 gates, а не к production MX. В POM зафиксирован `james.version=3.8.2`; переход на
 согласованную поддерживаемую James/JDK-платформу — отдельный G4-апгрейд. Подробности:
-[`../../docs/READINESS.md`](../../docs/READINESS.md) и
-[`../../docs/RELEASE-DEPENDENCIES.md`](../../docs/RELEASE-DEPENDENCIES.md).
+[`../../docs/STATUS.md`](../../docs/STATUS.md) и
+[`../../docs/DEPENDENCIES.md`](../../docs/DEPENDENCIES.md).
 
 ## Как устроен
 

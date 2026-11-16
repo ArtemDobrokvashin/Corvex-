@@ -7,7 +7,7 @@ body:
       value: |
         Corvex is a free open-source (Apache-2.0) self-hosted corporate mail and
         chat server. Roadmap and honest readiness gates live in the README and
-        docs/READINESS.md — Stage 3 (IMAP/POP3) and Stage 5 (AD/LDAP, hardening)
+        docs/STATUS.md — Stage 3 (IMAP/POP3) and Stage 5 (AD/LDAP, hardening)
         are already planned.
   - type: textarea
     id: problem

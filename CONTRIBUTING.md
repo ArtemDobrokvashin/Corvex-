@@ -13,7 +13,7 @@ Corvex — бесплатный open-source проект под **Apache-2.0**, 
    `web-gateway`, а полный `mvn -B clean verify` по 12 сервисам ещё нужен. Затем —
    чистая установка Compose на отдельной VM. Присылайте либо подтверждение успеха,
    либо первую ошибку сборки/старта без секретов. Подробный маршрут —
-   [`docs/TESTING-ON-YOUR-PC.md`](docs/TESTING-ON-YOUR-PC.md).
+   [`docs/TESTING.md`](docs/TESTING.md).
 2. **Функциональная приёмка G3.** Сквозная почта и webmail, Thunderbird/Outlook
    для уже написанных IMAP/POP3 Stage 3, двухпользовательский persistent-чат
    Stage 4, живая приёмка календаря и напоминаний, backup/restore и проверка на
@@ -32,8 +32,8 @@ Corvex — бесплатный open-source проект под **Apache-2.0**, 
    правила — в [`docs/screenshots/README.md`](docs/screenshots/README.md).
 
 Не тестируйте Corvex на рабочих ящиках и не публикуйте почтовые порты, пока
-не пройдены ворота из [`docs/READINESS.md`](docs/READINESS.md) и
-[`docs/RELEASE-DEPENDENCIES.md`](docs/RELEASE-DEPENDENCIES.md).
+не пройдены ворота из [`docs/STATUS.md`](docs/STATUS.md) и
+[`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md).
 
 ### Принципы
 
@@ -115,7 +115,7 @@ those who would like to join the development, testing, or documentation work.
    `web-gateway` were built, and the full `mvn -B clean verify` across all 12
    services is still needed, followed by a clean Compose install on a separate VM.
    Report either success or the first sanitized build/startup error. The detailed
-   Russian route is in [`docs/TESTING-ON-YOUR-PC.md`](docs/TESTING-ON-YOUR-PC.md).
+   Russian route is in [`docs/TESTING.md`](docs/TESTING.md).
 2. **G3 functional acceptance.** End-to-end mail and webmail, Thunderbird/
    Outlook against the already-written Stage 3 IMAP/POP3 code, two-user
    Stage 4 persistent chat, calendar and reminder live acceptance,
@@ -134,8 +134,8 @@ those who would like to join the development, testing, or documentation work.
    rules are in [`docs/screenshots/README.md`](docs/screenshots/README.md).
 
 Do not test Corvex with production mailboxes or publish mail ports until the
-gates in [`docs/READINESS.md`](docs/READINESS.md) and
-[`docs/RELEASE-DEPENDENCIES.md`](docs/RELEASE-DEPENDENCIES.md) pass.
+gates in [`docs/STATUS.md`](docs/STATUS.md) and
+[`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md) pass.
 
 ### Principles
 

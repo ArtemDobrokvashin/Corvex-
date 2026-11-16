@@ -1,42 +1,39 @@
-# Corvex — Detailed Installation & Run Guide
+# Installation and first run
 
-> Русская версия: [INSTALL.md](INSTALL.md) · Short version — in the [README](../README.md).
-> ⚠️ Read [`READINESS.md`](READINESS.md) first: what already works vs. roadmap stages.
-> Do **not** point production MX records at the server until roadmap stages 2–3 are complete.
+A guide for administrators: from a clean server to a working web interface. Commands are
+shown for PowerShell; inside a Linux VM they are the same, only the Docker installation
+differs.
 
-Written for a Windows administrator. Commands are PowerShell, except inside the
-Linux VM (bash). Docker commands are identical on every host.
+Before you start:
 
----
+- hardware, network and DNS requirements — [`SERVER-REQUIREMENTS.md`](SERVER-REQUIREMENTS.md);
+- what is verified and what is not — [`STATUS.md`](STATUS.md);
+- **do not point production MX records at the server** until the mail path is accepted.
 
-## 0. Before you start — checklist
+## 0. Prerequisites
 
-- [ ] Server: Windows Server 2019/2022. For **50 mailboxes** the minimum is
-      **4-6 vCPU / 16 GB RAM / 200 GB SSD** (100 GB system + 100 GB data), with backups
-      on a separate medium of 100-200 GB. For 1000 mailboxes plan 8-16 CPU / 32 GB /
-      1.3 TB of data. The numbers and formulas are in [`SIZING.md`](SIZING.md) (Russian);
-      recalculate for your quota: `py -3 scripts\capacity.py --mailboxes 50`. A
-      Windows 10/11 workstation with 16 GB RAM and 60-80 GB free is enough to evaluate.
-- [ ] A domain name for web + mail (examples use `company.local`, web host
-      `mail.company.local`). Real inbound mail needs a public domain.
-- [ ] (For real mail) a static public IP and an ISP that allows inbound **and
-      outbound TCP 25** — verify this first, many ISPs block it.
-- [ ] Admin access to the server and to the DNS zone.
-- [ ] An **external** mailbox for monitoring alerts (not on this server).
+- [ ] A server: Windows Server 2019/2022 or Ubuntu Server 24.04 LTS. For 50 mailboxes —
+      4–6 vCPU, 16 GB RAM, 200 GB SSD. A Windows 10/11 workstation with 16 GB RAM and
+      60–80 GB free is enough for a first look.
+- [ ] A web name (`mail.company.local`) and a mail domain (`company.local`).
+- [ ] For external mail: a public IP, ports 25 (both directions), 80, 443, 587, 993/143,
+      995/110, and the ability to set a PTR record.
+- [ ] Administrator access to the server and to the DNS zone.
+- [ ] A separate external mailbox for alerts — not on this server.
 
-## 1. Network & firewall
+## 1. Network
 
-Only six ports are published. Forward them on your perimeter and allow them in
-Windows Defender Firewall:
+Only the ports below are exposed. Databases, Redis, RabbitMQ and Elasticsearch publish no
+host ports at all.
 
 | Port | Purpose |
 |---|---|
-| 443 | Web UI, API, chat WebSocket |
-| 80 | Redirect to HTTPS + Let's Encrypt issuance |
-| 25 | Inbound mail from the Internet (SMTP listener is OFF by default — step 8) |
-| 587 | Mail submission from clients (SMTP AUTH) |
-| 993, 143 | IMAP (roadmap stage 3) |
-| 995, 110 | POP3 (roadmap stage 3) |
+| 443 | web interface, API, chat WebSocket |
+| 80 | redirect to HTTPS, Let's Encrypt issuance |
+| 25 | inbound mail from other servers |
+| 587 | submission from mail clients (SMTP AUTH) |
+| 993, 143 | IMAP |
+| 995, 110 | POP3 |
 
 ```powershell
 443,80,25,587,993,143,995,110 | ForEach-Object {
@@ -44,212 +41,184 @@ Windows Defender Firewall:
 }
 ```
 
-PostgreSQL, Redis, RabbitMQ and Elasticsearch are **never** published — they live
-on an internal Docker network with no host ports.
+## 2. Docker
 
-## 2. Install Docker
+**Option A — Windows Server: a Linux VM in Hyper-V (recommended).** Docker Desktop is not
+supported on Windows Server, and Linux containers do not run natively there.
 
-### Option A — production on Windows Server: a Linux VM in Hyper-V (recommended)
-
-Docker Desktop is not supported on Windows Server, and Linux containers do not
-run natively on Windows. The supported production path is a lightweight Linux VM:
-
-1. Enable Hyper-V (Server Manager → Add Roles, or
-   `Install-WindowsFeature Hyper-V -IncludeManagementTools -Restart`).
-2. Create a Gen-2 VM: Ubuntu Server 24.04 LTS, vCPU = all but 2, RAM = all but
-   4 GB, an SSD disk of **100 GB system + 100 GB data for 50 mailboxes** (see
-   [`SIZING.md`](SIZING.md)), NIC on an **external** virtual switch. Keep backups off
-   that virtual disk: use a separate physical medium or NAS.
-3. Install Ubuntu (tick OpenSSH server), then inside the VM:
+1. Enable Hyper-V: `Install-WindowsFeature Hyper-V -IncludeManagementTools -Restart`.
+2. Create a VM: Ubuntu Server 24.04, generation 2, vCPU = all minus 2, RAM = all minus 4 GB,
+   SSD disk (100 GB system + 100 GB data), adapter on the **external** virtual switch.
+3. Inside the VM:
 
 ```bash
 sudo apt update && sudo apt install -y ca-certificates curl git
 curl -fsSL https://get.docker.com | sudo sh
-sudo usermod -aG docker $USER   # log out and back in afterwards
+sudo usermod -aG docker $USER   # log in again
 docker --version && docker compose version
 ```
 
-Continue inside the VM over SSH; Appendix A of the Russian guide has the Linux
-equivalent of the PowerShell init script.
+**Option B — pilot on Windows 10/11: Docker Desktop** with the WSL2 backend. Give it at
+least 6 CPUs and 12 GB RAM.
 
-### Option B — pilot on Windows 10/11: Docker Desktop
+**Option C — a plain Linux server.** Same as option A, step 3, without Hyper-V. The simplest
+option to operate.
 
-Install Docker Desktop (WSL2 backend) and give it at least 6 CPU / 12 GB RAM in
-Settings → Resources (Elasticsearch, ClamAV and 12 JVMs need it).
-
-### Option C — plain Linux server
-
-Simplest to operate if a Windows host is not mandatory: Option A step 3, no Hyper-V.
-
-## 3. Get the source code
+## 3. Get the source
 
 ```powershell
 git clone https://github.com/ArtemDobrokvashin/Corvex-.git C:\Corvex
 cd C:\Corvex
 git switch main
-git pull --ff-only   # completed stages are merged into main
+git pull --ff-only
 ```
 
-Or download the branch ZIP from GitHub and unpack to `C:\Corvex`.
+If git is not allowed on the server, download the ZIP of `main` and unpack it to `C:\Corvex`.
 
-## 4. First-run initialisation: secrets, JWT key, pilot certificate
+## 4. First-run initialisation
 
-Do **not** copy `.env.example` manually — the script creates `.env` for you with
-a *different* random secret per variable, generates the RSA JWT signing key, and
-creates a 90-day self-signed certificate for pilots:
+Do not copy `.env.example` by hand. The script creates `.env` with random secrets, an RSA
+signing key and a 90-day self-signed certificate for the pilot.
 
 ```powershell
-Set-ExecutionPolicy -Scope Process Bypass   # if script execution is restricted
+Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\first-run.ps1
 ```
 
-Expect three `[OK]` lines. Verify `infra\secrets\jwt_private.pem`,
-`infra\certs\fullchain.pem` and `.env` exist.
+Expected result — three `[OK]` lines, plus `infra\secrets\jwt_private.pem`,
+`infra\certs\fullchain.pem` and `.env` in the repository root.
 
-⚠️ Secrets from `.env` are applied when the data volumes are **first created**.
-Changing `POSTGRES_PASSWORD` later in `.env` alone will not change the password
-inside PostgreSQL. On a blank test stand you can start over with
-`docker compose down -v` (destroys volumes and data).
+> Passwords from `.env` are applied to the databases **when volumes are first created**.
+> Changing `POSTGRES_PASSWORD`/`REDIS_PASSWORD` after the first start has no effect. On an
+> empty stand you can start over with `docker compose down -v`.
 
 ## 5. Configure `.env`
 
-| Variable | Set to |
+| Variable | Value |
 |---|---|
-| `CORVEX_DOMAIN` | web host, e.g. `mail.company.local` |
-| `CORVEX_WEB_ORIGINS` | normally leave empty: Compose derives `https://$CORVEX_DOMAIN`; set only for additional comma-separated browser origins |
-| `CORVEX_MAIL_DOMAIN` | mail domain of addresses, e.g. `company.local` |
-| `CORVEX_INTERNAL_API_TOKEN` | **required** secret for the internal auth/admin APIs; `first-run.ps1` generates it and appends it to an older `.env` when missing. Never keep `change-me-strong-password` |
-| `CORVEX_SMTP_ENABLED` | keep `false` until stage 2 (data-loss guard, see READINESS) |
-| `CORVEX_LDAP_URL`, `CORVEX_LDAP_BASE` | fill if you have Active Directory (stage 5), otherwise leave |
-| `CORVEX_ALERT_RECIPIENTS` | Recipients of the internal alert-email channel |
-| `ALERT_SMTP_HOST` | SMTP for the internal channel only; use `CORVEX_ALERT_EXTERNAL_*` for independent delivery |
+| `CORVEX_DOMAIN` | web name, e.g. `mail.company.local` |
+| `CORVEX_WEB_ORIGINS` | usually empty: Compose derives `https://$CORVEX_DOMAIN`; fill only for extra origins |
+| `CORVEX_MAIL_DOMAIN` | mail domain, e.g. `company.local` |
+| `CORVEX_INTERNAL_API_TOKEN` | internal API secret; generated by the script, must not stay `change-me...` |
+| `CORVEX_SMTP_ENABLED`, `CORVEX_IMAP_ENABLED`, `CORVEX_POP3_ENABLED` | `false` until the corresponding path is accepted |
+| `CORVEX_ALERT_RECIPIENTS` | recipients of the internal alert channel |
+| `CORVEX_BOOTSTRAP_ADMIN_*` | login, password and email of the first super-admin |
+| `CORVEX_LDAP_URL`, `CORVEX_LDAP_BASE` | fill in when Active Directory exists; otherwise accounts are local |
 
-## 6. Real TLS certificate (required before any external access)
+External mailbox passwords and alert channel secrets are encrypted with
+`CORVEX_EXTERNAL_MAIL_ENC_KEY` and `CORVEX_ALERT_CONFIG_ENC_KEY`. Losing a key means
+re-entering those secrets, so `.env` belongs in the backup.
 
-The self-signed certificate from step 4 is for internal pilots only.
+## 6. TLS certificate
 
-- **Public domain:** Let's Encrypt (`win-acme` on Windows, certbot in the VM);
-  place files as `infra\certs\fullchain.pem` (full chain) and `infra\certs\privkey.pem`.
-- **Internal domain:** a certificate from your corporate CA (AD CS); the root CA
-  must be trusted on all user machines (usually via GPO already).
+The self-signed certificate from step 4 is for an internal pilot only.
 
-The certificate name is `mail.<your-domain>` — it serves web, IMAP and POP3.
-Set the same name in `server_name` in `infra\nginx\conf.d\corvex.conf`.
+- **Public domain:** Let's Encrypt (`win-acme` on Windows, certbot on Linux). Place
+  `infra\certs\fullchain.pem` (full chain) and `infra\certs\privkey.pem`.
+- **Internal domain:** a corporate CA certificate for `mail.<domain>`; the root CA must be
+  trusted on user machines.
 
-## 7. DNS records
+The certificate name is `mail.<domain>`: it serves web, IMAP and POP3. Update `server_name`
+in `infra\nginx\conf.d\corvex.conf` to the same name.
 
-One A record is enough for a web-only pilot. For the future mail stages prepare:
+## 7. DNS
+
+A single A record is enough for a web-only pilot. The full mail set:
 
 ```dns
-mail.company.local.      A      203.0.113.10
-company.local.           MX 10  mail.company.local.
-company.local.           TXT    "v=spf1 mx ~all"        ; tighten to -all in production
-corvex1._domainkey       TXT    "v=DKIM1; k=rsa; p=<public key from admin panel, stage 2>"
-_dmarc.company.local.    TXT    "v=DMARC1; p=none; rua=mailto:dmarc@company.local"
-autoconfig.company.local.   CNAME mail.company.local.
-_imaps._tcp.company.local.  SRV 0 1 993 mail.company.local.
-_submission._tcp.company.local. SRV 0 1 587 mail.company.local.
+mail.company.com.              A      203.0.113.10
+company.com.                   MX 10  mail.company.com.
+company.com.                   TXT    "v=spf1 mx ~all"          ; ~all for a pilot, -all for production
+corvex1._domainkey.company.com TXT    "v=DKIM1; k=rsa; p=<public key>"
+_dmarc.company.com.            TXT    "v=DMARC1; p=none; rua=mailto:dmarc@company.com"
+autoconfig.company.com.        CNAME  mail.company.com.
+_imaps._tcp.company.com.       SRV 0 1 993 mail.company.com.
+_submission._tcp.company.com.  SRV 0 1 587 mail.company.com.
 ```
 
-Ask your ISP for a **PTR (reverse DNS)** record for the public IP pointing to
-`mail.company.local` — without it large providers will reject your mail.
+The DKIM key is generated on first start; the public part is shown in the admin panel. Ask
+the provider for the PTR record: `IP → mail.company.com`.
 
-## 8. First launch
+## 8. First start
 
 ```powershell
 docker compose up -d --build
+docker compose ps
 ```
 
-The first build of 12 Java services + frontend takes 10–30 minutes. Then:
+The first build of 12 Java services plus the frontend takes 10–30 minutes. Wait for
+`healthy` on services that define a healthcheck; `frontend`, `nginx` and `spamd` have none
+and stay `Up`. ClamAV downloads its signature database on first start — up to 5 minutes is
+normal.
 
 ```powershell
-docker compose ps        # healthchecked services: healthy; nginx/frontend/spamd: Up
-docker compose --profile monitoring up -d
+docker compose logs --tail 100 <service>     # if something restarts
+docker compose --profile monitoring up -d    # monitoring as a separate profile
 ```
 
-ClamAV downloading signature databases on first start (up to ~5 minutes) is
-normal. For problems: `docker compose logs --tail 100 <service>`.
+Grafana is served at `https://mail.<domain>/grafana/`, restricted by an allowlist in
+`infra\nginx\conf.d\corvex.conf` — adjust it to your admin subnet.
 
-Grafana: `https://mail.<domain>/grafana/` (admin subnet allowlist in the nginx
-config — adjust it), user `admin`, password from `GRAFANA_PASSWORD` in `.env`.
+## 9. Checks after start
 
-See [`docs/ALERTING.en.md`](ALERTING.en.md) for repeat intervals, temporary silences, and
-independent external SMTP/Telegram/MAX delivery. The internal `ALERT_SMTP_HOST` alone
-cannot provide an independent notification path when Corvex mail itself is down.
+1. **Login.** `https://mail.<domain>` shows the sign-in screen. The login is
+   `CORVEX_BOOTSTRAP_ADMIN_USERNAME` (default `admin`); the password comes from `.env`, or,
+   if empty, is printed once:
+   `docker compose logs auth-service | Select-String BOOTSTRAP`. The UI asks to change it.
+2. **Gateway is alive.** `curl.exe -k https://mail.<domain>/api/v1/auth/me` → `401`.
+3. **JWKS.** `docker compose exec web-gateway wget -qO- http://auth-service:8081/oauth2/jwks`
+   → JSON with the public key.
+4. **Migrations.** `docker compose logs auth-service | Select-String Flyway`, and the same
+   for `admin-service`, `chat-service`, `mail-storage-service`.
+5. **SMTP is off by default.** `mail-smtp-service` logs `SMTP listener disabled`. Expected.
+6. **Calendar.** Create an event with a 5-minute reminder, reload — the event persists. Then
+   follow `docker compose logs -f notification-service` until the reminder is sent.
+7. **Alerts.** Do not stop a working service: use `scripts/alert_e2e.py`, which raises one
+   synthetic alert and resolves it.
 
-## 9. Post-launch smoke tests
+The full set, including mail and mail-client acceptance — [`TESTING.md`](TESTING.md).
 
-1. **Web UI & first sign-in:** `https://mail.<domain>` → Corvex login. On the very
-   first start a superadmin is created: username from `CORVEX_BOOTSTRAP_ADMIN_USERNAME`
-   (`admin`), password from `CORVEX_BOOTSTRAP_ADMIN_PASSWORD` — or, if that is empty,
-   generated and printed ONCE in the log: `docker compose logs auth-service | grep BOOTSTRAP`.
-   The UI forces a password change, then lets you create users/groups in the admin panel.
-   (The "View demo without a server" button stays for the standalone showcase.)
-2. **Gateway alive:** `curl.exe -k https://mail.<domain>/api/v1/auth/me` → `401` expected.
-3. **JWKS:** `docker compose exec web-gateway wget -qO- http://auth-service:8081/oauth2/jwks` → JSON public key.
-4. **Migrations applied:** `docker compose logs auth-service | Select-String Flyway` (repeat for admin/chat/mail-storage services).
-5. **SMTP intentionally off:** `docker compose logs mail-smtp-service` contains
-   `SMTP listener disabled`. This is correct until stage 2.
-6. **Calendar and reminders:** create an event with a 5-minute reminder in the sidebar,
-   then reload the page — the event must survive (it lives in PostgreSQL inside
-   `mail-storage-service`, migration `V8`). Watch `docker compose logs -f notification-service`
-   for the reminder delivery line: the mail arrives in your Corvex mailbox. If
-   `mail-storage-service` logs a delivery error instead, verify that
-   `CORVEX_INTERNAL_API_TOKEN` is identical in both services and that
-   `CORVEX_CALENDAR_FROM` points at an existing domain. Details and limits:
-   [`CALENDAR.md`](CALENDAR.md).
-7. **Alerting:** do not stop a production service just for a test. Use the bounded
-   synthetic alert in `scripts/alert_e2e.py` as described in [`scripts/README.md`](../scripts/README.md).
-   For a temporary silence, run `scripts\alerts.ps1 silence -Minutes 60`; external channels
-   are documented in [`docs/ALERTING.en.md`](ALERTING.en.md).
-
-## 10. Day-2 operations
+## 10. Upgrade and rollback
 
 ```powershell
-docker compose ps                          # health of everything
-docker compose logs -f --tail 100          # all logs (or Loki in Grafana)
-docker compose restart <service>           # restart one service
-docker compose up -d --build <service>     # rebuild one service after a code update
-docker compose down                        # stop everything (data in volumes is kept)
+git pull
+docker compose up -d --build                # Flyway applies migrations
+docker compose up -d --build chat-service   # rebuild a single service
 ```
 
-Updating Corvex: `git pull` → `docker compose up -d --build` (Flyway applies DB
-migrations automatically). Rollback: restore previous commit/image tags and
-`up -d`; migrations are additive-only so the schema survives rollback.
+Rollback: return to the previous commit (or image tags) and run `up -d` again. Migrations
+are additive, so the schema survives a rollback. Full procedure — [`OPERATIONS.md`](OPERATIONS.md).
 
-## 11. Backups
+## 11. Backup
 
-1. Schedule daily 02:30 in Task Scheduler:
-   `powershell -ExecutionPolicy Bypass -File C:\Corvex\scripts\backup.ps1 -BackupRoot D:\CorvexBackup`
-2. Store copies on **different physical media** — a backup on the same SSD does
-   not survive disk death or ransomware.
-3. The script saves: binary-safe dumps of all 4 PostgreSQL databases, archives of
-   mail / attachment / chat-file volumes, `.env`, certificates, the JWT key, and
-   `manifest.json` with SHA-256 hashes for every file. The Elasticsearch index is
-   excluded on purpose (rebuildable from the DBs).
-4. For an isolated data-only restore on the same PC, use `restore.ps1 -DataOnly`
-   with a separate `-ProjectName`, then `restore_verify.ps1`: all 4 databases and 3
-   file volumes are compared with the backup while source volumes and published ports
-   stay untouched. See [`scripts/README.md`](../scripts/README.md) for details.
-5. Rehearse a full restore quarterly. An untested backup is not a backup.
+```powershell
+.\scripts\backup.ps1 -BackupRoot D:\CorvexBackup
+```
 
-## 12. Pre-exposure security checklist
+The script saves dumps of four PostgreSQL databases, archives of the data volumes (mail,
+attachments, files), `.env`, certificates, the JWT key and `manifest.json` with SHA-256 of
+every file. The Elasticsearch index is excluded — it is rebuilt. Keep copies on a **different
+physical medium**. Restore verification — [`OPERATIONS.md`](OPERATIONS.md).
 
-- [ ] No `change-me...` values left in `.env`
-- [ ] Real TLS certificate (step 6), not the pilot self-signed one
-- [ ] nginx `server_name` and the `/grafana/` subnet allowlist adjusted
-- [ ] Alert email verified end-to-end (smoke test 6)
-- [ ] Backups running, at least one copy off-server
-- [ ] `CORVEX_SMTP_ENABLED=false` and no production MX published until stage 2 is done
+## 12. Checklist before exposing the server
+
+- [ ] No `change-me...` value is left in `.env`.
+- [ ] TLS uses a real certificate, not the pilot self-signed one.
+- [ ] `server_name` and the `/grafana/` allowlist in nginx are adjusted.
+- [ ] Alerts reach an external mailbox.
+- [ ] A backup copy lives off the server and a restore has been verified.
+- [ ] `CORVEX_SMTP_ENABLED=false` until the mail path is accepted; MX is not published.
 
 ## Troubleshooting
 
-| Symptom | Check / fix |
+| Symptom | What to check |
 |---|---|
-| Maven build fails for a service | Run `docker compose build <service>` in foreground and read the first compile error; report it back to the repository |
-| Container unhealthy/restarting | `docker compose logs --tail 100 <service>` — usually a secret changed in `.env` after volumes were initialised (fix inside the service, or `down -v` on a blank stand), or not enough RAM |
-| nginx: `cannot load certificate` | Files missing in `infra\certs` — run step 4 or 6 |
-| ClamAV takes very long | First run downloads ~200 MB of signatures; offline — load databases into the `clamav-data` volume manually |
-| Elasticsearch restart-loops | Needs ≥2.5 GB RAM; on a Linux VM also `sudo sysctl -w vm.max_map_count=262144` (persist in `/etc/sysctl.conf`) |
-| Yellow "demo mode" banner in the UI | You entered via the demo button, or the backend is unreachable; sign out and use a real account (bootstrap admin) |
-| External mail never arrives | By design for now: stage 2 is pending and SMTP is disabled. Afterwards: ports 25 reachable, MX/PTR correct, mail-tester.com ≥ 9/10 |
+| Maven build fails for a service | `docker compose build <service>` without `-d`, read the first compilation error |
+| Container `unhealthy`/`restarting` | `docker compose logs --tail 100 <service>`; usually a password mismatch with an initialised volume, or too little memory |
+| nginx: `cannot load certificate` | no files in `infra\certs` — run step 4 or 6 |
+| ClamAV takes long to start | first start downloads ~200 MB of signatures; offline, load them into the `clamav-data` volume manually |
+| Elasticsearch keeps restarting | it needs ≥2.5 GB RAM; in a Linux VM run `sudo sysctl -w vm.max_map_count=262144` and persist it in `/etc/sysctl.conf` |
+| The yellow “demo” banner is visible | you used the demo button, or the backend is down: check `docker compose ps` and `auth-service` logs |
+| External mail does not arrive | SMTP is intentionally off; after acceptance — inbound port 25, MX, PTR, mail-tester ≥ 9/10 |
+
+More failure modes, including mail and operations — [`OPERATIONS.md`](OPERATIONS.md).

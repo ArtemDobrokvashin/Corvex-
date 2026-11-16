@@ -7,12 +7,8 @@ built Corvex frontend with clearly labelled demo data. They do not, by themselve
 prove Java compilation, Docker startup, SMTP/IMAP/POP3 delivery, chat realtime, or
 production readiness.
 
-As of 19 October 2026, `main` (`ad42ff2`, Spring Boot 3.5.16) builds and starts on the
-laptop bench with `admin-service`, `mail-storage-service`, `notification-service`,
-`web-gateway`, frontend, migrations `V6`/`V8` and `healthy` containers. The full
-12-service reactor and the clean-profile install are repeated separately. See
-[`../READINESS.md`](../READINESS.md), and do not infer any of these results from a
-screenshot.
+Runtime results, commits and their limits are recorded separately in
+[`../STATUS.md`](../STATUS.md). Do not infer any of those results from a screenshot.
 
 ### What the current set shows, and what it does not
 
@@ -92,11 +88,8 @@ the same thing interactively.
 Сами по себе они не доказывают компиляцию Java, запуск Docker, доставку
 SMTP/IMAP/POP3, realtime-чат или production-готовность.
 
-На 19 октября 2026 года `main` (`ad42ff2`, Spring Boot 3.5.16) собирается и
-запускается на ноутбуке-стенде: `admin-service`, `mail-storage-service`,
-`notification-service`, `web-gateway`, frontend, миграции `V6`/`V8`, контейнеры
-`healthy`. Полный reactor по 12 сервисам и чистая установка повторяются отдельно.
-См. [`../READINESS.md`](../READINESS.md): не выводите эти результаты из скриншота.
+Результаты запуска, коммиты и их границы записаны отдельно в [`../STATUS.md`](../STATUS.md).
+Не выводите эти результаты из скриншота.
 
 ### Что показывает текущий набор и чего в нём нет
 
