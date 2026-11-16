@@ -31,9 +31,10 @@ upgrade. Исторические runtime-результаты не перено
 | Spring Cloud BOM, остальные POM | **2023.0.6** | Остаточный неоднородный dependency-management baseline; унификация относится к G4, не выдаётся за завершённую |
 | Apache James protocols | **3.8.2** | IMAP/POP3; Java 17 сохраняется до отдельной миграции G4 |
 | SubEtha SMTP | `com.github.subethasmtp:subethasmtp:7.2.2` | Поддерживаемый форк вместо заброшенной линии 3.1.7 |
-| dnsjava | **3.6.5** | MX/DNS-резолвинг SMTP |
+| dnsjava | **3.7.1** | MX/DNS-резолвинг SMTP; 3.7.x закрывает GHSA 2026 (DoS на разборе заголовков, TSIG и DoH) |
 | Jakarta Mail API / Angus Mail | **2.1.5 / 2.0.5** | External Mail IMAP/POP3/SMTP; точные сигнатуры reconnect/fetch проверялись по исходникам |
-| JaCoCo | **0.8.15** | Coverage-гейты не понижались |
+| JaCoCo | **0.8.16** | Coverage-гейты не понижались |
+| BouncyCastle (`bcprov-jdk18on`) | **1.87** | Argon2id для паролей и app-password (`Argon2PasswordEncoder` Spring Security) |
 
 **Граница доказательств:** на `ad42ff2` с Boot 3.5.16, gateway Cloud 2025.0.3 и
 James 3.8.2 затронутые модули собираются с тестами, а `docker compose up -d --build`
@@ -59,15 +60,15 @@ Boot/Cloud/Jackson, James и JDK, обновление observability-стека 
 |---|---|
 | Node.js engines | `^22.22.2 || ^24.15.0 || >=26.0.0`; npm `>=10` |
 | React / React DOM | **19.3.1 / 19.3.1** |
-| React Router DOM | **7.18.4** |
+| React Router DOM | **7.18.5** |
 | TypeScript / Vite / Vitest | **7.0.2 / 8.3.5 / 5.0.5** |
 | Autoprefixer / PostCSS | **10.6.2 / 8.5.32** |
 | jsdom | **30.1.3** |
 | Tailwind CSS | **3.4.19** |
 | `@vitejs/plugin-legacy` / `@babel/core` | **8.2.3 / 7.29.7** |
-| Zustand | **5.0.16** |
-| Lucide React | **1.61.0** (lockfile; переход на 2.x — отдельная major-миграция) |
-| Marked / DOMPurify | **18.1.1 / 3.4.17** |
+| Zustand | **5.1.0** |
+| Lucide React | **1.72.0** (lockfile; переход на 2.x — отдельная major-миграция) |
+| Marked / DOMPurify | **18.2.0 / 3.4.17** |
 
 Повторная проверка обновления PR #106 02.11.2026 на Node 22.22.3 / npm 10.9.8:
 
@@ -77,6 +78,15 @@ Boot/Cloud/Jackson, James и JDK, обновление observability-стека 
 - `npm test` — **67 test-файлов, 310/310 тестов**;
 - `npm run build` — `tsc -b`, modern и `*-legacy-*.js` bundles успешно;
 - `npm audit --omit=dev` — **0 уязвимостей**.
+
+Повторная проверка 16.11.2026 после слияния Dependabot-батча (Lucide React 1.72.0,
+Marked 18.2.0) на `main` = `d865bf7f`:
+
+- `npm ci` — успешно (364 пакета);
+- `tsc -b` — 0 ошибок; `npm test` — **71 test-файл, 356/356 тестов**;
+- `npm run build` — modern и `*-legacy-*.js` bundles собраны (40 файлов в `dist/assets`);
+- `npm audit --omit=dev` — **0 уязвимостей**;
+- `python3 -m unittest discover -s scripts/tests` — **247 OK (1 skip)**.
 
 ### Осознанные исключения
 
@@ -97,14 +107,14 @@ Production audit равен нулю на текущем lockfile. Это не �
 | PostgreSQL | `postgres:16-alpine` |
 | Redis | `redis:7-alpine` |
 | RabbitMQ | `rabbitmq:4.3.7-management-alpine` |
-| Elasticsearch | `docker.elastic.co/elasticsearch/elasticsearch:8.19.23` |
+| Elasticsearch | `docker.elastic.co/elasticsearch/elasticsearch:8.19.25` |
 | SpamAssassin | `grepular/spamassassin:4.0.1-5` |
 | ClamAV | `clamav/clamav:1.5.4` |
 | nginx | `nginx:1.31-alpine` |
-| Prometheus | `prom/prometheus:v3.15.1` |
-| Alertmanager | `prom/alertmanager:v0.34.2` |
+| Prometheus | `prom/prometheus:v3.16.0` |
+| Alertmanager | `prom/alertmanager:v0.35.0` |
 | External alert relay | `python:3.13-alpine`; только стандартная библиотека, non-root UID 10001 |
-| Grafana | `grafana/grafana:13.3.0` |
+| Grafana | `grafana/grafana:13.3.1` |
 | Loki | `grafana/loki:3.7.9` |
 | Promtail | `grafana/promtail:3.6.11` — до миграции на Alloy в G4 |
 | Frontend build | `node:22-alpine` → `nginx:1.31-alpine` |
@@ -117,10 +127,21 @@ RabbitMQ **4.4.0 намеренно не включён** в этот staged-upd
 требует отдельного изменения после backup, проверки очередей/DLQ/restart и rollback-плана.
 Dependabot minor-update для RabbitMQ до этого приостановлен; patch-обновления разрешены.
 
-Для Alertmanager 0.34.2 и Grafana 13.3.0 перед merge проверены объявленные breaking changes:
-Corvex не использует browser cross-origin API Alertmanager и не задаёт переименованную Grafana
-config-секцию `marketplace`. Compose YAML и monitoring-профили проверены статически; запуск
+Для Alertmanager 0.35.0 и Grafana 13.3.1 перед merge проверены объявленные breaking changes:
+0.35.0 ломает `--enable-feature=auto-gomemlimit` и неименованные outputs `eventrecorder`,
+а также меняет схему `events/v2` — ни то, ни другое Corvex не использует: entrypoint вызывает
+только `--config.file`/`--storage.path`, конфиг ограничен `route`/`receivers`/`webhook_configs`/
+`inhibit_rules`. Prometheus 3.16.0 меняет экспериментальный search API, remote-write метрики и
+TSDB-валидацию exemplars; scrape-конфиг, `--storage.tsdb.retention.time` и alerting-правила
+не затронуты. Compose YAML и monitoring-профили проверены статически; запуск
 новых monitoring-образов и alert/email-smoke остаются обязательной частью повторных G2/G3.
+
+**Граница доказательств для батча 2026-11 (dnsjava 3.7.1, bcprov-jdk18on 1.87, JaCoCo 0.8.16):**
+используемые Corvex API (`Lookup`, `SimpleResolver`, `ResolverConfig.server()/servers()`,
+`TXTRecord.getStrings()`, `Cache`, `Header.setFlag`, `Lookup.setCache(null)` → временный кэш)
+сверены по исходникам тега v3.7.1; bcprov и JaCoCo обновлены в пределах patch/minor без изменения
+нашего кода. Компиляция и Maven-тесты для этого SHA не выполнялись: полный `mvn verify` и
+Docker-сборка остаются обязательной проверкой на PC.
 
 Теги — не digest-пины. Для production G5 нужно отдельно решить политику digest/immutable
 artifacts, сканирование образов и обновление базовых ОС. SpamAssassin использует
