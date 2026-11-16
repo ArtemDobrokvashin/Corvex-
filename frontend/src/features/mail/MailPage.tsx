@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Archive,
@@ -76,7 +76,7 @@ import {
 import { formatMailRecipients, replyAllCc } from './mailRecipients';
 import { activeMailAfterRefresh, replaceFolderMessages } from './mailRefresh';
 import MailSidebarActions from './MailSidebarActions';
-import { SelectMessage, SelectVisibleMessages } from './BulkSelection';
+import { BulkActionBar, SelectMessage, SelectVisibleMessages } from './BulkSelection';
 import { ComposePanel, type ComposeDraft } from './ComposePanel';
 import DraftsPanel from './DraftsPanel';
 import { moveSequentially } from './bulkMail';
@@ -89,6 +89,7 @@ import {
 } from './forwardMail';
 
 type FolderTab = ReturnType<typeof demoFolders>[number];
+const READ_FILTERS = ['all', 'unread', 'read'] as const;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -144,6 +145,7 @@ function MoveToFolder({ folders, current, onMove, disabled = false }: { folders:
 
 export default function MailPage() {
   const { locale, t } = useI18n();
+  const filterId = useId();
   const navigate = useNavigate();
   const { onOpenCommandPalette, onOpenCalendarWidget, onOpenSecurity, onCloseNavigation } = useSidebarSlotContext();
 
@@ -1321,7 +1323,7 @@ export default function MailPage() {
         aria-label={t('Список писем')}
         className={`${
           mobileReading ? 'hidden lg:flex' : 'flex'
-        } relative min-w-0 flex-1 flex-col border-r border-line bg-surface lg:w-[388px] lg:flex-none`}
+        } mail-list-pane relative min-w-0 flex-1 flex-col border-r border-line bg-surface lg:w-[388px] lg:flex-none`}
       >
         {/* 56px Search + Sort + Filter Header */}
         <header className="z-10 flex h-14 shrink-0 items-center gap-1.5 border-b border-line bg-surface px-3.5">
@@ -1480,13 +1482,15 @@ export default function MailPage() {
           <IconButton icon={Settings2} label={t('Настройки почты')} size={16} className="h-8 w-8 shrink-0" onClick={() => setSettingsOpen(true)} />
         </header>
 
-        {/* Subheader: folder name + quick tabs */}
-        <div className="flex items-center justify-between gap-2 border-b border-line-subtle bg-canvas/70 px-4 py-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <h2 className="truncate text-[13px] font-semibold text-ink">{currentFolder?.name ?? t('Почта')}</h2>
-            <span className="rounded-full bg-surface px-1.5 py-0.5 text-[11px] font-medium text-muted tabular-nums">
-              {visible.length}
-            </span>
+        {/* The list is narrow even on desktop. Keep selection and filters on separate rows. */}
+        <div className="shrink-0 border-b border-line bg-corvex-chrome px-4 py-2">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <div className="flex min-w-[min(100%,7rem)] flex-1 items-center gap-2">
+              <h2 title={currentFolder?.name ?? t('Почта')} className="min-w-0 truncate text-[13px] font-semibold text-ink">{currentFolder?.name ?? t('Почта')}</h2>
+              <span className="shrink-0 rounded-full bg-surface px-1.5 py-0.5 text-[11px] font-medium text-muted tabular-nums">
+                {visible.length}
+              </span>
+            </div>
             <SelectVisibleMessages
               visibleCount={visible.length}
               selectedCount={bulkSelection.length}
@@ -1494,15 +1498,30 @@ export default function MailPage() {
               onChange={toggleAllVisible}
             />
           </div>
-          <div className="flex shrink-0 items-center rounded-lg border border-line-control bg-surface p-0.5" role="tablist" aria-label={t('Фильтр писем')}>
-            {(['all', 'unread', 'read'] as const).map((value) => (
+          <div className="mt-2 flex flex-wrap items-center rounded-lg border border-corvex-line bg-surface p-0.5" role="tablist" aria-label={t('Фильтр писем')}>
+            {READ_FILTERS.map((value, index) => (
               <button
                 key={value}
+                id={`${filterId}-${value}`}
                 type="button"
                 role="tab"
                 aria-selected={filter === value}
+                aria-controls={`${filterId}-panel`}
+                tabIndex={filter === value ? 0 : -1}
                 onClick={() => setFilter(value)}
-                className={`h-6 rounded-md px-2 text-[11.5px] font-medium transition ${
+                onKeyDown={(event) => {
+                  // Horizontal tabs own their arrow keys; don't let the mail shortcuts open a message.
+                  if (event.key === 'ArrowUp' || event.key === 'ArrowDown') event.stopPropagation();
+                  const next = event.key === 'ArrowRight' ? (index + 1) % READ_FILTERS.length
+                    : event.key === 'ArrowLeft' ? (index + READ_FILTERS.length - 1) % READ_FILTERS.length
+                      : event.key === 'Home' ? 0 : event.key === 'End' ? READ_FILTERS.length - 1 : -1;
+                  if (next < 0) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setFilter(READ_FILTERS[next]);
+                  event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
+                }}
+                className={`h-8 flex-1 whitespace-nowrap rounded-md px-2 text-xs font-medium transition ${
                   filter === value ? 'bg-accent-soft text-accent-dark' : 'text-muted hover:text-ink'
                 }`}
               >
@@ -1538,40 +1557,22 @@ export default function MailPage() {
         )}
 
         {bulkSelection.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle bg-accent-soft/60 px-4 py-2" role="group" aria-label={t('Групповые действия')}>
-            <span className="text-xs font-medium text-ink">{t('Выбрано: {count}', { count: bulkSelection.length })}</span>
-            {folder !== 'ARCHIVE' && (
-              <button type="button" disabled={bulkBusy} className="btn-secondary h-8 px-2 text-xs"
-                onClick={() => void moveSelected('ARCHIVE')}>{t('В архив')}</button>
-            )}
-            {folder !== 'TRASH' && (
-              <button type="button" disabled={bulkBusy} className="btn-secondary h-8 px-2 text-xs"
-                onClick={() => void moveSelected('TRASH')}>{t('В корзину')}</button>
-            )}
-            <select
-              aria-label={t('Переместить выбранные письма')}
-              disabled={bulkBusy}
-              value=""
-              className="field field-sm h-8 min-w-0 flex-1 text-xs"
-              onChange={(event) => { if (event.target.value) void moveSelected(event.target.value); }}
-            >
-              <option value="">{t('Переместить в папку')}</option>
-              {folders.filter((item) => item.id !== folder).map((item) => (
-                <option key={item.id} value={item.id}>{item.name}</option>
-              ))}
-            </select>
-            <button type="button" disabled={bulkBusy} className="btn-secondary h-8 px-2 text-xs"
-              onClick={() => void forwardSelected()}>{t('Переслать выбранные')}</button>
-            <button type="button" disabled={bulkBusy} className="text-xs text-muted hover:text-ink"
-              onClick={() => setBulkSelection([])}>{t('Снять выбор')}</button>
-          </div>
+          <BulkActionBar
+            count={bulkSelection.length}
+            folders={folders}
+            currentFolder={folder}
+            busy={bulkBusy}
+            onMove={(target) => void moveSelected(target)}
+            onForward={() => void forwardSelected()}
+            onClear={() => setBulkSelection([])}
+          />
         )}
         {bulkNotice && (
           <p role="status" className="border-b border-line-subtle px-4 py-2 text-xs leading-5 text-muted">{bulkNotice}</p>
         )}
 
         {/* Message List */}
-        <div className="scroll-area min-h-0 flex-1">
+        <div id={`${filterId}-panel`} role="tabpanel" aria-labelledby={`${filterId}-${filter}`} className="mail-list-scroll scroll-area min-h-0 flex-1">
           {loadError && (
             <div className="m-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
               {loadError}
@@ -1715,7 +1716,7 @@ export default function MailPage() {
         <button
           type="button"
           onClick={() => openDraft({ to: '', subject: '', body: '' }, 'new')}
-          className="btn-primary absolute bottom-4 right-4 z-30 shadow-pop lg:hidden"
+          className={`btn-primary absolute bottom-4 right-4 z-30 shadow-pop lg:hidden ${bulkSelection.length > 0 ? 'mail-compose-hide-when-selected' : ''}`}
         >
           <PenSquare size={16} /> {t('Написать')}
         </button>
