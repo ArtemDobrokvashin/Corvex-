@@ -52,8 +52,10 @@ spring:
               predicates: [Path=/api/v1/files/**]
             - id: drive
               # Личный диск того же сервиса: общий CAS, AV и volume с вложениями чата.
+              # Корневой путь перечислен отдельно: список файлов и квота запрашиваются как
+              # /api/v1/drive?view=files и /api/v1/drive/usage, без сегмента после drive.
               uri: http://chat-file-service:8089
-              predicates: [Path=/api/v1/drive/**]
+              predicates: [Path=/api/v1/drive,/api/v1/drive/**]
             - id: admin
               uri: http://admin-service:8090
               predicates: [Path=/api/v1/admin/**]
