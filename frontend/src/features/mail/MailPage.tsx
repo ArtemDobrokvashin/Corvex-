@@ -27,6 +27,7 @@ import {
   Send,
   Settings2,
   SlidersHorizontal,
+  Users,
   Sparkles,
   Star,
   Trash2,
@@ -34,6 +35,7 @@ import {
 } from 'lucide-react';
 import { demoFolders, demoMails, DemoMail } from '../../api/demoData';
 import { externalMailApi, ExternalMailAccount } from '../../api/externalMailApi';
+import { contactsApi } from '../../api/contactsApi';
 import { ApiError } from '../../api/httpClient';
 import {
   mailApi,
@@ -58,6 +60,7 @@ import {
 import { demoMailIsSeen, useSession } from '../../store/sessionStore';
 import EventModal from '../calendar/EventModal';
 import ExternalMailAccountsModal from './ExternalMailAccountsModal';
+import ContactsModal from './ContactsModal';
 import CreateFolderModal from './CreateFolderModal';
 import MailSettingsModal from './MailSettingsModal';
 import { bodyWithSignature, loadMailPreferences, mailPreferencesKey, saveMailPreferences, type MailPreferences } from './mailPreferences';
@@ -199,6 +202,19 @@ export default function MailPage() {
   const [activeId, setActiveId] = useState<string>(demoMode ? 'm1' : '');
   const [mobileReading, setMobileReading] = useState(false);
   const [composeDraft, setComposeDraft] = useState<ComposeDraft | null>(null);
+  const [contactsOpen, setContactsOpen] = useState(false);
+  const [contactEmails, setContactEmails] = useState<string[]>([]);
+
+  // Подсказки адресов в композере. Ошибка загрузки не должна мешать почте:
+  // без адресной книги поле «Кому» просто остаётся обычным вводом.
+  useEffect(() => {
+    if (demoMode) return;
+    let cancelled = false;
+    contactsApi.list('', 1000)
+      .then((items) => { if (!cancelled) setContactEmails(items.map((item) => item.email)); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [demoMode]);
   // Черновик, открытый из списка: композер продолжает его, а не создаёт новый.
   const [resumeDraft, setResumeDraft] = useState<SavedDraft | null>(null);
   const [draftsOpen, setDraftsOpen] = useState(false);
@@ -1309,6 +1325,9 @@ export default function MailPage() {
               </button>
               {!canManageFolders && <p className="px-2.5 pb-1 text-[11px] text-sidebar-muted">{t('Нет права на создание папок.')}</p>}
             </div>
+            <button type="button" onClick={() => { onCloseNavigation?.(); setContactsOpen(true); }} className="sidebar-subitem w-full text-sidebar-muted">
+              <Users size={15} strokeWidth={1.85} className="shrink-0" /><span className="min-w-0 flex-1 truncate text-left">{t('Адресная книга')}</span>
+            </button>
             <button type="button" onClick={() => { onCloseNavigation?.(); setSettingsOpen(true); }} className="sidebar-subitem w-full text-sidebar-muted">
               <Settings2 size={15} strokeWidth={1.85} className="shrink-0" /><span className="min-w-0 flex-1 truncate text-left">{t('Настройки почты')}</span>
             </button>
@@ -2057,6 +2076,14 @@ export default function MailPage() {
         />
       )}
 
+      {contactsOpen && (
+        <ContactsModal
+          demoMode={demoMode}
+          onClose={() => setContactsOpen(false)}
+          onChanged={(items) => setContactEmails(items.map((item) => item.email).slice(0, 1000))}
+        />
+      )}
+
       {draftsOpen && (
         <DraftsPanel
           onOpen={(draftId) => void openServerDraft(draftId)}
@@ -2073,6 +2100,7 @@ export default function MailPage() {
           autoSave={!demoMode}
           currentEmail={sessionUser?.email ?? ''}
           externalAccounts={externalAccounts}
+          contactSuggestions={contactEmails}
           onClose={() => {
             // Старый композер мог завершить отправку уже после открытия нового:
             // закрываем только собственный черновик.

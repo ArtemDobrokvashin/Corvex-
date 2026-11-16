@@ -355,9 +355,76 @@ paths:
     get: { summary: Правила автосортировки пользователя, responses: { '200': { description: Список по позиции } } }
     post: { summary: Создать правило (условия/действия JSON — см. схему mail_rules), responses: { '201': { description: Создано } } }
   /mail/contacts:
-    x-corvex-status: planned
-    get: { summary: Адресная книга с группами, responses: { '200': { description: Контакты } } }
-    post: { summary: Добавить контакт, responses: { '201': { description: Добавлен } } }
+    get:
+      summary: Личная адресная книга с поиском (MAIL_READ_OWN)
+      description: |
+        Контакты принадлежат владельцу из JWT subject. Администратор не имеет доступа
+        к чужой книге. Поиск идёт по имени, адресу и организации без учёта регистра.
+      parameters:
+        - { name: q, in: query, schema: { type: string }, description: Подстрока имени, адреса или организации }
+        - { name: limit, in: query, schema: { type: integer, default: 500, maximum: 1000 } }
+      responses:
+        '200':
+          description: Контакты, отсортированные по имени
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Contact' } } } }
+        '403': { description: Нет права MAIL_READ_OWN }
+    post:
+      summary: Добавить контакт
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ContactInput' } } }
+      responses:
+        '201': { description: Контакт создан, content: { application/json: { schema: { $ref: '#/components/schemas/Contact' } } } }
+        '400': { description: Некорректный адрес }
+        '409': { description: Контакт с таким адресом уже есть или достигнут лимит 10 000 }
+  /mail/contacts/{contactId}:
+    put:
+      summary: Изменить контакт
+      parameters: [{ name: contactId, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ContactInput' } } }
+      responses:
+        '200': { description: Сохранён }
+        '404': { description: Контакт не найден или принадлежит другому пользователю }
+        '409': { description: Адрес уже занят другим контактом }
+    delete:
+      summary: Удалить контакт
+      parameters: [{ name: contactId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '204': { description: Удалён }
+        '404': { description: Контакт не найден или принадлежит другому пользователю }
+  /mail/contacts/import:
+    post:
+      summary: Импорт vCard или CSV
+      description: |
+        Принимает .vcf/.vcard или .csv/.tsv до 5 МиБ; кодировка определяется по BOM,
+        затем строгим UTF-8, затем Windows-1251. Существующие адреса не перезаписываются:
+        заполняются только пустые поля. Повторный импорт безопасен.
+      parameters:
+        - { name: format, in: query, schema: { type: string, enum: [AUTO, VCARD, CSV], default: AUTO } }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200':
+          description: Итог импорта со счётчиками и строками, которые не удалось перенести
+          content: { application/json: { schema: { $ref: '#/components/schemas/ContactImportResult' } } }
+        '413': { description: Файл больше 5 МиБ }
+  /mail/contacts/export:
+    get:
+      summary: Экспорт адресной книги
+      parameters:
+        - { name: format, in: query, schema: { type: string, enum: [vcf, csv], default: vcf } }
+      responses:
+        '200': { description: Файл vCard 3.0 или CSV с BOM для Excel }
+        '403': { description: Нет права MAIL_READ_OWN }
   /mail/signatures:
     x-corvex-status: planned
     get: { summary: Подписи пользователя, responses: { '200': { description: Список } } }
@@ -445,6 +512,47 @@ components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
   schemas:
+    Contact:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        displayName: { type: string, maxLength: 256 }
+        email: { type: string, format: email }
+        phone: { type: string, nullable: true, maxLength: 64 }
+        organization: { type: string, nullable: true, maxLength: 256 }
+        jobTitle: { type: string, nullable: true, maxLength: 256 }
+        note: { type: string, nullable: true, maxLength: 4000 }
+        groupName: { type: string, nullable: true, maxLength: 128 }
+        source: { type: string, enum: [MANUAL, VCARD, CSV] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ContactInput:
+      type: object
+      required: [email]
+      properties:
+        displayName: { type: string, maxLength: 256, description: 'Пусто — берётся часть адреса до @' }
+        email: { type: string, format: email }
+        phone: { type: string, maxLength: 64 }
+        organization: { type: string, maxLength: 256 }
+        jobTitle: { type: string, maxLength: 256 }
+        note: { type: string, maxLength: 4000 }
+        groupName: { type: string, maxLength: 128 }
+    ContactImportResult:
+      type: object
+      properties:
+        total: { type: integer }
+        created: { type: integer }
+        updated: { type: integer }
+        skipped: { type: integer }
+        truncated: { type: boolean, description: 'Достигнут лимит адресной книги: остаток файла не обработан' }
+        issues:
+          type: array
+          items:
+            type: object
+            properties:
+              line: { type: integer }
+              value: { type: string }
+              reason: { type: string }
     ExternalMailPreset:
       type: object
       properties:

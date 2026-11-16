@@ -1305,6 +1305,45 @@ const EN: Record<string, string> = {
   'На главную': 'Go to Mail',
   'Технические подробности': 'Technical details',
 
+  // --- Адресная книга ---
+  'Адресная книга': 'Address book',
+  'Личные контакты: подсказки при написании письма, импорт vCard и CSV из другого сервиса.':
+    'Personal contacts: suggestions while composing, vCard and CSV import from another service.',
+  'Поиск по имени, адресу или организации': 'Search by name, address, or organization',
+  'Импорт': 'Import',
+  'Имя': 'Name',
+  'Адрес электронной почты': 'Email address',
+  'Телефон': 'Phone',
+  'Должность': 'Job title',
+  'Группа': 'Group',
+  'Например, Поставщики': 'For example, Suppliers',
+  'Заметка': 'Note',
+  'Добавить контакт': 'Add contact',
+  'Загрузка контактов…': 'Loading contacts…',
+  'Адресная книга пока пуста': 'The address book is empty',
+  'Измените запрос или добавьте контакт вручную.': 'Change the query or add a contact manually.',
+  'Добавьте контакт вручную или импортируйте файл vCard/CSV из старого сервиса.':
+    'Add a contact manually or import a vCard/CSV file from your previous service.',
+  'Иван Петров': 'Ivan Petrov',
+  'Контакт добавлен.': 'Contact added.',
+  'Контакт обновлён.': 'Contact updated.',
+  'Контакт удалён.': 'Contact deleted.',
+  'Удалить контакт «{name}»?': 'Delete the contact "{name}"?',
+  'Не удалось загрузить контакты': 'Could not load contacts',
+  'Не удалось сохранить контакт': 'Could not save the contact',
+  'Не удалось удалить контакт': 'Could not delete the contact',
+  'Не удалось импортировать файл': 'Could not import the file',
+  'Не удалось выгрузить контакты': 'Could not export contacts',
+  'Демо-режим: изменения не сохраняются.': 'Demo mode: changes are not saved.',
+  'Демо-режим: импорт не выполняется.': 'Demo mode: import is not performed.',
+  'Демо-режим: экспорт не выполняется.': 'Demo mode: export is not performed.',
+  'Импорт завершён: добавлено {created}, дополнено {updated}, пропущено {skipped}.':
+    'Import finished: {created} added, {updated} completed, {skipped} skipped.',
+  'Достигнут лимит адресной книги: остаток файла не импортирован.':
+    'The address book limit was reached; the rest of the file was not imported.',
+  'Строка {line}': 'Line {line}',
+  'Импорт не перезаписывает уже заполненные поля: одинаковые адреса дополняются, ручные правки сохраняются. Лимит — 10 000 контактов.':
+    'Import never overwrites filled fields: matching addresses are completed and manual edits are kept. Limit: 10,000 contacts.',
 };
 
 const API_PATTERNS: Array<{ pattern: RegExp; en: string; ru?: string }> = [
