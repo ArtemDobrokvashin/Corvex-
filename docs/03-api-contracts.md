@@ -25,6 +25,7 @@
 | Auth | `/auth/**` | login, MFA verify, refresh, logout, me (+права/квота), TOTP setup/confirm, app-passwords, JWKS |
 | Почта | `/mail/**` | folders (CRUD+счётчики), messages (список/чтение/флаги/bulk-move/send), drafts, attachments (upload/download), search, rules, contacts, signatures, vacation |
 | Чат | `/chat/**`, `/files/**` | rooms, direct-диалоги, members, history/send, edit/delete, reactions, pin, read, search, directory, presence, загрузка/скачивание файлов |
+| Файлы (личный диск) | `/drive/**` | папки и файлы владельца, квота, корзина и восстановление, ссылки «как в Google Drive» (`/drive/shared/{token}` — без JWT) |
 | Админ | `/admin/**` | users (CRUD/block/groups), groups+permissions, settings, audit, analytics/activity, system/health, backup/run |
 
 Фактически реализованный на Stage 2 срез почты существенно уже целевой карты выше:
@@ -71,6 +72,35 @@ Maildir пока использует плоские санитизирован�
 `GET/PUT /chat/presence`, а также `POST /files` и авторизованный blob-download
 `GET /files/{fileRef}`. Удаление, реакции и pin возвращают обновлённый `MessageView`
 со статусом `200`, а не `204`; удалённое сообщение маскирует тело и `fileRef`.
+
+### 3.2.1. Личный диск (`/api/v1/drive`)
+
+Все пути, кроме `/shared/**`, требуют Bearer JWT и работают только с файлами
+текущего пользователя — параметра «владелец» в API нет, поэтому подставить чужой
+идентификатор нельзя.
+
+| Метод и путь | Назначение |
+|---|---|
+| `GET /drive?parentId=&view=files|trash&q=` | содержимое папки (без `parentId` — корень) или верхний уровень корзины; `q` — поиск по имени |
+| `GET /drive/usage` | `{usedBytes, quotaBytes}` — отдельно от квоты почты |
+| `GET /drive/folders` | плоский список всех папок владельца без корзины — для выбора назначения при перемещении |
+| `POST /drive/folders {parentId, name}` | создать папку |
+| `POST /drive/files?parentId=` (multipart `file`) | загрузка; AV fail-closed, квота проверяется до публикации blob'а |
+| `PATCH /drive/{id}/name {name}` | переименовать |
+| `POST /drive/{id}/move {parentId}` | переместить (папку нельзя переместить внутрь себя) |
+| `POST /drive/{id}/trash` / `POST /drive/{id}/restore` | корзина и восстановление (рекурсивно по поддереву) |
+| `DELETE /drive/{id}` | окончательное удаление; только для объекта, уже находящегося в корзине |
+| `GET /drive/{id}/content` | скачивание владельцем (`Content-Disposition: attachment`) |
+| `GET/POST /drive/{id}/shares`, `DELETE /drive/shares/{shareId}` | список, создание и отзыв ссылок |
+| `GET /drive/shared/{token}` | публичное скачивание по ссылке, без JWT |
+
+Модель ссылок — как в Google Drive: файл приватный по умолчанию; ссылка создаётся
+отдельным действием, `POST` возвращает токен **один раз** (в хранилище лежит только
+SHA-256), `expiresInDays` необязателен; отзыв и истечение проверяются на каждый
+запрос, поэтому отозванная ссылка сразу отвечает `404`. Ошибки для несуществующей,
+отозванной и просроченной ссылки неразличимы — по ним нельзя перебирать токены.
+Публичный ответ идёт как `attachment`, с `nosniff`, `CSP: default-src 'none'; sandbox`,
+`Referrer-Policy: no-referrer` и `no-store`. Папки по ссылке не публикуются: только файлы.
 
 ## 3.3. WebSocket/STOMP (контракт чата)
 

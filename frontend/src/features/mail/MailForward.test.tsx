@@ -38,9 +38,6 @@ async function click(element: Element | null | undefined) {
   expect(element).toBeTruthy();
   await act(async () => { (element as HTMLElement).click(); await Promise.resolve(); });
 }
-function buttonWithText(text: string) {
-  return [...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === text);
-}
 
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -72,14 +69,14 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-describe('group forward', () => {
+describe('mail forwarding and bulk moves', () => {
   it('forwards full originals with verified attachments and reports the refused ones', async () => {
     await act(async () => root.render(<MemoryRouter initialEntries={['/mail']}><MailPage /></MemoryRouter>));
     await flush();
 
     await click(container.querySelector('input[aria-label="Select message: Contract"]'));
     await click(container.querySelector('input[aria-label="Select message: Invoice"]'));
-    await click(buttonWithText('Forward selected'));
+    await click(container.querySelector('button[aria-label="Forward selected"]'));
     await flush();
 
     // Тело содержит оригиналы целиком: отправитель, дата, тема и полный текст обоих писем.
@@ -101,6 +98,41 @@ describe('group forward', () => {
     expect(notice).toContain('blocked by antivirus');
     expect(notice).toContain('notes.txt');
     expect(notice).toContain('not verified by antivirus');
+  });
+
+  it('maps archive and custom folder moves to server folder IDs only after confirmation', async () => {
+    const archive: MailFolderView = { id: 'archive-id', name: 'Archive', specialUse: 'ARCHIVE', total: 0, unread: 0 };
+    const project: MailFolderView = { id: 'project-id', name: 'Projects', specialUse: null, total: 0, unread: 0 };
+    vi.mocked(mailApi.folders).mockResolvedValue([...folders, archive, project]);
+    const move = vi.spyOn(mailApi, 'move').mockImplementation(async (id, targetFolderId) => ({
+      ...(id === 'm1' ? first : second), folderId: targetFolderId,
+    }));
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await act(async () => root.render(<MemoryRouter initialEntries={['/mail']}><MailPage /></MemoryRouter>));
+    await flush();
+
+    await click(container.querySelector('input[aria-label="Select message: Contract"]'));
+    const group = container.querySelector('[role="group"][aria-label="Bulk actions"]')!;
+    const archiveButton = [...group.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent?.trim() === 'Archive')!;
+    await click(archiveButton);
+    expect(confirm).toHaveBeenCalledWith('Move 1 selected messages to “Archive”?');
+    expect(move).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Selected: 1');
+    confirm.mockReturnValue(true);
+    await click(archiveButton);
+    await flush();
+    expect(move).toHaveBeenCalledWith('m1', 'archive-id');
+    expect(container.textContent).toContain('Messages moved: 1');
+
+    await click(container.querySelector('input[aria-label="Select message: Invoice"]'));
+    const select = container.querySelector<HTMLSelectElement>('select[aria-label="Move selected messages"]')!;
+    expect(Array.from(select.options, (option) => option.value)).toContain('project-id');
+    expect(Array.from(select.options, (option) => option.value)).not.toContain('ARCHIVE');
+    await act(async () => { select.value = 'project-id'; select.dispatchEvent(new Event('change', { bubbles: true })); });
+    await flush();
+    expect(confirm).toHaveBeenLastCalledWith('Move 1 selected messages to “Projects”?');
+    expect(move).toHaveBeenLastCalledWith('m2', 'project-id');
+    expect(move).toHaveBeenCalledTimes(2);
   });
 
   it('uses the same original-preserving path for a single forward', async () => {
@@ -129,7 +161,7 @@ describe('group forward', () => {
     await flush();
 
     await click(container.querySelector('input[aria-label="Select message: Contract"]'));
-    await click(buttonWithText('Forward selected'));
+    await click(container.querySelector('button[aria-label="Forward selected"]'));
     await flush();
 
     expect(container.querySelector('section[aria-label="New message"]')).toBeNull();

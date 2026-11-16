@@ -6,7 +6,7 @@
 
 External Mail Connector подключает существующий внешний почтовый ящик к ящику сотрудника в Corvex. Он нужен компаниям, у которых рабочий адрес исторически живёт на `@mail.ru`, `@yandex.ru`, в Gmail/Microsoft 365 или на другом почтовом сервере, а переписку нужно постепенно перенести в собственный Corvex.
 
-> На 28.10.2026 полный PC-pass G1/G2 относится только к `b37db56`; на текущем `main` после смены Boot его нужно повторить. Коннектор имеет **ограниченный живой G3-результат** на тестовых ящиках Mail.ru и Яндекса. Это ещё не production-приёмка: архив, остальные провайдеры и часть send-as/операционных сценариев открыты. Используйте отдельный внешний ящик, app-password и synthetic-письма; рабочую почту не переносите.
+> На 19.10.2026 `main` = `ad42ff2`: затронутые модули собраны с тестами, Compose собирает 16/16 локальных образов и поднимает 20 контейнеров без профилей на существующих volumes; полный reactor по 12 сервисам и чистая установка ещё не повторены. Коннектор имеет **ограниченный живой G3-результат** на тестовых ящиках Mail.ru и Яндекса. Это ещё не production-приёмка: архив, остальные провайдеры и часть send-as/операционных сценариев открыты. Используйте отдельный внешний ящик, app-password и synthetic-письма; рабочую почту не переносите.
 
 ### Что умеет коннектор
 
@@ -211,6 +211,6 @@ Secrets are AES-256-GCM encrypted, never returned by the API, and are fetched by
 
 ### Verified status (28 October 2026)
 
-The full G1/G2 PC pass applies only to `b37db56` and must be repeated on current `main` after the Boot change. The connector has a **limited live G3 result**: Yandex IMAP collection worked after recreating the account with the correct app password; Mail.ru repeated scheduled runs created no duplicates and delivered a new message in the control run. The observed polling delay was about 1–2 minutes, not a realtime guarantee. Automated tests cover resuming after the last confirmed UID and bounded reconnects. The roughly 6,550-message Mail.ru archive, full archive migration, Gmail/Outlook/custom live coverage, and production acceptance remain open.
+As of 19 October 2026 `main` = `ad42ff2`: the touched modules build with tests and Compose builds 16/16 local images and starts the 20 default containers on existing volumes; the full 12-service reactor and a clean install have not been repeated yet. The connector has a **limited live G3 result**: Yandex IMAP collection worked after recreating the account with the correct app password; Mail.ru repeated scheduled runs created no duplicates and delivered a new message in the control run. The observed polling delay was about 1–2 minutes, not a realtime guarantee. Automated tests cover resuming after the last confirmed UID and bounded reconnects. The roughly 6,550-message Mail.ru archive, full archive migration, Gmail/Outlook/custom live coverage, and production acceptance remain open.
 
 Corvex remains gated by `READINESS.md`: use a disposable external mailbox, an app password, and synthetic mail on an isolated host. Do not migrate working company mail or treat this limited smoke as production approval.

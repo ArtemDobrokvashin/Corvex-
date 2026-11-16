@@ -68,6 +68,15 @@ class GatewaySecurityConfigTest {
     }
 
     @Test
+    void publicDriveShareIsOpenAtGatewayAndRetriedByService() {
+        // Ссылка «как в Google Drive» должна открываться без входа: решение принимает
+        // chat-file-service по хешу токена, а не gateway по наличию Authorization.
+        assertEquals(HttpStatus.OK, execute(HttpMethod.GET, "/api/v1/drive/shared/token", null));
+        assertEquals(HttpStatus.UNAUTHORIZED, execute(HttpMethod.GET, "/api/v1/drive", null));
+        assertEquals(HttpStatus.OK, execute(HttpMethod.GET, "/api/v1/drive", "valid-token"));
+    }
+
+    @Test
     void protectedEndpointRejectsAnonymousRequest() {
         assertEquals(HttpStatus.UNAUTHORIZED, execute(HttpMethod.GET, "/api/v1/mail/messages", null));
     }

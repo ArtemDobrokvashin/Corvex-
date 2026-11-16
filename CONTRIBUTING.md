@@ -8,13 +8,16 @@ Corvex — бесплатный open-source проект под **Apache-2.0**, 
 
 ### Открытые направления работы
 
-1. **Первый внешний прогон G1/G2.** Запустить `mvn -B clean verify`, затем
-   Docker Compose на отдельной VM и прислать либо подтверждение успеха,
+1. **Полный Maven-reactor на текущем SHA.** Зелёные прогоны касаются конкретных
+   коммитов: на `ad42ff2` собраны `admin`, `mail-storage`, `notification` и
+   `web-gateway`, а полный `mvn -B clean verify` по 12 сервисам ещё нужен. Затем —
+   чистая установка Compose на отдельной VM. Присылайте либо подтверждение успеха,
    либо первую ошибку сборки/старта без секретов. Подробный маршрут —
    [`docs/TESTING-ON-YOUR-PC.md`](docs/TESTING-ON-YOUR-PC.md).
 2. **Функциональная приёмка G3.** Сквозная почта и webmail, Thunderbird/Outlook
    для уже написанных IMAP/POP3 Stage 3, двухпользовательский persistent-чат
-   Stage 4, backup/restore и проверка на Windows 7 + Chrome 109.
+   Stage 4, живая приёмка календаря и напоминаний, backup/restore и проверка на
+   Windows 7 + Chrome 109.
 3. **Тесты вокруг первого runtime.** Интеграционные тесты SMTP/IMAP/POP3,
    E2E-сценарии identity/webmail/chat и регрессионные тесты на каждую
    исправленную ошибку первой сборки.
@@ -24,7 +27,9 @@ Corvex — бесплатный open-source проект под **Apache-2.0**, 
    transactional outbox, персистентные LSUB, распределённый IMAP IDLE,
    keyword-флаги/ACL, CI и нагрузочные профили.
 6. **Документация и доступность входа.** Инструкции установки, переводы,
-   актуальные скриншоты, клиентские матрицы и отчёты об успешных стендах.
+   клиентские матрицы и отчёты об успешных стендах. Набор скриншотов снимается
+   скриптом [`scripts/capture-screenshots.ps1`](scripts/capture-screenshots.ps1);
+   правила — в [`docs/screenshots/README.md`](docs/screenshots/README.md).
 
 Не тестируйте Corvex на рабочих ящиках и не публикуйте почтовые порты, пока
 не пройдены ворота из [`docs/READINESS.md`](docs/READINESS.md) и
@@ -105,13 +110,16 @@ those who would like to join the development, testing, or documentation work.
 
 ### Open areas of work
 
-1. **The first outside G1/G2 run.** Run `mvn -B clean verify`, then Docker
-   Compose on a separate VM, and report either success or the first sanitized
-   build/startup error. The detailed Russian route is in
-   [`docs/TESTING-ON-YOUR-PC.md`](docs/TESTING-ON-YOUR-PC.md).
+1. **The full Maven reactor on the current SHA.** Green runs belong to exact
+   commits: on `ad42ff2` only `admin`, `mail-storage`, `notification`, and
+   `web-gateway` were built, and the full `mvn -B clean verify` across all 12
+   services is still needed, followed by a clean Compose install on a separate VM.
+   Report either success or the first sanitized build/startup error. The detailed
+   Russian route is in [`docs/TESTING-ON-YOUR-PC.md`](docs/TESTING-ON-YOUR-PC.md).
 2. **G3 functional acceptance.** End-to-end mail and webmail, Thunderbird/
    Outlook against the already-written Stage 3 IMAP/POP3 code, two-user
-   Stage 4 persistent chat, backup/restore, and Windows 7 + Chrome 109.
+   Stage 4 persistent chat, calendar and reminder live acceptance,
+   backup/restore, and Windows 7 + Chrome 109.
 3. **Tests around the first runtime.** SMTP/IMAP/POP3 integration tests,
    identity/webmail/chat E2E scenarios, and a regression test for every
    first-build failure that gets fixed.
@@ -120,8 +128,10 @@ those who would like to join the development, testing, or documentation work.
 5. **Stage 5 and hardening.** AD/LDAP, instant JWT revocation, strict CSP, a
    transactional outbox, persistent LSUB, distributed IMAP IDLE, keyword
    flags/ACL, CI, and load profiles.
-6. **Documentation and onboarding.** Installation guides, translations, fresh
-   screenshots, mail-client matrices, and successful bench reports.
+6. **Documentation and onboarding.** Installation guides, translations,
+   mail-client matrices, and successful bench reports. The screenshot set is
+   captured with [`scripts/capture-screenshots.ps1`](scripts/capture-screenshots.ps1);
+   rules are in [`docs/screenshots/README.md`](docs/screenshots/README.md).
 
 Do not test Corvex with production mailboxes or publish mail ports until the
 gates in [`docs/READINESS.md`](docs/READINESS.md) and

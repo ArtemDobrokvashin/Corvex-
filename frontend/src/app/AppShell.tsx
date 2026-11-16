@@ -4,6 +4,7 @@ import {
   Calendar as CalendarIcon,
   ChevronUp,
   Clock as ClockIcon,
+  FolderOpen,
   LogOut,
   Mail,
   Maximize2,
@@ -428,6 +429,22 @@ export default function AppShell() {
                   {unreadChat}
                 </span>
               )}
+            </NavLink>
+
+            <NavLink
+              to="/files"
+              title={t('Файлы')}
+              aria-label={t('Файлы')}
+              className={({ isActive }) =>
+                `sidebar-item ${isActive ? 'sidebar-item-active' : ''} ${
+                  sidebarCollapsed ? 'md:justify-center md:px-0' : ''
+                }`
+              }
+            >
+              <FolderOpen size={17} strokeWidth={1.85} className="shrink-0" aria-hidden="true" />
+              <span className={`min-w-0 flex-1 truncate ${sidebarCollapsed ? 'md:hidden' : ''}`}>
+                {t('Файлы')}
+              </span>
             </NavLink>
 
             {/* Календарь: открывает боковой виджет поверх работы + быстрый переход в /calendar */}

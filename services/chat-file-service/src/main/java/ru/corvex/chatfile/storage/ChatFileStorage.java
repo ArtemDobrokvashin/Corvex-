@@ -157,6 +157,26 @@ public class ChatFileStorage {
                 : Optional.empty();
     }
 
+    /** Содержимое blob'а по SHA-256: диск переиспользует тот же CAS, что и вложения чата. */
+    public Optional<Resource> openBlob(String sha256) {
+        if (sha256 == null) {
+            return Optional.empty();
+        }
+        Path path = blobPath(sha256);
+        return Files.isRegularFile(path) ? Optional.of(new FileSystemResource(path)) : Optional.empty();
+    }
+
+    public boolean blobExists(String sha256) {
+        return sha256 != null && Files.isRegularFile(blobPath(sha256));
+    }
+
+    /** Удаляет blob, только когда на него больше не ссылается ни один узел (решает вызывающий). */
+    public void deleteBlob(String sha256) {
+        if (sha256 != null) {
+            deleteQuietly(blobPath(sha256));
+        }
+    }
+
     public Path blobPath(String sha256) {
         if (sha256 == null || !sha256.matches("[0-9a-f]{64}")) {
             throw new IllegalArgumentException("Invalid SHA-256 value");

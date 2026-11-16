@@ -1,35 +1,40 @@
 # Corvex: фактическая готовность и ворота релиза
 
-> **Срез дополнен результатами live-приёмки чата и файлов на стенде после PR #133.** Актуальные dependency-версии —
-> в `RELEASE-DEPENDENCIES.md`; перед проверкой фиксируйте точный SHA. Полный PC-pass
-> G1/G2 получен на **`8cccaee`** с Boot 3.5.16. G2 выполнен на существующих volumes;
-> clean-volume install не выполнялся. POP3-исправление и его клиентская приёмка
-> относятся к **`d75fb97`**.
+> **Срез обновлён 19.10.2026 по состоянию `main` = `ad42ff2` (PR #149: серверный календарь
+> и напоминания).** Актуальные dependency-версии — в `RELEASE-DEPENDENCIES.md`; перед
+> проверкой фиксируйте точный SHA. На этом SHA на ПК собраны и запущены
+> `admin-service`, `mail-storage-service`, `notification-service`, `web-gateway` и
+> frontend: `BUILD SUCCESS`, миграции `V6`/`V8` применились, **16 из 16** build-контекстов
+> собраны, контейнеры `Started`/`healthy`. Полный reactor по всем 12 сервисам и
+> clean-volume install на `ad42ff2` ещё не повторялись; прошлый полный PC-pass относится
+> к `8cccaee`, POP3-приёмка — к `d75fb97`.
 
-**Коротко: G0 повторно пройден; G1/G2 имеют полный PC-pass на `8cccaee`, но повторяются
-для каждого release SHA; G3 выполняется и уже содержит ограниченные SMTP/IMAP-smoke и
-полный согласованный POP3 995 smoke и тематическую приёмку чата/файлов; G4/G5 впереди. Corvex уже не является только
-набором незапущенного кода, но ещё не production-ready.**
+**Коротко: G0 пройден на текущем `main` (67 файлов / 310 тестов); G1 подтверждён по
+затронутым модулям, полный reactor — следующий шаг; G2 подтверждён на существующих
+volumes; G3 выполняется: есть тематическая приёмка чата/файлов, ограниченные SMTP/IMAP-smoke,
+согласованный POP3 995 smoke и серверный календарь, ждущий живой приёмки; G4/G5 впереди.
+Corvex уже не является только набором незапущенного кода, но ещё не production-ready.**
 
 ## 1. Что уже подтверждено фактическими проверками
 
 | Область | Подтверждённый результат | Что этот результат не доказывает |
 |---|---|---|
-| Frontend, прежний срез | `npm ci`, **9 test-файлов / 33 теста**, TypeScript + modern/legacy production build успешны; production `npm audit` — **0** | Это не заменяет реальный Windows 7 + Chrome 109 и полную ручную responsive-приёмку |
-| Java / Maven | **`8cccaee`:** на ПК с JDK 17 корневой `mvn -B clean verify` завершился `BUILD SUCCESS`: 12 сервисов + parent, тесты и JaCoCo. На `d75fb97` дополнительно `mail-pop3-service`: 44/44 теста | Полный reactor повторяется для каждого release SHA; targeted POP3-тест не заменяет полный прогон |
-| Docker-образы | **`8cccaee`:** все 13 build-контекстов собраны. На `d75fb97` отдельно пересобран и запущен исправленный POP3-образ | Docker build не равен `mvn verify` (`-DskipTests`); чистая установка и полный rebuild следующего release SHA отдельно не доказаны |
-| Запуск Compose | **`8cccaee`:** Compose config, `.env`/ключи, 20/20 основных контейнеров на существующих volumes; healthchecked — `healthy`, `nginx`/`frontend`/`spamd` без healthcheck — `Up` | Clean-volume first install, нагрузка, 72 часа и backup/restore не проверены |
-| Flyway и хранилища | Чистые миграции auth/admin/mail/chat/notification исторически проверены на `b37db56`; на `8cccaee` подтверждён запуск на существующих volumes, RabbitMQ/Redis/Elasticsearch работали | Миграции между будущими релизами, clean-volume install и восстановление после потери диска не доказаны |
+| Frontend, текущий `main` | `npm ci`, **67 test-файлов / 310 тестов**, `tsc -b`, modern/legacy production build успешны; production `npm audit` — **0** | Это не заменяет реальный Windows 7 + Chrome 109 и полную ручную responsive-приёмку |
+| Java / Maven | **`ad42ff2`:** на ПК `admin-service`, `mail-storage-service` и `notification-service` с тестами модулей и `web-gateway` — `BUILD SUCCESS` с тестами; ранее **`8cccaee`**: полный корневой `mvn -B clean verify` по 12 сервисам + parent с JaCoCo; **`d75fb97`**: `mail-pop3-service` 44/44 | На `ad42ff2` полный reactor по 12 сервисам не запускался, поэтому G1 закрыт только по затронутым модулям; targeted-прогоны не заменяют полный |
+| Docker-образы | **`ad42ff2`:** `docker compose up -d --build` — **16 из 16** build-контекстов собраны, контейнеры `Started`/`healthy`; ранее **`8cccaee`** — все 13 build-контекстов | Docker build не равен `mvn verify` (`-DskipTests`); чистая установка и полный rebuild следующего release SHA отдельно не доказаны |
+| Запуск Compose | **`ad42ff2`:** Compose config, `.env`/ключи, 16/16 build-контекстов собраны, 20 контейнеров без профилей запущены на существующих volumes (postgres, rabbitmq, redis, elasticsearch, auth, admin, notification, mail-storage, gateway, frontend и вспомогательные) | Clean-volume first install, нагрузка, 72 часа и backup/restore не проверены |
+| Flyway и хранилища | Чистые миграции auth/admin/mail/chat/notification исторически проверены на `b37db56`; на `ad42ff2` подтверждён запуск на существующих volumes с применением `V6`/`V8`, RabbitMQ/Redis/Elasticsearch работали | Миграции между будущими релизами, clean-volume install и восстановление после потери диска не доказаны |
 | Web runtime | Вход, админка и webmail запускались с реальным backend; live-проверки чата и файлов описаны ниже | Это не полная frontend-матрица и не нагрузочная приёмка |
 | External Mail Connector | На тестовых ящиках подтверждён ongoing IMAP-сбор Mail.ru и Яндекса; повторные запуски не дали дублей; новое письмо Mail.ru дошло через polling. На `8cccaee` повторный regression MANUAL/SCHEDULED завершился SUCCESS без ошибок | Не приняты архивная миграция, Gmail/Outlook/custom live-сценарии и почти realtime-IDLE |
 | Собственный SMTP | На текущем стенде Thunderbird подтвердил submission 587 STARTTLS, локальную доставку и сохранение Sent; письма видны получателю в webmail | Inbound 25, вся spam/AV/EICAR-матрица, outbound/retry/DSN, поиск и production-доставляемость не закрыты |
 | Собственный IMAP | На `8cccaee` Thunderbird подтвердил IMAP 993 LOGIN, папки и чтение | Полный 143 STARTTLS без exception, вложения/FETCH, MOVE/EXPUNGE, поиск и restart persistence ещё в работе; Outlook отложен |
 | Собственный POP3 | На `d75fb97` Thunderbird 995 без per-server exception: LOGIN/STAT/LIST/UIDL/RETR, копия на сервере, повтор без дублей, тот же UIDL после restart. Модуль: 44/44 теста | TOP, DELE-матрица, app-password/2FA, большой INBOX и Outlook не проверены |
 
-Frontend-результат 9/33 и build/audit повторно получены 28.10.2026. Полный
-Maven/Docker-pass на Boot 3.5.16 получен на ПК для `8cccaee`; более поздний
-`d75fb97` покрыт targeted POP3-тестами, Docker build и реальным Thunderbird-smoke,
-а не новым полным reactor. Тематические live-проверки не заменяют release-wide G1/G2.
+Frontend-результат 67/310, `tsc -b`, build и audit повторно получены 19.10.2026 на
+`ad42ff2`. Полный Maven/Docker-pass на Boot 3.5.16 получен на ПК для `8cccaee`;
+`d75fb97` покрыт targeted POP3-тестами, Docker build и реальным Thunderbird-smoke;
+`ad42ff2` — сборкой затронутых модулей и повторным стартом Compose (16/16 образов), но не
+полным reactor. Тематические live-проверки не заменяют release-wide G1/G2.
 Для PR #133 отдельно пройдены frontend 27 файлов / 102 теста, build и audit 0,
 Python 89/89 и полный Maven reactor на ПК; UI-сброс пароля пока не проверен live.
 Это не GitHub Actions checks: настроенных checks у репозитория на момент среза нет.
@@ -45,14 +50,15 @@ Python 89/89 и полный Maven reactor на ПК; UI-сброс пароля
 | `auth-service`, `admin-service` | 🟡 Частично принято | Локальный вход и админка работали на стенде; сервисы прошли Maven/Docker/Flyway. Полные сценарии 2FA, app passwords, RBAC-матрицы, instant JWT revocation и AD/LDAP остаются в G3–G5 |
 | `web-gateway`, frontend | 🟡 Частично принято | JWT/rate-limit и современный RU/EN UI подключены к API; frontend-тесты и оба bundle зелёные. Нужны реальный Chrome 109, оставшаяся адаптивность и ручная клиентская приёмка |
 | `mail-smtp-service` | 🟡 Ограниченный клиентский smoke пройден | Submission 587 STARTTLS, локальная доставка и Sent подтверждены в Thunderbird. Inbound 25, вся spam/AV/EICAR-матрица, outbound/retry/DSN и production-доставляемость не приняты; по умолчанию SMTP выключен |
-| `mail-storage-service` | 🟡 Частично принято | Maildir/CAS, webmail, очереди и поиск стартовали; локальная SMTP-доставка и POP3 raw retrieval подтверждены. Полный SMTP→spam/AV→storage→search и archive migration ещё требуют приёмки |
+| `mail-storage-service` | 🟡 Частично принято | Maildir/CAS, webmail, очереди и поиск стартовали; локальная SMTP-доставка и POP3 raw retrieval подтверждены. Серверный календарь (`calendar_events`, `calendar_reminder_deliveries`, миграция `V8`) собран и применён на `ad42ff2`. Полный SMTP→spam/AV→storage→search и archive migration ещё требуют приёмки |
 | `mail-spam-service`, `mail-antivirus-service` | 🟡 Инфраструктурно проверено | SpamAssassin/ClamAV и сервисы поднялись; EICAR, ложные срабатывания и поведение при недоступности сканеров нужно проверять сквозными тестами |
 | `mail-imap-service` | 🟡 Ограниченный G3-smoke | IMAP 993 LOGIN/папки/чтение подтверждены. Полный 143 STARTTLS без exception, вложения/FETCH, MOVE/EXPUNGE, поиск, restart и persistent LSUB ещё не закрыты; Outlook отложен |
 | `mail-pop3-service` | 🟢 Согласованный Thunderbird 995 smoke на `d75fb97` | TLS без per-server exception, LOGIN/STAT/LIST/UIDL/RETR, keep-on-server, повтор без дублей и UIDL после restart подтверждены. Остальная матрица — в README сервиса; по умолчанию сервис выключен |
 | External Mail Connector | 🟡 Ограниченный live-smoke пройден | Подтверждены ongoing Mail.ru/Яндекс, app passwords, polling и dedupe. Архив 6550 писем специально не запускался; OAuth провайдеров и distributed IMAP IDLE — будущая работа |
 | `chat-service` | 🟡 Тематический live-smoke пройден | Direct/group, realtime, read/unread, запрет чужой истории, идемпотентность повторного запроса и reconnect после Offline проверены; нагрузка и полная матрица функций остаются |
-| `chat-file-service` | 🟡 Тематический live-smoke пройден | Upload/download участниками, запрет постороннему и EICAR проверены; большие файлы и остальные граничные случаи остаются |
-| `notification-service` | 🟡 G1/G2 | Сервис и миграции прошли запуск; реальная цепочка Alertmanager→email→администратор ещё требует smoke |
+| `chat-file-service` | 🟡 Тематический live-smoke пройден | Upload/download участниками, запрет постороннему и EICAR проверены; большие файлы и остальные граничные случаи остаются. Ветка с «Файлами» добавляет личный диск (`ru.corvex.chatfile.drive`) и `/api/v1/drive/**`: код, UI и тесты есть, Maven-сборка и живая приёмка не выполнялись |
+| `notification-service` | 🟡 G1/G2 | Сервис и миграции прошли запуск; добавлен `POST /internal/calendar/reminders` для напоминаний календаря (сборка `BUILD SUCCESS` с тестами модуля). Реальные цепочки Alertmanager→email→администратор и напоминание→почта ещё требуют smoke |
+| Календарь (в `mail-storage-service` + `notification-service`) | 🟡 Собрано, живой приёмки нет | Модель событий с IANA-зоной, повторения, `revision`-защита от перезаписи, RBAC `CALENDAR_READ/WRITE`, планировщик напоминаний с восстановлением после падения. Ограничения: окно −2…+5 мес., нет общих календарей, ICS-импорта, адресной книги и drag-and-drop; напоминания получает только владелец. Детали: [`CALENDAR.md`](CALENDAR.md) |
 | Наблюдаемость и эксплуатация | 🟡 Базовый стек поднят | Prometheus/Grafana/Loki описаны; доставка логов, alert rules, 72 часа, backup/restore и DR не приняты |
 
 ## 3. Что остаётся в G3
@@ -79,7 +85,14 @@ G3 нельзя закрывать только потому, что конте�
    polling и устойчивый IMAP IDLE с reconnect/polling fallback.
 6. **Frontend:** реальный Windows 7 + Chrome 109, смартфон/планшет, RU/EN, keyboard/Escape,
    длинный Unicode-текст и отложенная ручная матрица. Legacy build сам по себе недостаточен.
-7. **Эксплуатация:** мониторинг/alerting, persistent volumes после restart, backup на
+7. **Календарь:** событие создаётся и переживает F5, появляется во втором браузере того
+   же пользователя; событие на «через 10 минут» присылает письмо-напоминание при закрытом
+   браузере; правка в двух окнах даёт `409`, а не потерю данных; удаление отменяет
+   напоминание; рестарт `mail-storage-service` не теряет очередь (`SENDING` → повтор через
+   10 минут); второе событие в той же зоне после перехода на летнее время сохраняет
+   локальное время. Демо-режим календарь не синхронизирует — принимать только на реальном
+   backend.
+8. **Эксплуатация:** мониторинг/alerting, persistent volumes после restart, backup на
    другом диске, реальное восстановление и наблюдаемость в течение 72 часов.
 
 ### Webmail: проверка вложений и ограничения
@@ -122,10 +135,10 @@ APPEND могли записать CLEAN без сканирования. Ста
 
 | Gate | Статус | Критерий / следующий шаг |
 |---|---|---|
-| **G0 — frontend и статика** | ✅ Пройден; повторяется для каждого релизного SHA | Актуальный повтор: 9/33, modern+legacy build, production audit 0 |
-| **G1 — Maven** | ✅ PC-pass на `8cccaee`; 🔁 повторять для release SHA | 12 сервисов + parent, `BUILD SUCCESS`, JaCoCo не понижен; на `d75fb97` дополнительно POP3 44/44, но это targeted-прогон |
-| **G2 — Docker и первый запуск** | ✅ PC-pass на `8cccaee` для существующих volumes; ⏳ clean-volume | 13 образов, Compose config и 20/20 базовых контейнеров; чистая установка и targeted recreate следующих SHA не смешивать с полным повтором |
-| **G3 — функциональная приёмка** | 🚧 В работе | External Mail ongoing, тематический chat/file smoke, ограниченные SMTP/IMAP и согласованный POP3 995 smoke проверены; закрыть раздел 3 целиком |
+| **G0 — frontend и статика** | ✅ Пройден на `ad42ff2`; повторяется для каждого релизного SHA | Актуальный повтор: 67/310, `tsc -b`, modern+legacy build, production audit 0 |
+| **G1 — Maven** | 🟢 Затронутые модули на `ad42ff2`; 🔁 полный reactor | На `ad42ff2` `admin-service`, `mail-storage-service`, `notification-service`, `web-gateway` — `BUILD SUCCESS` с тестами; полный прогон 12 сервисов + parent остаётся для следующего шага, PC-pass на `8cccaee` был зелёным |
+| **G2 — Docker и первый запуск** | ✅ На `ad42ff2` для существующих volumes (16/16 образов, 20 контейнеров); ⏳ clean-volume | Все локальные образы собраны, сервисы `Started`/`healthy` после `up -d --build`; чистая установка без volumes не выполнялась |
+| **G3 — функциональная приёмка** | 🚧 В работе | External Mail ongoing, тематический chat/file smoke, ограниченные SMTP/IMAP и согласованный POP3 995 smoke проверены; календарь собран, но живой приёмки ещё нет; закрыть раздел 3 целиком |
 | **G4 — поддерживаемая платформа** | ⏳ Не начат | Отдельная миграция Spring Boot/Cloud/Jackson, James/JDK и observability-стека; затем повтор G1–G3 |
 | **G5 — пилот и production** | ⏳ Не начат | Нагрузка, backup/restore, security hardening, AD/LDAP при необходимости, ограниченный пилот и план отката |
 
@@ -179,8 +192,10 @@ APPEND обходят mailet.
   в issue и скриншотах.
 
 **Итог:** репозиторий содержит работающий и частично проверенный стенд, а не только UI.
-До production остаются clean-volume G2, повтор G1/G2 на release SHA, полный G3,
-отдельный G4 и контролируемый пилот G5.
+До переноса на тестовый сервер остаются: полный reactor на `ad42ff2`, clean-volume G2,
+полный G3 (включая живую приёмку календаря), эксплуатационная проверка backup/restore и
+72 часа наблюдения, затем G4 и контролируемый пилот G5. Пошаговый список — в разделе
+[«Что осталось до переноса на тестовый сервер»](../README.md#что-осталось-до-переноса-на-тестовый-сервер).
 
 ### Улучшения интерфейса (требуют live-приёмки)
 

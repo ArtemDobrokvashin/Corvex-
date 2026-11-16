@@ -85,7 +85,7 @@ services/mail-storage-service/
 | mail-spam-service | 8086 | — | скоринг SpamAssassin, обучение, fail-open политика |
 | mail-antivirus-service | 8087 | — | сканирование ClamAV, блокировка инфицированных вложений |
 | chat-service | 8088 | chat_db | комнаты, сообщения, треды, реакции, STOMP, presence |
-| chat-file-service | 8089 | — (ФС) | загрузка/раздача файлов чата, превью, AV перед публикацией |
+| chat-file-service | 8089 | — (ФС) | загрузка/раздача файлов чата, превью, AV перед публикацией; личный диск `/api/v1/drive/**` на том же CAS и AV |
 | admin-service | 8090 | admin_db | пользователи* , группы и права, настройки, аудит, аналитика |
 | notification-service | 8091 | — | email-алерты Alertmanager и служебные письма |
 
