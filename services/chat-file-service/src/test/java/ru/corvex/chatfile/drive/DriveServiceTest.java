@@ -153,7 +153,8 @@ class DriveServiceTest {
     }
 
     @Test
-    void purgeRequiresTrashAndRemovesBlob() {
+    void purgeRequiresTrashAndRemovesBlob() throws Exception {
+        // storage.listNodes объявляет IOException: тест читает реальный каталог, а не мок.
         DriveNode node = service.upload(user, null, file("old.txt", "data"));
         assertStatus(HttpStatus.CONFLICT, () -> service.purge(user, node.id()));
 

@@ -55,7 +55,8 @@ public class ChatFileExceptionHandler {
                 ? code.toString()
                 : e.getReason();
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(code, detail);
-        problem.setTitle(String.valueOf(code.value()));
+        HttpStatus reason = HttpStatus.resolve(code.value());
+        problem.setTitle(reason != null ? reason.getReasonPhrase() : code.toString());
         return ResponseEntity.status(code).body(problem);
     }
 
