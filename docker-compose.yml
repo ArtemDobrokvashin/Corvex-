@@ -574,7 +574,7 @@ services:
     networks: [monitoring, edge]
 
   loki:
-    image: grafana/loki:3.7.9
+    image: grafana/loki:3.7.10
     profiles: [monitoring]
     restart: unless-stopped
     command: ["-config.file=/etc/loki/loki.yml"]
