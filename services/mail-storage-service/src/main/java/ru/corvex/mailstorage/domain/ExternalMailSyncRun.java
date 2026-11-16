@@ -18,7 +18,8 @@ public class ExternalMailSyncRun {
 
     public enum Trigger {SCHEDULED, MANUAL, MIGRATION}
 
-    public enum Status {RUNNING, SUCCESS, PARTIAL, FAILED}
+    /** PAUSED и CANCELLED — исход длинного переноса, а не сбоя сбора. */
+    public enum Status {RUNNING, SUCCESS, PARTIAL, FAILED, PAUSED, CANCELLED}
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

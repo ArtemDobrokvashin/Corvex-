@@ -40,6 +40,11 @@
 `POST /mail/contacts/import` (multipart vCard/CSV) и `GET /mail/contacts/export`.
 Право — `MAIL_READ_OWN`: книга личная, доступа администратора к чужим контактам нет.
 
+Перенос почты из внешнего ящика оформлен заданиями: `POST /mail/migration/preview`
+(оценка объёма и квоты), `POST /mail/migration`, `GET /mail/migration/{id}`,
+`GET /mail/migration/{id}/report`, `POST /mail/migration/{id}/pause|resume|cancel`.
+Право — `MAIL_EXTERNAL_ACCOUNTS` для своего ящика, `ADMIN_MAIL_POLICY` — для чужого.
+
 ## 3. Что реализовано в webmail
 
 `GET /mail/folders`, `POST /mail/folders {name, parentId?}` (право `MAIL_MANAGE_FOLDERS`),

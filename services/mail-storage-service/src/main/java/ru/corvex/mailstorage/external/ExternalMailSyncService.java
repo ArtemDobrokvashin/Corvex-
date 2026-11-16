@@ -125,6 +125,104 @@ public class ExternalMailSyncService {
         executor.shutdownNow();
     }
 
+    // ------------------------------------------------------------------ migration control
+
+    /**
+     * Управление длинным переносом: пауза, отмена и обратная связь по папкам.
+     * Реализация живёт в задании (mail_migration_jobs), а не в этом сервисе, чтобы
+     * сервис сбора оставался без знания о таблицах отчёта.
+     */
+    public interface MigrationControl {
+        boolean paused();
+
+        boolean cancelled();
+
+        default boolean stopRequested() {
+            return paused() || cancelled();
+        }
+
+        /** Продолжение прерванного задания: курсоры папок сохраняются. */
+        default boolean resume() {
+            return false;
+        }
+
+        default boolean skipFolder(String remoteFolder, String specialUse) {
+            return false;
+        }
+
+        default void folderStarted(String remoteFolder) {
+        }
+
+        default void folderFinished(String remoteFolder, int migrated, int skipped, String error) {
+        }
+
+        default void runStarted(UUID runId) {
+        }
+    }
+
+    /** Итог блокирующего прогона: остановлен ли он паузой или отменой. */
+    public record MigrationOutcome(ExternalMailSyncRun run, boolean stopped, boolean cancelled) {
+    }
+
+    /** Причина штатной остановки папки при паузе: не ошибка и не обрыв связи. */
+    public static final class MigrationStoppedException extends RuntimeException {
+        public MigrationStoppedException() {
+            super("Перенос остановлен по запросу пользователя");
+        }
+    }
+
+    /**
+     * Выполнить перенос в текущем потоке. Пул потоков выбирает вызывающий: задания переноса
+     * используют отдельную очередь {@code migration/}, чтобы не занимать schedulerThreads
+     * постоянного сбора.
+     */
+    public MigrationOutcome runMigration(UUID accountId, MigrationControl control) {
+        if (control == null) throw new IllegalArgumentException("MigrationControl обязателен");
+        String lockOwner = instanceId + ":" + UUID.randomUUID();
+        Instant now = Instant.now();
+        int claimed = jdbc.update("""
+                        update external_mail_accounts
+                           set sync_lock_owner = ?, sync_lock_until = ?, updated_at = ?
+                         where id = ? and enabled = true
+                           and (sync_lock_until is null or sync_lock_until < ?)
+                        """,
+                lockOwner, Timestamp.from(now.plus(LOCK_TTL)), Timestamp.from(now), accountId, Timestamp.from(now));
+        if (claimed != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Перенос уже выполняется или внешний ящик выключен");
+        }
+        ExternalMailAccount account = accounts.findById(accountId).orElse(null);
+        if (account == null) {
+            releaseClaim(accountId, lockOwner);
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Внешний ящик не найден");
+        }
+        ExternalMailSyncRun run = new ExternalMailSyncRun();
+        run.setAccount(account);
+        run.setTriggerType(ExternalMailSyncRun.Trigger.MIGRATION);
+        run.setStatus(ExternalMailSyncRun.Status.RUNNING);
+        run.setStartedAt(now);
+        run = runs.saveAndFlush(run);
+        control.runStarted(run.getId());
+        try {
+            executeClaimed(accountId, run.getId(), lockOwner, ExternalMailSyncRun.Trigger.MIGRATION, control);
+        } finally {
+            // executeClaimed снимает lock в своём finally; повторная попытка нужна на случай,
+            // если исключение возникло до входа в него (например, при загрузке аккаунта).
+            releaseClaim(accountId, lockOwner);
+        }
+        ExternalMailSyncRun finished = runs.findById(run.getId()).orElse(run);
+        if (control.cancelled()) {
+            finished.setStatus(ExternalMailSyncRun.Status.CANCELLED);
+            finished.setFinishedAt(Instant.now());
+            runs.saveAndFlush(finished);
+        } else if (control.paused()) {
+            finished.setStatus(ExternalMailSyncRun.Status.PAUSED);
+            finished.setFinishedAt(Instant.now());
+            runs.saveAndFlush(finished);
+        }
+        return new MigrationOutcome(finished, control.stopRequested(), control.cancelled());
+    }
+
     @Scheduled(fixedDelayString = "${corvex.external-mail.scheduler-delay-ms:30000}")
     public void pollDue() {
         if (!props.enabled() || !cipher.configured()) return;
@@ -183,7 +281,7 @@ public class ExternalMailSyncService {
         run = runs.saveAndFlush(run);
         UUID runId = run.getId();
         try {
-            executor.submit(() -> executeClaimed(accountId, runId, lockOwner, trigger));
+            executor.submit(() -> executeClaimed(accountId, runId, lockOwner, trigger, null));
         } catch (RejectedExecutionException e) {
             run.setStatus(ExternalMailSyncRun.Status.FAILED);
             run.setFinishedAt(Instant.now());
@@ -207,7 +305,8 @@ public class ExternalMailSyncService {
         int foldersDone;
     }
 
-    private void executeClaimed(UUID accountId, UUID runId, String lockOwner, ExternalMailSyncRun.Trigger trigger) {
+    private void executeClaimed(UUID accountId, UUID runId, String lockOwner,
+                                ExternalMailSyncRun.Trigger trigger, MigrationControl control) {
         Counters counters = new Counters();
         ExternalMailAccount account = null;
         boolean migration = trigger == ExternalMailSyncRun.Trigger.MIGRATION;
@@ -228,6 +327,7 @@ public class ExternalMailSyncService {
                 List<ExternalMailClient.RemoteFolderInfo> remoteFolders = incoming.listFolders().stream()
                         .filter(f -> syncAllFolders
                                 || "INBOX".equalsIgnoreCase(f.specialUse()) || "INBOX".equalsIgnoreCase(f.name()))
+                        .filter(f -> control == null || !control.skipFolder(f.name(), f.specialUse()))
                         .limit(props.safeMaxFolders())
                         .toList();
                 updateRun(runId, counters, remoteFolders.size(), null);
@@ -235,10 +335,17 @@ public class ExternalMailSyncService {
                 boolean stopRun = false;
                 int reconnects = 0;
                 for (ExternalMailClient.RemoteFolderInfo remoteFolder : remoteFolders) {
+                    if (control != null) {
+                        if (control.stopRequested()) break;
+                        control.folderStarted(remoteFolder.name());
+                    }
+                    int queuedBefore = counters.queued.get();
+                    int skippedBefore = counters.skipped.get();
+                    int errorsBefore = counters.errors.size();
                     while (!stopRun) {
                         boolean retry = false;
                         try {
-                            syncFolder(account, owner, config, incoming, remoteFolder, counters, migration);
+                            syncFolder(account, owner, config, incoming, remoteFolder, counters, migration, control);
                             counters.foldersDone++;
                         } catch (ExternalMailClient.ExternalMailClientException e) {
                             if (isConnectionLoss(e) && reconnects < MAX_RECONNECTS_PER_RUN) {
@@ -269,6 +376,14 @@ public class ExternalMailSyncService {
                             updateRun(runId, counters, remoteFolders.size(), String.join("; ", counters.errors));
                         }
                         if (!retry) break;
+                    }
+                    if (control != null) {
+                        String folderError = counters.errors.size() > errorsBefore
+                                ? counters.errors.get(counters.errors.size() - 1) : null;
+                        control.folderFinished(remoteFolder.name(),
+                                counters.queued.get() - queuedBefore,
+                                counters.skipped.get() - skippedBefore,
+                                folderError);
                     }
                     if (stopRun) break;
                 }
@@ -306,7 +421,8 @@ public class ExternalMailSyncService {
                             ExternalMailClient.IncomingSession incoming,
                             ExternalMailClient.RemoteFolderInfo remoteFolder,
                             Counters counters,
-                            boolean migration) throws ExternalMailClient.ExternalMailClientException {
+                            boolean migration,
+                            MigrationControl control) throws ExternalMailClient.ExternalMailClientException {
         ExternalMailFolderState state = states.findByAccount_IdAndRemoteFolder(account.getId(), remoteFolder.name())
                 .orElseGet(() -> {
                     ExternalMailFolderState created = new ExternalMailFolderState();
@@ -326,7 +442,10 @@ public class ExternalMailSyncService {
         MailFolder target = resolveTargetFolder(account, owner, remoteFolder, state, migration);
         state.setTargetFolder(target);
         if (migration) {
-            state.setLastSeenUid(0);
+            // Продолжение после паузы не перечитывает папку с нуля: курсор уже сохранён.
+            if (control == null || !control.resume()) {
+                state.setLastSeenUid(0);
+            }
             state.setInitialSnapshotDone(true);
         }
         state = states.saveAndFlush(state);
@@ -354,7 +473,7 @@ public class ExternalMailSyncService {
         try {
             incoming.fetchFolder(remoteFolder.name(), afterUid, props.safeBatchSize(),
                     (envelope, source) -> handleMessage(account, owner, remoteFolder, target, envelope, source,
-                            counters, lastSuccessfulUid, migration));
+                            counters, lastSuccessfulUid, migration, control));
         } finally {
             // Даже при обрыве соединения уже успешно обработанные UID нельзя терять:
             // иначе следующий запуск снова пойдёт по тому же тяжёлому диапазону.
@@ -405,7 +524,13 @@ public class ExternalMailSyncService {
                                                           ExternalMailClient.RawMessageSource source,
                                                           Counters counters,
                                                           AtomicLong lastSuccessfulUid,
-                                                          boolean migration) {
+                                                          boolean migration,
+                                                          MigrationControl control) {
+        if (control != null && control.stopRequested()) {
+            // Клиент считает StopFolderException без обрыва связи штатной остановкой папки:
+            // курсор остаётся на последнем успешно перенесённом письме, ошибки нет.
+            throw new ExternalMailClient.StopFolderException(new MigrationStoppedException());
+        }
         counters.fetched.incrementAndGet();
         if (envelope.deleted()) {
             counters.skipped.incrementAndGet();
