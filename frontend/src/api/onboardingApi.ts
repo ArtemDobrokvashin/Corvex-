@@ -14,6 +14,9 @@ export interface OnboardingView {
   lastJobStatus: string | null;
   dismissedAt: string | null;
   accounts: OnboardingAccountRef[];
+  suggestedEmail?: string | null;
+  suggestedSourceHost?: string | null;
+  suggestedSourceLogin?: string | null;
 }
 
 const BASE = '/api/v1/onboarding';

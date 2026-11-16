@@ -48,6 +48,10 @@
 Онбординг: `GET /api/v1/onboarding`, `POST /api/v1/onboarding/migration/dismiss|not-needed|reset`.
 Состояние персональное, право `MAIL_READ_OWN`; «выполнено» выводится из заданий переноса.
 
+Админский контур: `GET /api/v1/mail/admin/migrations` (сводка по сотрудникам),
+`POST /api/v1/mail/admin/migrations/bulk` (CSV без паролей) и
+`POST …/{ownerId}/quota-bump`. Право — `ADMIN_MAIL_POLICY`.
+
 ## 3. Что реализовано в webmail
 
 `GET /mail/folders`, `POST /mail/folders {name, parentId?}` (право `MAIL_MANAGE_FOLDERS`),

@@ -1,5 +1,6 @@
 import { Dispatch, FormEvent, SetStateAction, useEffect, useMemo, useState } from 'react';
 import {
+  ArrowRightLeft,
   Ban,
   BarChart3,
   Check,
@@ -35,6 +36,7 @@ import GroupPickerPopover from './GroupPickerPopover';
 import AnalyticsTab from './AnalyticsTab';
 import AuditTab from './AuditTab';
 import MailPolicyTab from './MailPolicyTab';
+import MigrationTab from './MigrationTab';
 import QuotasTab from './QuotasTab';
 import ResetUserPasswordModal from './ResetUserPasswordModal';
 import { quotaGigabytesToBytes, quotaUsagePercent } from './quota';
@@ -42,7 +44,7 @@ import ServerTab from './ServerTab';
 import SettingsTab from './SettingsTab';
 import { canManageExternalMail, canManageQuotas, canViewAnalytics, canViewServer, canViewSettings, canViewSystemHealth } from './adminAccess';
 
-type Tab = 'users' | 'quotas' | 'groups' | 'external-mail' | 'server' | 'settings' | 'analytics' | 'audit';
+type Tab = 'users' | 'quotas' | 'groups' | 'external-mail' | 'migration' | 'server' | 'settings' | 'analytics' | 'audit';
 
 
 const STATUS_META: Record<string, { label: string; dot: string; className: string }> = {
@@ -77,6 +79,7 @@ export default function AdminPage() {
     ...(canQuotas ? ['quotas' as const] : []),
     ...(canViewGroups ? ['groups' as const] : []),
     ...(canExternalMail ? ['external-mail' as const] : []),
+    ...(canExternalMail ? ['migration' as const] : []),
     ...(canServer ? ['server' as const] : []),
     ...(canSettings ? ['settings' as const] : []),
     ...(canAnalytics ? ['analytics' as const] : []),
@@ -155,6 +158,7 @@ export default function AdminPage() {
               {canQuotas && navBtn('quotas', t('Квоты'), HardDrive, t('Лимиты и занятое место'))}
               {canViewGroups && navBtn('groups', t('Группы и права'), ShieldCheck, t('Кто что может делать'))}
               {canExternalMail && navBtn('external-mail', t('Внешняя почта'), Mail, t('Ящики сотрудников и миграция'))}
+              {canExternalMail && navBtn('migration', t('Перенос почты'), ArrowRightLeft, t('Массовый запуск и квоты'))}
               {canServer && navBtn('server', t('Сервер'), Server, t('Состояние и резервное копирование'))}
               {canSettings && navBtn('settings', t('Настройки'), Settings2, t('Реестр параметров сервера'))}
               {canAnalytics && navBtn('analytics', t('Аналитика'), BarChart3, t('Сотрудники и события входа'))}
@@ -214,6 +218,7 @@ export default function AdminPage() {
               {activeTab === 'quotas' && <QuotasTab demoMode={demoMode} />}
               {activeTab === 'groups' && <GroupsTab groups={groups} setGroups={setGroups} demoMode={demoMode} canManage={has('ADMIN_GROUPS_MANAGE')} />}
               {activeTab === 'external-mail' && <MailPolicyTab onOpenExternalMail={() => navigate('/mail?externalAccounts=1')} />}
+              {activeTab === 'migration' && <MigrationTab demoMode={demoMode} />}
               {activeTab === 'server' && <ServerTab canViewHealth={canHealth} canBackup={canBackup} />}
               {activeTab === 'settings' && <SettingsTab demoMode={demoMode} />}
               {activeTab === 'analytics' && <AnalyticsTab />}

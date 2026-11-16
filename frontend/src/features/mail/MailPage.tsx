@@ -2118,6 +2118,8 @@ export default function MailPage() {
       {migrationOpen && !demoMode && (
         <MigrationWizard
           existingAccount={onboarding?.accounts[0] ?? null}
+          suggestedHost={onboarding?.suggestedSourceHost ?? null}
+          suggestedLogin={onboarding?.suggestedSourceLogin ?? null}
           onClose={() => {
             setMigrationOpen(false);
             onboardingApi.state().then(setOnboarding).catch(() => undefined);

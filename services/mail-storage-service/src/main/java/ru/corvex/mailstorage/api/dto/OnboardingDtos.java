@@ -18,6 +18,9 @@ public final class OnboardingDtos {
                                  UUID activeJobId,
                                  String lastJobStatus,
                                  Instant dismissedAt,
-                                 List<AccountRef> accounts) {
+                                 List<AccountRef> accounts,
+                                 String suggestedEmail,
+                                 String suggestedSourceHost,
+                                 String suggestedSourceLogin) {
     }
 }

@@ -433,6 +433,60 @@ paths:
     x-corvex-status: planned
     get: { summary: Настройки автоответа (отпуск), responses: { '200': { description: Настройки } } }
     put: { summary: Включить/изменить автоответ, responses: { '200': { description: Сохранено } } }
+  # --- Админский перенос: сводка, массовый CSV, квота ---------------------------
+  /mail/admin/migrations:
+    get:
+      summary: Сводка переноса по сотрудникам (ADMIN_MAIL_POLICY)
+      description: |
+        Только те, у кого есть приглашение или задание. Показывает состояние
+        приглашения, онбординга и задания, перенесённые письма, квоту и занятое место.
+      responses:
+        '200':
+          description: Сводка; при недоступности auth-service квота и ФИО могут быть пустыми
+          content: { application/json: { schema: { $ref: '#/components/schemas/AdminMigrationSummary' } } }
+        '403': { description: Нет права ADMIN_MAIL_POLICY }
+  /mail/admin/migrations/bulk:
+    post:
+      summary: Массовое приглашение из CSV
+      description: |
+        Заголовок `email, source_host, source_login` (разделитель `,`, `;` или табуляция).
+        Пароли в файле не принимаются: сотрудник вводит пароль приложения сам.
+        Неизвестные адреса и повторы попадают в `issues`, остальные строки применяются.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200':
+          description: Итог разбора и число созданных приглашений
+          content: { application/json: { schema: { $ref: '#/components/schemas/AdminMigrationBulkResult' } } }
+        '403': { description: Нет права ADMIN_MAIL_POLICY }
+        '413': { description: Файл больше 1 МиБ }
+  /mail/admin/migrations/{ownerId}/quota-bump:
+    post:
+      summary: Поднять квоту из отчёта о переносе
+      parameters: [{ name: ownerId, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                quotaBytes: { type: integer, format: int64, description: Новое значение квоты }
+                addBytes: { type: integer, format: int64, description: Прибавка к текущей квоте }
+      responses:
+        '200':
+          description: Новая квота и занятое место
+          content: { application/json: { schema: { $ref: '#/components/schemas/AdminMigrationQuotaResult' } } }
+        '400': { description: Квота не указана или вне допустимого диапазона }
+        '403': { description: Нет права ADMIN_MAIL_POLICY }
+        '404': { description: Сотрудник не найден }
   # --- Онбординг после первого входа -------------------------------------------
   # Состояние персональное: администратор его не читает и не меняет.
   /onboarding:
@@ -638,6 +692,62 @@ components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
   schemas:
+    AdminMigrationRow:
+      type: object
+      properties:
+        ownerId: { type: string, format: uuid }
+        email: { type: string, format: email }
+        displayName: { type: string }
+        invitationStatus: { type: string, nullable: true, enum: [PENDING, STARTED, DONE, DISMISSED] }
+        migrationState: { type: string, nullable: true, enum: [PENDING, DISMISSED, NOT_NEEDED, DONE] }
+        jobStatus: { type: string, nullable: true, enum: [QUEUED, RUNNING, PAUSED, DONE, PARTIAL, FAILED, CANCELLED] }
+        jobId: { type: string, format: uuid, nullable: true }
+        migratedMessages: { type: integer }
+        quotaBytes: { type: integer, format: int64 }
+        usedBytes: { type: integer, format: int64 }
+        sourceHost: { type: string, nullable: true }
+        sourceLogin: { type: string, nullable: true }
+    AdminMigrationTotals:
+      type: object
+      properties:
+        employees: { type: integer }
+        invited: { type: integer }
+        notStarted: { type: integer }
+        running: { type: integer }
+        done: { type: integer }
+        failed: { type: integer }
+        migratedMessages: { type: integer, format: int64 }
+    AdminMigrationSummary:
+      type: object
+      properties:
+        rows:
+          type: array
+          items: { $ref: '#/components/schemas/AdminMigrationRow' }
+        totals: { $ref: '#/components/schemas/AdminMigrationTotals' }
+        notes: { type: array, items: { type: string } }
+    AdminMigrationBulkResult:
+      type: object
+      properties:
+        rows: { type: integer }
+        invited: { type: integer }
+        skipped: { type: integer }
+        truncated: { type: boolean, description: Обработаны первые 1000 строк }
+        issues:
+          type: array
+          items:
+            type: object
+            properties:
+              line: { type: integer }
+              value: { type: string }
+              reason: { type: string }
+    AdminMigrationQuotaResult:
+      type: object
+      properties:
+        ownerId: { type: string, format: uuid }
+        quotaBytes: { type: integer, format: int64 }
+        usedBytes: { type: integer, format: int64 }
+        fits: { type: boolean }
+        remainingBytes: { type: integer, format: int64 }
     OnboardingAccountRef:
       type: object
       properties:
@@ -655,6 +765,9 @@ components:
         accounts:
           type: array
           items: { $ref: '#/components/schemas/OnboardingAccountRef' }
+        suggestedEmail: { type: string, nullable: true, description: Адрес из админского CSV }
+        suggestedSourceHost: { type: string, nullable: true }
+        suggestedSourceLogin: { type: string, nullable: true }
     MigrationScopeRequest:
       type: object
       required: [accountId]

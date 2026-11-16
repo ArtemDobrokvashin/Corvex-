@@ -5,9 +5,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import ru.corvex.mailstorage.api.dto.OnboardingDtos;
+import ru.corvex.mailstorage.domain.MailMigrationInvitation;
 import ru.corvex.mailstorage.domain.MailMigrationJob;
 import ru.corvex.mailstorage.domain.UserOnboarding;
 import ru.corvex.mailstorage.repository.ExternalMailAccountRepository;
+import ru.corvex.mailstorage.repository.MailMigrationInvitationRepository;
 import ru.corvex.mailstorage.repository.MailMigrationJobRepository;
 import ru.corvex.mailstorage.repository.UserOnboardingRepository;
 
@@ -29,13 +31,16 @@ public class OnboardingService {
     private final UserOnboardingRepository onboarding;
     private final MailMigrationJobRepository jobs;
     private final ExternalMailAccountRepository accounts;
+    private final MailMigrationInvitationRepository invitations;
 
     public OnboardingService(UserOnboardingRepository onboarding,
                              MailMigrationJobRepository jobs,
-                             ExternalMailAccountRepository accounts) {
+                             ExternalMailAccountRepository accounts,
+                             MailMigrationInvitationRepository invitations) {
         this.onboarding = onboarding;
         this.jobs = jobs;
         this.accounts = accounts;
+        this.invitations = invitations;
     }
 
     @Transactional
@@ -64,6 +69,8 @@ public class OnboardingService {
         UUID activeJobId = activeJob == null ? null : activeJob.getId();
         if (activeJobId != null) suggested = false;
 
+        MailMigrationInvitation invitation = invitations.findFirstByOwnerIdOrderByCreatedAtDesc(userId)
+                .orElse(null);
         return new OnboardingDtos.OnboardingView(
                 effective.name(),
                 suggested,
@@ -73,7 +80,10 @@ public class OnboardingService {
                 accounts.findAllByOwnerIdOrderByCreatedAtAsc(userId).stream()
                         .map(account -> new OnboardingDtos.AccountRef(account.getId(),
                                 account.getEmailAddress(), account.getProvider().name()))
-                        .toList());
+                        .toList(),
+                invitation == null ? null : invitation.getEmail(),
+                invitation == null ? null : invitation.getSourceHost(),
+                invitation == null ? null : invitation.getSourceLogin());
     }
 
     @Transactional

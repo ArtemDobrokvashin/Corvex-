@@ -113,6 +113,42 @@ public class AuthUserClient {
                 body.path("quotaBytes").asLong(0));
     }
 
+    /**
+     * Изменить квоту ящика. Эндпоинт внутренний: тот же токен, что и у чтения пользователя.
+     * Используется кнопкой «поднять квоту» в отчёте о переносе — единственной точкой,
+     * где mail-storage меняет данные auth_db, кроме админского UI квот.
+     */
+    public MailboxOwner updateQuota(UUID userId, long quotaBytes) {
+        if (quotaBytes < 0) throw new IllegalArgumentException("Квота не может быть отрицательной");
+        try {
+            String body = mapper.writeValueAsString(java.util.Map.of("quotaBytes", quotaBytes));
+            HttpRequest request = HttpRequest.newBuilder(
+                            URI.create(baseUrl + "/internal/users/" + userId))
+                    .timeout(Duration.ofSeconds(5))
+                    .header(InternalTokenGuard.HEADER, tokens.tokenOrFail())
+                    .header("Content-Type", "application/json")
+                    .method("PATCH", HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                throw new IllegalStateException("auth-service вернул HTTP " + response.statusCode()
+                        + " при изменении квоты");
+            }
+            JsonNode node = mapper.readTree(response.body());
+            return new MailboxOwner(
+                    UUID.fromString(node.path("id").asText()),
+                    node.path("email").asText(""),
+                    node.path("displayName").asText(""),
+                    node.path("status").asText(""),
+                    node.path("quotaBytes").asLong(quotaBytes));
+        } catch (IOException e) {
+            throw new IllegalStateException("auth-service недоступен для изменения квоты", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Запрос в auth-service прерван", e);
+        }
+    }
+
     private Optional<JsonNode> getJson(String path) {
         HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + path))
                 .timeout(Duration.ofSeconds(5))

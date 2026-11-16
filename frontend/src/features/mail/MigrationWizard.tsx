@@ -38,9 +38,11 @@ function errorText(error: unknown, fallback: string): string {
  * архив решили перенести позже. Задание выполняется на сервере и переживает закрытие окна.
  */
 export default function MigrationWizard({
-  existingAccount, onClose, onDismiss, onNotNeeded, onOpenContacts,
+  existingAccount, suggestedHost, suggestedLogin, onClose, onDismiss, onNotNeeded, onOpenContacts,
 }: {
   existingAccount?: { id: string; emailAddress: string } | null;
+  suggestedHost?: string | null;
+  suggestedLogin?: string | null;
   onClose: () => void;
   onDismiss: () => void;
   onNotNeeded: () => void;
@@ -55,8 +57,8 @@ export default function MigrationWizard({
   const [provider, setProvider] = useState<ExternalMailProvider>('MAIL_RU');
   const [email, setEmail] = useState('');
   const [secret, setSecret] = useState('');
-  const [advanced, setAdvanced] = useState(false);
-  const [host, setHost] = useState('');
+  const [advanced, setAdvanced] = useState(Boolean(suggestedHost));
+  const [host, setHost] = useState(suggestedHost ?? '');
   const [port, setPort] = useState('993');
   const [security, setSecurity] = useState<ExternalMailSecurity>('SSL_TLS');
   const [accountId, setAccountId] = useState<string | null>(existingAccount?.id ?? null);
@@ -259,6 +261,14 @@ export default function MigrationWizard({
                   autoComplete="current-password"
                 />
               </label>
+              {suggestedHost && (
+                <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-soft">
+                  {t('Администратор указал источник: {host}{login}.', {
+                    host: suggestedHost,
+                    login: suggestedLogin ? `, ${t('логин {login}', { login: suggestedLogin })}` : '',
+                  })}
+                </p>
+              )}
               <p className="mt-1.5 text-[11.5px] leading-relaxed text-faint">
                 {t('Обычный пароль часто не подходит: Mail.ru, Яндекс и Gmail требуют отдельный пароль для почтовых программ. Пароль шифруется и недоступен администратору.')}
               </p>
