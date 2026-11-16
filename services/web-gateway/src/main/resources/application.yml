@@ -55,7 +55,9 @@ spring:
               # Корневой путь перечислен отдельно: список файлов и квота запрашиваются как
               # /api/v1/drive?view=files и /api/v1/drive/usage, без сегмента после drive.
               uri: http://chat-file-service:8089
-              predicates: [Path=/api/v1/drive,/api/v1/drive/**]
+              # Кавычки обязательны: без них YAML режет строку по запятой на два
+              # предиката, второй из которых шлюз не разбирает и падает на старте.
+              predicates: ["Path=/api/v1/drive,/api/v1/drive/**"]
             - id: admin
               uri: http://admin-service:8090
               predicates: [Path=/api/v1/admin/**]

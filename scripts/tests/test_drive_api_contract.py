@@ -127,11 +127,29 @@ class DriveApiContractTest(unittest.TestCase):
 
     def test_gateway_routes_the_drive_root(self):
         # Список файлов и квота запрашиваются как /api/v1/drive?view=files и
-        # /api/v1/drive/usage. Если маршрут объявлен только как /api/v1/drive/**,
-        # шлюз отдаёт 404 на корневой путь — ровно это и случилось живьём.
-        # Конфиг читается регэкспом, а не PyYAML: у теста не должно быть
-        # зависимости, которой нет в окружении приёмки.
-        gateway = (
+        # /api/v1/drive/usage. Маршрут только с /api/v1/drive/** отдаёт на них 404.
+        # Проверяется именно распознанный YAML-элемент, а не подстрока: запятая
+        # внутри flow-списка режет строку на два предиката, и шлюз падает на старте.
+        gateway = self._gateway_config()
+        predicated = gateway["spring"]["cloud"]["gateway"]["server"]["webflux"]["routes"]
+        drive = next((route for route in predicated if route["id"] == "drive"), None)
+        self.assertIsNotNone(drive, "gateway has no drive route")
+        self.assertEqual(["Path=/api/v1/drive,/api/v1/drive/**"], drive["predicates"])
+
+    def test_no_route_splits_a_predicate_on_a_comma(self):
+        # Общий сторож: "predicates: [Name=a,b]" без кавычек — это два элемента,
+        # второй из которых не является именем предиката. Такой конфиг валиден как
+        # YAML, но роняет gateway на старте, поэтому ошибку видно только в логах.
+        for line in self._gateway_text().splitlines():
+            stripped = line.strip()
+            if not stripped.startswith("predicates: ["):
+                continue
+            inner = stripped[len("predicates: ["):].rstrip("]")
+            if "," in inner and '"' not in inner and "'" not in inner:
+                self.fail(f"unquoted comma in predicate list: {stripped}")
+
+    def _gateway_text(self) -> str:
+        return (
             ROOT
             / "services"
             / "web-gateway"
@@ -140,11 +158,13 @@ class DriveApiContractTest(unittest.TestCase):
             / "resources"
             / "application.yml"
         ).read_text(encoding="utf-8")
-        route = re.search(r"- id: drive\n(.*?)(?:\n\s*- id:|\Z)", gateway, re.S)
-        self.assertIsNotNone(route, "gateway has no drive route")
-        block = route.group(1)
-        self.assertIn("/api/v1/drive", block)
-        self.assertIn("/api/v1/drive/**", block)
+
+    def _gateway_config(self) -> dict:
+        try:
+            import yaml
+        except ImportError:  # зависимость есть в CI-образе, но не в голом Python
+            self.skipTest("PyYAML is not installed")
+        return yaml.safe_load(self._gateway_text())
 
     def test_upload_part_name_matches_backend(self):
         # Spring ждёт @RequestPart("file"); другое имя в FormData — 400 на каждой загрузке.
