@@ -11,9 +11,12 @@ Linux VM (bash). Docker commands are identical on every host.
 
 ## 0. Before you start — checklist
 
-- [ ] Server: Windows Server 2019/2022; minimum 8 CPU / 16 GB RAM / 500 GB SSD,
-      recommended 16 CPU / 32 GB / 1 TB SSD. A Windows 10/11 workstation with
-      16 GB RAM is enough to evaluate.
+- [ ] Server: Windows Server 2019/2022. For **50 mailboxes** the minimum is
+      **4-6 vCPU / 16 GB RAM / 200 GB SSD** (100 GB system + 100 GB data), with backups
+      on a separate medium of 100-200 GB. For 1000 mailboxes plan 8-16 CPU / 32 GB /
+      1.3 TB of data. The numbers and formulas are in [`SIZING.md`](SIZING.md) (Russian);
+      recalculate for your quota: `py -3 scripts\capacity.py --mailboxes 50`. A
+      Windows 10/11 workstation with 16 GB RAM and 60-80 GB free is enough to evaluate.
 - [ ] A domain name for web + mail (examples use `company.local`, web host
       `mail.company.local`). Real inbound mail needs a public domain.
 - [ ] (For real mail) a static public IP and an ISP that allows inbound **and
@@ -54,7 +57,9 @@ run natively on Windows. The supported production path is a lightweight Linux VM
 1. Enable Hyper-V (Server Manager → Add Roles, or
    `Install-WindowsFeature Hyper-V -IncludeManagementTools -Restart`).
 2. Create a Gen-2 VM: Ubuntu Server 24.04 LTS, vCPU = all but 2, RAM = all but
-   4 GB, 500 GB–1 TB dynamic disk on SSD, NIC on an **external** virtual switch.
+   4 GB, an SSD disk of **100 GB system + 100 GB data for 50 mailboxes** (see
+   [`SIZING.md`](SIZING.md)), NIC on an **external** virtual switch. Keep backups off
+   that virtual disk: use a separate physical medium or NAS.
 3. Install Ubuntu (tick OpenSSH server), then inside the VM:
 
 ```bash

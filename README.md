@@ -178,7 +178,9 @@ docker compose up -d                       # на существующих volum
 
 **4. Подготовить сам сервер.** Тестовый домен и DNS (MX/SPF/DKIM/DMARC), TLS-сертификат,
 `first-run.ps1` с новыми секретами, `CORVEX_INTERNAL_API_TOKEN` одинаковый во всех сервисах,
-NTP, брандмауэр, получатели алертов. Почтовые протоколы (`CORVEX_SMTP_ENABLED` и т. п.)
+NTP, брандмауэр, получатели алертов. Размер диска и памяти считается под фактическое число
+ящиков ([`docs/SIZING.md`](docs/SIZING.md)), а не берётся «на всякий случай»: для 50 ящиков
+достаточно 200 ГБ SSD и 16 ГБ RAM, бэкап — на отдельном носителе. Почтовые протоколы (`CORVEX_SMTP_ENABLED` и т. п.)
 включаются **после** шага 2, а не вместе с переносом.
 
 Перенос на тестовый сервер не требует «Файлов», общих календарей, AD/LDAP и внешних
@@ -333,6 +335,7 @@ docker compose logs auth-service | Select-String BOOTSTRAP
 | [`docs/TESTING-ON-YOUR-PC.md`](docs/TESTING-ON-YOUR-PC.md) | пошаговая первая приёмка на вашем ПК: от frontend до Maven, Docker и почтовых клиентов |
 | [`docs/EXTERNAL-MAIL.md`](docs/EXTERNAL-MAIL.md) | подключение Mail.ru, Яндекса и других старых ящиков: сбор, миграция архива и send-as |
 | [`docs/SERVER-ROLLOUT.md`](docs/SERVER-ROLLOUT.md) | план переноса на тестовый сервер на неделю: дни, зависимости, критерии выхода, порядок включения |
+| [`docs/SIZING.md`](docs/SIZING.md) | размер сервера под число ящиков: диск, RAM, CPU, бэкапы; калькулятор `scripts/capacity.py` |
 | [`docs/CALENDAR.md`](docs/CALENDAR.md) | календарь: модель данных, API, доставка напоминаний, развёртывание и ограничения |
 | [`docs/FILES_PLAN.md`](docs/FILES_PLAN.md) | «Файлы»: проектирование личного диска и модель ссылок |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | участие в разработке: код, тесты, документация, переводы и требования к PR |
@@ -500,7 +503,9 @@ A step-by-step plan with dates, dependencies and exit criteria per day is in
 
 **4. Prepare the server itself.** Test domain and DNS (MX/SPF/DKIM/DMARC), TLS certificate,
 `first-run.ps1` with fresh secrets, the same `CORVEX_INTERNAL_API_TOKEN` in every service, NTP,
-firewall, alert recipients. Mail protocols (`CORVEX_SMTP_ENABLED` and friends) are enabled
+firewall, alert recipients. Disk and RAM are sized for the actual mailbox count
+([`docs/SIZING.md`](docs/SIZING.md)): 50 mailboxes need 200 GB SSD and 16 GB RAM, with backups
+on a separate medium. Mail protocols (`CORVEX_SMTP_ENABLED` and friends) are enabled
 **after** step 2, not together with the move.
 
 Moving to a test server does not require Files, shared calendars, AD/LDAP, or external
@@ -645,6 +650,7 @@ Full audit: [`docs/12-full-audit-2026-10.md`](docs/12-full-audit-2026-10.md).
 | [`docs/TESTING-ON-YOUR-PC.md`](docs/TESTING-ON-YOUR-PC.md) | step-by-step first acceptance on your PC: frontend, Maven, Docker, and mail clients (Russian) |
 | [`docs/EXTERNAL-MAIL.md`](docs/EXTERNAL-MAIL.md) | connecting Mail.ru, Yandex, and other legacy mailboxes: collection, archive migration, and send-as |
 | [`docs/SERVER-ROLLOUT.md`](docs/SERVER-ROLLOUT.md) | week plan for moving to a test server: days, dependencies, exit criteria, enablement order |
+| [`docs/SIZING.md`](docs/SIZING.md) | server sizing for a given mailbox count: disk, RAM, CPU, backups; the `scripts/capacity.py` calculator |
 | [`docs/CALENDAR.md`](docs/CALENDAR.md) | calendar: data model, API, reminder delivery, deployment, and limits |
 | [`docs/FILES_PLAN.md`](docs/FILES_PLAN.md) | Files: personal drive design and the link model |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | participating in development: code, tests, documentation, translations, and PR expectations |
