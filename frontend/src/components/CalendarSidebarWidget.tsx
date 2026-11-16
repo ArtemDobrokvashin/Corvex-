@@ -58,6 +58,7 @@ export default function CalendarSidebarWidget({
   const setSelectedDate = useCalendarStore((s) => s.setSelectedDate);
   const upsertEvent = useCalendarStore((s) => s.upsertEvent);
   const deleteEvent = useCalendarStore((s) => s.deleteEvent);
+  const serverSynced = useCalendarStore((s) => s.serverSynced);
 
   const [quickTitle, setQuickTitle] = useState('');
   const [quickTime, setQuickTime] = useState('14:00');
@@ -479,7 +480,11 @@ export default function CalendarSidebarWidget({
 
         {/* Footer button to open full /calendar */}
         <footer className="shrink-0 border-t border-line bg-canvas px-3.5 py-2.5">
-          <p className="mb-2 text-[11px] leading-relaxed text-muted">{t('События сохраняются только в этом браузере и не синхронизируются. Напоминания работают, пока приложение открыто.')}</p>
+          <p className="mb-2 text-[11px] leading-relaxed text-muted">
+            {serverSynced
+              ? t('Серверные напоминания включены: они приходят на почту даже при закрытом браузере.')
+              : t('События сохраняются только в этом браузере и не синхронизируются. Напоминания работают, пока приложение открыто.')}
+          </p>
           <button
             type="button"
             onClick={openFullCalendar}
