@@ -24,17 +24,33 @@
 | Домен | Префикс | Ресурсы |
 |---|---|---|
 | Auth | `/auth/**` | login, MFA verify, refresh, logout, me (права и квота), TOTP, app-passwords, JWKS |
-| Почта | `/mail/**` | папки, письма, флаги, отправка (вложения — base64 в теле), черновики, вложения к скачиванию, внешние ящики и импорт архива |
+| Почта | `/mail/**` | папки, письма, флаги, отправка (вложения — base64 в теле), черновики, вложения к скачиванию, адресная книга, внешние ящики и импорт архива |
 | Календарь | `/calendar/events` | события: список, создание, изменение, удаление |
 | Чат | `/chat/**`, `/files/**` | комнаты, личные диалоги, участники, история, реакции, закрепления, прочтения, поиск, presence, файлы |
 | Файлы (диск) | `/drive/**` | папки, файлы, квота, корзина, ссылки |
 | Админ | `/admin/**` | пользователи, группы и права, настройки, аудит, аналитика, health, backup |
 
-Правила автосортировки, контакты, подписи и автоответ «отпуск» пока не реализованы: таблицы
-в схеме БД есть как заготовка, но контроллеров и интерфейса нет. В [`api/mail-api.yaml`](api/mail-api.yaml)
+Правила автосортировки, подписи и автоответ «отпуск» пока не реализованы: таблицы в схеме БД
+есть как заготовка, но контроллеров и интерфейса нет. В [`api/mail-api.yaml`](api/mail-api.yaml)
 такие операции помечены `x-corvex-status: planned`. Поиск в веб-почте фильтрует уже
 загруженный список на клиенте; полнотекстовый `/mail/search` на Elasticsearch не реализован,
 хотя индекс наполняется.
+
+Адресная книга реализована: `GET/POST /mail/contacts`, `PUT/DELETE /mail/contacts/{id}`,
+`POST /mail/contacts/import` (multipart vCard/CSV) и `GET /mail/contacts/export`.
+Право — `MAIL_READ_OWN`: книга личная, доступа администратора к чужим контактам нет.
+
+Перенос почты из внешнего ящика оформлен заданиями: `POST /mail/migration/preview`
+(оценка объёма и квоты), `POST /mail/migration`, `GET /mail/migration/{id}`,
+`GET /mail/migration/{id}/report`, `POST /mail/migration/{id}/pause|resume|cancel`.
+Право — `MAIL_EXTERNAL_ACCOUNTS` для своего ящика, `ADMIN_MAIL_POLICY` — для чужого.
+
+Онбординг: `GET /api/v1/onboarding`, `POST /api/v1/onboarding/migration/dismiss|not-needed|reset`.
+Состояние персональное, право `MAIL_READ_OWN`; «выполнено» выводится из заданий переноса.
+
+Админский контур: `GET /api/v1/mail/admin/migrations` (сводка по сотрудникам),
+`POST /api/v1/mail/admin/migrations/bulk` (CSV без паролей) и
+`POST …/{ownerId}/quota-bump`. Право — `ADMIN_MAIL_POLICY`.
 
 ## 3. Что реализовано в webmail
 

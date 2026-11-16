@@ -12,6 +12,11 @@ spring:
     password: ${ELASTIC_PASSWORD:}
   application:
     name: mail-storage-service
+  servlet:
+    multipart:
+      # Импорт адресной книги: vCard/CSV до 5 МиБ плюс запас на multipart-обёртку.
+      max-file-size: 6MB
+      max-request-size: 8MB
   datasource:
     url: jdbc:postgresql://${POSTGRES_HOST:postgres}:5432/mail_db
     username: ${POSTGRES_USER:corvex}

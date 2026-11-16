@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { CheckCircle2, Maximize2, Minimize2, Paperclip, Send, Trash2, X } from 'lucide-react';
 import type { ExternalMailAccount } from '../../api/externalMailApi';
 import { ApiError } from '../../api/httpClient';
@@ -21,10 +21,12 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function ComposePanel({ initial, currentEmail, externalAccounts, onClose, onSend, autoSave = true, initialDraft, initialFiles }: {
+export function ComposePanel({ initial, currentEmail, externalAccounts, onClose, onSend, autoSave = true, initialDraft, initialFiles, contactSuggestions = [] }: {
   initial: ComposeDraft;
   currentEmail: string;
   externalAccounts: ExternalMailAccount[];
+  /** Адреса из личной адресной книги для подсказок в полях «Кому» и «Копия». */
+  contactSuggestions?: string[];
   onClose: () => void;
   /** false — письмо ушло, но копию в «Отправленные» сохранить не удалось. */
   onSend: (draft: ComposeDraft, files: File[]) => Promise<boolean | void>;
@@ -35,6 +37,7 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
   initialFiles?: File[];
 }) {
   const { t } = useI18n();
+  const suggestionsId = useId();
   const [draft, setDraft] = useState(initial);
   const [showCc, setShowCc] = useState(Boolean(initial.cc));
   const [files, setFiles] = useState<File[]>(() =>
@@ -206,13 +209,16 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
           )}
           <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
             <label htmlFor="compose-to" className="w-12 shrink-0 text-[13px] text-faint">{t('Кому')}</label>
-            <input id="compose-to" required type="text" inputMode="email" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} placeholder="user@company.local" className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-faint focus:ring-0" />
+            <input id="compose-to" required type="text" inputMode="email" list={suggestionsId} value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} placeholder="user@company.local" className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-faint focus:ring-0" />
+            <datalist id={suggestionsId}>
+              {contactSuggestions.map((email) => <option key={email} value={email} />)}
+            </datalist>
             {!showCc && <button type="button" onClick={() => setShowCc(true)} className="shrink-0 text-xs font-medium text-muted hover:text-ink">{t('Копия')}</button>}
           </div>
           {showCc && (
             <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
               <label htmlFor="compose-cc" className="w-12 shrink-0 text-[13px] text-faint">{t('Копия')}</label>
-              <input id="compose-cc" type="text" inputMode="email" value={draft.cc ?? ''} onChange={(e) => setDraft({ ...draft, cc: e.target.value })} placeholder="user@company.local" className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-faint focus:ring-0" />
+              <input id="compose-cc" type="text" inputMode="email" list={suggestionsId} value={draft.cc ?? ''} onChange={(e) => setDraft({ ...draft, cc: e.target.value })} placeholder="user@company.local" className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-faint focus:ring-0" />
             </div>
           )}
           <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">

@@ -355,9 +355,76 @@ paths:
     get: { summary: Правила автосортировки пользователя, responses: { '200': { description: Список по позиции } } }
     post: { summary: Создать правило (условия/действия JSON — см. схему mail_rules), responses: { '201': { description: Создано } } }
   /mail/contacts:
-    x-corvex-status: planned
-    get: { summary: Адресная книга с группами, responses: { '200': { description: Контакты } } }
-    post: { summary: Добавить контакт, responses: { '201': { description: Добавлен } } }
+    get:
+      summary: Личная адресная книга с поиском (MAIL_READ_OWN)
+      description: |
+        Контакты принадлежат владельцу из JWT subject. Администратор не имеет доступа
+        к чужой книге. Поиск идёт по имени, адресу и организации без учёта регистра.
+      parameters:
+        - { name: q, in: query, schema: { type: string }, description: Подстрока имени, адреса или организации }
+        - { name: limit, in: query, schema: { type: integer, default: 500, maximum: 1000 } }
+      responses:
+        '200':
+          description: Контакты, отсортированные по имени
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Contact' } } } }
+        '403': { description: Нет права MAIL_READ_OWN }
+    post:
+      summary: Добавить контакт
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ContactInput' } } }
+      responses:
+        '201': { description: Контакт создан, content: { application/json: { schema: { $ref: '#/components/schemas/Contact' } } } }
+        '400': { description: Некорректный адрес }
+        '409': { description: Контакт с таким адресом уже есть или достигнут лимит 10 000 }
+  /mail/contacts/{contactId}:
+    put:
+      summary: Изменить контакт
+      parameters: [{ name: contactId, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ContactInput' } } }
+      responses:
+        '200': { description: Сохранён }
+        '404': { description: Контакт не найден или принадлежит другому пользователю }
+        '409': { description: Адрес уже занят другим контактом }
+    delete:
+      summary: Удалить контакт
+      parameters: [{ name: contactId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '204': { description: Удалён }
+        '404': { description: Контакт не найден или принадлежит другому пользователю }
+  /mail/contacts/import:
+    post:
+      summary: Импорт vCard или CSV
+      description: |
+        Принимает .vcf/.vcard или .csv/.tsv до 5 МиБ; кодировка определяется по BOM,
+        затем строгим UTF-8, затем Windows-1251. Существующие адреса не перезаписываются:
+        заполняются только пустые поля. Повторный импорт безопасен.
+      parameters:
+        - { name: format, in: query, schema: { type: string, enum: [AUTO, VCARD, CSV], default: AUTO } }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200':
+          description: Итог импорта со счётчиками и строками, которые не удалось перенести
+          content: { application/json: { schema: { $ref: '#/components/schemas/ContactImportResult' } } }
+        '413': { description: Файл больше 5 МиБ }
+  /mail/contacts/export:
+    get:
+      summary: Экспорт адресной книги
+      parameters:
+        - { name: format, in: query, schema: { type: string, enum: [vcf, csv], default: vcf } }
+      responses:
+        '200': { description: Файл vCard 3.0 или CSV с BOM для Excel }
+        '403': { description: Нет права MAIL_READ_OWN }
   /mail/signatures:
     x-corvex-status: planned
     get: { summary: Подписи пользователя, responses: { '200': { description: Список } } }
@@ -366,6 +433,186 @@ paths:
     x-corvex-status: planned
     get: { summary: Настройки автоответа (отпуск), responses: { '200': { description: Настройки } } }
     put: { summary: Включить/изменить автоответ, responses: { '200': { description: Сохранено } } }
+  # --- Админский перенос: сводка, массовый CSV, квота ---------------------------
+  /mail/admin/migrations:
+    get:
+      summary: Сводка переноса по сотрудникам (ADMIN_MAIL_POLICY)
+      description: |
+        Только те, у кого есть приглашение или задание. Показывает состояние
+        приглашения, онбординга и задания, перенесённые письма, квоту и занятое место.
+      responses:
+        '200':
+          description: Сводка; при недоступности auth-service квота и ФИО могут быть пустыми
+          content: { application/json: { schema: { $ref: '#/components/schemas/AdminMigrationSummary' } } }
+        '403': { description: Нет права ADMIN_MAIL_POLICY }
+  /mail/admin/migrations/bulk:
+    post:
+      summary: Массовое приглашение из CSV
+      description: |
+        Заголовок `email, source_host, source_login` (разделитель `,`, `;` или табуляция).
+        Пароли в файле не принимаются: сотрудник вводит пароль приложения сам.
+        Неизвестные адреса и повторы попадают в `issues`, остальные строки применяются.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200':
+          description: Итог разбора и число созданных приглашений
+          content: { application/json: { schema: { $ref: '#/components/schemas/AdminMigrationBulkResult' } } }
+        '403': { description: Нет права ADMIN_MAIL_POLICY }
+        '413': { description: Файл больше 1 МиБ }
+  /mail/admin/migrations/{ownerId}/quota-bump:
+    post:
+      summary: Поднять квоту из отчёта о переносе
+      parameters: [{ name: ownerId, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                quotaBytes: { type: integer, format: int64, description: Новое значение квоты }
+                addBytes: { type: integer, format: int64, description: Прибавка к текущей квоте }
+      responses:
+        '200':
+          description: Новая квота и занятое место
+          content: { application/json: { schema: { $ref: '#/components/schemas/AdminMigrationQuotaResult' } } }
+        '400': { description: Квота не указана или вне допустимого диапазона }
+        '403': { description: Нет права ADMIN_MAIL_POLICY }
+        '404': { description: Сотрудник не найден }
+  # --- Онбординг после первого входа -------------------------------------------
+  # Состояние персональное: администратор его не читает и не меняет.
+  /onboarding:
+    get:
+      summary: Состояние предложения «Перенести почту»
+      description: |
+        `migrationSuggested` — показывать ли мастер. После «позже» остаётся true
+        (напоминание баннером), после «мне нечего переносить» — false. После успешного
+        задания состояние становится DONE и выводится из заданий, а не выставляется вручную.
+      responses:
+        '200':
+          description: Состояние онбординга
+          content: { application/json: { schema: { $ref: '#/components/schemas/OnboardingView' } } }
+        '403': { description: Нет права MAIL_READ_OWN }
+  /onboarding/migration/dismiss:
+    post:
+      summary: Отложить предложение переноса
+      responses:
+        '200':
+          description: Состояние после решения
+          content: { application/json: { schema: { $ref: '#/components/schemas/OnboardingView' } } }
+        '403': { description: Нет права MAIL_READ_OWN }
+  /onboarding/migration/not-needed:
+    post:
+      summary: Отметить «мне нечего переносить»
+      responses:
+        '200':
+          description: Состояние после решения
+          content: { application/json: { schema: { $ref: '#/components/schemas/OnboardingView' } } }
+        '403': { description: Нет права MAIL_READ_OWN }
+  /onboarding/migration/reset:
+    post:
+      summary: Вернуть предложение переноса
+      responses:
+        '200':
+          description: Состояние снова PENDING
+          content: { application/json: { schema: { $ref: '#/components/schemas/OnboardingView' } } }
+        '409': { description: Перенос уже выполнялся }
+  # --- Перенос почты из внешнего ящика -----------------------------------------
+  # Задание — отдельная сущность, а не «ещё одна синхронизация»: у него есть план,
+  # пауза, продолжение и отчёт. Перезапуск идемпотентен по SHA-256 письма.
+  /mail/migration/preview:
+    post:
+      summary: Оценка объёма архива до запуска (MAIL_EXTERNAL_ACCOUNTS или ADMIN_MAIL_POLICY)
+      description: |
+        Открывает источник только на чтение. Размер папки оценивается по выборке до 50
+        писем, точная сумма — если писем меньше. Показывает, помещается ли архив в квоту,
+        и какие папки будут пропущены (All Mail, Important, Starred у Gmail).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MigrationScopeRequest' }
+      responses:
+        '200':
+          description: План переноса
+          content: { application/json: { schema: { $ref: '#/components/schemas/MigrationPreview' } } }
+        '403': { description: Нет доступа к внешнему ящику }
+        '502': { description: Источник недоступен, ошибка AUTH/TLS/NETWORK/PROTOCOL }
+  /mail/migration:
+    get:
+      summary: Последние 20 заданий переноса пользователя
+      responses:
+        '200':
+          description: Задания с папками и счётчиками
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/MigrationJob' } } } }
+    post:
+      summary: Создать задание переноса
+      description: |
+        Повторяет preview, сохраняет план и ставит задание в отдельную очередь
+        `corvex-mail-migration`. Второе активное задание по тому же ящику отклоняется.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MigrationScopeRequest' }
+      responses:
+        '202':
+          description: Задание принято
+          content: { application/json: { schema: { $ref: '#/components/schemas/MigrationJob' } } }
+        '403': { description: Нет доступа к внешнему ящику }
+        '409': { description: По ящику уже есть активное задание или в источнике нет папок }
+        '502': { description: Источник недоступен }
+  /mail/migration/{jobId}:
+    get:
+      summary: Состояние задания
+      parameters: [{ name: jobId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200':
+          description: Задание
+          content: { application/json: { schema: { $ref: '#/components/schemas/MigrationJob' } } }
+        '404': { description: Задание не найдено или принадлежит другому пользователю }
+  /mail/migration/{jobId}/report:
+    get:
+      summary: Отчёт по папкам и остатку квоты
+      parameters: [{ name: jobId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200':
+          description: Отчёт
+          content: { application/json: { schema: { $ref: '#/components/schemas/MigrationReport' } } }
+        '404': { description: Задание не найдено }
+  /mail/migration/{jobId}/pause:
+    post:
+      summary: Приостановить перенос
+      description: Текущее письмо дописывается, курсор папки сохраняется; продолжение не перечитывает архив.
+      parameters: [{ name: jobId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Задание в статусе PAUSED, content: { application/json: { schema: { $ref: '#/components/schemas/MigrationJob' } } } }
+        '404': { description: Задание не найдено }
+        '409': { description: Задание не выполняется }
+  /mail/migration/{jobId}/resume:
+    post:
+      summary: Продолжить приостановленное или неудавшееся задание
+      parameters: [{ name: jobId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Задание снова в очереди, content: { application/json: { schema: { $ref: '#/components/schemas/MigrationJob' } } } }
+        '404': { description: Задание не найдено }
+        '409': { description: Задание нельзя продолжить или оно уже выполняется }
+  /mail/migration/{jobId}/cancel:
+    post:
+      summary: Отменить перенос
+      description: Уже перенесённые письма остаются; отмена необратима, для повтора нужно новое задание.
+      parameters: [{ name: jobId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Задание в статусе CANCELLED, content: { application/json: { schema: { $ref: '#/components/schemas/MigrationJob' } } } }
+        '404': { description: Задание не найдено }
   # --- Собственные домены (ADMIN_MAIL_POLICY) ---------------------------------
   # readiness вычисляется только из подтверждённого James и свежих DNS-проверок;
   # «домен добавлен» само по себе никогда не означает «приём работает».
@@ -445,6 +692,195 @@ components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
   schemas:
+    AdminMigrationRow:
+      type: object
+      properties:
+        ownerId: { type: string, format: uuid }
+        email: { type: string, format: email }
+        displayName: { type: string }
+        invitationStatus: { type: string, nullable: true, enum: [PENDING, STARTED, DONE, DISMISSED] }
+        migrationState: { type: string, nullable: true, enum: [PENDING, DISMISSED, NOT_NEEDED, DONE] }
+        jobStatus: { type: string, nullable: true, enum: [QUEUED, RUNNING, PAUSED, DONE, PARTIAL, FAILED, CANCELLED] }
+        jobId: { type: string, format: uuid, nullable: true }
+        migratedMessages: { type: integer }
+        quotaBytes: { type: integer, format: int64 }
+        usedBytes: { type: integer, format: int64 }
+        sourceHost: { type: string, nullable: true }
+        sourceLogin: { type: string, nullable: true }
+    AdminMigrationTotals:
+      type: object
+      properties:
+        employees: { type: integer }
+        invited: { type: integer }
+        notStarted: { type: integer }
+        running: { type: integer }
+        done: { type: integer }
+        failed: { type: integer }
+        migratedMessages: { type: integer, format: int64 }
+    AdminMigrationSummary:
+      type: object
+      properties:
+        rows:
+          type: array
+          items: { $ref: '#/components/schemas/AdminMigrationRow' }
+        totals: { $ref: '#/components/schemas/AdminMigrationTotals' }
+        notes: { type: array, items: { type: string } }
+    AdminMigrationBulkResult:
+      type: object
+      properties:
+        rows: { type: integer }
+        invited: { type: integer }
+        skipped: { type: integer }
+        truncated: { type: boolean, description: Обработаны первые 1000 строк }
+        issues:
+          type: array
+          items:
+            type: object
+            properties:
+              line: { type: integer }
+              value: { type: string }
+              reason: { type: string }
+    AdminMigrationQuotaResult:
+      type: object
+      properties:
+        ownerId: { type: string, format: uuid }
+        quotaBytes: { type: integer, format: int64 }
+        usedBytes: { type: integer, format: int64 }
+        fits: { type: boolean }
+        remainingBytes: { type: integer, format: int64 }
+    OnboardingAccountRef:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        emailAddress: { type: string, format: email }
+        provider: { type: string }
+    OnboardingView:
+      type: object
+      properties:
+        migrationState: { type: string, enum: [PENDING, DISMISSED, NOT_NEEDED, DONE] }
+        migrationSuggested: { type: boolean }
+        activeJobId: { type: string, format: uuid, nullable: true }
+        lastJobStatus: { type: string, nullable: true }
+        dismissedAt: { type: string, format: date-time, nullable: true }
+        accounts:
+          type: array
+          items: { $ref: '#/components/schemas/OnboardingAccountRef' }
+        suggestedEmail: { type: string, nullable: true, description: Адрес из админского CSV }
+        suggestedSourceHost: { type: string, nullable: true }
+        suggestedSourceLogin: { type: string, nullable: true }
+    MigrationScopeRequest:
+      type: object
+      required: [accountId]
+      properties:
+        accountId: { type: string, format: uuid, description: Подключённый внешний ящик }
+        includeAllMail: { type: boolean, default: false, description: 'Переносить All Mail, Important и Starred у Gmail' }
+        skipFolders:
+          type: array
+          description: Папки, которые пользователь исключил вручную
+          items: { type: string }
+    MigrationFolderEstimate:
+      type: object
+      properties:
+        remoteFolder: { type: string }
+        specialUse: { type: string, nullable: true }
+        messageCount: { type: integer }
+        estimatedBytes: { type: integer, format: int64 }
+    MigrationPreview:
+      type: object
+      properties:
+        accountId: { type: string, format: uuid }
+        includeAllMail: { type: boolean }
+        folders:
+          type: array
+          items: { $ref: '#/components/schemas/MigrationFolderEstimate' }
+        skippedFolders: { type: array, items: { type: string } }
+        totalMessages: { type: integer, format: int64 }
+        totalBytes: { type: integer, format: int64, description: Оценка по выборке до 50 писем на папку }
+        quotaBytes: { type: integer, format: int64, description: '0 — без лимита или квота недоступна' }
+        usedBytes: { type: integer, format: int64 }
+        fits: { type: boolean }
+        warnings: { type: array, items: { type: string } }
+    MigrationFolder:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        remoteFolder: { type: string }
+        specialUse: { type: string, nullable: true }
+        state: { type: string, enum: [PENDING, RUNNING, DONE, SKIPPED, FAILED] }
+        estimatedMessages: { type: integer }
+        estimatedBytes: { type: integer, format: int64 }
+        migratedMessages: { type: integer }
+        skippedMessages: { type: integer }
+        error: { type: string, nullable: true }
+    MigrationJob:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        accountId: { type: string, format: uuid }
+        accountEmail: { type: string, format: email }
+        status: { type: string, enum: [QUEUED, RUNNING, PAUSED, DONE, PARTIAL, FAILED, CANCELLED] }
+        mode: { type: string, enum: [FULL, DELTA] }
+        includeAllMail: { type: boolean }
+        estimatedMessages: { type: integer, format: int64 }
+        estimatedBytes: { type: integer, format: int64 }
+        migratedMessages: { type: integer }
+        skippedMessages: { type: integer }
+        error: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        startedAt: { type: string, format: date-time, nullable: true }
+        finishedAt: { type: string, format: date-time, nullable: true }
+        folders:
+          type: array
+          items: { $ref: '#/components/schemas/MigrationFolder' }
+    MigrationReport:
+      type: object
+      properties:
+        job: { $ref: '#/components/schemas/MigrationJob' }
+        quotaBytes: { type: integer, format: int64 }
+        usedBytes: { type: integer, format: int64 }
+        remainingBytes: { type: integer, format: int64, description: '−1 — квота неизвестна' }
+        notes: { type: array, items: { type: string } }
+    Contact:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        displayName: { type: string, maxLength: 256 }
+        email: { type: string, format: email }
+        phone: { type: string, nullable: true, maxLength: 64 }
+        organization: { type: string, nullable: true, maxLength: 256 }
+        jobTitle: { type: string, nullable: true, maxLength: 256 }
+        note: { type: string, nullable: true, maxLength: 4000 }
+        groupName: { type: string, nullable: true, maxLength: 128 }
+        source: { type: string, enum: [MANUAL, VCARD, CSV] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ContactInput:
+      type: object
+      required: [email]
+      properties:
+        displayName: { type: string, maxLength: 256, description: 'Пусто — берётся часть адреса до @' }
+        email: { type: string, format: email }
+        phone: { type: string, maxLength: 64 }
+        organization: { type: string, maxLength: 256 }
+        jobTitle: { type: string, maxLength: 256 }
+        note: { type: string, maxLength: 4000 }
+        groupName: { type: string, maxLength: 128 }
+    ContactImportResult:
+      type: object
+      properties:
+        total: { type: integer }
+        created: { type: integer }
+        updated: { type: integer }
+        skipped: { type: integer }
+        truncated: { type: boolean, description: 'Достигнут лимит адресной книги: остаток файла не обработан' }
+        issues:
+          type: array
+          items:
+            type: object
+            properties:
+              line: { type: integer }
+              value: { type: string }
+              reason: { type: string }
     ExternalMailPreset:
       type: object
       properties:
