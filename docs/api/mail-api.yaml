@@ -319,6 +319,11 @@ paths:
     get: { summary: Назначенный ящик и статус (владелец или ADMIN_MAIL_POLICY), responses: { '200': { description: Аккаунт без секрета }, '404': { description: Не найден или чужой } } }
     put:
       summary: Изменить внешний ящик (ADMIN_MAIL_POLICY); пустой secret сохраняет текущий пароль
+      description: |
+        Для OAuth-ящика `oauthConnectionId` заменяет токены после повторного входа, не трогая
+        настройки, курсоры папок и журнал перенесённых писем. Тот же вызов переводит парольный
+        ящик Gmail/Microsoft 365 на OAuth (`authType=OAUTH2` + `oauthConnectionId`): пароль
+        удаляется, история переноса сохраняется. Без согласия переключиться на OAuth нельзя.
       requestBody:
         required: true
         content:
@@ -348,6 +353,59 @@ paths:
       responses: { '200': { description: Обновлённый аккаунт } }
   /mail/external-accounts/{accountId}/runs:
     get: { summary: Запуски синхронизации (владелец или ADMIN_MAIL_POLICY), parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: История запусков } } }
+  /mail/external-accounts/oauth/providers:
+    get:
+      summary: Доступные входы через провайдера (MAIL_READ_OWN) — включён ли каждый и почему нет
+      responses:
+        '200':
+          description: Список провайдеров; enabled=false, если не заданы client id/secret или CORVEX_PUBLIC_BASE_URL
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ExternalMailOAuthProviderView' }
+  /mail/external-accounts/oauth/authorize:
+    post:
+      summary: Начать вход через Google/Microsoft (MAIL_EXTERNAL_ACCOUNTS или ADMIN_MAIL_POLICY)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExternalMailOAuthAuthorizeRequest' }
+      responses:
+        '200':
+          description: Одноразовый state и адрес страницы согласия; браузер переходит по нему
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExternalMailOAuthAuthorizeResponse' }
+        '400': { description: Неизвестный провайдер или внешний адрес возврата }
+        '403': { description: Нет права подключать внешние ящики }
+        '503': { description: Провайдер не настроен (нет client id/secret или публичного адреса) }
+  /mail/external-accounts/oauth/callback:
+    get:
+      summary: Возврат из Google/Microsoft (без JWT; доверие строится на одноразовом state)
+      parameters:
+        - { name: code, in: query, required: false, schema: { type: string } }
+        - { name: state, in: query, required: true, schema: { type: string } }
+        - { name: error, in: query, required: false, schema: { type: string } }
+      responses:
+        '302':
+          description: |
+            Редирект в приложение: `?oauth=connected&connection=<uuid>&provider=GOOGLE|MICROSOFT&email=<адрес>`
+            либо `?oauth=error&reason=invalid_state|state_expired|access_denied|no_code|exchange_failed`.
+            Ящик на этом шаге не создаётся.
+  /mail/external-accounts/oauth/connections/{connectionId}:
+    get:
+      summary: Итог согласия до создания ящика — адрес и срок (владелец или ADMIN_MAIL_POLICY)
+      parameters: [{ name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200':
+          description: Провайдер, адрес и срок подключения
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExternalMailOAuthConnectionView' }
+        '403': { description: Подключение принадлежит другому пользователю }
+        '404': { description: Подключение не найдено }
   /mail/external-accounts/{accountId}/audit:
     get: { summary: Аудит внешнего ящика без секретов (ADMIN_MAIL_POLICY), parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Аудит } } }
   /mail/rules:
@@ -925,7 +983,7 @@ components:
         emailAddress: { type: string, format: email }
         displayName: { type: string, nullable: true }
         provider: { type: string, enum: [MAIL_RU, YANDEX, GMAIL, OUTLOOK, CUSTOM] }
-        authType: { type: string, enum: [APP_PASSWORD, PASSWORD] }
+        authType: { type: string, enum: [APP_PASSWORD, PASSWORD, OAUTH2], description: "OAUTH2 — только Gmail и Microsoft 365 по IMAP; тогда секрет не передаётся" }
         incomingProtocol: { type: string, enum: [IMAP, POP3] }
         incomingHost: { type: string }
         incomingPort: { type: integer, minimum: 1, maximum: 65535 }
@@ -950,6 +1008,34 @@ components:
         saveSentOnServer: { type: boolean }
         sentFolderName: { type: string, nullable: true }
         testBeforeSave: { type: boolean }
+        oauthConnectionId: { type: string, format: uuid, nullable: true, description: "Обязательно при authType=OAUTH2: id согласия из callback" }
+    ExternalMailOAuthProviderView:
+      type: object
+      properties:
+        provider: { type: string, enum: [GOOGLE, MICROSOFT] }
+        title: { type: string, example: Microsoft 365 }
+        enabled: { type: boolean }
+        hint: { type: string }
+    ExternalMailOAuthAuthorizeRequest:
+      type: object
+      required: [provider]
+      properties:
+        provider: { type: string, enum: [GOOGLE, MICROSOFT] }
+        targetUserId: { type: string, format: uuid, nullable: true, description: "Заполняет администратор для сотрудника" }
+        returnPath: { type: string, example: /mail, description: "Локальный путь без хоста; по умолчанию /mail" }
+    ExternalMailOAuthAuthorizeResponse:
+      type: object
+      properties:
+        authorizationUrl: { type: string, format: uri }
+        state: { type: string }
+        expiresAt: { type: string, format: date-time }
+    ExternalMailOAuthConnectionView:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        provider: { type: string, enum: [GOOGLE, MICROSOFT] }
+        email: { type: string, format: email }
+        expiresAt: { type: string, format: date-time }
     ExternalMailAccount:
       allOf:
         - $ref: '#/components/schemas/ExternalMailAccountRequest'
@@ -967,6 +1053,7 @@ components:
             queuedCount: { type: integer, format: int64 }
             deliveredCount: { type: integer, format: int64 }
             failedCount: { type: integer, format: int64 }
+            reauthRequired: { type: boolean, description: "Согласие Google/Microsoft отозвано: нужен повторный вход" }
     MessageSummary:
       type: object
       properties:

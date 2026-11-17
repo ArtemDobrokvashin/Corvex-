@@ -129,6 +129,8 @@ const FOLDER_ICONS: Record<string, typeof Inbox> = {
 };
 
 const MAIL_REFRESH_INTERVAL_MS = 15_000;
+/** Метка о том, что возврат из OAuth относится к повторному входу, а не к новому ящику. */
+const RELINK_STORAGE_KEY = 'corvex.oauth.relink';
 
 function MoveToFolder({ folders, current, onMove, disabled = false }: { folders: FolderTab[]; current: string; onMove: (folder: string) => void; disabled?: boolean }) {
   const { t } = useI18n();
@@ -208,6 +210,11 @@ export default function MailPage() {
   const [contactsOpen, setContactsOpen] = useState(false);
   const [contactEmails, setContactEmails] = useState<string[]>([]);
   const [migrationOpen, setMigrationOpen] = useState(false);
+  const [oauthReturn, setOauthReturn] = useState<
+    { id: string; provider: 'GOOGLE' | 'MICROSOFT'; email: string } | null
+  >(null);
+  const [oauthError, setOauthError] = useState<string | null>(null);
+  const [oauthNotice, setOauthNotice] = useState<string | null>(null);
   const [onboarding, setOnboarding] = useState<OnboardingView | null>(null);
   const migrationOfferedRef = useRef(false);
 
@@ -762,6 +769,44 @@ export default function MailPage() {
       cancelled = true;
     };
   }, [activeRealId, loadedBodies]);
+
+  // Возврат из Google/Microsoft: провайдер приводит браузер на callback, а тот — сюда.
+  useEffect(() => {
+    const outcome = searchParams.get('oauth');
+    if (!outcome) return;
+    const connection = searchParams.get('connection');
+    const provider = searchParams.get('provider');
+    const email = searchParams.get('email');
+    const reason = searchParams.get('reason');
+    if (outcome === 'connected' && connection && (provider === 'GOOGLE' || provider === 'MICROSOFT') && email) {
+      // Повторный вход уже подключённого ящика: заменяем токены, ничего не создавая заново.
+      const relinkId = window.sessionStorage.getItem(RELINK_STORAGE_KEY);
+      window.sessionStorage.removeItem(RELINK_STORAGE_KEY);
+      if (relinkId) {
+        void externalMailApi.update(relinkId, { authType: 'OAUTH2', oauthConnectionId: connection })
+          .then(() => setOauthNotice(t('Вход восстановлен: ящик снова получает почту')))
+          .catch((relinkError) => setOauthNotice(errorMessage(relinkError)));
+      } else {
+        setOauthError(null);
+        setOauthReturn({ id: connection, provider, email });
+        setMigrationOpen(true);
+      }
+    } else if (outcome === 'error') {
+      const reasons: Record<string, string> = {
+        access_denied: t('Доступ не выдан: вход отменён или согласие отозвано'),
+        invalid_state: t('Ссылка входа устарела: начните вход заново'),
+        state_expired: t('Ссылка входа уже использована или устарела: начните вход заново'),
+        exchange_failed: t('Не удалось получить доступ у провайдера: повторите вход позже'),
+        no_code: t('Провайдер не вернул код подтверждения: начните вход заново'),
+      };
+      setOauthReturn(null);
+      setOauthError(reasons[reason ?? ''] ?? t('Вход через провайдера не завершён: попробуйте снова'));
+      setMigrationOpen(true);
+    }
+    const next = new URLSearchParams(searchParams);
+    ['oauth', 'connection', 'provider', 'email', 'reason'].forEach((key) => next.delete(key));
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, t]);
 
   // Consume commands separately so a source-email link survives the initial folder load.
   useEffect(() => {
@@ -1636,6 +1681,11 @@ export default function MailPage() {
               {loadError}
             </div>
           )}
+          {oauthNotice && (
+            <div className="m-4 rounded-xl border border-line bg-chrome px-4 py-3 text-sm leading-relaxed text-ink-soft" role="status">
+              {oauthNotice}
+            </div>
+          )}
 
           {visible.map((m) => {
             const selected = active?.id === m.id;
@@ -2120,8 +2170,12 @@ export default function MailPage() {
           existingAccount={onboarding?.accounts[0] ?? null}
           suggestedHost={onboarding?.suggestedSourceHost ?? null}
           suggestedLogin={onboarding?.suggestedSourceLogin ?? null}
+          oauthReturn={oauthReturn}
+          oauthError={oauthError}
           onClose={() => {
             setMigrationOpen(false);
+            setOauthReturn(null);
+            setOauthError(null);
             onboardingApi.state().then(setOnboarding).catch(() => undefined);
           }}
           onDismiss={dismissMigration}

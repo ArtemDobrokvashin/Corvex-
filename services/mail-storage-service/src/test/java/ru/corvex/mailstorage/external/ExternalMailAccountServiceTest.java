@@ -61,6 +61,9 @@ class ExternalMailAccountServiceTest {
     private ExternalMailSecretCipher cipher;
     private ExternalMailEndpointPolicy endpointPolicy;
     private ExternalMailClient client;
+    private ExternalMailOAuthService oauthFlows;
+    private ExternalMailOAuthTokenService oauthTokens;
+    private ru.corvex.mailstorage.repository.ExternalMailOAuthTokenRepository oauthTokenRows;
     private ExternalMailAccountService service;
 
     private final AtomicReference<ExternalMailAccount> savedAccount = new AtomicReference<>();
@@ -77,6 +80,9 @@ class ExternalMailAccountServiceTest {
         cipher = new ExternalMailSecretCipher(validKey());
         endpointPolicy = mock(ExternalMailEndpointPolicy.class);
         client = mock(ExternalMailClient.class);
+        oauthFlows = mock(ExternalMailOAuthService.class);
+        oauthTokens = mock(ExternalMailOAuthTokenService.class);
+        oauthTokenRows = mock(ru.corvex.mailstorage.repository.ExternalMailOAuthTokenRepository.class);
         service = service(properties(true, 2), cipher);
 
         when(endpointPolicy.validate(anyString(), anyInt(), any(), anyBoolean())).thenAnswer(inv -> {
@@ -303,6 +309,71 @@ class ExternalMailAccountServiceTest {
                 () -> service.create(ownerId, OWN, spec.build())).getStatusCode());
 
         verify(accounts, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void oauthRelinkStoresNewTokensAndKeepsDeduplication() {
+        ExternalMailAccount existing = existingAccount(ownerId);
+        // Ящик уже подключён через Google: меняются только токены, источник остаётся тем же.
+        existing.setProvider(ExternalMailAccount.Provider.GMAIL);
+        existing.setAuthType(ExternalMailAccount.AuthType.OAUTH2);
+        existing.setIncomingHost("imap.gmail.com");
+        existing.setIncomingPort(993);
+        existing.setSecretEnc(null);
+        existing.setSmtpEnabled(false);
+        existing.setSendEnabled(false);
+        when(accounts.findById(existing.getId())).thenReturn(Optional.of(existing));
+        UUID connectionId = UUID.randomUUID();
+        ExternalMailOAuthService.Claimed claimed = new ExternalMailOAuthService.Claimed(
+                "GOOGLE", "external@mail.test", "enc-at", "enc-rt", Instant.now().plusSeconds(3600), "scope");
+        when(oauthFlows.claim(ownerId, connectionId, ExternalMailOAuthProvider.GOOGLE, "external@mail.test"))
+                .thenReturn(claimed);
+
+        RequestSpec relink = new RequestSpec();
+        relink.provider = ExternalMailAccount.Provider.GMAIL;
+        relink.authType = ExternalMailAccount.AuthType.OAUTH2;
+        relink.secret = null;
+        relink.smtpEnabled = false;
+        relink.sendEnabled = false;
+        relink.oauthConnectionId = connectionId;
+
+        service.update(ownerId, OWN, existing.getId(), relink.build());
+
+        verify(oauthFlows).claim(ownerId, connectionId, ExternalMailOAuthProvider.GOOGLE, "external@mail.test");
+        verify(oauthTokens).store(existing.getId(), claimed);
+        verify(folderStates, never()).deleteAllByAccount_Id(existing.getId());
+        verify(imported, never()).deleteAllByAccount_Id(existing.getId());
+        assertEquals("EXTERNAL_ACCOUNT_UPDATED", audits.get(audits.size() - 1).getAction());
+        assertTrue(audits.get(audits.size() - 1).getDetails().contains("oauthRelinked=true"));
+    }
+
+    @Test
+    void passwordAccountSwitchesToOauthAndDropsStoredPassword() {
+        ExternalMailAccount existing = existingAccount(ownerId);
+        existing.setProvider(ExternalMailAccount.Provider.GMAIL);
+        existing.setIncomingHost("imap.gmail.com");
+        existing.setIncomingPort(993);
+        when(accounts.findById(existing.getId())).thenReturn(Optional.of(existing));
+        UUID connectionId = UUID.randomUUID();
+        ExternalMailOAuthService.Claimed claimed = new ExternalMailOAuthService.Claimed(
+                "GOOGLE", "external@mail.test", "enc-at", "enc-rt", Instant.now().plusSeconds(3600), "scope");
+        when(oauthFlows.claim(ownerId, connectionId, ExternalMailOAuthProvider.GOOGLE, "external@mail.test"))
+                .thenReturn(claimed);
+
+        RequestSpec conversion = new RequestSpec();
+        conversion.provider = ExternalMailAccount.Provider.GMAIL;
+        conversion.authType = ExternalMailAccount.AuthType.OAUTH2;
+        conversion.secret = null;
+        conversion.smtpEnabled = false;
+        conversion.sendEnabled = false;
+        conversion.oauthConnectionId = connectionId;
+
+        service.update(ownerId, OWN, existing.getId(), conversion.build());
+
+        assertEquals(ExternalMailAccount.AuthType.OAUTH2, existing.getAuthType());
+        assertNull(existing.getSecretEnc(), "пароль не должен оставаться рядом с согласием");
+        assertFalse(existing.isSmtpEnabled(), "отправка через OAuth-ящик пока не поддерживается");
+        verify(oauthTokens).store(existing.getId(), claimed);
     }
 
     @Test
@@ -622,7 +693,7 @@ class ExternalMailAccountServiceTest {
     private ExternalMailAccountService service(ExternalMailProperties props, ExternalMailSecretCipher cipherToUse) {
         return new ExternalMailAccountService(
                 accounts, folderStates, imported, auditEvents, folders, auth,
-                cipherToUse, endpointPolicy, props, client);
+                cipherToUse, endpointPolicy, props, client, oauthFlows, oauthTokens, oauthTokenRows);
     }
 
     private static ExternalMailProperties properties(boolean enabled, int maxAccounts) {
@@ -710,7 +781,8 @@ class ExternalMailAccountServiceTest {
                 null, // deleteAfterFetch
                 null, // saveSentOnServer
                 null, // sentFolderName
-                null); // testBeforeSave
+                null, // testBeforeSave
+                null); // oauthConnectionId
     }
 
     private static final class RequestSpec {
@@ -745,6 +817,7 @@ class ExternalMailAccountServiceTest {
         Boolean saveSentOnServer = true;
         String sentFolderName = "Sent";
         Boolean testBeforeSave = false;
+        UUID oauthConnectionId = null;
 
         ExternalMailDtos.AccountRequest build() {
             return new ExternalMailDtos.AccountRequest(
@@ -753,7 +826,7 @@ class ExternalMailAccountServiceTest {
                     smtpEnabled, smtpHost, smtpPort, smtpSecurity, smtpUsername, targetFolderId,
                     enabled, syncEnabled, sendEnabled, initialSyncMode, syncScope, pollIntervalSeconds,
                     leaveOnServer, markSeenOnServer, deleteAfterFetch, saveSentOnServer, sentFolderName,
-                    testBeforeSave);
+                    testBeforeSave, oauthConnectionId);
         }
     }
 }

@@ -11,11 +11,13 @@ import ru.corvex.mailstorage.client.AuthUserClient;
 import ru.corvex.mailstorage.domain.ExternalMailAccount;
 import ru.corvex.mailstorage.domain.ExternalMailAuditEvent;
 import ru.corvex.mailstorage.domain.ExternalMailImportedMessage;
+import ru.corvex.mailstorage.domain.ExternalMailOAuthToken;
 import ru.corvex.mailstorage.domain.MailFolder;
 import ru.corvex.mailstorage.repository.ExternalMailAccountRepository;
 import ru.corvex.mailstorage.repository.ExternalMailAuditEventRepository;
 import ru.corvex.mailstorage.repository.ExternalMailFolderStateRepository;
 import ru.corvex.mailstorage.repository.ExternalMailImportedMessageRepository;
+import ru.corvex.mailstorage.repository.ExternalMailOAuthTokenRepository;
 import ru.corvex.mailstorage.repository.MailFolderRepository;
 
 import java.time.Instant;
@@ -27,6 +29,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * CRUD и проверка внешних ящиков. Владелец аккаунта — пользователь Corvex, в чей ящик
@@ -49,6 +52,9 @@ public class ExternalMailAccountService {
     private final ExternalMailEndpointPolicy endpointPolicy;
     private final ExternalMailProperties props;
     private final ExternalMailClient client;
+    private final ExternalMailOAuthService oauthFlows;
+    private final ExternalMailOAuthTokenService oauthTokens;
+    private final ExternalMailOAuthTokenRepository oauthTokenRows;
 
     public ExternalMailAccountService(ExternalMailAccountRepository accounts,
                                       ExternalMailFolderStateRepository folderStates,
@@ -59,7 +65,10 @@ public class ExternalMailAccountService {
                                       ExternalMailSecretCipher cipher,
                                       ExternalMailEndpointPolicy endpointPolicy,
                                       ExternalMailProperties props,
-                                      ExternalMailClient client) {
+                                      ExternalMailClient client,
+                                      ExternalMailOAuthService oauthFlows,
+                                      ExternalMailOAuthTokenService oauthTokens,
+                                      ExternalMailOAuthTokenRepository oauthTokenRows) {
         this.accounts = accounts;
         this.folderStates = folderStates;
         this.imported = imported;
@@ -70,6 +79,9 @@ public class ExternalMailAccountService {
         this.endpointPolicy = endpointPolicy;
         this.props = props;
         this.client = client;
+        this.oauthFlows = oauthFlows;
+        this.oauthTokens = oauthTokens;
+        this.oauthTokenRows = oauthTokenRows;
     }
 
     public List<ExternalMailDtos.PresetView> presets() {
@@ -130,7 +142,13 @@ public class ExternalMailAccountService {
     public List<ExternalMailDtos.AccountView> list(UUID actorId, Set<String> authorities, UUID requestedOwnerId) {
         UUID ownerId = requestedOwnerId == null ? actorId : requestedOwnerId;
         requireManage(actorId, ownerId, authorities);
-        return accounts.findAllByOwnerIdOrderByCreatedAtAsc(ownerId).stream().map(this::toView).toList();
+        List<ExternalMailAccount> items = accounts.findAllByOwnerIdOrderByCreatedAtAsc(ownerId);
+        Set<UUID> ids = items.stream().map(ExternalMailAccount::getId).filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<UUID, ExternalMailOAuthToken> oauth = ids.isEmpty() ? Map.of()
+                : oauthTokenRows.findByAccountIdIn(ids).stream()
+                        .collect(Collectors.toMap(ExternalMailOAuthToken::getAccountId, row -> row));
+        return items.stream().map(item -> toView(item, oauth.get(item.getId()))).toList();
     }
 
     @Transactional(readOnly = true)
@@ -152,19 +170,37 @@ public class ExternalMailAccountService {
         if (accounts.existsByOwnerIdAndEmailAddressIgnoreCase(ownerId, email)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Этот внешний ящик уже подключён");
         }
-        String secret = requireSecret(req.secret(), true);
+        boolean oauth = req.authType() == ExternalMailAccount.AuthType.OAUTH2;
+        ExternalMailOAuthProvider oauthProvider = ExternalMailOAuthProvider.forAccountProvider(req.provider());
+        if (oauth && oauthProvider == null) {
+            throw bad("Вход через провайдера доступен только для Gmail и Microsoft 365");
+        }
+        // Согласие проверено провайдером, но привязать его к ящику можно только один раз
+        // и только к тому адресу, под которым пользователь вошёл.
+        ExternalMailOAuthService.Claimed claimed = oauth
+                ? oauthFlows.claim(ownerId, req.oauthConnectionId(), oauthProvider, email) : null;
+        String secret = oauth ? null : requireSecret(req.secret(), true);
+
         ExternalMailAccount account = new ExternalMailAccount();
         account.setOwnerId(ownerId);
         account.setCreatedBy(actorId);
         applyRequest(account, req, null, email, ownerId);
-        account.setSecretEnc(cipher.encrypt(secret));
-        if (Boolean.TRUE.equals(req.testBeforeSave())) {
-            testOrThrow(account, secret);
+        if (oauth) {
+            account.setSecretEnc(null);
+        } else {
+            account.setSecretEnc(cipher.encrypt(secret));
         }
         account.setNextSyncAt(account.isEnabled() && account.isSyncEnabled() ? Instant.now() : null);
         ExternalMailAccount saved = accounts.saveAndFlush(account);
+        if (oauth) {
+            oauthTokens.store(saved.getId(), claimed);
+        }
+        if (Boolean.TRUE.equals(req.testBeforeSave())) {
+            testOrThrow(saved, oauth ? null : secret);
+        }
         audit(actorId, saved, "EXTERNAL_ACCOUNT_CREATED",
-                "email=" + saved.getEmailAddress() + ", provider=" + saved.getProvider() + ", protocol=" + saved.getIncomingProtocol());
+                "email=" + saved.getEmailAddress() + ", provider=" + saved.getProvider()
+                        + ", protocol=" + saved.getIncomingProtocol() + ", auth=" + saved.getAuthType());
         return toView(saved);
     }
 
@@ -185,14 +221,54 @@ public class ExternalMailAccountService {
                 && accounts.existsByOwnerIdAndEmailAddressIgnoreCase(account.getOwnerId(), email)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Этот внешний ящик уже подключён");
         }
+        boolean oauthNow = account.getAuthType() == ExternalMailAccount.AuthType.OAUTH2;
+        boolean oauthTarget = req.authType() == ExternalMailAccount.AuthType.OAUTH2
+                || (req.authType() == null && oauthNow);
+        // Повторный вход после отзыва согласия или переход с пароля на OAuth: токены
+        // заменяются, а настройки, курсоры папок и журнал перенесённых писем остаются.
+        // Удалять и создавать ящик заново нельзя — это потеряло бы историю дедупликации
+        // и привело бы к повторному импорту.
+        ExternalMailOAuthService.Claimed relink = null;
+        if (req.oauthConnectionId() != null) {
+            if (!oauthTarget) {
+                throw bad("Согласие провайдера не используется при входе по паролю: укажите пароль приложения");
+            }
+            ExternalMailOAuthProvider relinkProvider =
+                    ExternalMailOAuthProvider.forAccountProvider(account.getProvider());
+            if (relinkProvider == null) {
+                throw bad("Вход через провайдера доступен только для Gmail и Microsoft 365");
+            }
+            relink = oauthFlows.claim(account.getOwnerId(), req.oauthConnectionId(), relinkProvider, email);
+        } else if (!oauthNow && oauthTarget) {
+            // Токены выдаются только через согласие; подменить их полем в запросе нельзя.
+            throw bad("Смените тип входа, создав подключение заново: для OAuth нужно согласие провайдера");
+        }
+        if (oauthNow && req.authType() != null && req.authType() != ExternalMailAccount.AuthType.OAUTH2
+                && (req.secret() == null || req.secret().isBlank())) {
+            throw bad("Чтобы перейти на пароль приложения, укажите пароль");
+        }
         boolean secretChanged = req.secret() != null && !req.secret().isBlank();
-        String secret = secretChanged ? requireSecret(req.secret(), true) : cipher.decrypt(account.getSecretEnc());
+        boolean switchingToPassword = oauthNow && req.authType() != null
+                && req.authType() != ExternalMailAccount.AuthType.OAUTH2;
+        if (oauthNow && secretChanged && !switchingToPassword) {
+            // Смена пароля в OAuth-ящике ничего не даёт: доступ выдан токеном. Иначе в записи
+            // остались бы одновременно пароль и согласие, и было бы непонятно, что действует.
+            // Осознанный переход на пароль — другое дело: там тип входа указан явно.
+            throw bad("Ящик входит через провайдера: пароль не используется, переподключите его через вход");
+        }
+        String secret = secretChanged ? requireSecret(req.secret(), true)
+                : (oauthNow || account.getSecretEnc() == null ? null : cipher.decrypt(account.getSecretEnc()));
         applyRequest(account, req, account, email, account.getOwnerId());
         if (secretChanged) {
             account.setSecretEnc(cipher.encrypt(secret));
         }
+        if (account.getAuthType() == ExternalMailAccount.AuthType.OAUTH2) {
+            // У OAuth-ящика не должно оставаться одновременно пароля и согласия: иначе
+            // непонятно, чем именно он входит.
+            account.setSecretEnc(null);
+        }
         if (Boolean.TRUE.equals(req.testBeforeSave())) {
-            testOrThrow(account, secret);
+            testOrThrow(account, account.getAuthType() == ExternalMailAccount.AuthType.OAUTH2 ? null : secret);
         }
         if (account.isEnabled() && account.isSyncEnabled() && account.getNextSyncAt() == null) {
             account.setNextSyncAt(Instant.now());
@@ -203,6 +279,12 @@ public class ExternalMailAccountService {
             account.setNextSyncAt(null);
         }
         ExternalMailAccount saved = accounts.saveAndFlush(account);
+        if (relink != null) {
+            oauthTokens.store(saved.getId(), relink);
+        }
+        if (oauthNow && saved.getAuthType() != ExternalMailAccount.AuthType.OAUTH2) {
+            oauthTokens.delete(saved.getId());
+        }
         boolean identityChanged = !oldIdentity.equals(sourceIdentity(saved));
         if (identityChanged) {
             folderStates.deleteAllByAccount_Id(saved.getId());
@@ -215,7 +297,8 @@ public class ExternalMailAccountService {
             saved = accounts.saveAndFlush(saved);
         }
         audit(actorId, saved, "EXTERNAL_ACCOUNT_UPDATED",
-                "email=" + saved.getEmailAddress() + ", secretChanged=" + secretChanged + ", sourceIdentityChanged=" + identityChanged);
+                "email=" + saved.getEmailAddress() + ", secretChanged=" + secretChanged
+                        + ", oauthRelinked=" + (relink != null) + ", sourceIdentityChanged=" + identityChanged);
         return toView(saved);
     }
 
@@ -276,10 +359,21 @@ public class ExternalMailAccountService {
         String email = req.emailAddress() == null || req.emailAddress().isBlank()
                 ? (existing == null ? null : existing.getEmailAddress()) : normalizeEmail(req.emailAddress());
         if (email == null) throw bad("Укажите адрес внешнего ящика");
+        // Мастер может не повторять authType при проверке уже сохранённого ящика: тип берём
+        // из записи, иначе OAuth-ящик потребовал бы пароль, которого у него нет.
+        boolean oauthCheck = req.authType() == ExternalMailAccount.AuthType.OAUTH2
+                || (req.authType() == null && existing != null
+                    && existing.getAuthType() == ExternalMailAccount.AuthType.OAUTH2);
+        if (oauthCheck && (existing == null || existing.getAuthType() != ExternalMailAccount.AuthType.OAUTH2)) {
+            // Пароля здесь нет: доступ проверяет сам провайдер при выдаче согласия.
+            throw bad("Сначала войдите через провайдера, затем проверьте подключение");
+        }
         String secret;
-        if (req.secret() != null && !req.secret().isBlank()) {
+        if (oauthCheck) {
+            secret = null;
+        } else if (req.secret() != null && !req.secret().isBlank()) {
             secret = requireSecret(req.secret(), true);
-        } else if (existing != null) {
+        } else if (existing != null && existing.getSecretEnc() != null) {
             secret = cipher.decrypt(existing.getSecretEnc());
         } else {
             throw bad("Укажите пароль приложения внешнего ящика");
@@ -302,7 +396,9 @@ public class ExternalMailAccountService {
     @Transactional
     public ExternalMailDtos.TestConnectionResponse testStored(UUID actorId, Set<String> authorities, UUID accountId) {
         ExternalMailAccount account = accessibleAccount(actorId, authorities, accountId);
-        ExternalMailDtos.TestConnectionResponse result = doTest(account, cipher.decrypt(account.getSecretEnc()));
+        ExternalMailDtos.TestConnectionResponse result = doTest(account,
+                account.getAuthType() == ExternalMailAccount.AuthType.OAUTH2 ? null
+                        : cipher.decrypt(account.getSecretEnc()));
         audit(actorId, account, "EXTERNAL_CONNECTION_TESTED",
                 "incomingOk=" + result.incomingOk() + ", smtpOk=" + result.smtpOk());
         return result;
@@ -327,6 +423,10 @@ public class ExternalMailAccountService {
         if (!account.isEnabled() || !account.isSendEnabled() || !account.isSmtpEnabled()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Отправка через этот внешний ящик отключена");
         }
+        if (account.getAuthType() == ExternalMailAccount.AuthType.OAUTH2) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Отправка через ящик с входом OAuth пока не поддерживается: перенос и сбор работают");
+        }
         return new ExternalMailDtos.TransportConfigView(
                 account.getId(), account.getOwnerId(), account.getEmailAddress(), account.getDisplayName(),
                 account.getProvider(), account.getIncomingProtocol(), account.getIncomingHost(), account.getIncomingPort(),
@@ -335,17 +435,34 @@ public class ExternalMailAccountService {
                 account.isSaveSentOnServer(), account.getSentFolderName());
     }
 
+    /**
+     * Конфигурация транспорта. Для OAuth вместо пароля подставляется актуальный токен:
+     * он обновляется здесь, а не в момент создания ящика, потому что сбор идёт сутками.
+     */
     public ExternalMailClient.AccountConfig toConfig(ExternalMailAccount account) {
-        return toConfig(account, cipher.decrypt(account.getSecretEnc()));
+        if (account.getAuthType() == ExternalMailAccount.AuthType.OAUTH2) {
+            return toConfig(account, oauthTokens.accessToken(account), ExternalMailAccount.AuthType.OAUTH2);
+        }
+        return toConfig(account, cipher.decrypt(account.getSecretEnc()),
+                account.getAuthType() == null ? ExternalMailAccount.AuthType.APP_PASSWORD : account.getAuthType());
     }
 
     public ExternalMailClient.AccountConfig toConfig(ExternalMailAccount account, String secret) {
+        if (account.getAuthType() == ExternalMailAccount.AuthType.OAUTH2 && secret == null) {
+            return toConfig(account);
+        }
+        return toConfig(account, secret, account.getAuthType() == null
+                ? ExternalMailAccount.AuthType.APP_PASSWORD : account.getAuthType());
+    }
+
+    private ExternalMailClient.AccountConfig toConfig(ExternalMailAccount account, String secret,
+                                                      ExternalMailAccount.AuthType authType) {
         return new ExternalMailClient.AccountConfig(
                 account.getId(), account.getOwnerId(), account.getEmailAddress(), account.getDisplayName(),
                 account.getProvider(), account.getIncomingProtocol(), account.getIncomingHost(), account.getIncomingPort(),
                 account.getIncomingSecurity(), account.getIncomingUsername(), secret,
                 account.isSmtpEnabled(), account.getSmtpHost(), account.getSmtpPort(), account.getSmtpSecurity(),
-                account.getSmtpUsername(), account.isMarkSeenOnServer(), account.isDeleteAfterFetch());
+                account.getSmtpUsername(), account.isMarkSeenOnServer(), account.isDeleteAfterFetch(), authType);
     }
 
     public ExternalMailAccount accessibleAccount(UUID actorId, Set<String> authorities, UUID accountId) {
@@ -374,6 +491,10 @@ public class ExternalMailAccountService {
     }
 
     public ExternalMailDtos.AccountView toView(ExternalMailAccount a) {
+        return toView(a, a.getId() == null ? null : oauthTokenRows.findById(a.getId()).orElse(null));
+    }
+
+    private ExternalMailDtos.AccountView toView(ExternalMailAccount a, ExternalMailOAuthToken oauthRow) {
         long queued = a.getId() == null ? 0 : imported.countByAccount_IdAndStatus(a.getId(), ExternalMailImportedMessage.Status.QUEUED);
         long delivered = a.getId() == null ? 0 : imported.countByAccount_IdAndStatus(a.getId(), ExternalMailImportedMessage.Status.DELIVERED);
         long failed = a.getId() == null ? 0 : imported.countByAccount_IdAndStatus(a.getId(), ExternalMailImportedMessage.Status.FAILED);
@@ -381,14 +502,16 @@ public class ExternalMailAccountService {
                 a.getId(), a.getOwnerId(), a.getCreatedBy(), a.getOwnerKind(), a.getLabel(), a.getEmailAddress(),
                 a.getDisplayName(), a.getProvider(), a.getAuthType(), a.getIncomingProtocol(), a.getIncomingHost(),
                 a.getIncomingPort(), a.getIncomingSecurity(), a.getIncomingUsername(),
-                a.getSecretEnc() != null && !a.getSecretEnc().isBlank(), a.isSmtpEnabled(), a.getSmtpHost(), a.getSmtpPort(),
+                (a.getSecretEnc() != null && !a.getSecretEnc().isBlank()) || oauthRow != null,
+                a.isSmtpEnabled(), a.getSmtpHost(), a.getSmtpPort(),
                 a.getSmtpSecurity(), a.getSmtpUsername(), a.getTargetFolder() == null ? null : a.getTargetFolder().getId(),
                 a.isEnabled(), a.isSyncEnabled(), a.isSendEnabled(), a.getInitialSyncMode(), a.getSyncScope(),
                 a.getPollIntervalSeconds(), a.isLeaveOnServer(), a.isMarkSeenOnServer(), a.isDeleteAfterFetch(),
                 a.isSaveSentOnServer(), a.getSentFolderName(), a.getLastSyncAt(), a.getLastSuccessAt(), a.getNextSyncAt(),
                 a.getLastError(), a.getConsecutiveFailures(),
                 a.getSyncLockUntil() != null && a.getSyncLockUntil().isAfter(Instant.now()),
-                queued, delivered, failed, a.getCreatedAt(), a.getUpdatedAt());
+                queued, delivered, failed, a.getCreatedAt(), a.getUpdatedAt(),
+                oauthRow != null && oauthRow.isReauthRequired());
     }
 
     // ------------------------------------------------------------------ internals
@@ -410,7 +533,14 @@ public class ExternalMailAccountService {
         ExternalMailAccount.AuthType authType = pick(req.authType(), existing == null ? null : existing.getAuthType(),
                 ExternalMailAccount.AuthType.APP_PASSWORD);
         if (authType == ExternalMailAccount.AuthType.OAUTH2) {
-            throw bad("OAuth2 для внешних провайдеров ещё не подключён: используйте пароль приложения провайдера");
+            // OAuth реализован для IMAP-источников Gmail и Microsoft 365. POP3 и произвольные
+            // серверы остаются на пароле приложения: там иной поток согласия.
+            if (ExternalMailOAuthProvider.forAccountProvider(provider) == null) {
+                throw bad("Вход через провайдера доступен только для Gmail и Microsoft 365");
+            }
+            if (protocol != ExternalMailAccount.Protocol.IMAP) {
+                throw bad("Вход через провайдера поддерживает только IMAP");
+            }
         }
         account.setOwnerKind(pick(req.ownerKind(), existing == null ? null : existing.getOwnerKind(),
                 ExternalMailAccount.OwnerKind.PERSONAL));
@@ -427,6 +557,12 @@ public class ExternalMailAccountService {
         account.setIncomingUsername(incomingUsername);
 
         boolean smtpEnabled = pick(req.smtpEnabled(), existing == null ? null : existing.isSmtpEnabled(), true);
+        if (authType == ExternalMailAccount.AuthType.OAUTH2) {
+            if (req.smtpEnabled() != null && req.smtpEnabled()) {
+                throw bad("Отправка через OAuth-ящик пока не поддерживается: перенос и сбор работают");
+            }
+            smtpEnabled = false;
+        }
         ExternalMailProviderPreset preset = ExternalMailProviderPreset.forProvider(provider);
         if (preset != null) {
             account.setIncomingHost(preset.incomingHost(protocol));
@@ -456,7 +592,8 @@ public class ExternalMailAccountService {
         ExternalMailEndpointPolicy.Endpoint incoming = endpointPolicy.validate(
                 account.getIncomingHost(), account.getIncomingPort(), account.getIncomingSecurity(), preset != null);
         account.setIncomingHost(incoming.host());
-        boolean sendEnabled = pick(req.sendEnabled(), existing == null ? null : existing.isSendEnabled(), smtpEnabled) && smtpEnabled;
+        boolean sendEnabled = pick(req.sendEnabled(), existing == null ? null : existing.isSendEnabled(), smtpEnabled)
+                && smtpEnabled && authType != ExternalMailAccount.AuthType.OAUTH2;
         if (smtpEnabled) {
             if (account.getSmtpHost() == null || account.getSmtpPort() == null) {
                 throw bad("Укажите SMTP сервер и порт провайдера либо отключите отправку через внешний ящик");

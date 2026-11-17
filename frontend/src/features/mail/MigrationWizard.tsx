@@ -8,7 +8,8 @@ import {
   type MigrationJob, type MigrationPreview,
 } from '../../api/migrationApi';
 import {
-  externalMailApi, type ExternalMailProvider, type ExternalMailSecurity,
+  externalMailApi, type ExternalMailOAuthProvider, type ExternalMailOAuthProviderId,
+  type ExternalMailProvider, type ExternalMailSecurity,
 } from '../../api/externalMailApi';
 import { IconButton, Notice } from '../../components/ui';
 import { useModalFocus } from '../../components/useModalFocus';
@@ -19,7 +20,8 @@ type Step = 'source' | 'access' | 'scope' | 'running';
 const PROVIDERS: { id: ExternalMailProvider; title: string; hint: string }[] = [
   { id: 'MAIL_RU', title: 'Mail.ru', hint: 'Пароль приложения при включённой двухфакторной защите' },
   { id: 'YANDEX', title: 'Яндекс 360', hint: 'Отдельный пароль для почтовых программ' },
-  { id: 'GMAIL', title: 'Gmail', hint: 'Пароль приложения; в организации IMAP может быть выключен' },
+  { id: 'GMAIL', title: 'Gmail', hint: 'Вход через Google или пароль приложения при 2FA' },
+  { id: 'OUTLOOK', title: 'Microsoft 365', hint: 'Только вход через Microsoft: пароль приложения не работает' },
   { id: 'CUSTOM', title: 'Хостинг или свой сервер', hint: 'Адрес IMAP-сервера, порт и пароль ящика' },
 ];
 
@@ -39,6 +41,7 @@ function errorText(error: unknown, fallback: string): string {
  */
 export default function MigrationWizard({
   existingAccount, suggestedHost, suggestedLogin, onClose, onDismiss, onNotNeeded, onOpenContacts,
+  oauthReturn, oauthError,
 }: {
   existingAccount?: { id: string; emailAddress: string } | null;
   suggestedHost?: string | null;
@@ -47,6 +50,10 @@ export default function MigrationWizard({
   onDismiss: () => void;
   onNotNeeded: () => void;
   onOpenContacts?: () => void;
+  /** Возврат из Google/Microsoft: согласие уже получено, осталось создать ящик. */
+  oauthReturn?: { id: string; provider: ExternalMailOAuthProviderId; email: string } | null;
+  /** Причина отказа провайдера, переданная в адресе возврата. */
+  oauthError?: string | null;
 }) {
   const { t } = useI18n();
   const dialogRef = useRef<HTMLElement>(null);
@@ -68,6 +75,25 @@ export default function MigrationWizard({
   const [include, setInclude] = useState<Set<string>>(new Set());
   const [includeAllMail, setIncludeAllMail] = useState(false);
   const [job, setJob] = useState<MigrationJob | null>(null);
+  const [oauthProviders, setOauthProviders] = useState<ExternalMailOAuthProvider[]>([]);
+  const [oauthConnection, setOauthConnection] = useState<{ id: string; provider: ExternalMailOAuthProviderId; email: string } | null>(null);
+
+  useEffect(() => {
+    // Провайдеры OAuth показываются только если администратор их настроил.
+    void externalMailApi.oauthProviders().then(setOauthProviders).catch(() => setOauthProviders([]));
+  }, []);
+
+  useEffect(() => {
+    if (!oauthReturn) return;
+    setProvider(oauthReturn.provider === 'GOOGLE' ? 'GMAIL' : 'OUTLOOK');
+    setEmail(oauthReturn.email);
+    setOauthConnection(oauthReturn);
+    setStep('access');
+  }, [oauthReturn]);
+
+  useEffect(() => {
+    if (oauthError) setError(oauthError);
+  }, [oauthError]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
@@ -107,10 +133,10 @@ export default function MigrationWizard({
         label: email.trim(),
         emailAddress: email.trim(),
         provider,
-        authType: 'APP_PASSWORD',
+        authType: oauthConnection ? 'OAUTH2' : 'APP_PASSWORD',
         incomingProtocol: 'IMAP',
         incomingUsername: email.trim(),
-        secret,
+        ...(oauthConnection ? { oauthConnectionId: oauthConnection.id } : { secret }),
         ...(provider === 'CUSTOM'
           ? { incomingHost: host.trim(), incomingPort: Number(port || 993), incomingSecurity: security }
           : {}),
@@ -127,6 +153,29 @@ export default function MigrationWizard({
     } catch (createError) {
       setError(errorText(createError, t('Не удалось подключить ящик')));
     } finally {
+      setBusy(false);
+    }
+  };
+
+  const oauthProviderId: ExternalMailOAuthProviderId | null =
+    provider === 'GMAIL' ? 'GOOGLE' : provider === 'OUTLOOK' ? 'MICROSOFT' : null;
+  const oauthProvider = oauthProviderId
+    ? oauthProviders.find((item) => item.provider === oauthProviderId)
+    : undefined;
+
+  const startOAuth = async () => {
+    if (!oauthProviderId) return;
+    setBusy(true);
+    setError('');
+    try {
+      const response = await externalMailApi.oauthAuthorize({
+        provider: oauthProviderId,
+        returnPath: window.location.pathname,
+      });
+      // Уходим на страницу согласия провайдера; возврат придёт на callback и обратно в почту.
+      window.location.assign(response.authorizationUrl);
+    } catch (oauthStartError) {
+      setError(errorText(oauthStartError, t('Не удалось начать вход через провайдера')));
       setBusy(false);
     }
   };
@@ -229,7 +278,7 @@ export default function MigrationWizard({
                 ))}
               </div>
               <p className="mt-3 text-[11.5px] leading-relaxed text-faint">
-                {t('Outlook и Microsoft 365 пока не поддерживаются: они требуют входа через OAuth. Такой ящик можно подключить позже, архивом — через MBOX/EML.')}
+                {t('Microsoft 365 подключается только после входа через Microsoft, Gmail — через Google или паролем приложения. Кнопка входа появляется, когда администратор настроил приложение.')}
               </p>
             </div>
           )}
@@ -250,17 +299,52 @@ export default function MigrationWizard({
                   autoComplete="username"
                 />
               </label>
-              <label className="mt-3 block text-[12px] text-muted">
-                {t('Пароль приложения')}
-                <input
-                  type="password"
-                  value={secret}
-                  onChange={(event) => setSecret(event.target.value)}
-                  className="field mt-1 h-9"
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                />
-              </label>
+              {oauthProvider && (
+                <div className="mt-3 rounded-[12px] border border-line bg-surface-soft/50 p-3">
+                  {oauthConnection ? (
+                    <p className="text-[12.5px] text-ink">
+                      {t('Вход через {title} выполнен: {email}', {
+                        title: oauthProvider.title,
+                        email: oauthConnection.email,
+                      })}
+                    </p>
+                  ) : (
+                    <>
+                      <p className="text-[12px] leading-relaxed text-ink-soft">
+                        {t('{title} требует вход через браузер: пароль приложения не подойдёт.', {
+                          title: oauthProvider.title,
+                        })}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void startOAuth()}
+                        disabled={busy || !oauthProvider.enabled}
+                        className="btn-secondary mt-2 h-9 px-3 text-[13px]"
+                        title={oauthProvider.enabled ? undefined : oauthProvider.hint}
+                      >
+                        <ShieldCheck size={14} />
+                        {t('Войти через {title}', { title: oauthProvider.title })}
+                      </button>
+                      {!oauthProvider.enabled && (
+                        <p className="mt-1.5 text-[11.5px] leading-relaxed text-faint">{oauthProvider.hint}</p>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+              {!oauthConnection && (
+                <label className="mt-3 block text-[12px] text-muted">
+                  {oauthProvider ? t('Или пароль приложения') : t('Пароль приложения')}
+                  <input
+                    type="password"
+                    value={secret}
+                    onChange={(event) => setSecret(event.target.value)}
+                    className="field mt-1 h-9"
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                  />
+                </label>
+              )}
               {suggestedHost && (
                 <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-soft">
                   {t('Администратор указал источник: {host}{login}.', {
@@ -300,11 +384,12 @@ export default function MigrationWizard({
                 <button
                   type="button"
                   onClick={() => void connect()}
-                  disabled={busy || !email.trim() || !secret || (provider === 'CUSTOM' && advanced && !host.trim())}
+                  disabled={busy || !email.trim() || (!oauthConnection && !secret)
+                    || (provider === 'CUSTOM' && advanced && !host.trim())}
                   className="btn-accent h-9 px-3 text-[13px]"
                 >
                   {busy ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
-                  {t('Проверить и продолжить')}
+                  {oauthConnection ? t('Продолжить настройку') : t('Проверить и продолжить')}
                 </button>
                 <span className="text-[11.5px] text-faint">{t('Подключение идёт с сервера, пароль не сохраняется в браузере')}</span>
               </div>

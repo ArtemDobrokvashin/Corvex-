@@ -59,7 +59,9 @@ public final class ExternalMailDtos {
             Boolean deleteAfterFetch,
             Boolean saveSentOnServer,
             String sentFolderName,
-            Boolean testBeforeSave) {
+            Boolean testBeforeSave,
+            /** Подключение из callback OAuth: обязательно при authType=OAUTH2. */
+            UUID oauthConnectionId) {
     }
 
     public record AccountView(
@@ -105,7 +107,9 @@ public final class ExternalMailDtos {
             long deliveredCount,
             long failedCount,
             Instant createdAt,
-            Instant updatedAt) {
+            Instant updatedAt,
+            /** Согласие Google/Microsoft отозвано: нужен повторный вход. */
+            boolean reauthRequired) {
     }
 
     public record EnabledRequest(Boolean enabled, Boolean syncEnabled, Boolean sendEnabled) {

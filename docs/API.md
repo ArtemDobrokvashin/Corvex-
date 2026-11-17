@@ -52,6 +52,13 @@
 `POST /api/v1/mail/admin/migrations/bulk` (CSV без паролей) и
 `POST …/{ownerId}/quota-bump`. Право — `ADMIN_MAIL_POLICY`.
 
+Вход через Google и Microsoft 365 для внешних ящиков: `GET /mail/external-accounts/oauth/providers`
+(что настроено), `POST /mail/external-accounts/oauth/authorize` (одноразовый state и адрес
+согласия), `GET /mail/external-accounts/oauth/callback` (возврат провайдера; вызывается
+браузером без JWT, доверие — на state) и `GET …/oauth/connections/{id}`. Создание ящика
+после согласия — `POST /mail/external-accounts` с `authType: OAUTH2` и `oauthConnectionId`.
+Право — `MAIL_EXTERNAL_ACCOUNTS` для своего ящика, `ADMIN_MAIL_POLICY` — для чужого.
+
 ## 3. Что реализовано в webmail
 
 `GET /mail/folders`, `POST /mail/folders {name, parentId?}` (право `MAIL_MANAGE_FOLDERS`),

@@ -678,6 +678,34 @@ class JakartaExternalMailClientTest {
         return folder;
     }
 
+    @Test
+    void oauthAccountUsesXoauth2AndPasswordAccountDoesNot() {
+        var base = config(ExternalMailAccount.Protocol.IMAP, ExternalMailAccount.Security.SSL_TLS,
+                true, "smtp.test", 587, "access-token");
+        var oauth = new ExternalMailClient.AccountConfig(
+                base.accountId(), base.ownerId(), base.emailAddress(), base.displayName(), base.provider(),
+                base.incomingProtocol(), base.incomingHost(), base.incomingPort(), base.incomingSecurity(),
+                base.incomingUsername(), base.secret(), true, "smtp.test", 587,
+                ExternalMailAccount.Security.STARTTLS, base.smtpUsername(), false, false,
+                ExternalMailAccount.AuthType.OAUTH2);
+
+        Properties incoming = client.incomingProperties(oauth,
+                endpoint("imap.test", 993, ExternalMailAccount.Security.SSL_TLS));
+        assertEquals("XOAUTH2", incoming.getProperty("mail.imap.auth.mechanisms"));
+        assertEquals("XOAUTH2", incoming.getProperty("mail.imaps.auth.mechanisms"),
+                "для SSL Jakarta Mail читает свойства протокола с суффиксом s");
+
+        Properties smtp = client.smtpProperties(oauth,
+                endpoint("smtp.test", 587, ExternalMailAccount.Security.STARTTLS));
+        assertEquals("XOAUTH2", smtp.getProperty("mail.smtp.auth.mechanisms"));
+        assertEquals("XOAUTH2", smtp.getProperty("mail.smtps.auth.mechanisms"));
+
+        Properties password = client.incomingProperties(base,
+                endpoint("imap.test", 993, ExternalMailAccount.Security.SSL_TLS));
+        assertNull(password.getProperty("mail.imap.auth.mechanisms"),
+                "пароль приложения не должен ограничивать механизмы аутентификации");
+    }
+
     private Message message(int number) {
         Message message = mock(Message.class);
         when(message.getMessageNumber()).thenReturn(number);
