@@ -219,5 +219,13 @@ export const chatApi = {
     return apiFetch<ChatFileUploadView>('/api/v1/files', { method: 'POST', body: form });
   },
 
-  downloadFile: (fileRef: string) => apiBlob(`/api/v1/files/${encodeURIComponent(fileRef)}`),
+  downloadFile: (fileRef: string, signal?: AbortSignal) => {
+    const path = `/api/v1/files/${encodeURIComponent(fileRef)}`;
+    return signal ? apiBlob(path, { signal }) : apiBlob(path);
+  },
+  /** PDF-предпросмотр Office-документа; 501, пока серверный конвертер выключен. */
+  previewFile: (fileRef: string, signal?: AbortSignal) => {
+    const path = `/api/v1/files/${encodeURIComponent(fileRef)}/preview`;
+    return signal ? apiBlob(path, { signal }) : apiBlob(path);
+  },
 };

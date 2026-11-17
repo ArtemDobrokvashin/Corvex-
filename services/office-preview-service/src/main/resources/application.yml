@@ -1,0 +1,39 @@
+server:
+  port: 8092
+  shutdown: graceful
+
+spring:
+  application:
+    name: office-preview-service
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+corvex:
+  security:
+    internal-token: ${CORVEX_INTERNAL_API_TOKEN:}
+  office:
+    # Выключенный конвертер отвечает 501 на публичных endpoint'ах и 503 здесь.
+    enabled: ${CORVEX_OFFICE_PREVIEW_ENABLED:false}
+    soffice-path: ${CORVEX_OFFICE_SOFFICE_PATH:/usr/bin/soffice}
+    timeout: ${CORVEX_OFFICE_TIMEOUT:20s}
+    version-timeout: ${CORVEX_OFFICE_VERSION_TIMEOUT:5s}
+    max-bytes: ${CORVEX_OFFICE_MAX_BYTES:26214400}
+    max-pdf-bytes: ${CORVEX_OFFICE_MAX_PDF_BYTES:52428800}
+    max-pages: ${CORVEX_OFFICE_MAX_PAGES:500}
+    concurrency: ${CORVEX_OFFICE_CONCURRENCY:2}
+    cache-dir: ${CORVEX_OFFICE_CACHE_DIR:/var/cache/office-preview}
+    cache-ttl: ${CORVEX_OFFICE_CACHE_TTL:30d}
+    cache-max-bytes: ${CORVEX_OFFICE_CACHE_MAX_BYTES:5368709120}
+    work-dir: ${CORVEX_OFFICE_WORK_DIR:/tmp}
+    cleanup-interval-ms: ${CORVEX_OFFICE_CLEANUP_INTERVAL_MS:3600000}
+    cleanup-initial-delay-ms: ${CORVEX_OFFICE_CLEANUP_INITIAL_DELAY_MS:60000}

@@ -39,10 +39,13 @@
 | Адресная книга | backend (`/mail/contacts`, импорт vCard/CSV, дедупликация), UI и тесты написаны; OpenAPI обновлён; frontend `tsc -b` — 0 ошибок, **72 файла / 359 тестов PASS**; Java-тесты входят в 564 пройденных на `08b7310` | живую приёмку на ПК; импорт проверен на тестовых файлах, не на реальных выгрузках |
 | Перенос почты (этапы 0–3) | backend: адресная книга, задания `mail_migration_jobs`/`mail_migration_folders`, preview с оценкой объёма и квоты, отдельный пул `corvex-mail-migration`, пауза/продолжение/отмена, отчёт по папкам, онбординг `user_onboarding` + `/api/v1/onboarding`, админские `/api/v1/mail/admin/migrations` (сводка, CSV без паролей, поднятие квоты); frontend: мастер `MigrationWizard`, админская вкладка `MigrationTab`; `tsc -b` — 0 ошибок, **74 файла / 366 тестов PASS**; Java — 564 теста на `08b7310` | живой прогон на реальном архиве и приёмку массового CSV на реальных сотрудниках |
 | Перенос почты (этап 4: OAuth) | `V13__external_mail_oauth.sql`; authorization code + PKCE S256, хэш `state`, публичный callback без открытого редиректа, AES-256-GCM для access/refresh токенов, обновление с ротацией, `invalid_grant` → `reauthRequired` + `409`, XOAUTH2 для IMAP (включая `imaps`/`smtps`); `authType=OAUTH2` + `oauthConnectionId` при создании ящика; UI-блок входа в мастере и разбор `?oauth=` в почте; `tsc -b` — 0 ошибок, **74 файла / 366 тестов PASS**; Java — 564 теста на `08b7310` | живой вход в Google и Microsoft 365, отзыв согласия в консоли провайдера |
+| Предпросмотр файлов и Office | перенесено на ветку от `afbc3f0`: фронтенд-диалог (изображения, PDF, текст, CSV, медиа) в почте, «Файлах» и чате; отдельный `office-preview-service` (LibreOffice, профиль `office-preview`, сеть `internal`, read-only rootfs, `cap_drop: ALL`), endpoint'ы preview у почты и чата после проверки владельца и ClamAV; `tsc -b` — 0 ошибок, **81 файл / 423 теста PASS**; 20 изменённых Java-файлов разобраны tree-sitter — 0 синтаксических ошибок | компиляцию Maven (JDK в песочнице нет), сборку Docker-образа и живую конвертацию DOCX/XLSX/PPTX; предпросмотр Office в «Файлах» не реализован |
 
 ## 3. Что не проверено и почему это важно
 
-1. **Полный `mvn -B clean verify` по всему reactor на текущем SHA.** `mail-storage-service`
+1. **Полный `mvn -B clean verify` по всему reactor на текущем SHA.** До переноса правки
+   `DkimKeyRingTest` он падал в `mail-smtp-service`: помощник `verify` считал `"; b="` пятью
+   символами вместо четырёх. Исправление внесено, но полный reactor после него не прогонялся. `mail-storage-service`
    отдельно пройден на `08b7310` (564 теста), но остальные 11 модулей вместе с ним
    последний раз прогонялись на `8cccaee`. Без этого нельзя утверждать, что весь reactor
    компилируется и проходит тесты вместе.

@@ -173,6 +173,39 @@ async function render() {
 }
 
 describe('Файлы: личный диск', () => {
+  // Просмотр открывается через контекст PreviewProvider; в этом файле провайдера
+  // нет, поэтому проверяем само решение «просмотр или скачивание»: файл, который
+  // умеет показать диалог, не должен тянуться на диск по клику.
+  it('не скачивает файл, который можно открыть во встроенном просмотре', async () => {
+    await render();
+    const row = Array.from(container.querySelectorAll('li'))
+      .find((element) => (element.textContent ?? '').includes('Счёт.pdf'));
+    const opener = row?.querySelector('button');
+    expect(opener).toBeTruthy();
+
+    await click(opener as HTMLButtonElement);
+
+    expect(driveApi.download).not.toHaveBeenCalled();
+  });
+
+  it('скачивает архив, для которого нет встроенного просмотра', async () => {
+    const archive: DriveNode = {
+      ...pdfFile,
+      id: 'file-zip',
+      name: 'backup.zip',
+      contentType: 'application/zip',
+    };
+    vi.mocked(driveApi.list).mockResolvedValue([archive]);
+    vi.mocked(driveApi.download).mockResolvedValue(new Blob(['zip']));
+    await render();
+
+    const row = Array.from(container.querySelectorAll('li'))
+      .find((element) => (element.textContent ?? '').includes('backup.zip'));
+    await click(row?.querySelector('button') as HTMLButtonElement);
+
+    expect(driveApi.download).toHaveBeenCalledWith('file-zip');
+  });
+
   it('показывает папки и файлы и считает занятое место', async () => {
     await render();
 
