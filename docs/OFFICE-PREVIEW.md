@@ -246,7 +246,21 @@ volumes:
 ```
 
 `depends_on` намеренно нет: без профиля сервиса в сети нет, и compose не должен отказываться
-поднимать почту. Включение: `CORVEX_OFFICE_PREVIEW_ENABLED=true docker compose --profile office-preview up -d --build`.
+поднимать почту. Включение (Linux/macOS):
+
+```bash
+CORVEX_OFFICE_PREVIEW_ENABLED=true docker compose --profile office-preview up -d --build
+```
+
+PowerShell не понимает Unix-синтаксис `VAR=value command` — там переменная задаётся отдельно:
+
+```powershell
+$env:CORVEX_OFFICE_PREVIEW_ENABLED = "true"
+docker compose --profile office-preview up -d --build
+```
+
+Если `docker compose config --services` не показывает `office-preview-service`, команда выполняется
+не из корня репозитория или дерево не обновлено до коммита с этим файлом (`git log -1`, `git status`).
 
 ## Изменения в существующих сервисах
 
