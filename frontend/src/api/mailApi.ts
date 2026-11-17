@@ -124,6 +124,11 @@ export const mailApi = {
     const path = `/api/v1/mail/messages/${encodeURIComponent(id)}/attachments/${partIndex}`;
     return signal ? apiBlob(path, { signal }) : apiBlob(path);
   },
+  /** PDF-предпросмотр Office-документа; 501, пока серверный конвертер выключен. */
+  previewAttachment: (id: string, partIndex: number, signal?: AbortSignal) => {
+    const path = `/api/v1/mail/messages/${encodeURIComponent(id)}/attachments/${partIndex}/preview`;
+    return signal ? apiBlob(path, { signal }) : apiBlob(path);
+  },
   flags: (id: string, flags: Partial<{ seen: boolean; flagged: boolean; answered: boolean; deleted: boolean }>) =>
     apiFetch<MailMessageListItem>(`/api/v1/mail/messages/${id}/flags`, {
       method: 'PATCH',

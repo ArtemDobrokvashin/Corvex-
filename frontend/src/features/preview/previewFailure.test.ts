@@ -12,9 +12,23 @@ describe('previewFailure', () => {
     expect(previewFailure(new ApiError(403, 'Forbidden'), false).kind).toBe('forbidden');
   });
 
+  it('treats a server-side size rejection as a conversion fallback', () => {
+    expect(previewFailure(new ApiError(413, 'Файл больше лимита')).kind).toBe('conversion-unavailable');
+  });
+
+  it('treats a locked chat file as an antivirus block', () => {
+    expect(previewFailure(new ApiError(423, 'Файл недоступен до проверки')).kind).toBe('blocked');
+  });
+
   it('reports an unavailable scanner only for unconfirmed files', () => {
     expect(previewFailure(new ApiError(503, 'Scanner offline'), true).kind).toBe('scan-unavailable');
     expect(previewFailure(new ApiError(503, 'Scanner offline'), false).kind).toBe('network');
+  });
+
+  it('separates a missing converter or unsupported conversion from a network error', () => {
+    expect(previewFailure(new ApiError(501, 'Converter disabled')).kind).toBe('conversion-unavailable');
+    expect(previewFailure(new ApiError(415, 'Unsupported format')).kind).toBe('conversion-unavailable');
+    expect(previewFailure(new ApiError(422, 'Conversion failed')).kind).toBe('conversion-unavailable');
   });
 
   it('maps missing files and network failures', () => {

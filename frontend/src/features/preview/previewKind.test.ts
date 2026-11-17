@@ -64,7 +64,7 @@ describe('preview limits', () => {
     expect(previewSizeLimit('image')).toBe(PREVIEW_LIMITS.image);
     expect(previewSizeLimit('pdf')).toBe(PREVIEW_LIMITS.pdf);
     expect(previewSizeLimit('video')).toBe(PREVIEW_LIMITS.media);
-    expect(previewSizeLimit('office')).toBeNull();
+    expect(previewSizeLimit('office')).toBe(PREVIEW_LIMITS.office);
   });
 
   it('accepts unknown sizes and rejects files above the limit', () => {
@@ -73,6 +73,8 @@ describe('preview limits', () => {
     expect(isPreviewTooLarge('pdf', PREVIEW_LIMITS.pdf)).toBe(false);
     expect(isPreviewTooLarge('pdf', PREVIEW_LIMITS.pdf + 1)).toBe(true);
     expect(isPreviewTooLarge('video', PREVIEW_LIMITS.media + 1)).toBe(true);
+    expect(isPreviewTooLarge('office', PREVIEW_LIMITS.office)).toBe(false);
+    expect(isPreviewTooLarge('office', PREVIEW_LIMITS.office + 1)).toBe(true);
     expect(isPreviewTooLarge('unsupported', Number.MAX_SAFE_INTEGER)).toBe(false);
   });
 });

@@ -444,6 +444,7 @@ export default function MailPage() {
         sizeBytes: attachment.sizeBytes,
         avStatus: attachment.avStatus,
         load: (signal: AbortSignal) => mailApi.downloadAttachment(messageId, attachment.partIndex, signal),
+        loadPdf: (signal: AbortSignal) => mailApi.previewAttachment(messageId, attachment.partIndex, signal),
         download: () => downloadAttachment(messageId, attachment),
       })),
       Math.max(0, attachments.findIndex((attachment) => attachment.partIndex === selected.partIndex)),

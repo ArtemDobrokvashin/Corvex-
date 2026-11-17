@@ -23,6 +23,8 @@ export const PREVIEW_LIMITS = {
   image: 25 * 1024 * 1024,
   pdf: 50 * 1024 * 1024,
   media: 100 * 1024 * 1024,
+  /** Серверный конвертер Office не принимает файлы больше 25 МБ. */
+  office: 25 * 1024 * 1024,
 } as const;
 
 const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'avif', 'svg', 'ico']);
@@ -137,6 +139,8 @@ export function previewSizeLimit(kind: PreviewKind): number | null {
     case 'audio':
     case 'video':
       return PREVIEW_LIMITS.media;
+    case 'office':
+      return PREVIEW_LIMITS.office;
     default:
       return null;
   }

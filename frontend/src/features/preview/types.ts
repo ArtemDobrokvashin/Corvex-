@@ -10,6 +10,11 @@ export interface PreviewSource {
   avStatus?: string | null;
   /** Загрузка исходника; signal отменяет запрос при закрытии диалога. */
   load?: (signal: AbortSignal) => Promise<Blob>;
+  /**
+   * PDF, подготовленный серверным конвертером (Office). Пока конвертера нет,
+   * поле не передаётся и диалог показывает объяснение вместо просмотра.
+   */
+  loadPdf?: (signal: AbortSignal) => Promise<Blob>;
   /** Скачивание файла на устройство (не предпросмотр). */
   download?: () => void | Promise<void>;
 }

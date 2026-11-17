@@ -249,6 +249,74 @@ describe('FilePreviewDialog', () => {
     expect(htmlLoad).not.toHaveBeenCalled();
   });
 
+  it('shows an Office document through the server-side PDF converter', async () => {
+    const loadPdf = vi.fn().mockResolvedValue(new Blob(['%PDF-1.7'], { type: 'application/octet-stream' }));
+    const load = vi.fn();
+    await renderDialog([{
+      fileName: 'смета.xlsx',
+      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      sizeBytes: 4096,
+      load,
+      loadPdf,
+      download: vi.fn(),
+    }]);
+
+    expect(loadPdf).toHaveBeenCalledTimes(1);
+    expect(load).not.toHaveBeenCalled();
+    expect(createdBlobs[0]?.type).toBe('application/pdf');
+    expect(document.querySelector('iframe')?.getAttribute('src')).toBe('blob:preview');
+    expect(document.body.textContent).not.toContain('пока недоступен');
+  });
+
+  it('falls back to downloading when the converter is disabled or rejects the document', async () => {
+    const download = vi.fn();
+    await renderDialog([{
+      fileName: 'смета.xlsx',
+      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      sizeBytes: 4096,
+      loadPdf: vi.fn().mockRejectedValue(new ApiError(501, 'Office preview is disabled')),
+      download,
+    }]);
+
+    expect(document.body.textContent).toContain('Не удалось подготовить предпросмотр');
+    expect(document.body.textContent).toContain('Скачайте файл');
+    expect(buttonByText('Повторить')).toBeUndefined();
+    expect(button('Скачать')).not.toBeNull();
+  });
+
+  it('retries a failed Office conversion from the dialog', async () => {
+    const loadPdf = vi.fn()
+      .mockRejectedValueOnce(new ApiError(503, 'Converter busy'))
+      .mockResolvedValueOnce(new Blob(['%PDF-1.7']));
+    await renderDialog([{
+      fileName: 'договор.docx',
+      contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      sizeBytes: 4096,
+      avStatus: 'PENDING',
+      loadPdf,
+    }]);
+
+    expect(document.body.textContent).toContain('Антивирус временно недоступен');
+    await act(async () => buttonByText('Повторить')?.click());
+    await flush();
+
+    expect(loadPdf).toHaveBeenCalledTimes(2);
+    expect(document.querySelector('iframe')?.getAttribute('src')).toBe('blob:preview');
+  });
+
+  it('does not send an oversized Office document to the converter', async () => {
+    const loadPdf = vi.fn();
+    await renderDialog([{
+      fileName: 'огромная смета.xlsx',
+      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      sizeBytes: 26 * 1024 * 1024,
+      loadPdf,
+    }]);
+
+    expect(loadPdf).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain('Файл слишком большой для предпросмотра');
+  });
+
   it('refuses to preview a file above the size limit', async () => {
     const load = vi.fn();
     await renderDialog([{

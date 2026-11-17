@@ -239,7 +239,7 @@ docker compose logs auth-service | Select-String BOOTSTRAP
 
 ### Архитектура
 
-12 сервисов Java 17 / Spring Boot за единым gateway:
+13 сервисов Java 17 / Spring Boot за единым gateway (12 публичных и внутренний `office-preview`):
 
 - `auth-service` владеет учётками, паролями, TOTP и сессиями;
 - `admin-service` — группами, правами, настройками и аудитом;
@@ -249,9 +249,10 @@ docker compose logs auth-service | Select-String BOOTSTRAP
 - `mail-spam`, `mail-antivirus` — тонкие клиенты SpamAssassin и ClamAV;
 - `chat-service`, `chat-file-service` — STOMP и файлы;
 - `notification-service` превращает Alertmanager webhook в email администраторам;
+- `office-preview-service` конвертирует DOCX/XLSX/PPTX в PDF для предпросмотра; профиль `office-preview`, наружу не публикуется;
 - `alert-relay` независимо отправляет внешний SMTP/Telegram/MAX без RabbitMQ и почты Corvex; получатели, категории и частота настраиваются суперадмином в `/admin/settings`, последний рабочий config кэшируется. Telegram-мастер находит чаты после `/start`, а команды `/start`, `/id`, `/help` работают без публичного webhook; silence управляется по [`docs/ALERTING.md`](docs/ALERTING.md).
 
-Данные: PostgreSQL 16 (database-per-service), Redis, RabbitMQ, Elasticsearch, Maildir + CAS. Наблюдаемость: Prometheus, Grafana, Loki. Один `docker-compose.yml`: 26 контейнеров, 4 сети, 14 томов.
+Данные: PostgreSQL 16 (database-per-service), Redis, RabbitMQ, Elasticsearch, Maildir + CAS. Наблюдаемость: Prometheus, Grafana, Loki. Один `docker-compose.yml`: 26 контейнеров (27 с профилем `office-preview`), 4 сети, 15 томов.
 
 Диаграммы и ADR: [`docs/01-architecture.md`](docs/01-architecture.md).
 

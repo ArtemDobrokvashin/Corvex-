@@ -203,6 +203,9 @@ services:
       # Куда отправлять серверные напоминания календаря (SMTP-канал уведомлений).
       CORVEX_NOTIFICATION_SERVICE_URL: http://notification-service:8091
       CORVEX_CALENDAR_FROM: ${CORVEX_CALENDAR_FROM:-corvex-calendar@company.local}
+      # Office-предпросмотр: выключен без профиля office-preview (endpoint отвечает 501).
+      CORVEX_OFFICE_PREVIEW_ENABLED: ${CORVEX_OFFICE_PREVIEW_ENABLED:-false}
+      CORVEX_OFFICE_PREVIEW_URL: http://office-preview-service:8092
     volumes:
       - mail-data:/data/mail
       - attachment-data:/data/attachments
@@ -455,8 +458,39 @@ services:
       CORVEX_CHAT_FILE_AV_REQUIRED: ${CORVEX_CHAT_FILE_AV_REQUIRED:-true}
       CORVEX_CLAMD_HOST: clamav
       CORVEX_CLAMD_PORT: 3310
+      CORVEX_OFFICE_PREVIEW_ENABLED: ${CORVEX_OFFICE_PREVIEW_ENABLED:-false}
+      CORVEX_OFFICE_PREVIEW_URL: http://office-preview-service:8092
     volumes: [chat-file-data:/data/chat-files]
     depends_on: { auth-service: { condition: service_healthy }, chat-service: { condition: service_healthy }, clamav: { condition: service_healthy } }
+
+  # Внутренний конвертер Office → PDF. Профиль office-preview, потому что образ
+  # тянет LibreOffice (~1 ГБ) и нужен не всем стендам. Публичного маршрута нет:
+  # gateway его не знает, порты наружу не публикуются.
+  office-preview-service:
+    profiles: [office-preview]
+    build: ./services/office-preview-service
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp:size=512m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      TZ: Europe/Moscow
+      # Конвертеру не нужны БД/RabbitMQ/redis: только internal-токен и лимиты.
+      CORVEX_INTERNAL_API_TOKEN: ${CORVEX_INTERNAL_API_TOKEN:?Set CORVEX_INTERNAL_API_TOKEN in .env}
+      CORVEX_OFFICE_PREVIEW_ENABLED: "true"
+      CORVEX_OFFICE_TIMEOUT: ${CORVEX_OFFICE_TIMEOUT:-20s}
+      CORVEX_OFFICE_CONCURRENCY: ${CORVEX_OFFICE_CONCURRENCY:-2}
+      CORVEX_OFFICE_MAX_BYTES: ${CORVEX_OFFICE_MAX_BYTES:-26214400}
+      CORVEX_OFFICE_CACHE_DIR: /var/cache/office-preview
+    volumes: [office-preview-cache:/var/cache/office-preview]
+    networks: [app]
+    deploy:
+      resources:
+        limits: { memory: 1500M, cpus: "1.0" }
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
 
   notification-service:
     <<: *java-common
@@ -610,6 +644,7 @@ volumes:
   mail-data: {}        # Maildir — самая ценная часть бэкапа
   attachment-data: {}  # CAS вложений по SHA-256
   chat-file-data: {}
+  office-preview-cache: {}
   spamd-data: {}
   clamav-data: {}
   prometheus-data: {}

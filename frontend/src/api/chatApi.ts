@@ -223,4 +223,9 @@ export const chatApi = {
     const path = `/api/v1/files/${encodeURIComponent(fileRef)}`;
     return signal ? apiBlob(path, { signal }) : apiBlob(path);
   },
+  /** PDF-предпросмотр Office-документа; 501, пока серверный конвертер выключен. */
+  previewFile: (fileRef: string, signal?: AbortSignal) => {
+    const path = `/api/v1/files/${encodeURIComponent(fileRef)}/preview`;
+    return signal ? apiBlob(path, { signal }) : apiBlob(path);
+  },
 };

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -27,7 +27,7 @@ import MediaPreview from './renderers/MediaPreview';
 import PdfPreview from './renderers/PdfPreview';
 import TablePreview from './renderers/TablePreview';
 import TextPreview from './renderers/TextPreview';
-import { previewFailure } from './previewFailure';
+import { previewFailure, type PreviewFailure } from './previewFailure';
 import { isPreviewTooLarge, previewKindFor, previewSizeLimit, type PreviewKind } from './previewKind';
 import type { PreviewSource } from './types';
 import { usePreviewBlob } from './usePreviewBlob';
@@ -71,6 +71,18 @@ export default function FilePreviewDialog({ items, index, onIndexChange, onClose
   const kind = previewKindFor(source.contentType, source.fileName);
   const tooLarge = isPreviewTooLarge(kind, source.sizeBytes);
   const { state, reload } = usePreviewBlob(source, kind);
+  const officeMode = kind === 'office' && Boolean(source.loadPdf)
+    && !isPreviewTooLarge('office', source.sizeBytes);
+  // Office конвертируется на сервере в PDF: тот же механизм blob-загрузки,
+  // но отдельный запрос и отдельный retry.
+  const officeSource = useMemo<PreviewSource>(() => ({
+    ...source,
+    contentType: 'application/pdf',
+    load: officeMode ? source.loadPdf : undefined,
+  }), [source, officeMode]);
+  const officePreview = usePreviewBlob(officeSource, 'pdf');
+  const activeState = officeMode ? officePreview.state : state;
+  const reloadActive = officeMode ? officePreview.reload : reload;
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const [downloadError, setDownloadError] = useState(false);
@@ -110,9 +122,59 @@ export default function FilePreviewDialog({ items, index, onIndexChange, onClose
   }, [index, items.length, onClose, onIndexChange]);
 
   const scanUnconfirmed = Boolean(source.avStatus) && source.avStatus !== 'CLEAN';
-  const failure = state.status === 'error' ? previewFailure(state.error, scanUnconfirmed) : null;
+  const failure = activeState.status === 'error' ? previewFailure(activeState.error, scanUnconfirmed) : null;
   const failureDetail = failure?.detail ? localizeApiDetail(failure.detail, locale) : '';
   const blocked = failure?.kind === 'blocked' || failure?.kind === 'forbidden' || failure?.kind === 'not-found';
+
+  const renderFailure = (current: PreviewFailure, retry: () => void) => {
+    if (current.kind === 'blocked') {
+      return (
+        <PreviewMessage icon={ShieldAlert} title={t('Антивирус заблокировал файл')}>
+          {failureDetail || t('Файл не прошёл антивирусную проверку. Просмотр и скачивание заблокированы.')}
+        </PreviewMessage>
+      );
+    }
+    if (current.kind === 'scan-unavailable') {
+      return (
+        <PreviewMessage icon={ShieldQuestion} title={t('Антивирус временно недоступен')}>
+          {t('Не удалось проверить файл перед открытием. Повторите попытку через минуту.')}
+          <div className="mt-3">
+            <button type="button" className="btn-secondary h-8 px-3 text-xs" onClick={retry}>
+              <RotateCcw size={14} />{t('Повторить')}
+            </button>
+          </div>
+        </PreviewMessage>
+      );
+    }
+    if (current.kind === 'forbidden') {
+      return (
+        <PreviewMessage icon={ShieldAlert} title={t('Нет доступа к файлу')}>
+          {failureDetail || t('У вас нет прав на этот файл.')}
+        </PreviewMessage>
+      );
+    }
+    if (current.kind === 'not-found') {
+      return <PreviewMessage icon={FileQuestion} title={t('Файл не найден или уже удалён')} />;
+    }
+    if (current.kind === 'conversion-unavailable') {
+      return (
+        <PreviewMessage icon={FileText} title={t('Не удалось подготовить предпросмотр')}>
+          {t('Сервер не смог преобразовать документ. Скачайте файл, чтобы открыть его в подходящей программе.')}
+          {failureDetail && <p className="mt-2 break-words text-[12px] text-faint">{failureDetail}</p>}
+        </PreviewMessage>
+      );
+    }
+    return (
+      <PreviewMessage icon={FileWarning} title={t('Не удалось открыть файл')}>
+        {failureDetail || t('Проверьте соединение и попробуйте ещё раз.')}
+        <div className="mt-3">
+          <button type="button" className="btn-secondary h-8 px-3 text-xs" onClick={retry}>
+            <RotateCcw size={14} />{t('Повторить')}
+          </button>
+        </div>
+      </PreviewMessage>
+    );
+  };
 
   const startDownload = async () => {
     if (!source.download || downloading) return;
@@ -134,18 +196,6 @@ export default function FilePreviewDialog({ items, index, onIndexChange, onClose
         {t('Это чужой интерактивный документ, поэтому мы не запускаем его в Corvex. Скачайте файл, чтобы открыть его в отдельной программе или песочнице.')}
       </PreviewMessage>
     );
-  } else if (kind === 'office') {
-    body = (
-      <PreviewMessage icon={FileText} title={t('Предпросмотр документов Office пока недоступен')}>
-        {t('Word, Excel и PowerPoint требуют серверного конвертера. Пока такой документ можно только скачать — откройте его в своей программе.')}
-      </PreviewMessage>
-    );
-  } else if (kind === 'unsupported') {
-    body = (
-      <PreviewMessage icon={FileQuestion} title={t('Этот формат нельзя открыть в браузере')}>
-        {t('Скачайте файл, чтобы открыть его в подходящей программе.')}
-      </PreviewMessage>
-    );
   } else if (tooLarge) {
     const limit = previewSizeLimit(kind);
     body = (
@@ -155,46 +205,33 @@ export default function FilePreviewDialog({ items, index, onIndexChange, onClose
           : t('Скачайте файл, чтобы открыть его.')}
       </PreviewMessage>
     );
-  } else if (failure) {
-    if (failure.kind === 'blocked') {
+  } else if (kind === 'office') {
+    if (!officeMode) {
       body = (
-        <PreviewMessage icon={ShieldAlert} title={t('Антивирус заблокировал файл')}>
-          {failureDetail || t('Файл не прошёл антивирусную проверку. Просмотр и скачивание заблокированы.')}
+        <PreviewMessage icon={FileText} title={t('Предпросмотр документов Office пока недоступен')}>
+          {t('Word, Excel и PowerPoint требуют серверного конвертера. Пока такой документ можно только скачать — откройте его в своей программе.')}
         </PreviewMessage>
       );
-    } else if (failure.kind === 'scan-unavailable') {
-      body = (
-        <PreviewMessage icon={ShieldQuestion} title={t('Антивирус временно недоступен')}>
-          {t('Не удалось проверить файл перед открытием. Повторите попытку через минуту.')}
-          <div className="mt-3">
-            <button type="button" className="btn-secondary h-8 px-3 text-xs" onClick={reload}>
-              <RotateCcw size={14} />{t('Повторить')}
-            </button>
-          </div>
-        </PreviewMessage>
-      );
-    } else if (failure.kind === 'forbidden') {
-      body = (
-        <PreviewMessage icon={ShieldAlert} title={t('Нет доступа к файлу')}>
-          {failureDetail || t('У вас нет прав на этот файл.')}
-        </PreviewMessage>
-      );
-    } else if (failure.kind === 'not-found') {
-      body = (
-        <PreviewMessage icon={FileQuestion} title={t('Файл не найден или уже удалён')} />
-      );
+    } else if (officePreview.state.status === 'ready') {
+      body = <PdfPreview url={officePreview.state.url} fileName={source.fileName} />;
+    } else if (failure) {
+      body = renderFailure(failure, reloadActive);
     } else {
       body = (
-        <PreviewMessage icon={FileWarning} title={t('Не удалось открыть файл')}>
-          {failureDetail || t('Проверьте соединение и попробуйте ещё раз.')}
-          <div className="mt-3">
-            <button type="button" className="btn-secondary h-8 px-3 text-xs" onClick={reload}>
-              <RotateCcw size={14} />{t('Повторить')}
-            </button>
-          </div>
-        </PreviewMessage>
+        <div role="status" className="flex h-full items-center justify-center gap-2 px-4 text-sm text-muted">
+          <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+          {t('Готовим предпросмотр документа…')}
+        </div>
       );
     }
+  } else if (kind === 'unsupported') {
+    body = (
+      <PreviewMessage icon={FileQuestion} title={t('Этот формат нельзя открыть в браузере')}>
+        {t('Скачайте файл, чтобы открыть его в подходящей программе.')}
+      </PreviewMessage>
+    );
+  } else if (failure) {
+    body = renderFailure(failure, reloadActive);
   } else if (state.status === 'ready') {
     if (kind === 'image') body = <ImagePreview url={state.url} fileName={source.fileName} />;
     else if (kind === 'pdf') body = <PdfPreview url={state.url} fileName={source.fileName} />;

@@ -221,6 +221,7 @@ function FileAttachment({ message, onError }: { message: LocalMessage; onError: 
       }
       return chatApi.downloadFile(fileRef, signal);
     },
+    loadPdf: (signal) => chatApi.previewFile(fileRef, signal),
     download,
   };
 

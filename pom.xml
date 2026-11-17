@@ -8,7 +8,7 @@
       Корневой агрегатор: каждый сервис остаётся автономным (свой parent Spring Boot,
       свой Dockerfile), а этот POM нужен только для одной команды приёмки на хосте с JDK:
           mvn -B clean verify
-      Он собирает и тестирует все 12 сервисов одним реактором, включая JaCoCo-гейты модулей.
+      Он собирает и тестирует все 13 сервисов одним реактором, включая JaCoCo-гейты модулей.
     -->
     <groupId>ru.corvex</groupId>
     <artifactId>corvex</artifactId>
@@ -30,5 +30,6 @@
         <module>services/chat-file-service</module>
         <module>services/web-gateway</module>
         <module>services/notification-service</module>
+        <module>services/office-preview-service</module>
     </modules>
 </project>
