@@ -45,7 +45,7 @@ class OfficePreviewControllerTest {
     void returnsPdfAndCacheHeader() throws Exception {
         Path pdf = temp.resolve("result.pdf");
         Files.writeString(pdf, "%PDF-1.4\n%%EOF\n");
-        when(conversion.convert(eq("report.docx"), anyLong(), any()))
+        when(conversion.convert(eq("report.docx"), anyLong(), any(java.io.InputStream.class)))
                 .thenReturn(new OfficeConversionService.Conversion(pdf, true));
 
         mvc.perform(post("/internal/office-preview/convert")
@@ -83,7 +83,7 @@ class OfficePreviewControllerTest {
 
     @Test
     void passesThroughConverterStatus() throws Exception {
-        when(conversion.convert(any(), anyLong(), any()))
+        when(conversion.convert(any(String.class), anyLong(), any(java.io.InputStream.class)))
                 .thenThrow(new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "bad document"));
 
         mvc.perform(post("/internal/office-preview/convert")
