@@ -120,7 +120,10 @@ export const mailApi = {
     return apiFetch<MailMessageListItem[]>(`/api/v1/mail/folders/${folderId}/messages?${params.toString()}`);
   },
   message: (id: string) => apiFetch<MailMessageDetail>(`/api/v1/mail/messages/${id}`),
-  downloadAttachment: (id: string, partIndex: number) => apiBlob(`/api/v1/mail/messages/${encodeURIComponent(id)}/attachments/${partIndex}`),
+  downloadAttachment: (id: string, partIndex: number, signal?: AbortSignal) => {
+    const path = `/api/v1/mail/messages/${encodeURIComponent(id)}/attachments/${partIndex}`;
+    return signal ? apiBlob(path, { signal }) : apiBlob(path);
+  },
   flags: (id: string, flags: Partial<{ seen: boolean; flagged: boolean; answered: boolean; deleted: boolean }>) =>
     apiFetch<MailMessageListItem>(`/api/v1/mail/messages/${id}/flags`, {
       method: 'PATCH',

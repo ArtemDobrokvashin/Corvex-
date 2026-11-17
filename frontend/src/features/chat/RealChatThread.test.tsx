@@ -8,6 +8,7 @@ import * as chatSocket from '../../api/chatSocket';
 import { useLocaleStore } from '../../i18n';
 import { useSession } from '../../store/sessionStore';
 import RealChatPage from './RealChatPage';
+import PreviewProvider from '../preview/PreviewProvider';
 
 function message(id: string, overrides: Partial<ChatMessageView> = {}): ChatMessageView {
   return {
@@ -134,6 +135,36 @@ describe('real chat threads', () => {
     const thread = container.querySelector('aside[aria-label="Thread"]')!;
     expect(thread.textContent?.match(/A new reply/g)).toHaveLength(1);
     expect(thread.textContent).not.toContain('Not sent');
+  });
+
+  it('opens a chat attachment in the built-in preview instead of downloading it', async () => {
+    history.mockResolvedValue(page([
+      message('file-1', { kind: 'FILE', bodyMarkdown: null, fileRef: '/chat/room-1/договор.pdf' }),
+    ]));
+    const download = vi.spyOn(chatApi, 'downloadFile').mockResolvedValue(
+      new Blob(['%PDF-1.7'], { type: 'application/pdf' }),
+    );
+    URL.createObjectURL = vi.fn(() => 'blob:chat-preview');
+    URL.revokeObjectURL = vi.fn();
+
+    await act(async () => {
+      root.render(<MemoryRouter><PreviewProvider><RealChatPage /></PreviewProvider></MemoryRouter>);
+    });
+    await flush();
+
+    const open = container.querySelector('button[aria-label="Open preview: договор.pdf"]');
+    expect(open).not.toBeNull();
+    await click(open);
+    await flush();
+    await flush();
+
+    const dialog = container.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain('договор.pdf');
+    expect(container.querySelector('[role="dialog"] iframe')?.getAttribute('src')).toBe('blob:chat-preview');
+    expect(download).toHaveBeenCalledTimes(1);
+
+    // Скачивание не должно происходить само по себе: только явная кнопка.
+    expect(container.querySelector('[role="dialog"] a[download]')).toBeNull();
   });
 
   it('keeps thread pagination isolated when switching rooms', async () => {

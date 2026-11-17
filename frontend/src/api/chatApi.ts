@@ -219,5 +219,8 @@ export const chatApi = {
     return apiFetch<ChatFileUploadView>('/api/v1/files', { method: 'POST', body: form });
   },
 
-  downloadFile: (fileRef: string) => apiBlob(`/api/v1/files/${encodeURIComponent(fileRef)}`),
+  downloadFile: (fileRef: string, signal?: AbortSignal) => {
+    const path = `/api/v1/files/${encodeURIComponent(fileRef)}`;
+    return signal ? apiBlob(path, { signal }) : apiBlob(path);
+  },
 };

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNod
 import {
   ChevronRight,
   Download,
+  Eye,
   File as FileIcon,
   Folder,
   FolderInput,
@@ -21,6 +22,8 @@ import { Notice } from '../../components/ui';
 import { useModalFocus } from '../../components/useModalFocus';
 import { formatDate, localizeApiDetail, useI18n, type Locale } from '../../i18n';
 import { ApiError } from '../../api/httpClient';
+import { usePreview } from '../preview/PreviewProvider';
+import { opensPreviewDialog, previewKindFor } from '../preview/previewKind';
 import {
   absoluteShareUrl,
   DriveNode,
@@ -293,6 +296,30 @@ export default function FilesPage() {
     } catch (e) {
       setError(driveErrorMessage(e, t, locale));
     }
+  };
+
+  const { openPreview } = usePreview();
+
+  // Клик по файлу открывает его так же, как в Google Drive: архив или
+  // неизвестный формат просто скачивается, остальное — во встроенном просмотре.
+  const preview = (node: DriveNode) => {
+    const kind = previewKindFor(node.contentType, node.name);
+    if (!opensPreviewDialog(kind)) {
+      void download(node);
+      return;
+    }
+    openPreview([{
+      fileName: node.name,
+      contentType: node.contentType,
+      sizeBytes: node.sizeBytes,
+      load: (signal) => driveApi.download(node.id, signal),
+      download: () => download(node),
+    }]);
+  };
+
+  const openNode = (node: DriveNode) => {
+    if (node.kind === 'FOLDER') openFolder(node);
+    else preview(node);
   };
 
   const usedPercent =
@@ -656,7 +683,7 @@ export default function FilesPage() {
                         {view === 'files' ? (
                           <button
                             type="button"
-                            onClick={() => (node.kind === 'FOLDER' ? openFolder(node) : void download(node))}
+                            onClick={() => openNode(node)}
                             className="flex min-w-0 flex-1 items-center gap-3 rounded-md text-left"
                           >
                             {body}
@@ -668,6 +695,11 @@ export default function FilesPage() {
                         <div className={ROW_ACTIONS}>
                           {node.kind === 'FILE' && view === 'files' && (
                             <>
+                              {opensPreviewDialog(previewKindFor(node.contentType, node.name)) && (
+                                <IconButton label={t('Просмотреть')} onClick={() => preview(node)}>
+                                  <Eye size={15} />
+                                </IconButton>
+                              )}
                               <IconButton label={t('Скачать')} onClick={() => void download(node)}>
                                 <Download size={15} />
                               </IconButton>

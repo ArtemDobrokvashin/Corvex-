@@ -5,6 +5,7 @@ import {
   Check,
   CheckCheck,
   Download,
+  Eye,
   Hash,
   Loader2,
   Lock,
@@ -44,6 +45,9 @@ import ChatSidebar from '../../components/ChatSidebar';
 import ChatThreadPanel from '../../components/ChatThreadPanel';
 import SidebarSlot from '../../components/SidebarSlot';
 import WorkspaceUtilityBar from '../../components/WorkspaceUtilityBar';
+import { usePreview } from '../preview/PreviewProvider';
+import { mimeFromFileName, opensPreviewDialog, previewKindFor } from '../preview/previewKind';
+import type { PreviewSource } from '../preview/types';
 import {
   countLabel,
   formatDate,
@@ -150,6 +154,7 @@ function fileNameFromRef(fileRef: string): string | null {
 
 function FileAttachment({ message, onError }: { message: LocalMessage; onError: (message: string) => void }) {
   const { t } = useI18n();
+  const { openPreview } = usePreview();
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -178,6 +183,9 @@ function FileAttachment({ message, onError }: { message: LocalMessage; onError: 
 
   if (!fileRef) return null;
   const name = message.localFileName || fileNameFromRef(fileRef) || t(isImage ? 'Изображение' : 'Файл');
+  const contentType = mimeFromFileName(name) ?? (isImage ? 'image/*' : null);
+  const kind = previewKindFor(contentType, name);
+  const canPreview = opensPreviewDialog(kind);
 
   const download = async () => {
     if (busy) return;
@@ -201,25 +209,73 @@ function FileAttachment({ message, onError }: { message: LocalMessage; onError: 
     }
   };
 
+  // Картинка уже загружена для миниатюры — переиспользуем её в предпросмотре,
+  // чтобы клик не тянул тот же файл второй раз.
+  const source: PreviewSource = {
+    fileName: name,
+    contentType,
+    load: async (signal) => {
+      if (imageUrl) {
+        const response = await fetch(imageUrl, { signal });
+        return response.blob();
+      }
+      return chatApi.downloadFile(fileRef, signal);
+    },
+    download,
+  };
+
   return (
     <div className="mt-2 max-w-[520px]">
       {isImage && imageUrl && (
-        <img
-          src={imageUrl}
-          alt={name}
-          className="mb-2 max-h-64 w-auto max-w-full rounded-xl border border-line object-contain"
-          loading="lazy"
-        />
+        <button
+          type="button"
+          onClick={() => openPreview([source])}
+          className="mb-2 block max-w-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          aria-label={`${t('Открыть изображение')}: ${name}`}
+          title={t('Открыть изображение')}
+        >
+          <img
+            src={imageUrl}
+            alt={name}
+            className="max-h-64 w-auto max-w-full rounded-xl border border-line object-contain"
+            loading="lazy"
+          />
+        </button>
       )}
-      <button
-        type="button"
-        onClick={() => void download()}
-        disabled={busy}
-        className="inline-flex max-w-full items-center gap-2 rounded-xl border border-line bg-chrome px-3 py-2 text-left text-[13px] font-medium text-ink-soft transition hover:border-accent/30 hover:bg-accent-soft disabled:cursor-wait disabled:opacity-60"
-      >
-        {busy ? <Loader2 size={16} className="shrink-0 animate-spin" /> : <Download size={16} className="shrink-0" />}
-        <span className="min-w-0 truncate">{name}</span>
-      </button>
+      {canPreview ? (
+        <div className="inline-flex max-w-full items-center rounded-xl border border-line bg-chrome transition hover:border-accent/30 hover:bg-accent-soft">
+          <button
+            type="button"
+            onClick={() => openPreview([source])}
+            className="inline-flex min-w-0 items-center gap-2 rounded-l-xl px-3 py-2 text-left text-[13px] font-medium text-ink-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            aria-label={`${t('Открыть предпросмотр')}: ${name}`}
+            title={t('Открыть предпросмотр')}
+          >
+            <Eye size={16} className="shrink-0" />
+            <span className="min-w-0 truncate">{name}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => void download()}
+            disabled={busy}
+            className="inline-flex shrink-0 items-center rounded-r-xl border-l border-line px-2.5 py-2.5 text-muted transition hover:text-ink disabled:cursor-wait disabled:opacity-60"
+            aria-label={t('Скачать')}
+            title={t('Скачать')}
+          >
+            {busy ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => void download()}
+          disabled={busy}
+          className="inline-flex max-w-full items-center gap-2 rounded-xl border border-line bg-chrome px-3 py-2 text-left text-[13px] font-medium text-ink-soft transition hover:border-accent/30 hover:bg-accent-soft disabled:cursor-wait disabled:opacity-60"
+        >
+          {busy ? <Loader2 size={16} className="shrink-0 animate-spin" /> : <Download size={16} className="shrink-0" />}
+          <span className="min-w-0 truncate">{name}</span>
+        </button>
+      )}
       {failed && !imageUrl && <span className="mt-1 block text-xs text-danger">{t('Вложение сейчас недоступно.')}</span>}
     </div>
   );

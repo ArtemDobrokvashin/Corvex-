@@ -6,6 +6,7 @@ import RouteError from './app/RouteError';
 import LoginPage from './features/auth/LoginPage';
 import { useT } from './i18n';
 import { ThemeProvider } from './components/ThemeProvider';
+import PreviewProvider from './features/preview/PreviewProvider';
 import { tryReloadForStaleChunk } from './lib/chunkReload';
 import '@fontsource-variable/inter';
 import './index.css';
@@ -49,6 +50,8 @@ const router = createBrowserRouter([
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ThemeProvider />
-    <RouterProvider router={router} />
+    <PreviewProvider>
+      <RouterProvider router={router} />
+    </PreviewProvider>
   </React.StrictMode>,
 );

@@ -64,6 +64,7 @@ import { bodyWithSignature, loadMailPreferences, mailPreferencesKey, saveMailPre
 import { useMailNotifications } from './useMailNotifications';
 import { canAdministerExternalMail, canUseExternalMail } from './externalMailAccess';
 import MailAttachments from './MailAttachments';
+import { usePreview } from '../preview/PreviewProvider';
 import MailboxUsage from './MailboxUsage';
 import { hasRemoteImages } from './mailHtml';
 import MailHtmlFrame from './MailHtmlFrame';
@@ -425,6 +426,28 @@ export default function MailPage() {
       if (url) window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       setDownloadBusy(null);
     }
+  };
+
+  const { openPreview } = usePreview();
+
+  // Вложения письма открываются одним списком: стрелки в предпросмотре
+  // переключают файлы, как в Gmail. Сервер сам сканирует PENDING при выдаче.
+  const openAttachmentPreview = (
+    messageId: string,
+    attachments: MailAttachmentView[],
+    selected: MailAttachmentView,
+  ) => {
+    openPreview(
+      attachments.map((attachment) => ({
+        fileName: attachment.fileName || t('вложение'),
+        contentType: attachment.contentType,
+        sizeBytes: attachment.sizeBytes,
+        avStatus: attachment.avStatus,
+        load: (signal: AbortSignal) => mailApi.downloadAttachment(messageId, attachment.partIndex, signal),
+        download: () => downloadAttachment(messageId, attachment),
+      })),
+      Math.max(0, attachments.findIndex((attachment) => attachment.partIndex === selected.partIndex)),
+    );
   };
 
   const activeIndex = active ? visible.findIndex((m) => m.id === active.id) : -1;
@@ -1907,6 +1930,8 @@ export default function MailPage() {
                   attachments={loadedAttachments[active.id]}
                   busy={downloadBusy !== null}
                   onDownload={(attachment) => void downloadAttachment(active.id, attachment)}
+                  onPreview={(attachment) =>
+                    openAttachmentPreview(active.id, loadedAttachments[active.id] ?? [attachment], attachment)}
                 />
               )}
 

@@ -7,6 +7,7 @@ import { useLocaleStore } from '../../i18n';
 import { ApiError } from '../../api/httpClient';
 import { driveApi, type DriveNode } from '../../api/driveApi';
 import FilesPage from './FilesPage';
+import PreviewProvider from '../preview/PreviewProvider';
 
 vi.mock('../../api/driveApi', async () => {
   const actual = await vi.importActual<typeof import('../../api/driveApi')>('../../api/driveApi');
@@ -440,6 +441,49 @@ describe('Файлы: личный диск', () => {
 
     expect(dialog()?.textContent).toContain('Скопируйте адрес вручную');
     expect(dialog()?.textContent).not.toContain('Скопировано');
+  });
+
+  it('открывает файл во встроенном предпросмотре, не скачивая его', async () => {
+    URL.createObjectURL = vi.fn(() => 'blob:drive-preview');
+    URL.revokeObjectURL = vi.fn();
+    vi.mocked(driveApi.download).mockResolvedValue(new Blob(['%PDF-1.7'], { type: 'application/pdf' }));
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <PreviewProvider>
+            <FilesPage />
+          </PreviewProvider>
+        </MemoryRouter>,
+      );
+    });
+    await settle();
+
+    await click(buttonByText('Счёт.pdf'));
+
+    expect(dialog()?.textContent).toContain('Счёт.pdf');
+    expect(container.querySelector('iframe')?.getAttribute('src')).toBe('blob:drive-preview');
+    expect(driveApi.download).toHaveBeenCalledWith('file-1', expect.any(AbortSignal));
+  });
+
+  it('оставляет отдельную кнопку скачивания рядом с предпросмотром', async () => {
+    URL.createObjectURL = vi.fn(() => 'blob:drive-preview');
+    URL.revokeObjectURL = vi.fn();
+    vi.mocked(driveApi.download).mockResolvedValue(new Blob(['%PDF-1.7'], { type: 'application/pdf' }));
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <PreviewProvider>
+            <FilesPage />
+          </PreviewProvider>
+        </MemoryRouter>,
+      );
+    });
+    await settle();
+
+    expect(rowButton('Счёт.pdf', 'Просмотреть')).toBeTruthy();
+    await click(rowButton('Счёт.pdf', 'Скачать'));
+    expect(dialog()).toBeNull();
+    expect(driveApi.download).toHaveBeenCalledWith('file-1');
   });
 
   it('закрывает диалог по Escape', async () => {

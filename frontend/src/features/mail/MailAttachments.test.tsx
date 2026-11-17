@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
+import { act } from 'react';
+import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useLocaleStore } from '../../i18n';
 import MailAttachments from './MailAttachments';
 
@@ -41,6 +43,39 @@ describe('mail attachment display', () => {
     expect(question.length).toBe(2);
     expect(document.body.textContent).not.toContain('safe to open');
   });
+  it('opens a preview from the card but keeps download as a separate action', async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    useLocaleStore.setState({ locale: 'ru' });
+    const onPreview = vi.fn();
+    const onDownload = vi.fn();
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => {
+      root.render(<MailAttachments demoMode={false} busy={false} attachments={[attachment('CLEAN', 0)]}
+        onDownload={onDownload} onPreview={onPreview} />);
+    });
+
+    const previewButton = host.querySelector('button[aria-label^="Открыть предпросмотр"]') as HTMLButtonElement;
+    expect(previewButton).not.toBeNull();
+    await act(async () => previewButton.click());
+    expect(onPreview).toHaveBeenCalledWith(expect.objectContaining({ fileName: 'файл-0.txt' }));
+    expect(onDownload).not.toHaveBeenCalled();
+
+    const downloadButton = [...host.querySelectorAll('button')].find((b) => b.textContent?.includes('Скачать')) as HTMLButtonElement;
+    await act(async () => downloadButton.click());
+    expect(onDownload).toHaveBeenCalledWith(expect.objectContaining({ fileName: 'файл-0.txt' }));
+
+    await act(async () => root.unmount());
+  });
+
+  it('does not add a preview button when the page has no preview handler', () => {
+    document.body.innerHTML = renderToStaticMarkup(<MailAttachments demoMode={false} busy={false}
+      attachments={[attachment('CLEAN', 0)]} onDownload={() => undefined} />);
+    expect(document.querySelectorAll('button')).toHaveLength(1);
+    expect(document.querySelector('button[aria-label^="Открыть предпросмотр"]')).toBeNull();
+  });
+
   it('supports English and unknown status fails closed', () => {
     useLocaleStore.setState({ locale: 'en' });
     document.body.innerHTML = renderToStaticMarkup(<MailAttachments demoMode={false} busy={false}
