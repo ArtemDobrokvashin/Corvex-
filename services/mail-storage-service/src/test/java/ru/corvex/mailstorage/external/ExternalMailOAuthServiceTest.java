@@ -95,10 +95,27 @@ class ExternalMailOAuthServiceTest {
         assertNotEquals(response.state(), saved.getValue().getStateHash(),
                 "в базе должен лежать хэш, а не сам state из браузера");
         assertEquals(ExternalMailOAuthService.sha256Hex(response.state()), saved.getValue().getStateHash());
-        assertEquals(OWNER, saved.getValue().getOwnerId());
+        // Без targetUserId владелец ящика — тот, кто сам начал вход.
+        assertEquals(ACTOR, saved.getValue().getOwnerId());
+        assertEquals(ACTOR, saved.getValue().getActorId());
         assertEquals("GOOGLE", saved.getValue().getProvider());
         assertNotEquals("verifier-1", saved.getValue().getCodeVerifierEnc(),
                 "PKCE-verifier хранится зашифрованным");
+    }
+
+    @Test
+    void administratorStartsLoginForAnotherOwnerAndStateKeepsBothIds() {
+        when(client.authorizationUrl(eq(ExternalMailOAuthProvider.GOOGLE), any(), any()))
+                .thenReturn("https://accounts.google.com/o/oauth2/v2/auth?state=x");
+
+        service.start(ACTOR, Set.of(ExternalMailOAuthService.ADMIN_PERMISSION),
+                new ExternalMailOAuthDtos.AuthorizeRequest("GOOGLE", OWNER, "/mail"));
+
+        ArgumentCaptor<ExternalMailOAuthState> saved = ArgumentCaptor.forClass(ExternalMailOAuthState.class);
+        org.mockito.Mockito.verify(states).saveAndFlush(saved.capture());
+        // Владелец — сотрудник, для которого подключают ящик; в аудите остаётся администратор.
+        assertEquals(OWNER, saved.getValue().getOwnerId());
+        assertEquals(ACTOR, saved.getValue().getActorId());
     }
 
     @Test
