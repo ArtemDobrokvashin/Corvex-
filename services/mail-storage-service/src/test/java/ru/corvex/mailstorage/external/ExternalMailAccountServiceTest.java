@@ -313,7 +313,7 @@ class ExternalMailAccountServiceTest {
     }
 
     @Test
-    void createWithOauthConsentNeedsNoPasswordAndChecksBeforeSaving() {
+    void createWithOauthConsentNeedsNoPasswordAndChecksBeforeSaving() throws Exception {
         UUID connectionId = UUID.randomUUID();
         ExternalMailOAuthService.Claimed claimed = new ExternalMailOAuthService.Claimed(
                 "GOOGLE", "external@mail.test", cipher.encrypt("access-token"), cipher.encrypt("refresh-token"),
