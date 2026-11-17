@@ -249,7 +249,16 @@ class ProtocolMailServiceAdditionalTest {
         when(messages.findFolderUids(folder.getId(), ownerId)).thenReturn(List.of(1L));
         when(messages.lockFolderUid(folder.getId(), 1L, ownerId)).thenReturn(Optional.of(own));
 
-        service.deleteFolder(ownerId, folder.getId());
+        // Удаление тела письма разрешено только внутри транзакции: сервис откладывает
+        // физическую очистку до коммита, чтобы откат не оставил запись без файла.
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.deleteFolder(ownerId, folder.getId());
+            TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(sync -> sync.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
 
         // Файлы остаются на диске до сверки: каталог мог быть общим для двух ящиков,
         // а удаление «своих» файлов по пути задело бы чужие письма.
