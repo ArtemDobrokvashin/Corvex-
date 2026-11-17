@@ -9,10 +9,12 @@ import org.springframework.web.server.ResponseStatusException;
 import ru.corvex.mailstorage.api.dto.AdminMigrationDtos;
 import ru.corvex.mailstorage.api.dto.ProtocolDtos;
 import ru.corvex.mailstorage.client.AuthUserClient;
+import ru.corvex.mailstorage.domain.MailMigrationFolder;
 import ru.corvex.mailstorage.domain.MailMigrationInvitation;
 import ru.corvex.mailstorage.domain.MailMigrationJob;
 import ru.corvex.mailstorage.domain.UserOnboarding;
 import ru.corvex.mailstorage.external.ExternalMailAccountService;
+import ru.corvex.mailstorage.repository.MailMigrationFolderRepository;
 import ru.corvex.mailstorage.repository.MailMigrationInvitationRepository;
 import ru.corvex.mailstorage.repository.MailMigrationJobRepository;
 import ru.corvex.mailstorage.repository.UserOnboardingRepository;
@@ -20,10 +22,13 @@ import ru.corvex.mailstorage.service.ProtocolMailService;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -47,6 +52,7 @@ public class AdminMigrationService {
 
     private final MailMigrationInvitationRepository invitations;
     private final MailMigrationJobRepository jobs;
+    private final MailMigrationFolderRepository folders;
     private final UserOnboardingRepository onboarding;
     private final AuthUserClient auth;
     private final ProtocolMailService protocol;
@@ -54,12 +60,14 @@ public class AdminMigrationService {
 
     public AdminMigrationService(MailMigrationInvitationRepository invitations,
                                  MailMigrationJobRepository jobs,
+                                 MailMigrationFolderRepository folders,
                                  UserOnboardingRepository onboarding,
                                  AuthUserClient auth,
                                  ProtocolMailService protocol,
                                  ExternalMailAccountService accounts) {
         this.invitations = invitations;
         this.jobs = jobs;
+        this.folders = folders;
         this.onboarding = onboarding;
         this.auth = auth;
         this.protocol = protocol;
@@ -94,6 +102,15 @@ public class AdminMigrationService {
             }
         }
 
+        // Последнее задание читается по одному разу на владельца: сводка показывает и статус,
+        // и счётчик, а второй запрос за тем же заданием ничего не добавляет.
+        Map<UUID, MailMigrationJob> latest = new LinkedHashMap<>();
+        for (UUID ownerId : owners) {
+            latest.put(ownerId, jobs.findTop20ByOwnerIdOrderByCreatedAtDesc(ownerId).stream()
+                    .findFirst().orElse(null));
+        }
+        Map<UUID, Integer> migratedPerJob = migratedTotalsByJob(latest.values());
+
         List<AdminMigrationDtos.Row> rows = new ArrayList<>();
         int notStarted = 0;
         int running = 0;
@@ -105,11 +122,11 @@ public class AdminMigrationService {
             // auth-service может быть недоступен: сводка должна показать хотя бы то,
             // что известно из приглашений и заданий, а не падать целиком.
             Optional<AuthUserClient.MailboxOwner> owner = owner(ownerId);
-            Optional<MailMigrationJob> job = jobs.findTop20ByOwnerIdOrderByCreatedAtDesc(ownerId).stream().findFirst();
+            MailMigrationJob job = latest.get(ownerId);
             UserOnboarding onboardingRow = onboarding.findById(ownerId).orElse(null);
             ProtocolDtos.MailboxUsageView used = usage.get(ownerId);
 
-            MailMigrationJob.Status jobStatus = job.map(MailMigrationJob::getStatus).orElse(null);
+            MailMigrationJob.Status jobStatus = job == null ? null : job.getStatus();
             if (jobStatus == null) {
                 notStarted++;
             } else if (RUNNING.contains(jobStatus)) {
@@ -119,7 +136,8 @@ public class AdminMigrationService {
             } else {
                 failed++;
             }
-            migrated += job.map(MailMigrationJob::getMigratedMessages).orElse(0);
+            int migratedMessages = job == null ? 0 : migratedPerJob.getOrDefault(job.getId(), 0);
+            migrated += migratedMessages;
 
             rows.add(new AdminMigrationDtos.Row(
                     ownerId,
@@ -129,8 +147,8 @@ public class AdminMigrationService {
                     invitation == null ? null : invitation.getStatus().name(),
                     onboardingRow == null ? null : onboardingRow.getMigrationState().name(),
                     jobStatus == null ? null : jobStatus.name(),
-                    job.map(MailMigrationJob::getId).orElse(null),
-                    job.map(MailMigrationJob::getMigratedMessages).orElse(0),
+                    job == null ? null : job.getId(),
+                    migratedMessages,
                     owner.map(AuthUserClient.MailboxOwner::quotaBytes).orElse(0L),
                     used == null ? 0 : used.usedBytes(),
                     invitation == null ? null : invitation.getSourceHost(),
@@ -228,6 +246,25 @@ public class AdminMigrationService {
                 "from=" + current + ", to=" + next + ", used=" + used);
         return new AdminMigrationDtos.QuotaBumpResult(ownerId, next, used, used <= next,
                 Math.max(0, next - used));
+    }
+
+    /**
+     * Перенесённые письма считаются по папкам: у задания нет своего счётчика, а сумму
+     * по строкам обновляет синхронизация. Иначе сводка показывала бы ноль на успешном переносе.
+     */
+    private Map<UUID, Integer> migratedTotalsByJob(Collection<MailMigrationJob> jobsOfOwners) {
+        List<UUID> jobIds = jobsOfOwners.stream()
+                .filter(Objects::nonNull)
+                .map(MailMigrationJob::getId)
+                .toList();
+        if (jobIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, Integer> totals = new HashMap<>();
+        for (MailMigrationFolder folder : folders.findByJob_IdIn(jobIds)) {
+            totals.merge(folder.getJob().getId(), folder.getMigratedMessages(), Integer::sum);
+        }
+        return totals;
     }
 
     private Optional<AuthUserClient.MailboxOwner> owner(UUID ownerId) {
