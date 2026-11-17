@@ -40,8 +40,12 @@ class ContactServiceTest {
 
     @Test
     void createRejectsDuplicateAddressIgnoringCase() {
-        when(repository.findByOwnerIdAndEmailIgnoreCase(owner, "ivan@example.ru"))
-                .thenReturn(Optional.of(contact("Иван", "Ivan@example.ru")));
+        // Заглушка повторяет поведение БД: derived-запрос ...IgnoreCase сравнивает
+        // адреса без учёта регистра, поэтому точное совпадение строки здесь неверно.
+        when(repository.findByOwnerIdAndEmailIgnoreCase(any(), anyString())).thenAnswer(invocation ->
+                "ivan@example.ru".equalsIgnoreCase(invocation.getArgument(1))
+                        ? Optional.of(contact("Иван", "Ivan@example.ru"))
+                        : Optional.empty());
 
         ResponseStatusException error = assertThrows(ResponseStatusException.class, () -> service.create(owner,
                 new ContactDtos.ContactRequest("Иван", "IVAN@example.ru", null, null, null, null, null)));

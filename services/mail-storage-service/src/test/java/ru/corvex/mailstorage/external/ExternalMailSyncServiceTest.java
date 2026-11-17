@@ -1037,11 +1037,14 @@ class ExternalMailSyncServiceTest {
     }
 
     private void execute(UUID accountId, UUID runId, ExternalMailSyncRun.Trigger trigger) throws Exception {
+        // Пятый параметр — управление переносом (пауза, отмена, отчёт по папкам).
+        // Здесь оно не нужно: executeClaimed терпит null и ведёт себя как обычный сбор.
         Method method = ExternalMailSyncService.class.getDeclaredMethod(
-                "executeClaimed", UUID.class, UUID.class, String.class, ExternalMailSyncRun.Trigger.class);
+                "executeClaimed", UUID.class, UUID.class, String.class, ExternalMailSyncRun.Trigger.class,
+                ExternalMailSyncService.MigrationControl.class);
         method.setAccessible(true);
         try {
-            method.invoke(service, accountId, runId, "test-lock", trigger);
+            method.invoke(service, accountId, runId, "test-lock", trigger, null);
         } catch (InvocationTargetException e) {
             if (e.getCause() instanceof Exception exception) throw exception;
             throw e;
