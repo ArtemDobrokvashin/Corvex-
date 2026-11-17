@@ -271,7 +271,11 @@ public class ExternalMailAccountService {
             account.setSecretEnc(null);
         }
         if (Boolean.TRUE.equals(req.testBeforeSave())) {
-            testOrThrow(account, account.getAuthType() == ExternalMailAccount.AuthType.OAUTH2 ? null : secret);
+            // Повторный вход ещё не сохранён: проверяем новым токеном из согласия, а не старым
+            // из базы. Для уже подключённого OAuth-ящика токен подставит сам toConfig.
+            String testSecret = relink != null ? cipher.decrypt(relink.accessTokenEnc())
+                    : (account.getAuthType() == ExternalMailAccount.AuthType.OAUTH2 ? null : secret);
+            testOrThrow(account, testSecret);
         }
         if (account.isEnabled() && account.isSyncEnabled() && account.getNextSyncAt() == null) {
             account.setNextSyncAt(Instant.now());

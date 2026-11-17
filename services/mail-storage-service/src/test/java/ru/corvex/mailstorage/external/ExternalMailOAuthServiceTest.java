@@ -108,7 +108,7 @@ class ExternalMailOAuthServiceTest {
         when(client.authorizationUrl(eq(ExternalMailOAuthProvider.GOOGLE), any(), any()))
                 .thenReturn("https://accounts.google.com/o/oauth2/v2/auth?state=x");
 
-        service.start(ACTOR, Set.of(ExternalMailOAuthService.ADMIN_PERMISSION),
+        service.start(ACTOR, Set.of(ExternalMailAccountService.ADMIN_PERMISSION),
                 new ExternalMailOAuthDtos.AuthorizeRequest("GOOGLE", OWNER, "/mail"));
 
         ArgumentCaptor<ExternalMailOAuthState> saved = ArgumentCaptor.forClass(ExternalMailOAuthState.class);
