@@ -26,7 +26,11 @@ public class StorageSecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus", "/internal/**").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus",
+                                "/internal/**").permitAll()
+                        // Callback OAuth приходит редиректом из браузера без JWT. Доступ
+                        // защищён одноразовым state, привязанным к владельцу ящика.
+                        .requestMatchers("/api/v1/mail/external-accounts/oauth/callback").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth.jwt(jwt ->
                         jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())))

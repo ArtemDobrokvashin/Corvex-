@@ -19,6 +19,9 @@ const migrationMocks = vi.hoisted(() => ({
 const externalMocks = vi.hoisted(() => ({
   create: vi.fn(),
   presets: vi.fn(),
+  oauthProviders: vi.fn(),
+  oauthAuthorize: vi.fn(),
+  oauthConnection: vi.fn(),
 }));
 
 vi.mock('../../api/migrationApi', async () => {
@@ -100,6 +103,9 @@ describe('MigrationWizard', () => {
     migrationMocks.create.mockReset().mockResolvedValue(job);
     migrationMocks.get.mockReset().mockResolvedValue(job);
     externalMocks.create.mockReset().mockResolvedValue({ id: 'acc-1' });
+    externalMocks.oauthProviders.mockReset().mockResolvedValue([]);
+    externalMocks.oauthAuthorize.mockReset();
+    externalMocks.oauthConnection.mockReset();
   });
 
   afterEach(async () => {
@@ -117,7 +123,8 @@ describe('MigrationWizard', () => {
     expect(container.textContent).toContain('Move your mail');
     expect(container.textContent).toContain('Mail.ru');
     expect(container.textContent).toContain('Yandex 360');
-    expect(container.textContent).toContain('Outlook and Microsoft 365 are not supported yet');
+    expect(container.textContent).toContain('Microsoft 365');
+    expect(container.textContent).toContain('Microsoft sign-in only');
   });
 
   it('sends the postpone decisions to the caller instead of hiding them', async () => {

@@ -275,7 +275,7 @@ public class JakartaExternalMailClient implements ExternalMailClient {
         }
     }
 
-    private Properties incomingProperties(AccountConfig config, ExternalMailEndpointPolicy.Endpoint endpoint) {
+    Properties incomingProperties(AccountConfig config, ExternalMailEndpointPolicy.Endpoint endpoint) {
         Properties p = new Properties();
         boolean imap = config.incomingProtocol() == ExternalMailAccount.Protocol.IMAP;
         String prefix = imap ? "mail.imap" : "mail.pop3";
@@ -290,6 +290,15 @@ public class JakartaExternalMailClient implements ExternalMailClient {
             p.put(prefix + ".starttls.enable", "true");
             p.put(prefix + ".starttls.required", "true");
         }
+        if (config.oauth2()) {
+            // OAuth2 в почтовых протоколах — это SASL XOAUTH2: пароль не отправляется,
+            // вместо него уходит токен доступа. Другие механизмы отключаются, чтобы
+            // провайдер не предложил LOGIN с токеном в открытом виде.
+            p.put(prefix + ".auth.mechanisms", "XOAUTH2");
+            // Для SSL-соединения Jakarta Mail читает свойства протокола с суффиксом s,
+            // поэтому механизм задаётся для обоих имён.
+            p.put(prefix + "s.auth.mechanisms", "XOAUTH2");
+        }
         if (imap) {
             p.put("mail.imap.peek", "true");
             p.put("mail.imap.connectionpoolsize", "1");
@@ -298,7 +307,7 @@ public class JakartaExternalMailClient implements ExternalMailClient {
         return p;
     }
 
-    private Properties smtpProperties(AccountConfig config, ExternalMailEndpointPolicy.Endpoint endpoint) {
+    Properties smtpProperties(AccountConfig config, ExternalMailEndpointPolicy.Endpoint endpoint) {
         Properties p = new Properties();
         p.put("mail.transport.protocol", "smtp");
         p.put("mail.smtp.host", endpoint.host());
@@ -313,6 +322,10 @@ public class JakartaExternalMailClient implements ExternalMailClient {
         } else if (config.smtpSecurity() == ExternalMailAccount.Security.STARTTLS) {
             p.put("mail.smtp.starttls.enable", "true");
             p.put("mail.smtp.starttls.required", "true");
+        }
+        if (config.oauth2()) {
+            p.put("mail.smtp.auth.mechanisms", "XOAUTH2");
+            p.put("mail.smtps.auth.mechanisms", "XOAUTH2");
         }
         return p;
     }

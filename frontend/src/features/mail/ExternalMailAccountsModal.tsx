@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Search,
   Send,
+  ShieldCheck,
   Trash2,
   UserRound,
   X,
@@ -67,7 +68,7 @@ type FormState = {
   emailAddress: string;
   displayName: string;
   provider: ExternalMailProvider;
-  authType: 'APP_PASSWORD' | 'PASSWORD';
+  authType: 'APP_PASSWORD' | 'PASSWORD' | 'OAUTH2';
   incomingProtocol: 'IMAP' | 'POP3';
   incomingHost: string;
   incomingPort: number;
@@ -157,7 +158,7 @@ function formFromAccount(account: ExternalMailAccount): FormState {
     emailAddress: account.emailAddress,
     displayName: account.displayName ?? '',
     provider: account.provider,
-    authType: account.authType === 'PASSWORD' ? 'PASSWORD' : 'APP_PASSWORD',
+    authType: account.authType === 'PASSWORD' ? 'PASSWORD' : account.authType === 'OAUTH2' ? 'OAUTH2' : 'APP_PASSWORD',
     incomingProtocol: account.incomingProtocol,
     incomingHost: account.incomingHost,
     incomingPort: account.incomingPort,
@@ -475,6 +476,31 @@ export default function ExternalMailAccountsModal({
     return () => window.clearInterval(timer);
   }, [accounts, canAdmin, currentOwner, demoMode, loadRuns, onAccountsChanged, ownerFilter, selectedId]);
 
+  /**
+   * Повторный вход после отзыва согласия. Уходим на страницу провайдера, а возврат обрабатывает
+   * почта: она заменит токены у этого же ящика, сохранив курсоры папок и журнал переноса.
+   */
+  const startRelink = async () => {
+    if (!selected) return;
+    const oauthProvider = selected.provider === 'GMAIL' ? 'GOOGLE'
+      : selected.provider === 'OUTLOOK' ? 'MICROSOFT' : null;
+    if (!oauthProvider) return;
+    setError(null);
+    setNotice(null);
+    setBusy('relink');
+    try {
+      const response = await externalMailApi.oauthAuthorize({
+        provider: oauthProvider,
+        returnPath: window.location.pathname,
+      });
+      window.sessionStorage.setItem('corvex.oauth.relink', selected.id);
+      window.location.assign(response.authorizationUrl);
+    } catch (relinkError) {
+      setError(errorMessage(relinkError));
+      setBusy(null);
+    }
+  };
+
   const patch = (next: Partial<FormState>) => {
     setForm((current) => {
       const merged = { ...current, ...next };
@@ -718,6 +744,11 @@ export default function ExternalMailAccountsModal({
                     <span className="mt-1 block pl-4 text-xs text-faint">
                       {account.syncRunning ? t('Синхронизация выполняется…') : account.lastSuccessAt ? `${t('Успешно')}: ${formatDateTime(locale, account.lastSuccessAt)}` : t('Ещё не синхронизировался')}
                     </span>
+                    {account.reauthRequired && (
+                      <span className="mt-2 block pl-4 text-xs leading-relaxed text-red-700">
+                        {t('Согласие Google/Microsoft отозвано: откройте ящик и войдите заново')}
+                      </span>
+                    )}
                     {account.lastError && <span className="mt-2 line-clamp-2 block pl-4 text-xs leading-relaxed text-red-700">{account.lastError}</span>}
                   </button>
                 ))}
@@ -789,12 +820,32 @@ export default function ExternalMailAccountsModal({
                 <Field label={t('Логин у провайдера')} hint={t('Обычно совпадает с адресом ящика.')}>
                   <input value={form.incomingUsername} onChange={(event) => patch({ incomingUsername: event.target.value })} placeholder="name@mail.ru" className={inputCls} autoComplete="username" />
                 </Field>
-                <Field label={t('Пароль приложения')} hint={selected ? t('Оставьте пустым, чтобы сохранить текущий пароль.') : providerHint ? t(providerHint) : undefined}>
-                  <span className="relative block">
-                    <KeyRound size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
-                    <input required={!selected} type="password" value={form.secret} onChange={(event) => patch({ secret: event.target.value })} className={`${inputCls} pl-9`} autoComplete="new-password" />
-                  </span>
-                </Field>
+                {form.authType === 'OAUTH2' ? (
+                  <Field label={t('Вход через провайдера')} hint={t('Пароль для этого ящика не используется: доступ выдан согласием Google или Microsoft.')}>
+                    <div className="rounded-xl border border-line bg-chrome px-3 py-2.5">
+                      {selected?.reauthRequired ? (
+                        <p className="text-[12.5px] leading-relaxed text-red-700">{t('Согласие отозвано: войдите заново, чтобы сбор почты продолжился.')}</p>
+                      ) : (
+                        <p className="text-[12.5px] leading-relaxed text-ink-soft">{t('Согласие действует. Токен обновляется автоматически перед каждым сбором.')}</p>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void startRelink()}
+                        disabled={busy !== null}
+                        className="btn-secondary mt-2 h-9 px-3 text-[13px]"
+                      >
+                        <ShieldCheck size={14} />{t('Войти заново')}
+                      </button>
+                    </div>
+                  </Field>
+                ) : (
+                  <Field label={t('Пароль приложения')} hint={selected ? t('Оставьте пустым, чтобы сохранить текущий пароль.') : providerHint ? t(providerHint) : undefined}>
+                    <span className="relative block">
+                      <KeyRound size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+                      <input required={!selected} type="password" value={form.secret} onChange={(event) => patch({ secret: event.target.value })} className={`${inputCls} pl-9`} autoComplete="new-password" />
+                    </span>
+                  </Field>
+                )}
               </div>
 
               <h5 className="mt-7 text-sm font-semibold">{t('Сбор входящей почты')}</h5>
@@ -882,18 +933,21 @@ export default function ExternalMailAccountsModal({
                 </Field>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <Check checked={form.smtpEnabled} onChange={(value) => patch({ smtpEnabled: value, sendEnabled: value && form.sendEnabled })}>{t('SMTP провайдера настроен')}</Check>
-                <Check checked={form.sendEnabled} disabled={!form.smtpEnabled} onChange={(value) => patch({ sendEnabled: value })}>{t('Разрешить отправку от имени этого адреса')}</Check>
+                <Check checked={form.smtpEnabled} disabled={form.authType === 'OAUTH2'} onChange={(value) => patch({ smtpEnabled: value, sendEnabled: value && form.sendEnabled })}>{t('SMTP провайдера настроен')}</Check>
+                <Check checked={form.sendEnabled} disabled={!form.smtpEnabled || form.authType === 'OAUTH2'} onChange={(value) => patch({ sendEnabled: value })}>{t('Разрешить отправку от имени этого адреса')}</Check>
                 <Check checked={form.saveSentOnServer} disabled={!form.smtpEnabled || form.incomingProtocol !== 'IMAP'} onChange={(value) => patch({ saveSentOnServer: value })}>{t('Сохранять отправленные также в Sent у провайдера')}</Check>
               </div>
 
               <details className="mt-7 rounded-2xl border border-line bg-chrome px-4 py-3">
                 <summary className="cursor-pointer text-sm font-semibold">{t('Дополнительно')}</summary>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  <Field label={t('Тип секрета')}>
+                  <Field label={t('Тип секрета')} hint={form.authType === 'OAUTH2' ? t('Переход на пароль удалит согласие провайдера: понадобится пароль приложения.') : undefined}>
                     <select value={form.authType} onChange={(event) => patch({ authType: event.target.value as FormState['authType'] })} className={selectCls}>
                       <option value="APP_PASSWORD">{t('Пароль приложения')}</option>
                       <option value="PASSWORD">{t('Пароль почтового сервера')}</option>
+                      {selected?.authType === 'OAUTH2' && (
+                        <option value="OAUTH2">{t('Вход через провайдера')}</option>
+                      )}
                     </select>
                   </Field>
                   <Field label={t('Папка Sent у провайдера')} hint={t('Пусто = определить автоматически по IMAP.')}>

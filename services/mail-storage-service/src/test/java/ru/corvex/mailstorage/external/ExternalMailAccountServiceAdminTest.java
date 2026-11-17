@@ -47,7 +47,10 @@ class ExternalMailAccountServiceAdminTest {
                 mock(ExternalMailSecretCipher.class),
                 mock(ExternalMailEndpointPolicy.class),
                 mock(ExternalMailProperties.class),
-                mock(ExternalMailClient.class));
+                mock(ExternalMailClient.class),
+                mock(ExternalMailOAuthService.class),
+                mock(ExternalMailOAuthTokenService.class),
+                mock(ru.corvex.mailstorage.repository.ExternalMailOAuthTokenRepository.class));
     }
 
     @Test

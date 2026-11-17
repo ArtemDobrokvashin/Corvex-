@@ -9,6 +9,24 @@ export type ExternalMailOwnerKind = 'PERSONAL' | 'SHARED_MAILBOX';
 export type ExternalMailInitialMode = 'NEW_ONLY' | 'IMPORT_ALL';
 export type ExternalMailSyncScope = 'INBOX_ONLY' | 'ALL_FOLDERS';
 
+export type ExternalMailOAuthProviderId = 'GOOGLE' | 'MICROSOFT';
+
+/** Доступность OAuth: без client id и публичного адреса кнопка не показывается. */
+export interface ExternalMailOAuthProvider {
+  provider: ExternalMailOAuthProviderId;
+  title: string;
+  enabled: boolean;
+  hint: string;
+}
+
+/** Согласие уже получено; осталось создать внешний ящик. */
+export interface ExternalMailOAuthConnection {
+  id: string;
+  provider: ExternalMailOAuthProviderId;
+  email: string;
+  expiresAt: string;
+}
+
 export interface ExternalMailPreset {
   provider: ExternalMailProvider;
   imapHost: string;
@@ -55,6 +73,8 @@ export interface ExternalMailAccountRequest {
   saveSentOnServer?: boolean;
   sentFolderName?: string | null;
   testBeforeSave?: boolean;
+  /** Обязательно при authType=OAUTH2: идентификатор согласия из callback. */
+  oauthConnectionId?: string | null;
 }
 
 export interface ExternalMailAccount {
@@ -101,6 +121,8 @@ export interface ExternalMailAccount {
   failedCount: number;
   createdAt: string;
   updatedAt: string;
+  /** Согласие отозвано: нужен повторный вход через Google/Microsoft. */
+  reauthRequired?: boolean;
 }
 
 export interface ExternalMailTestResult {
@@ -183,4 +205,12 @@ export const externalMailApi = {
   migrate: (id: string) => apiFetch<ExternalMailSyncRun>(`${BASE}/${id}/migrate`, { method: 'POST' }),
   resetSync: (id: string) => apiFetch<void>(`${BASE}/${id}/reset-sync`, { method: 'POST' }),
   runs: (id: string) => apiFetch<ExternalMailSyncRun[]>(`${BASE}/${id}/runs`),
+  oauthProviders: () => apiFetch<ExternalMailOAuthProvider[]>(`${BASE}/oauth/providers`),
+  oauthAuthorize: (body: { provider: ExternalMailOAuthProviderId; returnPath?: string; targetUserId?: string | null }) =>
+    apiFetch<{ authorizationUrl: string; state: string; expiresAt: string }>(`${BASE}/oauth/authorize`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  oauthConnection: (id: string) =>
+    apiFetch<ExternalMailOAuthConnection>(`${BASE}/oauth/connections/${encodeURIComponent(id)}`),
 };

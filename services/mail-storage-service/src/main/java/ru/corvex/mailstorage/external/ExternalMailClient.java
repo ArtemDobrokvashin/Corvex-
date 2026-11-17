@@ -30,7 +30,29 @@ public interface ExternalMailClient {
             ExternalMailAccount.Security smtpSecurity,
             String smtpUsername,
             boolean markSeenOnServer,
-            boolean deleteAfterFetch) {
+            boolean deleteAfterFetch,
+            ExternalMailAccount.AuthType authType) {
+
+        /**
+         * Старый набор параметров: пароль приложения. Оставлен, чтобы существующие вызовы
+         * и тесты не переписывались ради нового необязательного поля.
+         */
+        public AccountConfig(UUID accountId, UUID ownerId, String emailAddress, String displayName,
+                             ExternalMailAccount.Provider provider, ExternalMailAccount.Protocol incomingProtocol,
+                             String incomingHost, int incomingPort, ExternalMailAccount.Security incomingSecurity,
+                             String incomingUsername, String secret, boolean smtpEnabled, String smtpHost,
+                             Integer smtpPort, ExternalMailAccount.Security smtpSecurity, String smtpUsername,
+                             boolean markSeenOnServer, boolean deleteAfterFetch) {
+            this(accountId, ownerId, emailAddress, displayName, provider, incomingProtocol, incomingHost,
+                    incomingPort, incomingSecurity, incomingUsername, secret, smtpEnabled, smtpHost, smtpPort,
+                    smtpSecurity, smtpUsername, markSeenOnServer, deleteAfterFetch,
+                    ExternalMailAccount.AuthType.APP_PASSWORD);
+        }
+
+        /** Для OAuth поле secret содержит токен доступа, а не пароль. */
+        public boolean oauth2() {
+            return authType == ExternalMailAccount.AuthType.OAUTH2;
+        }
     }
 
     record TestResult(boolean ok, String message, int folderCount, int inboxMessageCount) {

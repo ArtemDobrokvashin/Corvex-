@@ -1355,8 +1355,41 @@ const EN: Record<string, string> = {
   'Отдельный пароль для почтовых программ': 'A separate password for mail clients',
   'Пароль приложения; в организации IMAP может быть выключен': 'App password; IMAP may be disabled in the organization',
   'Адрес IMAP-сервера, порт и пароль ящика': 'IMAP server address, port and mailbox password',
-  'Outlook и Microsoft 365 пока не поддерживаются: они требуют входа через OAuth. Такой ящик можно подключить позже, архивом — через MBOX/EML.':
-    'Outlook and Microsoft 365 are not supported yet: they require OAuth sign-in. Such a mailbox can be connected later from an MBOX/EML archive.',
+  'Microsoft 365 подключается только после входа через Microsoft, Gmail — через Google или паролем приложения. Кнопка входа появляется, когда администратор настроил приложение.':
+    'Microsoft 365 only works after signing in with Microsoft, Gmail works with Google sign-in or an app password. The sign-in button appears once an administrator has configured the application.',
+  'Microsoft 365': 'Microsoft 365',
+  'Вход через Google или пароль приложения при 2FA': 'Google sign-in or an app password with 2FA',
+  'Только вход через Microsoft: пароль приложения не работает': 'Microsoft sign-in only: app passwords do not work',
+  'Вход через {title} выполнен: {email}': 'Signed in with {title}: {email}',
+  '{title} требует вход через браузер: пароль приложения не подойдёт.':
+    '{title} requires signing in through the browser: an app password will not work.',
+  'Войти через {title}': 'Sign in with {title}',
+  'Вход через провайдера': 'Provider sign-in',
+  'Пароль для этого ящика не используется: доступ выдан согласием Google или Microsoft.':
+    'No password is used for this mailbox: access was granted by Google or Microsoft consent.',
+  'Согласие отозвано: войдите заново, чтобы сбор почты продолжился.':
+    'The consent was revoked: sign in again to resume mail collection.',
+  'Согласие действует. Токен обновляется автоматически перед каждым сбором.':
+    'The consent is valid. The token is refreshed automatically before each collection.',
+  'Войти заново': 'Sign in again',
+  'Переход на пароль удалит согласие провайдера: понадобится пароль приложения.':
+    'Switching to a password removes the provider consent: an app password will be required.',
+  'Согласие Google/Microsoft отозвано: откройте ящик и войдите заново':
+    'Google/Microsoft consent was revoked: open the mailbox and sign in again',
+  'Вход восстановлен: ящик снова получает почту': 'Sign-in restored: the mailbox collects mail again',
+  'Или пароль приложения': 'Or an app password',
+  'Продолжить настройку': 'Continue setup',
+  'Не удалось начать вход через провайдера': 'Could not start the provider sign-in',
+  'Доступ не выдан: вход отменён или согласие отозвано': 'Access was not granted: the sign-in was cancelled or the consent was revoked',
+  'Ссылка входа устарела: начните вход заново': 'The sign-in link has expired: start the sign-in again',
+  'Ссылка входа уже использована или устарела: начните вход заново':
+    'The sign-in link has already been used or has expired: start the sign-in again',
+  'Не удалось получить доступ у провайдера: повторите вход позже':
+    'The provider did not grant access: try signing in again later',
+  'Провайдер не вернул код подтверждения: начните вход заново':
+    'The provider did not return a confirmation code: start the sign-in again',
+  'Вход через провайдера не завершён: попробуйте снова':
+    'The provider sign-in was not completed: try again',
   'Уже подключён ящик {email}.': 'Mailbox {email} is already connected.',
   'Продолжить с ним': 'Continue with it',
   '← Выбрать другой источник': '← Choose another source',
