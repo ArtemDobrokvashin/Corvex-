@@ -136,6 +136,9 @@ services:
       CORVEX_BOOTSTRAP_ADMIN_USERNAME: ${CORVEX_BOOTSTRAP_ADMIN_USERNAME:-admin}
       CORVEX_BOOTSTRAP_ADMIN_PASSWORD: ${CORVEX_BOOTSTRAP_ADMIN_PASSWORD:-}
       CORVEX_BOOTSTRAP_ADMIN_EMAIL: ${CORVEX_BOOTSTRAP_ADMIN_EMAIL:-}
+      # Secure-cookie по умолчанию включён. Для приёмки на http://localhost (Chrome считает
+      # localhost доверенным, но старые сборки — нет) можно выставить false в .env.
+      CORVEX_AUTH_COOKIE_SECURE: ${CORVEX_AUTH_COOKIE_SECURE:-true}
     volumes: ["${CORVEX_SECRETS_DIR:-./infra/secrets}:/run/secrets:ro"]
     depends_on: { postgres: { condition: service_healthy }, redis: { condition: service_healthy } }
 
@@ -497,6 +500,18 @@ services:
   frontend:
     build: ./frontend
     restart: unless-stopped
+    networks: [edge]
+
+  # Приёмка OAuth на ноутбуке: SPA и API на одном адресе http://localhost:8080.
+  # Профиль выключен по умолчанию — в боевом запуске порт 8080 наружу не публикуется.
+  nginx-local:
+    image: nginx:1.31-alpine
+    profiles: ["local-oauth"]
+    restart: unless-stopped
+    ports: ["8080:80"]
+    volumes:
+      - ./infra/nginx/local-oauth.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on: [web-gateway, frontend]
     networks: [edge]
 
   nginx:
