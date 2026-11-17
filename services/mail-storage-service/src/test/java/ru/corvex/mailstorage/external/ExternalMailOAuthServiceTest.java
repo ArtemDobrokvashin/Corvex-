@@ -52,6 +52,9 @@ class ExternalMailOAuthServiceTest {
         AuthUserClient auth = mock(AuthUserClient.class);
         when(auth.findById(OWNER)).thenReturn(Optional.of(
                 new AuthUserClient.MailboxOwner(OWNER, "ivan@company.ru", "Иван", "ACTIVE", 1024)));
+        // Обычный пользователь подключает свой ящик: владелец в этом случае — он сам.
+        when(auth.findById(ACTOR)).thenReturn(Optional.of(
+                new AuthUserClient.MailboxOwner(ACTOR, "ivan@company.ru", "Иван", "ACTIVE", 1024)));
         when(connections.saveAndFlush(any(ExternalMailOAuthConnection.class))).thenAnswer(invocation -> {
             ExternalMailOAuthConnection row = invocation.getArgument(0);
             if (row.getId() == null) {

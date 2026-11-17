@@ -74,7 +74,7 @@ class ExternalMailOAuthControllerSecurityTest {
 
     @Test
     void callbackAcceptsProviderErrorWithoutCode() throws Exception {
-        when(service.callback(isNull(), "state-1", "access_denied"))
+        when(service.callback(isNull(), eq("state-1"), eq("access_denied")))
                 .thenReturn("https://mail.example.test/mail?oauth=error&reason=access_denied");
 
         mvc.perform(get("/api/v1/mail/external-accounts/oauth/callback")

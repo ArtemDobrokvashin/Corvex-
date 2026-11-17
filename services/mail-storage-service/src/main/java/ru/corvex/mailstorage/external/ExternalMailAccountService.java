@@ -190,13 +190,16 @@ public class ExternalMailAccountService {
         } else {
             account.setSecretEnc(cipher.encrypt(secret));
         }
+        if (Boolean.TRUE.equals(req.testBeforeSave())) {
+            // Проверка идёт до сохранения: неподтверждённое подключение не должно оставлять
+            // запись в базе. Для OAuth вместо пароля берётся токен из уже проверенного согласия,
+            // поэтому строка токенов для проверки не нужна.
+            testOrThrow(account, oauth ? cipher.decrypt(claimed.accessTokenEnc()) : secret);
+        }
         account.setNextSyncAt(account.isEnabled() && account.isSyncEnabled() ? Instant.now() : null);
         ExternalMailAccount saved = accounts.saveAndFlush(account);
         if (oauth) {
             oauthTokens.store(saved.getId(), claimed);
-        }
-        if (Boolean.TRUE.equals(req.testBeforeSave())) {
-            testOrThrow(saved, oauth ? null : secret);
         }
         audit(actorId, saved, "EXTERNAL_ACCOUNT_CREATED",
                 "email=" + saved.getEmailAddress() + ", provider=" + saved.getProvider()

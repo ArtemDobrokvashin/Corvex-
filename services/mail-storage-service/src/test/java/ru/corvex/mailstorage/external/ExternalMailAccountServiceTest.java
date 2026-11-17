@@ -34,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -309,6 +310,34 @@ class ExternalMailAccountServiceTest {
                 () -> service.create(ownerId, OWN, spec.build())).getStatusCode());
 
         verify(accounts, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void createWithOauthConsentNeedsNoPasswordAndChecksBeforeSaving() {
+        UUID connectionId = UUID.randomUUID();
+        ExternalMailOAuthService.Claimed claimed = new ExternalMailOAuthService.Claimed(
+                "GOOGLE", "external@mail.test", cipher.encrypt("access-token"), cipher.encrypt("refresh-token"),
+                Instant.now().plusSeconds(3600), "scope");
+        when(oauthFlows.claim(ownerId, connectionId, ExternalMailOAuthProvider.GOOGLE, "external@mail.test"))
+                .thenReturn(claimed);
+        RequestSpec spec = new RequestSpec();
+        spec.provider = ExternalMailAccount.Provider.GMAIL;
+        spec.authType = ExternalMailAccount.AuthType.OAUTH2;
+        spec.secret = null;
+        spec.smtpEnabled = false;
+        spec.sendEnabled = false;
+        spec.testBeforeSave = true;
+        spec.oauthConnectionId = connectionId;
+
+        service.create(ownerId, OWN, spec.build());
+
+        // Проверка подключения шла токеном из согласия, а не паролем и не строкой из базы.
+        verify(client).testIncoming(argThat(config ->
+                "access-token".equals(config.secret())
+                        && config.authType() == ExternalMailAccount.AuthType.OAUTH2));
+        verify(oauthTokens).store(any(), eq(claimed));
+        assertNull(savedAccount.get().getSecretEnc(), "пароль у OAuth-ящика не хранится");
+        assertEquals(ExternalMailAccount.AuthType.OAUTH2, savedAccount.get().getAuthType());
     }
 
     @Test
