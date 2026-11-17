@@ -85,7 +85,8 @@ class AcceptedDomainsTest {
         assertEquals(AcceptedDomains.Verdict.UNKNOWN, policy.classify("partner.example"),
                 "устаревший список не доказывает, что другой домен чужой");
 
-        when(store.deliveryDomains()).thenReturn(List.of("other.example"));
+        // doReturn, а не when: предыдущая заглушка бросает исключение, и when() выполнил бы её.
+        doReturn(List.of("other.example")).when(store).deliveryDomains();
         now.set(NOW.plus(Duration.ofMinutes(3)));
         assertEquals(AcceptedDomains.Verdict.FOREIGN, policy.classify("new.example"),
                 "после успешного обновления список снова доказателен");

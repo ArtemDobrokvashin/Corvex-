@@ -270,7 +270,9 @@ class DomainEntitiesTest {
         assertEquals(ExternalMailAccount.AuthType.OAUTH2,
                 ExternalMailAccount.AuthType.valueOf("OAUTH2"));
         assertEquals(5, ExternalMailImportedMessage.Status.values().length);
-        assertEquals(4, ExternalMailSyncRun.Status.values().length);
+        // PAUSED и CANCELLED добавлены для длинного переноса: пауза продолжается,
+        // отмена — нет, и отчёт обязан различать эти два исхода.
+        assertEquals(6, ExternalMailSyncRun.Status.values().length);
         assertEquals(4, MessageMetadata.AvStatus.values().length);
     }
 }

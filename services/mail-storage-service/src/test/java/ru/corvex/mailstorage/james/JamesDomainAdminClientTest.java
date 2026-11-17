@@ -94,7 +94,10 @@ class JamesDomainAdminClientTest {
             });
             try (var client = client(origin)) {
                 assertEquals(CreateOutcome.UNCERTAIN, client.create("company.local"), "status " + code);
-                assertEquals(Presence.UNKNOWN, client.presence("company.local"), "status " + code);
+                // 404 для чтения — доказанное отсутствие домена, а не неопределённость:
+                // PUT и GET имеют разную семантику одного и того же кода.
+                Presence expected = code == 404 ? Presence.ABSENT : Presence.UNKNOWN;
+                assertEquals(expected, client.presence("company.local"), "status " + code);
             }
             server.stop(0);
             server = null;

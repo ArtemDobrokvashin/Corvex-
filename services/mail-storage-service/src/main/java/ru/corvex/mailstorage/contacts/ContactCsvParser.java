@@ -129,7 +129,9 @@ public final class ContactCsvParser {
             } else if (c == delimiter) {
                 row.add(clean(field.toString()));
                 field.setLength(0);
-                fieldStarted = true;
+                // Новое поле начинается заново: без сброса кавычка после разделителя
+                // считалась бы частью текста и попадала в значение.
+                fieldStarted = false;
             } else if (c == '\r' || c == '\n') {
                 if (c == '\r' && i + 1 < text.length() && text.charAt(i + 1) == '\n') {
                     i++;
@@ -145,7 +147,11 @@ public final class ContactCsvParser {
                 fieldStarted = false;
             } else {
                 field.append(c);
-                fieldStarted = true;
+                // Пробел перед кавычкой — отступ выгрузки, а не начало значения:
+                // иначе `, "текст"` тоже сохранял бы кавычки.
+                if (!Character.isWhitespace(c)) {
+                    fieldStarted = true;
+                }
             }
         }
         if (fieldStarted || !row.isEmpty()) {
