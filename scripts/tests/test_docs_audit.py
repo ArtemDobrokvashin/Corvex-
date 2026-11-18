@@ -205,6 +205,62 @@ class ComposeRequirementTest(unittest.TestCase):
         self.assertIn("CORVEX_FORGOTTEN", findings[0].message)
 
 
+class PlannedButImplementedTest(unittest.TestCase):
+    def test_planned_operation_that_exists_is_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "docs" / "api").mkdir(parents=True)
+            (root / "docs" / "api" / "fixture.yaml").write_text(
+                "openapi: 3.0.3\n"
+                "servers:\n"
+                "  - url: https://example.test/api/v1\n"
+                "paths:\n"
+                "  /demo:\n"
+                "    post:\n"
+                "      x-corvex-status: planned\n"
+                "      responses: { '201': { description: ok } }\n",
+                encoding="utf-8",
+            )
+            target = root / "services" / "demo" / "src" / "main" / "java"
+            target.mkdir(parents=True)
+            (target / "DemoController.java").write_text(
+                "import org.springframework.web.bind.annotation.*;\n"
+                "@RestController\n"
+                '@RequestMapping("/api/v1/demo")\n'
+                "class DemoController {\n"
+                "    @PostMapping\n"
+                "    void create() { }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            findings = docs_audit.check_planned_but_implemented(root)
+        self.assertEqual(1, len(findings))
+        self.assertIn("planned", findings[0].message)
+
+
+class PermissionCountTest(unittest.TestCase):
+    def test_claim_must_match_enum(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            enum_dir = root / "services" / "admin-service" / "src" / "main" / "java"
+            enum_dir = enum_dir / "ru" / "corvex" / "admin" / "rbac"
+            enum_dir.mkdir(parents=True)
+            (enum_dir / "Permission.java").write_text(
+                "public enum Permission {\n"
+                "    MAIL_READ_OWN,\n"
+                "    CHAT_READ,   // комментарий\n"
+                "    AUDIT_VIEW   // последний без запятой\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            docs = root / "docs"
+            docs.mkdir()
+            (docs / "GUIDE.md").write_text("Всего 2 прав", encoding="utf-8")
+            findings = docs_audit.check_permission_count(root)
+        self.assertEqual(1, len(findings))
+        self.assertIn("3", findings[0].message)
+
+
 class MigrationCheckTest(unittest.TestCase):
     def test_claim_beyond_latest_migration_is_an_error(self):
         with tempfile.TemporaryDirectory() as tmp:

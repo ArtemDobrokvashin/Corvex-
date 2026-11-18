@@ -26,15 +26,16 @@
 
 | Домен | Префикс | Ресурсы |
 |---|---|---|
-| Auth | `/auth/**` | login, MFA verify, refresh, logout, me (права и квота), TOTP, app-passwords, JWKS |
+| Auth | `/auth/**` | login, MFA verify, refresh, logout, me (права и квота), TOTP, app-passwords |
 | Почта | `/mail/**` | папки, письма, флаги, отправка (вложения — base64 в теле), черновики, вложения к скачиванию, адресная книга, внешние ящики и импорт архива |
 | Календарь | `/calendar/events` | события: список, создание, изменение, удаление |
 | Чат | `/chat/**`, `/files/**` | комнаты, личные диалоги, участники, история, реакции, закрепления, прочтения, поиск, presence, файлы |
 | Файлы (диск) | `/drive/**` | папки, файлы, квота, корзина, ссылки |
 | Админ | `/admin/**` | пользователи, группы и права, настройки, аудит, аналитика, health, backup |
 
-Правила автосортировки, подписи и автоответ «отпуск» пока не реализованы: таблицы в схеме БД
-есть как заготовка, но контроллеров и интерфейса нет. В [`api/mail-api.yaml`](api/mail-api.yaml)
+Правила автосортировки, серверные подписи и автоответ «отпуск» пока не реализованы: таблицы
+в схеме БД есть как заготовка, серверных контроллеров нет. Подпись в веб-почте хранится
+только в браузере (`localStorage`), между устройствами не синхронизируется. В [`api/mail-api.yaml`](api/mail-api.yaml)
 такие операции помечены `x-corvex-status: planned`. Поиск в веб-почте фильтрует уже
 загруженный список на клиенте; полнотекстовый `/mail/search` на Elasticsearch не реализован,
 хотя индекс наполняется.
@@ -209,10 +210,10 @@ MENTION`. Персистентные события публикуются по�
 
 ## 7. Внутренние API
 
-Не маршрутизируются через gateway и доступны только из сети `app`. Требуют заголовок
-`X-Corvex-Internal-Token` с секретом `CORVEX_INTERNAL_API_TOKEN`: без секрета `503`
-(fail-closed), с неверным — `401`. Отдельные credentials на вызывающего и mTLS — усиление
-следующего этапа, а не текущее состояние.
+Не маршрутизируются через gateway и доступны только из сети `app`. Кроме JWKS, требуют
+заголовок `X-Corvex-Internal-Token` с секретом `CORVEX_INTERNAL_API_TOKEN`: без секрета
+`503` (fail-closed), с неверным — `401`. Отдельные credentials на вызывающего и mTLS —
+усиление следующего этапа, а не текущее состояние.
 
 - `auth-service POST /internal/verify-password` — вход по паролю или app-password для
   IMAP/POP3/SMTP;
@@ -227,6 +228,10 @@ MENTION`. Персистентные события публикуются по�
   `quota`. Чужой объект — `404`, системную папку удалить нельзя (`409`), APPEND сверх
   квоты — `507`;
 - `notification-service POST /internal/alerts/webhook` — приём вебхука Alertmanager;
+- `auth-service GET /oauth2/jwks` — публичные ключи RS256. Единственный эндпоинт без
+  `X-Corvex-Internal-Token`: сервисы читают его по `CORVEX_JWK_SET_URI`
+  (`http://auth-service:8081/oauth2/jwks`). Через gateway путь **не** публикуется:
+  маршрут есть только у `/api/v1/auth/**`, а JWKS живёт вне этого префикса;
 - `notification-service POST /internal/calendar/reminders` — отправка напоминания;
 - `admin-service → auth-service /internal/users/**` — управление учётками;
 - `admin-service → mail-storage-service POST /internal/mail/usage` — batch до 200 владельцев

@@ -220,7 +220,7 @@ frontend/src/
 | Выпуск JWT, TTL, claims | `services/auth-service/.../security/TokenService.java` |
 | TOTP по RFC 6238 | `services/auth-service/.../security/TotpService.java` |
 | Проверка JWT в gateway | `services/web-gateway/.../security/GatewaySecurityConfig.java` |
-| Каталог 25 прав | `services/admin-service/.../rbac/Permission.java` |
+| Каталог 27 прав | `services/admin-service/.../rbac/Permission.java` |
 | Union прав групп и 6 ролей | `services/admin-service/.../rbac/EffectivePermissionService.java` |
 | Приём SMTP и anti-open-relay | `services/mail-smtp-service/.../server/InboundMessageHandlerFactory.java` |
 | Maildir и CAS | `services/mail-storage-service/.../storage/MaildirStorage.java` |

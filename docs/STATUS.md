@@ -92,7 +92,7 @@ CI не собирал ни разу до этого прогона. Испра�
 
 Прогон `44266849755` (коммит `f8f01c7`) — **полностью зелёный**, все три задания:
 `Java 17 / Maven reactor`, `Frontend / Node 22`, `Ops scripts / Python 3`. Maven прошёл все
-14 модулей reactor'а: 12 сервисов с тестами плюс агрегатор `corvex`. Это первый прогон
+14 проектов reactor'а: 13 сервисов с тестами плюс агрегатор `corvex`. Это первый прогон
 с начала проекта, где `mvn clean verify` дошёл до конца, поэтому впервые доказано, что
 `web-gateway`, `notification-service` и `office-preview-service` собираются и проходят тесты,
 а не просто «не проверялись».
@@ -100,9 +100,9 @@ CI не собирал ни разу до этого прогона. Испра�
 | Область | Результат | Чего это не доказывает |
 |---|---|---|
 | Frontend | `npm ci` (364 пакета), `tsc -b` — 0 ошибок, **71 файл / 356 тестов PASS**, production build (modern + legacy, 40 файлов в `dist/assets`), `npm audit --omit=dev` — 0 уязвимостей | реальный Windows 7 + Chrome 109, полную ручную responsive-матрицу и 200 % масштаб |
-| Python-скрипты | `unittest discover -s scripts/tests` — **258 тестов OK (1 skip)** | работу скриптов на реальном PostgreSQL и ФС сервера |
+| Python-скрипты | `unittest discover -s scripts/tests` — **260 тестов OK (1 skip)** | работу скриптов на реальном PostgreSQL и ФС сервера |
 | Документация | `python3 scripts/docs_audit.py` — **0 ошибок, 0 предупреждений** (до правок: 3 и 2); сверяются маршруты OpenAPI с `@*Mapping`, живые маршруты с `docs/API.md`, ссылки на файлы, миграции и `.env.example` | совпадение полей схем, кодов ответов и текстов ошибок — проверяется только существование маршрута, файла, миграции и переменной |
-| Java (Maven) | **полный reactor `mvn -B clean verify` — BUILD SUCCESS**, run `44266849755` на `f8f01c7`: 13 модулей (12 сервисов с тестами + агрегатор `corvex`), тесты: `auth` 124, `admin` 117, `mail-smtp` 153, `mail-imap` 92, `mail-pop3` 44, `mail-storage` 572 (2 skip), `mail-spam` 17, `mail-antivirus` 34, `chat` 109, `chat-file-service` 78, `web-gateway` 15, `notification` 23, `office-preview` 21; JaCoCo-гейт 70 % пройден во всех модулях, где он включён | интеграционные сценарии с живыми PostgreSQL, RabbitMQ и James — это стенд и приёмка, а не CI |
+| Java (Maven) | **полный reactor `mvn -B clean verify` — BUILD SUCCESS**, run `44266849755` на `f8f01c7`: 14 проектов reactor'а (13 сервисов с тестами + агрегатор `corvex`), тесты: `auth` 124, `admin` 117, `mail-smtp` 153, `mail-imap` 92, `mail-pop3` 44, `mail-storage` 572 (2 skip), `mail-spam` 17, `mail-antivirus` 34, `chat` 109, `chat-file-service` 78, `web-gateway` 15, `notification` 23, `office-preview` 21; JaCoCo-гейт 70 % пройден во всех модулях, где он включён | интеграционные сценарии с живыми PostgreSQL, RabbitMQ и James — это стенд и приёмка, а не CI |
 | Docker | на `ad42ff2`: `docker compose up -d --build` — 16 из 16 build-контекстов, 20 контейнеров без профилей `Started`/`healthy`, миграции `V6`/`V8` применились | чистую установку без старых томов, 72 часа и нагрузку |
 | Flyway | миграции применялись на существующих томах; чистая схема исторически проверена на `b37db56` | проход `mail-storage V1…V13` и схем остальных сервисов с нуля на текущем SHA |
 | Web runtime | вход, админка и webmail запускались с реальным backend | полную функциональную матрицу |
@@ -166,7 +166,7 @@ CI не собирал ни разу до этого прогона. Испра�
 | Ворота | Смысл | Состояние |
 |---|---|---|
 | G0 | фронтенд и статические проверки | ✅ пройдены на текущем `main` |
-| G1 | Maven по всем 13 модулям reactor | 🟡 подтверждён по затронутым модулям; полный reactor — следующий шаг |
+| G1 | Maven по всем 13 сервисным модулям reactor | ✅ полный `mvn -B clean verify`, run `44266849755` на `f8f01c7`; повтор — `44267475424` на `d3fd7c0` |
 | G2 | Docker, Flyway, первый запуск | 🟡 подтверждён на существующих томах; чистая установка впереди |
 | G3 | функциональная приёмка | 🚧 идёт: часть сценариев проверена, сквозная почта, клиенты и backup — нет |
 | G4 | поддерживаемая платформа | ⏳ согласованные Spring/James/JDK и замена Promtail на Alloy |

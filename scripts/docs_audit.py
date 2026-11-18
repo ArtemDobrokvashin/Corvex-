@@ -19,16 +19,22 @@
    означают «в коде этого нет намеренно» и не проверяются.
 2. **Код → документация.** Каждый маршрут `/api/v1/**` в контроллерах должен
    упоминаться либо в OpenAPI, либо в `docs/API.md` (там таблицы для того, что
-   в OpenAPI не вынесено: календарь, диск, STOMP).
+   в OpenAPI не вынесено: календарь, диск, STOMP). Префиксы вида `/mail/**`
+   доказательством не считаются — они описывают маршрут gateway, а не эндпоинт.
 3. **Ссылки на файлы.** `scripts/*.ps1|py|java` и `docs/*.md`, упомянутые в
-   документации, должны существовать. Раньше в `OPERATIONS.md` вызов
-   `restore.ps1` шёл без обязательного `-BackupDir` — это ловится тестом рядом.
+   документации, должны существовать.
 4. **Миграции.** Заявления вида `V1…V13` сверяются с фактическим набором
    файлов Flyway; устаревшее число — предупреждение, а не ошибка, потому что
    в историческом контексте оно может быть верным.
 5. **Переменные окружения.** Ключи из `.env.example` должны кем-то читаться
    (compose, Java, `application.yml`): «мёртвая» настройка хуже отсутствующей —
-   оператор меняет значение и не понимает, почему ничего не меняется.
+   оператор меняет значение и не понимает, почему ничего не меняется. Обратное
+   направление проверяется только для обязательных: `${VAR}` без значения по
+   умолчанию в compose обязан быть в примере, иначе стенд не поднимется.
+6. **`planned`, который уже реализован.** Устаревшая пометка скрывает рабочую
+   операцию от клиентов так же надёжно, как отсутствующее описание.
+7. **Число прав.** «Всего N прав» в документации сверяется с enum
+   `Permission.java`: счётчик уже расходился (25 против 27).
 
 Ограничение, о котором нужно помнить: разбор Java и YAML здесь регулярный, а
 не настоящий парсер. Он рассчитан на стиль этого репозитория (одна строка на
@@ -442,6 +448,69 @@ def check_compose_requires_documented(root: Path) -> list[Finding]:
     ]
 
 
+def check_planned_but_implemented(root: Path) -> list[Finding]:
+    """`planned` на работающей операции — тоже ложь, только в другую сторону."""
+    routes = spring_routes(root)
+    findings: list[Finding] = []
+    for spec in sorted((root / "docs" / "api").glob("*.yaml")):
+        for operation in openapi_operations(
+            spec.read_text(encoding="utf-8"), spec.name
+        ):
+            if operation.status != "planned":
+                continue
+            if (operation.method, operation.path) in routes:
+                findings.append(
+                    Finding(
+                        "warning",
+                        "openapi",
+                        f"{spec.name}: {operation.method} {operation.path} помечен "
+                        f"planned, но маршрут уже есть в "
+                        f"{routes[(operation.method, operation.path)]} — снимите пометку "
+                        f"и допишите описание",
+                    )
+                )
+    return findings
+
+
+def check_permission_count(root: Path) -> list[Finding]:
+    """Число прав в документации должно совпадать с `Permission.java`.
+
+    Счётчик в двух документах уже расходился с кодом (25 против 27), а заметить
+    это глазами можно только пересчитав таблицу вручную.
+    """
+    enum_file = next(
+        root.glob("services/admin-service/src/main/java/**/rbac/Permission.java"),
+        None,
+    )
+    if enum_file is None:
+        return []
+    names = {
+        match.group(1)
+        for match in re.finditer(
+            r"^\s{4}([A-Z][A-Z0-9_]+)\s*(?:,|//|$)",
+            enum_file.read_text(encoding="utf-8"),
+            re.M,
+        )
+    }
+    if not names:
+        return []
+    findings: list[Finding] = []
+    for doc in _doc_files(root):
+        text = doc.read_text(encoding="utf-8")
+        for claim in re.finditer(r"(\d+)\s+прав\b", text):
+            claimed = int(claim.group(1))
+            if claimed != len(names):
+                findings.append(
+                    Finding(
+                        "error",
+                        "docs",
+                        f"{doc.name}: заявлено {claimed} прав, в Permission.java их "
+                        f"{len(names)}",
+                    )
+                )
+    return findings
+
+
 CHECKS = (
     ("openapi", check_openapi_against_code),
     ("docs", check_code_against_docs),
@@ -449,6 +518,8 @@ CHECKS = (
     ("migrations", check_migrations),
     ("env", check_env_example),
     ("env", check_compose_requires_documented),
+    ("openapi", check_planned_but_implemented),
+    ("docs", check_permission_count),
 )
 
 
