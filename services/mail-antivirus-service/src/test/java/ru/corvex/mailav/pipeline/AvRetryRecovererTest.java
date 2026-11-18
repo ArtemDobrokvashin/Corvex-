@@ -32,6 +32,15 @@ class AvRetryRecovererTest {
     }
 
     @Test
+    void storageOutageRequeuesInsteadOfLosingMail() {
+        // Рестарт mail-storage-service: письмо не сканировалось, повтор безопасен.
+        Throwable cause = new IllegalStateException(
+                new AvStorageUnavailableException("raw-1", new IOException("Connection refused")));
+
+        assertThrows(ImmediateRequeueAmqpException.class, () -> recoverer.recover(message, cause));
+    }
+
+    @Test
     void otherFailuresKeepPriorDeadLetterPolicy() {
         ListenerExecutionFailedException failure = assertThrows(ListenerExecutionFailedException.class,
                 () -> recoverer.recover(message, new IOException("spool or publisher failure")));

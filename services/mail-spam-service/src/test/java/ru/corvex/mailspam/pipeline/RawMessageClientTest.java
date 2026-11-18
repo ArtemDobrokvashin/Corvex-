@@ -11,6 +11,7 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -54,6 +55,66 @@ class RawMessageClientTest {
 
             assertTrue(error.getMessage().contains("HTTP 404"));
             assertTrue(error.getMessage().contains("missing"));
+        }
+    }
+
+    @Test
+    void retriesOnceWhenTheFirstConnectionIsDroppedAfterRestart() throws Exception {
+        // Симптом перезапуска storage: keep-alive соединение закрыто, первый вызов падает.
+        byte[] eml = "Subject: retry\r\n\r\nbody".getBytes(StandardCharsets.UTF_8);
+        try (ScriptedHttpServer server = new ScriptedHttpServer(1, "200 OK", eml)) {
+            RawMessageClient client = new RawMessageClient("http://127.0.0.1:" + server.port(), "secret");
+
+            assertArrayEquals(eml, client.download("raw-retry"));
+            assertEquals(2, server.connections());
+        }
+    }
+
+    /** Первые {@code dropFirst} соединений рвёт без ответа — так ведёт себя бэкенд после рестарта. */
+    private static final class ScriptedHttpServer implements AutoCloseable {
+        private final ServerSocket server;
+        private final Thread thread;
+        private final AtomicInteger accepted = new AtomicInteger();
+
+        private ScriptedHttpServer(int dropFirst, String statusLine, byte[] body) throws IOException {
+            this.server = new ServerSocket(0, 4, InetAddress.getByName("127.0.0.1"));
+            this.thread = new Thread(() -> serve(dropFirst, statusLine, body), "scripted-http");
+            this.thread.start();
+        }
+
+        private int port() {
+            return server.getLocalPort();
+        }
+
+        private int connections() {
+            return accepted.get();
+        }
+
+        private void serve(int dropFirst, String statusLine, byte[] body) {
+            for (int index = 0; index < dropFirst + 1; index++) {
+                try (Socket socket = server.accept()) {
+                    accepted.incrementAndGet();
+                    if (index < dropFirst) {
+                        continue; // закрываем соединение без ответа
+                    }
+                    socket.setSoTimeout(5_000);
+                    OneShotHttpServer.readHeaders(socket.getInputStream());
+                    String headers = "HTTP/1.1 " + statusLine + "\r\n"
+                            + "Content-Length: " + body.length + "\r\n"
+                            + "Connection: close\r\n\r\n";
+                    socket.getOutputStream().write(headers.getBytes(StandardCharsets.US_ASCII));
+                    socket.getOutputStream().write(body);
+                    socket.getOutputStream().flush();
+                } catch (Exception ignored) {
+                    return;
+                }
+            }
+        }
+
+        @Override
+        public void close() throws Exception {
+            server.close();
+            thread.join(5_000);
         }
     }
 

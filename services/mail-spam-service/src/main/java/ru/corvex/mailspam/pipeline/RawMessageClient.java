@@ -14,6 +14,10 @@ import java.time.Duration;
 @Component
 public class RawMessageClient {
 
+    /** Одна попытка + одно повторение: этого хватает на штатный рестарт бэкенда. */
+    private static final int TRANSPORT_ATTEMPTS = 2;
+    private static final long RETRY_DELAY_MS = Long.getLong("corvex.spam.raw-retry-delay-ms", 500L);
+
     private final String baseUrl;
     private final String internalToken;
     private final HttpClient http;
@@ -35,15 +39,42 @@ public class RawMessageClient {
                 .header("X-Corvex-Internal-Token", internalToken)
                 .GET()
                 .build();
-        try {
-            HttpResponse<byte[]> response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        // GET идемпотентен: одно повторение переживает перезапуск mail-storage-service.
+        // Без него HttpClient переиспользует keep-alive соединение, которое бэкенд уже
+        // закрыл, и первый же вызов падает с ClosedChannelException.
+        IOException lastTransportFailure = null;
+        for (int attempt = 1; attempt <= TRANSPORT_ATTEMPTS; attempt++) {
+            HttpResponse<byte[]> response;
+            try {
+                response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("Чтение spool прервано", e);
+            } catch (IOException e) {
+                lastTransportFailure = e;
+                if (attempt < TRANSPORT_ATTEMPTS) pauseBeforeRetry();
+                continue;
+            }
+            // Ответ получен: повторять бессмысленно, 404 не станет 200.
             if (response.statusCode() != 200) {
                 throw new IOException("mail-storage вернул HTTP " + response.statusCode() + " для rawRef " + rawRef);
             }
             return response.body();
+        }
+        if (lastTransportFailure == null) {
+            throw new IOException("mail-storage не ответил на чтение spool: " + rawRef);
+        }
+        throw new StorageUnavailableException(
+                "mail-storage недоступен, чтение spool отложено: " + rawRef, lastTransportFailure);
+    }
+
+    private static void pauseBeforeRetry() throws IOException {
+        if (RETRY_DELAY_MS <= 0) return;
+        try {
+            Thread.sleep(RETRY_DELAY_MS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new IOException("Чтение spool прервано", e);
+            throw new IOException("Ожидание повтора чтения spool прервано", e);
         }
     }
 }

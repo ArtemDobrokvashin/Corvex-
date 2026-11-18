@@ -67,6 +67,19 @@ class SpamPipelineAmqpConfigTest {
         assertEquals("mail.inbound.received", SpamPipelineAmqpConfig.ROUTING_RECEIVED);
     }
 
+    @Test
+    void retryWindowSurvivesAStorageRestart() {
+        // Сумма пауз 2+4+8+16+20 = 50 секунд: перезапуск mail-storage-service занимает
+        // около 25 секунд плюс health-check, и письма не должны уезжать в DLQ.
+        long total = 0;
+        long delay = SpamPipelineAmqpConfig.RETRY_INITIAL_MS;
+        for (int attempt = 1; attempt < SpamPipelineAmqpConfig.RETRY_MAX_ATTEMPTS; attempt++) {
+            total += Math.min(delay, SpamPipelineAmqpConfig.RETRY_MAX_MS);
+            delay *= 2;
+        }
+        assertTrue(total >= 45_000, "окно ретраев короче рестарта хранилища: " + total + " мс");
+    }
+
     private static <T> List<T> allOf(Declarables declarables, Class<T> type) {
         return declarables.getDeclarables().stream()
                 .filter(type::isInstance)
