@@ -1,5 +1,7 @@
 package ru.corvex.mailspam.pipeline;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.amqp.ImmediateRequeueAmqpException;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.retry.MessageRecoverer;
@@ -13,6 +15,8 @@ import org.springframework.amqp.rabbit.retry.RejectAndDontRequeueRecoverer;
  */
 final class SpamRetryRecoverer implements MessageRecoverer {
 
+    private static final Logger log = LoggerFactory.getLogger(SpamRetryRecoverer.class);
+
     private final RejectAndDontRequeueRecoverer fallback = new RejectAndDontRequeueRecoverer();
 
     @Override
@@ -21,6 +25,7 @@ final class SpamRetryRecoverer implements MessageRecoverer {
         // Обход ограничен: у испорченной цепочки причин возможен цикл.
         for (int depth = 0; current != null && depth < 32; depth++) {
             if (current instanceof StorageUnavailableException) {
+                log.warn("mail-storage недоступен, письмо возвращено в очередь: {}", current.getMessage());
                 throw new ImmediateRequeueAmqpException(cause);
             }
             current = current.getCause();

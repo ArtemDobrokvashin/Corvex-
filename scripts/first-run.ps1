@@ -113,6 +113,24 @@ if (-not (Test-Path .env)) {
     Add-Content .env "`nCORVEX_ALERT_CONFIG_ENC_KEY=$([Convert]::ToBase64String($keyBytes))" -Encoding UTF8
     Write-Host "[OK] Added missing CORVEX_ALERT_CONFIG_ENC_KEY to existing .env."
   }
+
+  # Upgrade path for installs created before the AES-GCM keys were generated: the example
+  # placeholder is not valid Base64 and is not 32 bytes, so TOTP, external mail and alert
+  # secrets answered 503 on a fresh install. Replace only that exact value.
+  $aesKeyNames = 'CORVEX_TOTP_ENC_KEY', 'CORVEX_EXTERNAL_MAIL_ENC_KEY', 'CORVEX_ALERT_CONFIG_ENC_KEY'
+  foreach ($keyName in $aesKeyNames) {
+    $placeholderLine = "${keyName}=base64-32-byte-key-for-aes-gcm"
+    $currentLines = Get-Content .env -Encoding UTF8
+    if ($currentLines -contains $placeholderLine) {
+      $keyBytes = New-Object byte[] 32
+      [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($keyBytes)
+      $replacementLine = "${keyName}=$([Convert]::ToBase64String($keyBytes))"
+      $currentLines | ForEach-Object {
+        if ($_ -eq $placeholderLine) { $replacementLine } else { $_ }
+      } | Set-Content .env -Encoding UTF8
+      Write-Host "[OK] Replaced placeholder ${keyName} with a real 32-byte key."
+    }
+  }
 }
 
 Write-Host ""
