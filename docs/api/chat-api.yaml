@@ -380,6 +380,30 @@ paths:
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
         '502': { $ref: '#/components/responses/BadGateway' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /files/{fileRef}/preview:
+    get:
+      tags: [Files]
+      summary: Render a chat attachment as PDF for in-browser preview
+      description: |
+        Same membership and AV checks as the download: an infected or unscanned file is
+        never converted. Returns 501 when the Office preview profile is not running, so
+        the UI falls back to a download link. Requires CHAT_READ.
+      parameters:
+        - name: fileRef
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: PDF bytes, inline disposition, no-store
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '423': { $ref: '#/components/responses/Locked' }
+        '501': { description: Office preview is disabled on this stand }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /files/{fileRef}:
     get:
       tags: [Files]
