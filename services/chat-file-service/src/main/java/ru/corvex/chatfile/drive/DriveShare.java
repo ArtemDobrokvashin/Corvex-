@@ -1,5 +1,8 @@
 package ru.corvex.chatfile.drive;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.time.Instant;
 import java.util.UUID;
 
@@ -12,6 +15,7 @@ import java.util.UUID;
  * Отзыв — {@code revokedAt != null}: проверка идёт на каждый запрос, поэтому отзыв действует
  * немедленно и не зависит от кэшей клиента.</p>
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record DriveShare(
         UUID id,
         UUID nodeId,
@@ -25,6 +29,7 @@ public record DriveShare(
         return revokedAt == null && (expiresAt == null || expiresAt.isAfter(now));
     }
 
+    @JsonIgnore
     public boolean isRevoked() {
         return revokedAt != null;
     }

@@ -1,5 +1,8 @@
 package ru.corvex.chatfile.drive;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.time.Instant;
 import java.util.UUID;
 
@@ -14,6 +17,7 @@ import java.util.UUID;
  * <p>{@code parentId == null} — корень диска пользователя. {@code trashedAt != null} —
  * узел в корзине; содержимое остаётся на диске до явной очистки.</p>
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record DriveNode(
         UUID id,
         UUID ownerId,
@@ -30,10 +34,18 @@ public record DriveNode(
 
     public enum Kind {FILE, FOLDER}
 
+    /**
+     * Вычисляемое свойство, не часть состояния. Без {@code @JsonIgnore} Jackson пишет его
+     * в JSON как {@code "folder": true}, а при чтении падает на неизвестном поле — узел
+     * молча пропадает из листинга. {@code ignoreUnknown} на самом типе оставляет
+     * читаемыми файлы, записанные до исправления.
+     */
+    @JsonIgnore
     public boolean isFolder() {
         return kind == Kind.FOLDER;
     }
 
+    @JsonIgnore
     public boolean isTrashed() {
         return trashedAt != null;
     }

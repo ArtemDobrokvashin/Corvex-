@@ -30,7 +30,7 @@ class OfficeConversionServiceTest {
 
     @Test
     void convertsOnceThenServesTheCachedPdf() throws Exception {
-        Script script = script("ok", false, false);
+        Script script = script("ok", "ok");
         var service = service(script, Duration.ofSeconds(5), DataSize.ofMegabytes(25));
 
         var first = service.convert("report.docx", 12, input("hello office"));
@@ -43,8 +43,8 @@ class OfficeConversionServiceTest {
     }
 
     @Test
-    void rejectsOversizedInputBeforeConversion() {
-        Script script = script("ok", false, false);
+    void rejectsOversizedInputBeforeConversion() throws Exception {
+        Script script = script("ok", "ok");
         var service = service(script, Duration.ofSeconds(5), DataSize.ofBytes(10));
 
         var error = assertThrows(ResponseStatusException.class,
@@ -53,8 +53,8 @@ class OfficeConversionServiceTest {
     }
 
     @Test
-    void rejectsEmptyInput() {
-        Script script = script("ok", false, false);
+    void rejectsEmptyInput() throws Exception {
+        Script script = script("ok", "ok");
         var service = service(script, Duration.ofSeconds(5), DataSize.ofMegabytes(25));
 
         assertEquals(400, assertThrows(ResponseStatusException.class,
@@ -62,8 +62,8 @@ class OfficeConversionServiceTest {
     }
 
     @Test
-    void rejectsUnsupportedExtensions() {
-        Script script = script("ok", false, false);
+    void rejectsUnsupportedExtensions() throws Exception {
+        Script script = script("ok", "ok");
         var service = service(script, Duration.ofSeconds(5), DataSize.ofMegabytes(25));
 
         assertEquals(415, assertThrows(ResponseStatusException.class,
@@ -71,8 +71,8 @@ class OfficeConversionServiceTest {
     }
 
     @Test
-    void reportsConvertedFailureAsUnprocessable() {
-        Script script = script("fail", false, false);
+    void reportsConvertedFailureAsUnprocessable() throws Exception {
+        Script script = script("fail", "fail");
         var service = service(script, Duration.ofSeconds(5), DataSize.ofMegabytes(25));
 
         assertEquals(422, assertThrows(ResponseStatusException.class,
@@ -80,8 +80,8 @@ class OfficeConversionServiceTest {
     }
 
     @Test
-    void reportsMissingOutputAsUnprocessable() {
-        Script script = script("empty", false, false);
+    void reportsMissingOutputAsUnprocessable() throws Exception {
+        Script script = script("empty", "empty");
         var service = service(script, Duration.ofSeconds(5), DataSize.ofMegabytes(25));
 
         assertEquals(422, assertThrows(ResponseStatusException.class,
@@ -89,8 +89,8 @@ class OfficeConversionServiceTest {
     }
 
     @Test
-    void killsConversionOnTimeout() {
-        Script script = script("slow", true, false);
+    void killsConversionOnTimeout() throws Exception {
+        Script script = script("slow", "slow");
         var service = service(script, Duration.ofMillis(200), DataSize.ofMegabytes(25));
 
         var error = assertThrows(ResponseStatusException.class,
@@ -99,8 +99,8 @@ class OfficeConversionServiceTest {
     }
 
     @Test
-    void disabledConverterReturnsNotImplemented() {
-        Script script = script("ok", false, false);
+    void disabledConverterReturnsNotImplemented() throws Exception {
+        Script script = script("ok", "ok");
         var props = properties(script, Duration.ofSeconds(5), DataSize.ofMegabytes(25), false);
         var cache = new ConversionCache(props);
         cache.init();
@@ -134,9 +134,22 @@ class OfficeConversionServiceTest {
                 temp.resolve("work"));
     }
 
-    private Script script(String name, boolean slow, boolean fail) throws Exception {
+    /**
+     * Подставной soffice: поведение задаётся режимом, а не флагами, потому что
+     * «нет результата» и «ошибка конвертации» — разные ветки кода, и раньше две проверки
+     * молча получали успешный запуск (name == "fail"/"empty", а флаг fail был false).
+     */
+    private Script script(String name, String mode) throws Exception {
         Path dir = Files.createDirectory(temp.resolve("script-" + name));
         Path path = dir.resolve("soffice");
+        String behaviour = switch (mode) {
+            case "slow" -> "sleep 5\n";
+            case "fail" -> "exit 1\n";
+            case "empty" -> "exit 0\n";
+            default -> """
+                    cp "$(dirname "$0")/fake.pdf" "$outdir/result.pdf"
+                    """;
+        };
         String body = """
                 #!/bin/sh
                 if [ "${1:-}" = "--version" ]; then
@@ -150,9 +163,7 @@ class OfficeConversionServiceTest {
                   prev="$arg"
                 done
                 echo run >> "$(dirname "$0")/runs"
-                """ + (slow ? "sleep 5\n" : "") + (fail ? "exit 1\n" : """
-                cp "$(dirname "$0")/fake.pdf" "$outdir/result.pdf"
-                """);
+                """ + behaviour;
         Files.writeString(path, body, StandardCharsets.UTF_8);
         Files.setPosixFilePermissions(path, PosixFilePermissions.fromString("rwxr-xr-x"));
         Files.writeString(dir.resolve("fake.pdf"), "%PDF-1.4\n1 0 obj\n/Type /Page\n%%EOF\n",

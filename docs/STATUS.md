@@ -27,11 +27,81 @@
 (разыменование простых `const`), после неё `247 тестов OK (1 skip)`. До этой правки
 утверждение «247 OK» в таблице ниже не соответствовало дереву.
 
+**CI включён 2026-10-19** (коммит `d0a3745`). Первый прогон, run `44259217409`:
+
+| Задание | Итог |
+|---|---|
+| Ops scripts / Python 3 | ✅ 247 тестов |
+| Frontend / Node 22 | ✅ `npm ci`, `tsc -b`, `vitest`, modern+legacy build, проверка legacy-чанка, `npm audit --omit=dev` |
+| Java 17 / Maven reactor | ❌ `COMPILATION ERROR` в `mail-storage-service` (`MailAttachmentPreviewControllerTest.java:[82,37] unreported exception java.io.IOException`); после исправления — 11 падений в `chat-file-service`; после исправления Jackson — 2 (`chat-file-service`) |
+
+Причина первой ошибки: тест добавлен коммитом `82755ea` (встроенный предпросмотр), а
+последний Java-прогон был до него, на `08b7310`. Исправлено объявлением `throws Exception`.
+
+Причина второй: `DriveNode`/`DriveShare` — записи с вычисляемыми `isFolder()`, `isTrashed()`,
+`isRevoked()`. Jackson писал их в JSON как `folder`/`trashed`/`revoked`, а при чтении падал
+на неизвестном поле; `DriveStorage` ловил исключение, писал `Drive node metadata is unreadable`
+и **пропускал узел**. То есть диск мог показывать пустые папки, а данные при этом лежали на
+месте. Исправлено `@JsonIgnore` на вычисляемых методах и `ignoreUnknown` на типах, чтобы
+уже записанные файлы тоже читались. Тест `DriveStoragePersistenceTest` закрепляет все три
+случая: запись-чтение, отсутствие производных полей в файле, чтение старого JSON.
+
+Оставшиеся два падения — не Jackson, а разные дефекты:
+
+1. `DriveServiceTest.namesCannotEscapeTheFolder` — `createFolder(user, null, "../etc")` не бросал
+   исключение: `normalizeName` отрезала всё до последнего `/`, то есть `"../etc"` превращалось
+   в «etc» и создавало папку вместо ошибки. Молчаливая нормализация хороша для имени
+   загружаемого файла (некоторые клиенты присылают полный путь), но не для имени, которое
+   ввёл человек: там `/` и `\` — это ошибка ввода. Введён `requirePlainName`: он отвергает
+   путь и дальше передаёт имя в прежнюю `normalizeName` (запрещённые символы, `CON`, точка
+   на конце, длина). Применён к `createFolder` и `rename`, `upload` оставлен на
+   `normalizeName`.
+2. `DriveStoragePersistenceTest.shareSurvivesWriteAndRead` — ошибка самого теста: он передавал
+   `tokenHash = "hash"`, а `DriveStorage.sharePath` принимает только 64-символьный hex (так
+   `DriveService` и считает: `sha256Hex(token)`). Тест исправлен на реальный формат хеша,
+   продакшн-код не менялся.
+
+Прогон `44264546159` (коммит `69e8720`) — 3 мин 05 с, 12 модулей из 13 зелёные
+(`auth` 124, `admin` 117, `mail-smtp` 153, `mail-imap` 92, `mail-pop3` 44, **`mail-storage` 572
+(2 skip)**, `mail-spam` 17, `mail-antivirus` 34, `chat` 109, **`chat-file-service` 78**,
+**`web-gateway` 15**, **`notification` 23**, у всех «All coverage checks have been met»).
+Падает `office-preview-service` на компиляции тестов:
+
+```
+OfficeConversionServiceTest.java:[47,31] unreported exception java.lang.Exception
+... ещё 6 таких же строк (57, 66, 75, 84, 93, 103)
+```
+
+Та же ошибка, что была в `MailAttachmentPreviewControllerTest`: вспомогательный метод
+`script(...)` объявлен с `throws Exception`, а семь тестов, которые его вызывают, — без
+`throws`. Причина, почему это вылезло только сейчас: на всех прошлых прогонах сборка
+останавливалась раньше (сначала `mail-storage`, потом `chat-file-service`), а модули после
+точки падения Maven помечает `SKIPPED` и **не компилирует**. То есть `office-preview-service`
+CI не собирал ни разу до этого прогона. Исправлено объявлением `throws Exception` в семи тестах.
+
+Вывод, который стоит держать в голове: до первого полностью зелёного reactor-прогона фраза
+«модуль N зелёный» относится только к тем прогонам, где Maven до него дошёл.
+
+Второй прогон `44266228566` (коммит `2b4ef92`) — снова красный, и снова на
+`office-preview-service`: тесты скомпилировались, но два из них падали на своей же ошибке.
+Подставной `soffice` задавался тремя аргументами `script(name, slow, fail)`, а проверки
+«ошибка конвертации» и «PDF не создан» вызывали `script("fail", false, false)` и
+`script("empty", false, false)` — то есть с `fail = false`, и скрипт успешно создавал PDF.
+Тест ждал 422, получал ответ с PDF. Режим теперь задаётся строкой (`ok`/`fail`/`empty`/`slow`),
+поэтому имя сценария и поведение скрипта больше не расходятся.
+
+Прогон `44266849755` (коммит `f8f01c7`) — **полностью зелёный**, все три задания:
+`Java 17 / Maven reactor`, `Frontend / Node 22`, `Ops scripts / Python 3`. Maven прошёл все
+14 модулей reactor'а: 12 сервисов с тестами плюс агрегатор `corvex`. Это первый прогон
+с начала проекта, где `mvn clean verify` дошёл до конца, поэтому впервые доказано, что
+`web-gateway`, `notification-service` и `office-preview-service` собираются и проходят тесты,
+а не просто «не проверялись».
+
 | Область | Результат | Чего это не доказывает |
 |---|---|---|
 | Frontend | `npm ci` (364 пакета), `tsc -b` — 0 ошибок, **71 файл / 356 тестов PASS**, production build (modern + legacy, 40 файлов в `dist/assets`), `npm audit --omit=dev` — 0 уязвимостей | реальный Windows 7 + Chrome 109, полную ручную responsive-матрицу и 200 % масштаб |
 | Python-скрипты | `unittest discover -s scripts/tests` — **247 тестов OK (1 skip)** | работу скриптов на реальном PostgreSQL и ФС сервера |
-| Java (Maven) | `mail-storage-service` на `08b7310`: `mvn -B -pl services/mail-storage-service -am clean test` — **564 теста, 0 падений, 2 пропущено, BUILD SUCCESS**; ранее на `b153264` — 524 теста; ранее на `ad42ff2` модули `admin`, `mail-storage`, `notification` собраны с тестами модулей, `web-gateway` — `BUILD SUCCESS`; полный reactor по 12 сервисам последний раз зелёный на `8cccaee`; `mail-pop3-service` 44/44 на `d75fb97` | полный reactor на текущем `main` |
+| Java (Maven) | **полный reactor `mvn -B clean verify` — BUILD SUCCESS**, run `44266849755` на `f8f01c7`: 13 модулей (12 сервисов с тестами + агрегатор `corvex`), тесты: `auth` 124, `admin` 117, `mail-smtp` 153, `mail-imap` 92, `mail-pop3` 44, `mail-storage` 572 (2 skip), `mail-spam` 17, `mail-antivirus` 34, `chat` 109, `chat-file-service` 78, `web-gateway` 15, `notification` 23, `office-preview` 21; JaCoCo-гейт 70 % пройден во всех модулях, где он включён | интеграционные сценарии с живыми PostgreSQL, RabbitMQ и James — это стенд и приёмка, а не CI |
 | Docker | на `ad42ff2`: `docker compose up -d --build` — 16 из 16 build-контекстов, 20 контейнеров без профилей `Started`/`healthy`, миграции `V6`/`V8` применились | чистую установку без старых томов, 72 часа и нагрузку |
 | Flyway | миграции применялись на существующих томах; чистая схема исторически проверена на `b37db56` | проход `V1…V8` с нуля на текущем SHA |
 | Web runtime | вход, админка и webmail запускались с реальным backend | полную функциональную матрицу |
