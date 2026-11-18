@@ -104,14 +104,37 @@ Resources отдайте минимум 6 CPU и 12 ГБ RAM.
 
 ## 3. Получение исходного кода
 
+**Где должен лежать каталог.** Там, где его видят и вы, и Docker-демон. Compose
+монтирует `./infra/secrets`, `./infra/certs` и `./infra/nginx` с той файловой системы,
+которую видит демон, а не с той, где вы набрали команду.
+
+| Как ставите | Где клонировать |
+|---|---|
+| Вариант A (Hyper-V) и C (чистый Linux) | **внутри VM**, например `/opt/corvex` |
+| Вариант B (Docker Desktop) | на хосте, например `C:\Corvex`: Desktop пробрасывает каталог в WSL2 |
+
+Если клонировать в `C:\Corvex`, а Docker работает в отдельной VM, контейнеры не увидят
+`infra/secrets`: монтирование молча создаст пустые каталоги, и nginx упадёт на
+`cannot load certificate`. Признак — файлы в репозитории есть, а внутри контейнера их нет.
+
+```bash
+# внутри Linux-VM
+sudo mkdir -p /opt/corvex && sudo chown "$USER" /opt/corvex
+git clone https://github.com/ArtemDobrokvashin/Corvex-.git /opt/corvex
+cd /opt/corvex
+git switch main
+git pull --ff-only
+```
+
 ```powershell
+# на Windows-хосте при варианте B
 git clone https://github.com/ArtemDobrokvashin/Corvex-.git C:\Corvex
 cd C:\Corvex
 git switch main
 git pull --ff-only
 ```
 
-Если git на сервере нежелателен, скачайте ZIP ветки `main` и распакуйте в `C:\Corvex`.
+Если git на сервере нежелателен, скачайте ZIP ветки `main` и распакуйте в тот же каталог.
 
 ## 4. Первичная инициализация
 
@@ -134,6 +157,10 @@ git pull --ff-only
 Set-ExecutionPolicy -Scope Process Bypass   # если политика запрещает скрипты
 .\scripts\first-run.ps1
 ```
+
+`.env` создаётся в кодировке **UTF-8 без BOM** с переводами строк LF — так его читает
+`docker compose`. Если файл правили вручную в Windows-редакторе, проверьте это
+(`scripts/preflight.py` сообщит о BOM отдельной строкой).
 
 Ожидаемый результат в обоих случаях: строки `[OK]` и файлы
 `infra/secrets/jwt_private.pem`, `infra/secrets/dkim_private.pem`,
@@ -242,6 +269,33 @@ _submission._tcp.company.ru.  SRV 0 1 587 mail.company.ru.
 
 ## 8. Первый запуск
 
+### 8.0. Проверка окружения
+
+Перед первой сборкой прогоните предполётную проверку — она только читает и ничего не
+создаёт:
+
+```bash
+python3 scripts/preflight.py            # в Linux-VM
+python3 scripts/preflight.py --strict   # WARN тоже считается провалом
+```
+
+Запускать его надо **там, где работает Docker**: внутри VM при варианте A, на хосте при
+Docker Desktop. Проверки на Windows-хосте при варианте A покажут не ту машину.
+
+Скрипт отвечает на те вопросы, из-за которых установка обычно и встаёт: запущен ли
+Docker и какой у него движок, хватает ли vCPU/RAM/диска, свободны ли порты 80, 443, 25,
+587, 143, 993, 995, 8080, разбирается ли `.env`, на месте ли ключи и сертификаты,
+достаточен ли `vm.max_map_count` для Elasticsearch. Каждая строка — `PASS`, `WARN` или
+`FAIL` с подсказкой. Коды возврата: `0` — провалов нет, `1` — есть `FAIL`, `2` — `--strict`
+при наличии `WARN`.
+
+Типичный `FAIL` новичка — `BOM` в `.env`: файл, сохранённый в Windows PowerShell 5.1
+командой `Set-Content -Encoding UTF8`, начинается с невидимого символа, и `docker compose`
+падает на разборе. `first-run.ps1` больше так не делает; если `.env` правили руками,
+сохраняйте его как **UTF-8 без BOM** (в блокноте — «UTF-8», не «UTF-8 с BOM»).
+
+### 8.1. Запуск
+
 Команды одинаковые на Windows и в Linux-VM:
 
 ```bash
@@ -320,9 +374,14 @@ powershell -ExecutionPolicy Bypass -File scripts\verify-dlq-resilience.ps1 -Base
 
 ```bash
 git pull
+python3 scripts/preflight.py                # новые обязательные ключи .env видны здесь
 docker compose up -d --build                # миграции Flyway применит сам
 docker compose up -d --build chat-service   # пересборка одного сервиса
 ```
+
+После `git pull` в `.env` может появиться новая обязательная переменная: compose объявляет
+её как `${VAR:?…}`, и без значения не стартует. `preflight.py` называет такие ключи
+поимённо до сборки, а не после.
 
 Откат: вернуть предыдущий коммит (или теги образов) и повторить `up -d`. Миграции только
 аддитивные, поэтому схема откат переживает. Полный порядок с проверками —
@@ -357,6 +416,8 @@ VM через общий каталог, либо установить в VM Pow
 - [ ] Порты 25, 80, 443, 587 проверены **снаружи** (`Test-NetConnection <IP> -Port 25`).
 - [ ] Алерты приходят на внешний ящик.
 - [ ] Одна копия бэкапа лежит вне сервера, восстановление проверено.
+- [ ] Если подключены внешние ящики Google: известно, что в статусе Testing вход
+      придётся повторять каждые 7 дней (`reauthRequired`), и дата пилота это учитывает.
 - [ ] `CORVEX_SMTP_ENABLED=false`, пока почтовый контур не принят; MX не опубликован.
 
 ## Проблемы и решения
@@ -370,6 +431,7 @@ VM через общий каталог, либо установить в VM Pow
 | Снаружи не открывается веб или почта, внутри всё работает | VM за NAT: нужен `portproxy` (шаг 1, вариант 2) либо внешний виртуальный коммутатор |
 | ClamAV долго стартует | первый запуск скачивает ~200 МБ сигнатур; без интернета базы приносятся вручную в том `clamav-data` |
 | Elasticsearch перезапускается | нужно ≥2,5 ГБ RAM; в Linux-VM `sudo sysctl -w vm.max_map_count=262144` и в `/etc/sysctl.conf` |
+| `docker compose` падает: `unexpected character "\ufeff" in variable name` | `.env` сохранён с BOM. Пересохраните как UTF-8 без BOM или удалите `.env` и запустите `first-run` заново |
 | Видна жёлтая плашка «демо» | вы вошли кнопкой демо или бэкенд недоступен: проверьте `docker compose ps` и логи `auth-service` |
 | Внешние письма не приходят | SMTP выключен осознанно; после приёмки — порты 25 извне, MX, PTR, mail-tester ≥ 9/10 |
 

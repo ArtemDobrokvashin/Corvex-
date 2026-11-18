@@ -2,11 +2,13 @@
   Corvex first-run initializer (run ONCE, before the first 'docker compose up'):
     1) generates RSA key pairs for JWT and DKIM signing (infra\secrets),
     2) creates a 90-day self-signed TLS certificate for pilots (infra\certs),
-    3) creates .env from .env.example with a DIFFERENT random secret per variable.
+    3) creates .env from .env.example with a DIFFERENT random secret per variable,
+       written as UTF-8 WITHOUT a BOM and with LF: a BOM breaks `docker compose`.
   Safe to re-run: existing keys/certs/.env are never overwritten.
   Requires: Docker running (used only as an openssl toolbox, nothing is installed on Windows).
 #>
 $ErrorActionPreference = "Stop"
+Set-Location (Join-Path $PSScriptRoot "..")
 
 function New-RandomSecret([int]$Length = 32) {
   $chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
@@ -58,80 +60,102 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "[OK] Key/certificate permissions verified for container user 100:101."
 
 # --- 3. .env with distinct random secrets (previous version replaced every placeholder with one value - fixed) ---
+# The file is written as UTF-8 WITHOUT a BOM and with LF line endings. That is not
+# cosmetic: `docker compose` parses .env with the compose-go dotenv parser, where a BOM
+# is not whitespace and becomes part of the first variable name, so the whole file fails
+# to parse. Windows PowerShell 5.1 writes `Set-Content -Encoding UTF8` WITH a BOM - that
+# combination broke every `docker compose` command right after this script.
+function Read-EnvText([string]$Path) {
+  $text = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+  return ($text -replace "`r`n", "`n").TrimStart([char]0xFEFF)
+}
+
+function Write-EnvText([string]$Path, [string]$Text) {
+  $utf8 = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($Path, $Text, $utf8)
+}
+
+function New-AesKey {
+  $keyBytes = New-Object byte[] 32
+  [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($keyBytes)
+  return [Convert]::ToBase64String($keyBytes)
+}
+
+$AesKeyNames = 'CORVEX_TOTP_ENC_KEY', 'CORVEX_EXTERNAL_MAIL_ENC_KEY', 'CORVEX_ALERT_CONFIG_ENC_KEY'
+
 if (-not (Test-Path .env)) {
-  $lines = Get-Content .env.example -Encoding UTF8 | ForEach-Object {
-    if ($_ -match '^(.*)=change-me-strong-password$') { "$($Matches[1])=$(New-RandomSecret)" }
-    elseif ($_ -match '^CORVEX_TOTP_ENC_KEY=') {
-      $keyBytes = New-Object byte[] 32
-      [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($keyBytes)
-      "CORVEX_TOTP_ENC_KEY=$([Convert]::ToBase64String($keyBytes))"
+  $envLines = New-Object System.Collections.Generic.List[string]
+  foreach ($line in ((Read-EnvText .env.example) -split "`n")) {
+    if ($line -match '^(.*)=change-me-strong-password$') {
+      $envLines.Add("$($Matches[1])=$(New-RandomSecret)")
     }
-    elseif ($_ -match '^CORVEX_EXTERNAL_MAIL_ENC_KEY=') {
-      $keyBytes = New-Object byte[] 32
-      [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($keyBytes)
-      "CORVEX_EXTERNAL_MAIL_ENC_KEY=$([Convert]::ToBase64String($keyBytes))"
+    elseif ($line -match '^CORVEX_TOTP_ENC_KEY=' -or $line -match '^CORVEX_EXTERNAL_MAIL_ENC_KEY=' -or $line -match '^CORVEX_ALERT_CONFIG_ENC_KEY=') {
+      $envLines.Add("$(($line -split '=', 2)[0])=$(New-AesKey)")
     }
-    elseif ($_ -match '^CORVEX_ALERT_CONFIG_ENC_KEY=') {
-      $keyBytes = New-Object byte[] 32
-      [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($keyBytes)
-      "CORVEX_ALERT_CONFIG_ENC_KEY=$([Convert]::ToBase64String($keyBytes))"
-    }
-    else { $_ }
+    else { $envLines.Add($line) }
   }
-  $lines | Set-Content .env -Encoding UTF8
-  Write-Host "[OK] .env created with unique random secrets."
-} else {
+  Write-EnvText .env (($envLines -join "`n").TrimEnd("`n") + "`n")
+  Write-Host "[OK] .env created with unique random secrets (UTF-8 without BOM, LF)."
+}
+else {
   Write-Warning ".env already exists - secrets NOT regenerated. If it still contains 'change-me-strong-password', delete .env and re-run this script (BEFORE first docker compose up; changing DB passwords later requires changing them inside PostgreSQL too)."
-  # Upgrade path: installs created before the internal-API token was introduced
-  # receive only this new secret; every existing value remains untouched.
-  $existingEnv = Get-Content .env -Raw -Encoding UTF8
+  $text = Read-EnvText .env
+  $envLines = New-Object System.Collections.Generic.List[string]
+  foreach ($line in ($text -split "`n")) { $envLines.Add($line) }
+  $changed = $false
+
   # Upgrade path: .env files created from the old example contain the
   # documentation-only alert SMTP placeholder. Replace only that exact value
   # with the built-in first-run fallback; a real external relay is untouched.
-  $envLines = Get-Content .env -Encoding UTF8
-  if ($envLines -contains "ALERT_SMTP_HOST=smtp.provider.example") {
-    $envLines = $envLines | ForEach-Object {
-      if ($_ -eq "ALERT_SMTP_HOST=smtp.provider.example") { "ALERT_SMTP_HOST=mail-smtp-service" } else { $_ }
+  for ($i = 0; $i -lt $envLines.Count; $i++) {
+    if ($envLines[$i] -eq "ALERT_SMTP_HOST=smtp.provider.example") {
+      $envLines[$i] = "ALERT_SMTP_HOST=mail-smtp-service"
+      $changed = $true
+      Write-Host "[OK] Replaced placeholder ALERT_SMTP_HOST with mail-smtp-service. Set an external alert relay before production."
     }
-    $envLines | Set-Content .env -Encoding UTF8
-    $existingEnv = Get-Content .env -Raw -Encoding UTF8
-    Write-Host "[OK] Replaced placeholder ALERT_SMTP_HOST with mail-smtp-service. Set an external alert relay before production."
   }
-  if ($existingEnv -notmatch '(?m)^CORVEX_INTERNAL_API_TOKEN=') {
-    Add-Content .env "`nCORVEX_INTERNAL_API_TOKEN=$(New-RandomSecret 48)" -Encoding UTF8
-    Write-Host "[OK] Added missing CORVEX_INTERNAL_API_TOKEN to existing .env."
-  }
-  if ($existingEnv -notmatch '(?m)^CORVEX_EXTERNAL_MAIL_ENC_KEY=') {
-    $keyBytes = New-Object byte[] 32
-    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($keyBytes)
-    Add-Content .env "`nCORVEX_EXTERNAL_MAIL_ENC_KEY=$([Convert]::ToBase64String($keyBytes))" -Encoding UTF8
-    Write-Host "[OK] Added missing CORVEX_EXTERNAL_MAIL_ENC_KEY to existing .env."
-  }
-  if ($existingEnv -notmatch '(?m)^CORVEX_ALERT_CONFIG_ENC_KEY=') {
-    $keyBytes = New-Object byte[] 32
-    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($keyBytes)
-    Add-Content .env "`nCORVEX_ALERT_CONFIG_ENC_KEY=$([Convert]::ToBase64String($keyBytes))" -Encoding UTF8
-    Write-Host "[OK] Added missing CORVEX_ALERT_CONFIG_ENC_KEY to existing .env."
+
+  # Upgrade path: installs created before these keys were introduced receive only the
+  # missing secret; every existing value remains untouched.
+  $missingKeys = @(
+    @{ Name = 'CORVEX_INTERNAL_API_TOKEN'; Value = (New-RandomSecret 48) },
+    @{ Name = 'CORVEX_EXTERNAL_MAIL_ENC_KEY'; Value = (New-AesKey) },
+    @{ Name = 'CORVEX_ALERT_CONFIG_ENC_KEY'; Value = (New-AesKey) }
+  )
+  foreach ($entry in $missingKeys) {
+    if ($text -notmatch ("(?m)^" + [regex]::Escape($entry.Name) + "=")) {
+      $envLines.Add("$($entry.Name)=$($entry.Value)")
+      $text = $text + "`n$($entry.Name)=$($entry.Value)"
+      $changed = $true
+      Write-Host "[OK] Added missing $($entry.Name) to existing .env."
+    }
   }
 
   # Upgrade path for installs created before the AES-GCM keys were generated: the example
   # placeholder is not valid Base64 and is not 32 bytes, so TOTP, external mail and alert
   # secrets answered 503 on a fresh install. Replace only that exact value.
-  $aesKeyNames = 'CORVEX_TOTP_ENC_KEY', 'CORVEX_EXTERNAL_MAIL_ENC_KEY', 'CORVEX_ALERT_CONFIG_ENC_KEY'
-  foreach ($keyName in $aesKeyNames) {
+  foreach ($keyName in $AesKeyNames) {
     $placeholderLine = "${keyName}=base64-32-byte-key-for-aes-gcm"
-    $currentLines = Get-Content .env -Encoding UTF8
-    if ($currentLines -contains $placeholderLine) {
-      $keyBytes = New-Object byte[] 32
-      [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($keyBytes)
-      $replacementLine = "${keyName}=$([Convert]::ToBase64String($keyBytes))"
-      $currentLines | ForEach-Object {
-        if ($_ -eq $placeholderLine) { $replacementLine } else { $_ }
-      } | Set-Content .env -Encoding UTF8
-      Write-Host "[OK] Replaced placeholder ${keyName} with a real 32-byte key."
+    for ($i = 0; $i -lt $envLines.Count; $i++) {
+      if ($envLines[$i] -eq $placeholderLine) {
+        $envLines[$i] = "${keyName}=$(New-AesKey)"
+        $changed = $true
+        Write-Host "[OK] Replaced placeholder ${keyName} with a real 32-byte key."
+      }
     }
   }
+
+  if ($changed) {
+    Write-EnvText .env (($envLines -join "`n").TrimEnd("`n") + "`n")
+  }
 }
+
+# Hard guarantee instead of a comment: a BOM here breaks every compose command.
+$envBytes = [System.IO.File]::ReadAllBytes((Join-Path (Get-Location).Path '.env'))
+if ($envBytes.Length -ge 3 -and $envBytes[0] -eq 0xEF -and $envBytes[1] -eq 0xBB -and $envBytes[2] -eq 0xBF) {
+  throw "FAIL: .env starts with a UTF-8 BOM; docker compose cannot parse such a file."
+}
+Write-Host "[OK] .env is UTF-8 without BOM."
 
 Write-Host ""
 Write-Host "Next steps:"

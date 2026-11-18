@@ -69,8 +69,11 @@ docker compose --profile local-oauth up -d
 
 ### P2. Полный `mvn verify` по всему reactor
 
-**Зачем:** до сих пор ни один полный прогон на текущем `main` не был зелёным; проверялся
-только модуль `mail-storage-service`.
+**Зачем:** когда приёмка формулировалась, ни один полный прогон на текущем `main` не был
+зелёным — проверялся только модуль `mail-storage-service`, а сломанный `main` доходил до
+ноутбука. Теперь полный reactor гоняется на каждом PR и на каждом пуше в `main`.
+Приёмка всё равно остаётся: она требует зафиксировать `Tests run:` и SHA, а не только
+зелёную галочку.
 
 **Как:**
 
@@ -116,13 +119,19 @@ restore, время восстановления на объёме больше 
 
 **Как** (на машине, где данные не нужны):
 
-```powershell
+```bash
 git clone https://github.com/ArtemDobrokvashin/Corvex-.git corvex-clean
 cd corvex-clean
-Copy-Item .env.example .env      # заполнить пароли и ключи
+./scripts/first-run.sh          # ключи, сертификат и .env с уникальными секретами
+python3 scripts/preflight.py    # только чтение: окружение до первой сборки
 docker compose up -d --build
-docker compose ps                # все сервисы healthy
+docker compose ps               # все сервисы healthy
 ```
+
+`Copy-Item .env.example .env` здесь больше не используется: в примере остаются заглушки
+`change-me-strong-password` (500 на TOTP, внешние ящики и секреты алертов) и, при
+сохранении из Windows PowerShell 5.1, BOM, на котором `docker compose` не разбирает файл
+вообще. `first-run` заполняет всё сам, `preflight` проверяет результат до сборки.
 
 **Доказательство:** перечень контейнеров со статусом `healthy`, применённые миграции
 `V1…V14`, вход первым администратором, отправка и получение письма внутри домена.
