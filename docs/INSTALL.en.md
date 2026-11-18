@@ -66,7 +66,30 @@ option to operate.
 
 ## 3. Get the source
 
+**Where the directory must live.** Where both you and the Docker daemon can see it.
+Compose mounts `./infra/secrets`, `./infra/certs` and `./infra/nginx` from the file system
+the **daemon** sees, not from the one where you typed the command.
+
+| Installation path | Clone into |
+|---|---|
+| Option A (Hyper-V) and C (plain Linux) | **inside the VM**, e.g. `/opt/corvex` |
+| Option B (Docker Desktop) | on the host, e.g. `C:\Corvex`: Desktop shares the directory into WSL2 |
+
+Cloning to `C:\Corvex` while Docker runs in a separate VM means containers never see
+`infra/secrets`: the mount silently creates empty directories and nginx fails with
+`cannot load certificate`.
+
+```bash
+# inside the Linux VM
+sudo mkdir -p /opt/corvex && sudo chown "$USER" /opt/corvex
+git clone https://github.com/ArtemDobrokvashin/Corvex-.git /opt/corvex
+cd /opt/corvex
+git switch main
+git pull --ff-only
+```
+
 ```powershell
+# on the Windows host with Docker Desktop
 git clone https://github.com/ArtemDobrokvashin/Corvex-.git C:\Corvex
 cd C:\Corvex
 git switch main
@@ -84,6 +107,9 @@ signing key and a 90-day self-signed certificate for the pilot.
 Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\first-run.ps1
 ```
+
+`.env` is written as **UTF-8 without BOM** with LF line endings, which is what
+`docker compose` expects.
 
 Expected result — three `[OK]` lines, plus `infra\secrets\jwt_private.pem`,
 `infra\certs\fullchain.pem` and `.env` in the repository root.
@@ -141,6 +167,30 @@ the provider for the PTR record: `IP → mail.company.com`.
 
 ## 8. First start
 
+### 8.0. Environment check
+
+Before the first build, run the read-only preflight (it creates nothing):
+
+```bash
+python3 scripts/preflight.py            # inside the Linux VM
+python3 scripts/preflight.py --strict   # treat warnings as failures
+```
+
+Run it **where Docker runs**: inside the VM on option A, on the host with Docker Desktop.
+
+It answers the questions installs usually fail on: is Docker running and is the engine
+Linux, are there enough vCPU/RAM/disk, are ports 80, 443, 25, 587, 143, 993, 995 and 8080
+free, does `.env` parse, are keys and certificates in place, is `vm.max_map_count` high
+enough for Elasticsearch. Every line is `PASS`, `WARN` or `FAIL` with a hint. Exit codes:
+`0` no failures, `1` a `FAIL`, `2` `--strict` with a `WARN`.
+
+The most common first `FAIL` is a **BOM** in `.env`: Windows PowerShell 5.1 writes
+`Set-Content -Encoding UTF8` with a byte-order mark, and `docker compose` cannot parse such
+a file. `first-run.ps1` no longer writes one; if you edit `.env` by hand, save it as
+**UTF-8 without BOM**.
+
+### 8.1. Start
+
 ```powershell
 docker compose up -d --build
 docker compose ps
@@ -180,8 +230,9 @@ The full set, including mail and mail-client acceptance — [`TESTING.md`](TESTI
 
 ## 10. Upgrade and rollback
 
-```powershell
+```bash
 git pull
+python3 scripts/preflight.py                # new required .env keys show up here
 docker compose up -d --build                # Flyway applies migrations
 docker compose up -d --build chat-service   # rebuild a single service
 ```
@@ -207,6 +258,9 @@ physical medium**. Restore verification — [`OPERATIONS.md`](OPERATIONS.md).
 - [ ] `server_name` and the `/grafana/` allowlist in nginx are adjusted.
 - [ ] Alerts reach an external mailbox.
 - [ ] A backup copy lives off the server and a restore has been verified.
+- [ ] If Google external accounts are connected: it is known that in **Testing** status
+      the sign-in has to be repeated every 7 days (`reauthRequired`), and the pilot dates
+      take that into account.
 - [ ] `CORVEX_SMTP_ENABLED=false` until the mail path is accepted; MX is not published.
 
 ## Troubleshooting
