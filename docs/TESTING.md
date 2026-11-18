@@ -249,8 +249,10 @@ mail-storage-service` письма и флаги на месте.
 ## 10. Бэкап, откат, алерты
 
 - `backup.ps1` создаёт копию с манифестом SHA-256.
-- `restore.ps1 -DataOnly -ProjectName corvex-restore` + `restore_verify.ps1` — сравнение
-  4 баз и 3 файловых томов, не затрагивая рабочие данные.
+- `restore.ps1 -BackupDir <путь> -ProjectName corvex-restore-drill -DataOnly` +
+  `restore_verify.ps1 -BackupDir <путь> -ProjectName corvex-restore-drill` — сравнение
+  4 баз и 3 файловых томов, не затрагивая рабочие данные. `-BackupDir` обязателен у обоих
+  скриптов, имя проекта обязательно должно отличаться от `corvex`.
 - Откат: предыдущий коммит или теги образов + `up -d`.
 - Алерт: `scripts/alert_e2e.py` создаёт один синтетический алерт и завершает его; письмо
   приходит на внешний ящик.

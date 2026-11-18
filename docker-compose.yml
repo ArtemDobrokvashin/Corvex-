@@ -388,6 +388,8 @@ services:
       CORVEX_DKIM_KEYS_DIR: /run/secrets/dkim
       CORVEX_SMTP_TLS_CERT_FILE: /certs/fullchain.pem
       CORVEX_SMTP_TLS_KEY_FILE: /certs/privkey.pem
+      # Исходящая доставка: true = письмо не уходит, если принимающий MX не предложил STARTTLS.
+      CORVEX_SMTP_REQUIRE_STARTTLS: ${CORVEX_SMTP_REQUIRE_STARTTLS:-false}
     volumes:
       - "${CORVEX_SECRETS_DIR:-./infra/secrets}:/run/secrets:ro"
       - "${CORVEX_CERTS_DIR:-./infra/certs}:/certs:ro"

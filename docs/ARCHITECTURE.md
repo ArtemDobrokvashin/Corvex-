@@ -174,7 +174,7 @@ Alertmanager, alert-relay, Grafana, Loki, Promtail), `office-preview` (внут�
 | `james-internal` (`internal`) | James и его PostgreSQL на время перехода |
 | `office-preview` (`internal`) | конвертер Office → PDF: доступен почте и чату, выхода наружу нет |
 
-Соглашения Dockerfile одинаковы у 12 сервисов: сборка на `maven:3.9-eclipse-temurin-17`,
+Соглашения Dockerfile одинаковы у 12 сервисов из 13: сборка на `maven:3.9-eclipse-temurin-17`,
 runtime на `eclipse-temurin:17-jre-alpine`, пользователь `corvex` (non-root, UID:GID
 100:101), непривилегированные порты внутри контейнера, `-XX:MaxRAMPercentage=75`,
 `HEALTHCHECK` по `/actuator/health` — на нём построены `depends_on: service_healthy`.
