@@ -148,7 +148,7 @@ docker compose ps                # все сервисы healthy
 |---|---|---|
 | `python3 -m unittest discover -s scripts/tests` | рабочее дерево `82755ea` | сначала **1 падение** (`test_drive_api_contract`: парсер теста не понимал `const path = …; apiBlob(path)`), после правки теста — **247 OK, 1 skip** |
 | сверка `.env.example` с `${…}` в `docker-compose.yml` | `82755ea` | 11 переменных читались compose, но не были описаны; добавлены. `CORVEX_SMTP_REQUIRE_STARTTLS` был в примере, но никуда не передавался — теперь передаётся в `mail-smtp-service` |
-| `python3 scripts/docs_audit.py` | рабочее дерево на ветке `arena/6ad28950-corvex` | до правок: **3 ошибки, 2 предупреждения**; после: **0 и 0**. Ошибки — `PATCH /mail/folders/{id}`, `DELETE /mail/messages/{id}` и недостижимый снаружи JWKS |
+| `python3 scripts/docs_audit.py` | рабочее дерево на ветке `arena/6ad28950-corvex`, затем CI run `44270538840` на `1a0a08c` | до правок: **3 ошибки, 2 предупреждения**; после: **0 и 0**. Ошибки — `PATCH /mail/folders/{id}`, `DELETE /mail/messages/{id}` и недостижимый снаружи JWKS |
 | `python3 -m unittest discover -s scripts/tests` | то же дерево | **260 тестов OK (1 skip)**, включая новый `test_docs_audit` с фикстурами на каждый парсер |
 
 Смысл таблицы: аудит документации нашёл не только расхождения в тексте, но и красный тест,
