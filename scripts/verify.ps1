@@ -1,4 +1,4 @@
-<#
+﻿<#
  Corvex: локальные ворота готовности на Windows Server с JDK 17, Maven 3.9+, Node.js 22.22.2+/24.15+/26+ и Docker.
  Использование:
    powershell -ExecutionPolicy Bypass -File scripts\verify.ps1 [-DockerBuild]
