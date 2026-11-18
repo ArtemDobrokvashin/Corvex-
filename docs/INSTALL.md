@@ -154,11 +154,21 @@ DKIM — её вносят в зону на шаге 7.
 
 ## 5. Настройка `.env`
 
+`first-run.sh` умеет заполнить три главные переменные сам:
+
+```bash
+./scripts/first-run.sh --domain mail.company.ru --mail-domain company.ru \
+                       --public-base-url https://mail.company.ru
+```
+
+Остальное правится вручную — файл один и тот же на Windows и в Linux-VM:
+
 | Переменная | Значение |
 |---|---|
-| `CORVEX_DOMAIN` | веб-имя, например `mail.company.local` |
+| `CORVEX_DOMAIN` | веб-имя, например `mail.company.ru` |
 | `CORVEX_WEB_ORIGINS` | обычно пусто: Compose сам подставит `https://$CORVEX_DOMAIN`; заполнять только для дополнительных origin через запятую |
-| `CORVEX_MAIL_DOMAIN` | почтовый домен адресов, например `company.local` |
+| `CORVEX_MAIL_DOMAIN` | почтовый домен адресов, например `company.ru` |
+| `CORVEX_PUBLIC_BASE_URL` | внешний адрес, на который провайдер вернёт браузер после согласия OAuth |
 | `CORVEX_INTERNAL_API_TOKEN` | секрет внутренних API; генерируется скриптом, менять обязательно, если осталось `change-me...` |
 | `CORVEX_SMTP_ENABLED`, `CORVEX_IMAP_ENABLED`, `CORVEX_POP3_ENABLED` | `false` до приёмки соответствующего контура |
 | `CORVEX_ALERT_RECIPIENTS` | получатели внутреннего email-канала алертов |
@@ -169,17 +179,47 @@ DKIM — её вносят в зону на шаге 7.
 `CORVEX_EXTERNAL_MAIL_ENC_KEY` и `CORVEX_ALERT_CONFIG_ENC_KEY`. Потеря ключа означает
 повторный ввод этих секретов, поэтому `.env` входит в резервную копию.
 
+Проверка перед первым запуском (в Windows PowerShell или в bash):
+
+```bash
+grep -nE '=change-me-strong-password$|=base64-32-byte-key-for-aes-gcm$' .env || echo "[OK] заглушек нет"
+```
+
+```powershell
+Select-String -Path .env -Pattern '=change-me-strong-password$|=base64-32-byte-key-for-aes-gcm$'
+# пусто = заглушек нет
+```
+
+Если вывод не пуст, приложение вернёт `503` на TOTP, внешние ящики и секреты алертов.
+Удалите `.env` и запустите script из шага 4 заново — **до** первого `docker compose up`.
+
 ## 6. TLS-сертификат
 
 Самоподписанный сертификат из шага 4 годится только для внутреннего пилота.
 
-- **Публичный домен:** Let's Encrypt (`win-acme` на Windows, certbot на Linux). Файлы:
-  `infra\certs\fullchain.pem` (вся цепочка) и `infra\certs\privkey.pem`.
+- **Публичный домен:** Let's Encrypt. На Linux — `certbot`, на Windows-хосте — `win-acme`.
+  Нужны файлы `infra/certs/fullchain.pem` (вся цепочка) и `infra/certs/privkey.pem`.
 - **Внутренний домен:** сертификат корпоративного УЦ на `mail.<домен>`; корневой CA должен
   быть в доверенных на машинах пользователей.
 
-Имя в сертификате — `mail.<ваш-домен>`: оно обслуживает веб, IMAP и POP3. В
-`infra\nginx\conf.d\corvex.conf` поправьте `server_name` на то же имя.
+Внутри Linux-VM проще всего получить сертификат на хосте и скопировать файлы:
+
+```bash
+sudo certbot certonly --standalone -d mail.company.ru
+sudo cp /etc/letsencrypt/live/mail.company.ru/fullchain.pem infra/certs/
+sudo cp /etc/letsencrypt/live/mail.company.ru/privkey.pem   infra/certs/
+sudo chown 100:101 infra/certs/privkey.pem && sudo chmod 600 infra/certs/privkey.pem
+```
+
+Имя в сертификате — `mail.<ваш-домен>`: оно обслуживает веб, IMAP и POP3. В файле
+`infra/nginx/conf.d/corvex.conf` поправьте `server_name` на то же имя:
+
+```bash
+sed -i 's/server_name .*/server_name mail.company.ru;/' infra/nginx/conf.d/corvex.conf
+```
+
+На Windows-хосте пути те же, но с обратными слэшами: `infra\nginx\conf.d\corvex.conf`.
+Файлы внутри VM — всегда через прямой слэш, даже если каталог смонтирован с Windows.
 
 ## 7. DNS
 
@@ -196,12 +236,15 @@ _imaps._tcp.company.ru.       SRV 0 1 993 mail.company.ru.
 _submission._tcp.company.ru.  SRV 0 1 587 mail.company.ru.
 ```
 
-DKIM-ключ генерируется при первом запуске, публичный ключ показывается в админке. PTR
-(обратную зону) заказывают у провайдера: `IP → mail.company.ru`.
+Публичный ключ DKIM скрипт из шага 4 печатает готовой TXT-строкой; тот же ключ лежит в
+`infra/secrets/dkim_public.pem` и показывается в админке. PTR (обратную зону) заказывают
+у провайдера: `IP → mail.company.ru`.
 
 ## 8. Первый запуск
 
-```powershell
+Команды одинаковые на Windows и в Linux-VM:
+
+```bash
 docker compose up -d --build
 docker compose ps
 ```
@@ -210,41 +253,59 @@ docker compose ps
 сервисов с healthcheck; у `frontend`, `nginx` и `spamd` его нет, поэтому у них будет
 `Up`. Первый старт ClamAV скачивает базы сигнатур — до 5 минут это норма.
 
-```powershell
+```bash
 docker compose logs --tail 100 <сервис>      # если что-то в restarting
 docker compose --profile monitoring up -d    # мониторинг отдельным профилем
 ```
 
 Grafana доступна на `https://mail.<домен>/grafana/`; доступ ограничен allowlist-подсетью
-в `infra\nginx\conf.d\corvex.conf` — поправьте её под свою сеть.
+в `infra/nginx/conf.d/corvex.conf` — поправьте её под свою сеть.
+
+> Внутри Linux-VM `sysctl` нужен для Elasticsearch. Если он перезапускается:
+> `sudo sysctl -w vm.max_map_count=262144` и та же строка в `/etc/sysctl.conf`.
 
 ## 9. Проверки после запуска
 
 1. **Вход.** `https://mail.<домен>` → экран входа. Логин — `CORVEX_BOOTSTRAP_ADMIN_USERNAME`
    (по умолчанию `admin`); пароль — из `.env`, а если он пуст, сгенерированный пароль
-   печатается один раз: `docker compose logs auth-service | Select-String BOOTSTRAP`.
+   печатается один раз:
+
+   ```bash
+   docker compose logs auth-service | grep BOOTSTRAP          # Linux-VM
+   ```
+
+   ```powershell
+   docker compose logs auth-service | Select-String BOOTSTRAP # Windows-хост
+   ```
+
    Интерфейс попросит сменить пароль.
-2. **Gateway жив.** `curl.exe -k https://mail.<домен>/api/v1/auth/me` → `401`
-   (маршрут существует и требует токен).
-3. **JWKS.** `docker compose exec web-gateway wget -qO- http://auth-service:8081/oauth2/jwks`
+
+2. **Gateway жив.** `curl -k https://mail.<домен>/api/v1/auth/me` → `401`
+   (маршрут существует и требует токен). На Windows вместо `curl` — `curl.exe`.
+3. **JWKS.**
+   `docker compose exec web-gateway wget -qO- http://auth-service:8081/oauth2/jwks`
    → JSON с публичным ключом.
-4. **Миграции.** `docker compose logs auth-service | Select-String Flyway` и то же для
-   `admin-service`, `chat-service`, `mail-storage-service` — строки об успешных миграциях.
-5. **SMTP выключен по умолчанию.** В логах `mail-smtp-service` есть
+4. **Миграции.** Строки Flyway в `auth-service`, `admin-service`, `chat-service`,
+   `mail-storage-service`: `docker compose logs <сервис> | grep Flyway` (Linux) или
+   `| Select-String Flyway` (Windows). Ожидается применение до последней версии
+   `V1…V14`; номер сверяет `scripts/docs_audit.py`.
+5. **Секреты не заглушки.** Шаг 5: в `.env` нет `change-me…` и
+   `base64-32-byte-key-for-aes-gcm`.
+6. **SMTP выключен по умолчанию.** В логах `mail-smtp-service` есть
    `SMTP listener disabled`. Это ожидаемое состояние, а не ошибка.
-6. **Календарь.** Создайте событие с напоминанием «за 5 минут», обновите страницу —
+7. **Календарь.** Создайте событие с напоминанием «за 5 минут», обновите страницу —
    событие сохранилось. Затем в `docker compose logs -f notification-service`
    дождитесь строки об отправке: письмо приходит на вашу почту Corvex.
-7. **Алерты.** Не останавливайте рабочий сервис: используйте `scripts/alert_e2e.py`,
+8. **Алерты.** Не останавливайте рабочий сервис: используйте `scripts/alert_e2e.py`,
    он создаёт один синтетический алерт и завершает его.
 
 Полный набор проверок, включая приёмку почты и почтовых клиентов — [`TESTING.md`](TESTING.md).
 
 ## 10. Обновление и откат
 
-```powershell
+```bash
 git pull
-docker compose up -d --build          # миграции Flyway применит сам
+docker compose up -d --build                # миграции Flyway применит сам
 docker compose up -d --build chat-service   # пересборка одного сервиса
 ```
 
@@ -254,6 +315,8 @@ docker compose up -d --build chat-service   # пересборка одного 
 
 ## 11. Резервное копирование
 
+**Windows-хост:**
+
 ```powershell
 .\scripts\backup.ps1 -BackupRoot D:\CorvexBackup
 ```
@@ -262,13 +325,21 @@ docker compose up -d --build chat-service   # пересборка одного 
 `.env`, сертификаты, ключ JWT и `manifest.json` с SHA-256 всех файлов. Индекс
 Elasticsearch не входит — он перестраивается. Копии должны лежать **на другом носителе**.
 
+**Linux-VM: скриптов пока нет.** `backup.ps1`, `restore.ps1` и `restore_verify.ps1`
+написаны на PowerShell. Внутри Linux-VM их запустить нельзя, а bash-версий ещё не
+написано. Это известный пробел: приёмка P3 (восстановление из копии) закрыта только для
+Windows-хоста. Пока сервер на Windows, копию удобнее делать с хоста, обращаясь к томам
+VM через общий каталог, либо установить в VM PowerShell 7 и запускать те же скрипты.
+Честно: **непроверенный сценарий копирования на Linux не считается рабочим.**
+
 Проверка восстановления и расписание — [`OPERATIONS.md`](OPERATIONS.md).
 
 ## 12. Чек-лист перед доступом извне
 
-- [ ] В `.env` не осталось ни одного `change-me...`.
+- [ ] В `.env` не осталось ни одного `change-me...` и ни одной заглушки `base64-32-byte-key-for-aes-gcm`.
 - [ ] TLS — настоящий сертификат, не пилотный самоподписанный.
 - [ ] В nginx поправлены `server_name` и подсеть доступа к `/grafana/`.
+- [ ] Порты 25, 80, 443, 587 проверены **снаружи** (`Test-NetConnection <IP> -Port 25`).
 - [ ] Алерты приходят на внешний ящик.
 - [ ] Одна копия бэкапа лежит вне сервера, восстановление проверено.
 - [ ] `CORVEX_SMTP_ENABLED=false`, пока почтовый контур не принят; MX не опубликован.
@@ -279,32 +350,12 @@ Elasticsearch не входит — он перестраивается. Коп�
 |---|---|
 | Сборка Maven падает на сервисе | `docker compose build <сервис>` без `-d`, читать первую ошибку компиляции |
 | Контейнер `unhealthy`/`restarting` | `docker compose logs --tail 100 <сервис>`; чаще всего пароль из `.env` не совпал с уже инициализированным томом или мало памяти |
-| nginx: `cannot load certificate` | нет файлов в `infra\certs` — выполните шаг 4 или 6 |
+| `503` на TOTP, внешних ящиках или секретах алертов | в `.env` остались заглушки ключей AES-GCM — см. шаг 5 |
+| nginx: `cannot load certificate` | нет файлов в `infra/certs` — выполните шаг 4 или 6 |
+| Снаружи не открывается веб или почта, внутри всё работает | VM за NAT: нужен `portproxy` (шаг 1, вариант 2) либо внешний виртуальный коммутатор |
 | ClamAV долго стартует | первый запуск скачивает ~200 МБ сигнатур; без интернета базы приносятся вручную в том `clamav-data` |
 | Elasticsearch перезапускается | нужно ≥2,5 ГБ RAM; в Linux-VM `sudo sysctl -w vm.max_map_count=262144` и в `/etc/sysctl.conf` |
 | Видна жёлтая плашка «демо» | вы вошли кнопкой демо или бэкенд недоступен: проверьте `docker compose ps` и логи `auth-service` |
 | Внешние письма не приходят | SMTP выключен осознанно; после приёмки — порты 25 извне, MX, PTR, mail-tester ≥ 9/10 |
 
 Остальные сбои, включая почтовые и эксплуатационные — [`OPERATIONS.md`](OPERATIONS.md).
-
-## Приложение: first-run для Linux
-
-```bash
-mkdir -p infra/secrets infra/certs
-[ -f infra/secrets/jwt_private.pem ] || docker run --rm -v "$PWD/infra/secrets:/out" alpine sh -c \
-  "apk add --no-cache openssl >/dev/null && openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out /out/jwt_private.pem"
-[ -f infra/certs/fullchain.pem ] || docker run --rm -v "$PWD/infra/certs:/out" alpine sh -c \
-  "apk add --no-cache openssl >/dev/null && openssl req -x509 -newkey rsa:2048 -keyout /out/privkey.pem -out /out/fullchain.pem -days 90 -nodes -subj '/CN=mail.company.local'"
-
-while IFS= read -r line; do
-  case "$line" in
-    *=change-me-strong-password) echo "${line%%=*}=$(openssl rand -hex 24)" ;;
-    CORVEX_TOTP_ENC_KEY=*)          echo "CORVEX_TOTP_ENC_KEY=$(openssl rand -base64 32)" ;;
-    CORVEX_EXTERNAL_MAIL_ENC_KEY=*) echo "CORVEX_EXTERNAL_MAIL_ENC_KEY=$(openssl rand -base64 32)" ;;
-    CORVEX_ALERT_CONFIG_ENC_KEY=*)  echo "CORVEX_ALERT_CONFIG_ENC_KEY=$(openssl rand -base64 32)" ;;
-    *) echo "$line" ;;
-  esac
-done < .env.example > .env
-```
-
-Дальше — шаги 5–12, команды Docker идентичны.
