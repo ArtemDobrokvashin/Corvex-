@@ -5,7 +5,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 
-/** Validation for private webmail drafts. No server endpoint uses this until integration is complete. */
+/** Validation for private webmail drafts; used by WebmailDraftController (owner-scoped, revision-checked). */
 public record DraftPayload(String to, String cc, String subject, String bodyText, String bodyHtml,
                            UUID externalAccountId, List<Attachment> attachments) {
     private static final int MAX_TEXT = 500_000;

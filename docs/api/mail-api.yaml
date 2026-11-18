@@ -7,7 +7,8 @@ info:
     Внешние клиенты ходят не сюда, а по IMAP/POP3/SMTP. Списки — курсорная пагинация, тела писем отдаются
     санитизированным HTML (XSS) + plain text.
     Операции с расширением x-corvex-status: planned описаны как замысел: в коде их нет,
-    и вызывать их не следует.
+    и вызывать их не следует. Пометка может стоять на уровне пути (все операции пути)
+    или на уровне одной операции, если остальные в этом пути уже работают.
 servers:
   - url: https://mail.company.local/api/v1
 paths:
@@ -78,7 +79,13 @@ paths:
         '409': { description: Имя занято, зарезервировано или конфликтует с другой папкой в файловом хранилище }
   /mail/folders/{folderId}:
     patch:
+      x-corvex-status: planned
       summary: Переименовать/переместить папку (системные переименовывать нельзя)
+      description: |
+        В коде не реализовано: MailController отдаёт GET/POST `/folders` и
+        DELETE `/folders/{folderId}`, PATCH отсутствует, в интерфейсе переименования
+        папок нет. Нужно, чтобы `docs/MAIL.md` (сериализация имён каталогов)
+        и `docs/USER-GUIDE.md` не обещали того, чего нет.
       parameters: [{ name: folderId, in: path, required: true, schema: { type: string, format: uuid } }]
       responses: { '200': { description: Обновлена } }
     delete:
@@ -110,9 +117,51 @@ paths:
       responses:
         '200': { description: Письмо, content: { application/json: { schema: { $ref: '#/components/schemas/MessageDetail' } } } }
     delete:
+      x-corvex-status: planned
       summary: В Корзину; из Корзины — окончательно
+      description: |
+        В коде не реализовано. Сейчас удаление — это `POST /mail/messages/{id}/move`
+        в системную папку TRASH; окончательное удаление живёт только во внутреннем
+        контуре (`DELETE /internal/messages/{id}`, им пользуются IMAP/POP3).
+        План: удаление из корзины, «Очистить корзину» и автоочистка 30/60/90 дней —
+        `docs/ROADMAP.md`.
       parameters: [{ name: messageId, in: path, required: true, schema: { type: string, format: uuid } }]
       responses: { '204': { description: Готово } }
+  /mail/messages/{messageId}/inline-image:
+    post:
+      summary: Прочитать картинку из HTML-письма по Content-ID (cid:)
+      description: |
+        POST здесь из-за тела запроса, хотя операция только читает. Санитизация HTML
+        вырезает `cid:`-ссылки, поэтому клиент просит картинку отдельно: тело
+        `{"cid": "<Content-ID>"}`, ответ — байты изображения с его `Content-Type`,
+        `nosniff` и `private, no-store`. Владелец берётся из JWT, чужое письмо — `404`.
+
+        Отдаются только `image/png`, `image/jpeg`, `image/gif` целиком в одном MIME-части,
+        до 3 МиБ и 16 Мпикс. Каждая картинка заново проверяется ClamAV: заражённая — `403`,
+        недоступный антивирус — `503` (fail-closed).
+      parameters: [{ name: messageId, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cid]
+              properties:
+                cid: { type: string, example: '<logo-1@example.com>' }
+      responses:
+        '200':
+          description: Байты изображения, Content-Type из письма
+          content:
+            image/png:
+              schema: { type: string, format: binary }
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/gif:
+              schema: { type: string, format: binary }
+        '403': { description: Изображение заблокировано антивирусом }
+        '404': { description: Письмо не найдено, чужое, или такого Content-ID нет }
+        '503': { description: Антивирус недоступен }
   /mail/messages/{messageId}/flags:
     patch:
       summary: Изменить флаги (seen/flagged) — синхронизируется с IMAP-состоянием
@@ -191,9 +240,77 @@ paths:
         '413': { description: Превышен лимит размера письма }
         '422': { description: Некорректные получатели }
   /mail/drafts:
+    get:
+      summary: Список своих черновиков (свежие первыми, только метаданные)
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 50 }, description: '1–100, большее значение урезается до 100' }
+      responses:
+        '200':
+          description: Черновики без тел и вложений
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/DraftSummary' } }
     post:
-      summary: Создать/обновить черновик (автосохранение редактора)
-      responses: { '201': { description: Черновик сохранён } }
+      summary: Создать черновик (автосохранение редактора)
+      description: |
+        POST только создаёт. Обновление — `PUT /mail/drafts/{draftId}` с номером
+        ревизии: так две вкладки не перетирают текст друг друга молча (конфликт — 409).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DraftPayload' }
+      responses:
+        '201':
+          description: Черновик сохранён, revision = 1
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftView' }
+        '400': { description: Черновик не проходит валидацию или слишком велик }
+        '403': { description: Нет права MAIL_READ_OWN }
+  /mail/drafts/{draftId}:
+    get:
+      summary: Прочитать свой черновик целиком
+      parameters: [{ name: draftId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200':
+          description: Черновик с payload и revision
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftView' }
+        '404': { description: Черновик не найден или принадлежит другому пользователю }
+    put:
+      summary: Обновить черновик — только поверх известной ревизии
+      parameters: [{ name: draftId, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [revision, payload]
+              properties:
+                revision: { type: integer, format: int64, minimum: 1 }
+                payload: { $ref: '#/components/schemas/DraftPayload' }
+      responses:
+        '200':
+          description: Сохранено, revision увеличена
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftView' }
+        '400': { description: Некорректная ревизия или payload }
+        '404': { description: Черновик не найден }
+        '409': { description: Черновик изменён в другой вкладке }
+    delete:
+      summary: Удалить черновик по известной ревизии
+      parameters:
+        - { name: draftId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: revision, in: query, required: true, schema: { type: integer, format: int64, minimum: 1 } }
+      responses:
+        '204': { description: Удалён }
+        '400': { description: Некорректная ревизия }
+        '404': { description: Черновик не найден }
+        '409': { description: Черновик изменён в другой вкладке }
   /mail/attachments:
     x-corvex-status: planned
     post:
@@ -209,6 +326,27 @@ paths:
           content:
             application/json:
               schema: { type: object, properties: { sha256: { type: string }, sizeBytes: { type: integer, format: int64 }, avStatus: { type: string, enum: [PENDING, CLEAN, INFECTED, ERROR] } } }
+  /mail/messages/{messageId}/attachments/{partIndex}/preview:
+    get:
+      summary: Предпросмотр Office-вложения как PDF
+      description: |
+        Права и антивирус те же, что у скачивания: заражённый или непроверенный файл
+        не конвертируется. `501`, если контейнер предпросмотра не запущен, — интерфейс
+        тогда предлагает скачать файл.
+      parameters:
+        - { name: messageId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: partIndex, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: PDF, inline disposition, no-store
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        '403': { description: Вложение заблокировано антивирусом }
+        '404': { description: Письмо или вложение не найдено либо принадлежит другому пользователю }
+        '423': { description: Файл ещё не проверен }
+        '501': { description: Предпросмотр Office выключен }
+        '503': { description: Проверка или конвертация недоступна }
   /mail/messages/{messageId}/attachments/{partIndex}:
     get:
       summary: Скачать вложение своего письма с проверкой антивирусом
@@ -747,6 +885,46 @@ paths:
                     priority: { type: integer, nullable: true }
                     note: { type: string }
 components:
+  schemas:
+    DraftPayload:
+      type: object
+      description: |
+        Вложения встраиваются в JSON как base64: до 10 файлов, до 3 МиБ каждый и до
+        10 МиБ суммарно; тело и тема ограничены 500 000 байт UTF-8.
+      properties:
+        to: { type: string }
+        cc: { type: string }
+        subject: { type: string }
+        bodyText: { type: string }
+        bodyHtml: { type: string }
+        externalAccountId: { type: string, format: uuid, nullable: true }
+        attachments:
+          type: array
+          maxItems: 10
+          items:
+            type: object
+            required: [fileName, contentBase64]
+            properties:
+              fileName: { type: string }
+              contentType: { type: string }
+              contentBase64: { type: string, format: byte }
+    DraftView:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        revision: { type: integer, format: int64 }
+        payload: { $ref: '#/components/schemas/DraftPayload' }
+        updatedAt: { type: string, format: date-time }
+    DraftSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        revision: { type: integer, format: int64 }
+        to: { type: string }
+        subject: { type: string }
+        attachmentCount: { type: integer }
+        sizeBytes: { type: integer, format: int64 }
+        updatedAt: { type: string, format: date-time }
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
   schemas:

@@ -2,7 +2,14 @@ openapi: 3.0.3
 info:
   title: Corvex Auth API
   version: 1.0.0
-  description: Аутентификация (локальная + AD/LDAP), JWT, refresh-вращение, TOTP 2FA, app-passwords для IMAP/SMTP клиентов.
+  description: |
+    Аутентификация (локальная + AD/LDAP), JWT, refresh-вращение, TOTP 2FA, app-passwords
+    для IMAP/SMTP клиентов.
+
+    Все пути ниже, кроме JWKS, обслуживает auth-service и проксирует web-gateway по
+    префиксу `/api/v1/auth/**`. JWKS помечен `x-corvex-status: internal`: он живёт на
+    auth-service по адресу `http://auth-service:8081/oauth2/jwks` и снаружи через
+    gateway недоступен — ключи читают сервисы внутри сети по `CORVEX_JWK_SET_URI`.
 servers:
   - url: https://mail.company.local/api/v1
 paths:
@@ -162,8 +169,17 @@ paths:
             application/json:
               schema: { type: object, properties: { id: { type: string, format: uuid }, password: { type: string } } }
   /oauth2/jwks:
+    # Не через gateway: префикс /api/v1 сюда не применяется, путь внутренний.
+    servers:
+      - url: http://auth-service:8081
+    x-corvex-status: internal
     get:
-      summary: Публичные ключи RS256 для проверки JWT всеми сервисами
+      summary: Публичные ключи RS256 для проверки JWT всеми сервисами (внутренний эндпоинт)
+      description: |
+        Отдаёт JWKS для проверки подписи access-токенов. Маршрут есть только в
+        auth-service: web-gateway проксирует `/api/v1/auth/**`, а `/oauth2/jwks`
+        не входит в этот префикс. Проверять его снаружи не нужно и нельзя —
+        сервисы обращаются к нему напрямую по `CORVEX_JWK_SET_URI`.
       security: []
       responses: { '200': { description: JWKS } }
 components:
