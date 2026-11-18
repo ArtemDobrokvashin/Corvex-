@@ -23,6 +23,8 @@ class SpamRetryRecovererTest {
         Throwable cause = new RuntimeException("listener failed",
                 new StorageUnavailableException("mail-storage недоступен", new IOException("Connection refused")));
 
+        // Requeue одного сообщения повторит обработку сразу, без ожидания бэкоффа AMQP:
+        // маршрут проверяется по логу «письмо возвращено в очередь».
         assertThrows(ImmediateRequeueAmqpException.class, () -> recoverer.recover(message, cause));
     }
 
