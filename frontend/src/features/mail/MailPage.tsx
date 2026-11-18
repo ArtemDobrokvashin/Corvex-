@@ -81,7 +81,13 @@ import {
   type MailSortOrder,
 } from './mailListControls';
 import { formatMailRecipients, replyAllCc } from './mailRecipients';
-import { activeMailAfterRefresh, replaceFolderMessages } from './mailRefresh';
+import {
+  activeMailAfterRefresh,
+  hasMorePages,
+  mergeRefreshedFolder,
+  nextPageCursor,
+  replaceFolderMessages,
+} from './mailRefresh';
 import MailSidebarActions from './MailSidebarActions';
 import { BulkActionBar, SelectMessage, SelectVisibleMessages } from './BulkSelection';
 import { ComposePanel, type ComposeDraft } from './ComposePanel';
@@ -97,6 +103,8 @@ import {
 
 type FolderTab = ReturnType<typeof demoFolders>[number];
 const READ_FILTERS = ['all', 'unread', 'read'] as const;
+/** Совпадает с серверным значением по умолчанию: 50 строк на страницу папки. */
+const MAIL_PAGE_SIZE = 50;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -206,6 +214,10 @@ export default function MailPage() {
       : [],
   );
   const [activeId, setActiveId] = useState<string>(demoMode ? 'm1' : '');
+  // Сервер отдаёт папку страницами по курсору UID; без этого списка видно ровно 50 писем.
+  const [paging, setPaging] = useState<{ cursorUid?: number; hasMore: boolean; loading: boolean }>(
+    { cursorUid: undefined, hasMore: false, loading: false },
+  );
   const [mobileReading, setMobileReading] = useState(false);
   const [composeDraft, setComposeDraft] = useState<ComposeDraft | null>(null);
   const [contactsOpen, setContactsOpen] = useState(false);
@@ -539,6 +551,7 @@ export default function MailPage() {
     const timestamp = Date.parse(item.date);
     return {
       id: item.id,
+      uid: item.uid,
       folder: folderKey,
       from: item.sender,
       subject: item.subject,
@@ -682,6 +695,13 @@ export default function MailPage() {
 
   const selectedRealFolder = realFolders.find((f) => (f.specialUse ?? f.id) === folder);
   const selectedRealFolderId = selectedRealFolder?.id;
+  const selectedRealFolderIdRef = useRef(selectedRealFolderId);
+  selectedRealFolderIdRef.current = selectedRealFolderId;
+
+  // Новая папка — новый список: старый курсор к ней не относится.
+  useEffect(() => {
+    setPaging({ cursorUid: undefined, hasMore: false, loading: false });
+  }, [selectedRealFolderId, demoMode]);
 
   useEffect(() => {
     if (demoMode || !selectedRealFolderId || movingMailIds.size > 0) return;
@@ -703,6 +723,11 @@ export default function MailPage() {
         const linked = linkedMailRef.current;
         if (linked?.folder === folder && !mapped.some((mail) => mail.id === linked.id)) mapped.unshift(linked);
         setMails((prev) => replaceFolderMessages(prev, folder, mapped));
+        setPaging({
+          cursorUid: nextPageCursor(mapped),
+          hasMore: hasMorePages(items.length, MAIL_PAGE_SIZE),
+          loading: false,
+        });
         setActiveId((current) => linked?.folder === folder ? linked.id : mapped.some((mail) => mail.id === current) ? current : mapped[0]?.id ?? '');
       }).catch((error) => {
         if (!cancelled && sequence === messageSnapshotRef.current.get(selectedRealFolderId)) setLoadError(errorMessage(error));
@@ -745,7 +770,8 @@ export default function MailPage() {
             setServerFolderCounts(Object.fromEntries(folderItems.map((f) => [f.specialUse ?? f.id, f.unread])));
           }
         }
-        setMails((prev) => replaceFolderMessages(prev, folder, mapped));
+        // Первая страница не должна стирать уже подгруженные старые страницы.
+        setMails((prev) => mergeRefreshedFolder(prev, folder, mapped));
         setActiveId((current) => activeMailAfterRefresh(current, mapped));
         setLoadError(null);
       } catch (error) {
@@ -769,6 +795,31 @@ export default function MailPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demoMode, folder, selectedRealFolderId, locale, movingMailIds.size]);
+
+  /** Следующая страница папки по курсору UID: сервер отдаёт письма старше курсора. */
+  const loadMoreMessages = async () => {
+    const folderId = selectedRealFolderId;
+    const cursorUid = paging.cursorUid;
+    if (!folderId || demoMode || paging.loading || cursorUid == null) return;
+    setPaging((prev) => ({ ...prev, loading: true }));
+    try {
+      const items = await mailApi.messages(folderId, cursorUid, MAIL_PAGE_SIZE);
+      if (selectedRealFolderIdRef.current !== folderId) return;
+      const mapped = items.map((item) => toMailView(item, folder));
+      setMails((prev) => {
+        const shown = new Set(prev.filter((mail) => mail.folder === folder).map((mail) => mail.id));
+        return [...prev, ...mapped.filter((mail) => !shown.has(mail.id))];
+      });
+      setPaging({
+        cursorUid: nextPageCursor(mapped) ?? cursorUid,
+        hasMore: hasMorePages(items.length, MAIL_PAGE_SIZE),
+        loading: false,
+      });
+    } catch (error) {
+      setLoadError(errorMessage(error));
+      setPaging((prev) => ({ ...prev, loading: false }));
+    }
+  };
 
   const activeRealId = !demoMode && active ? active.id : null;
   useEffect(() => {
@@ -1614,8 +1665,13 @@ export default function MailPage() {
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <div className="flex min-w-[min(100%,7rem)] flex-1 items-center gap-2">
               <h2 title={currentFolder?.name ?? t('Почта')} className="min-w-0 truncate text-[13px] font-semibold text-ink">{currentFolder?.name ?? t('Почта')}</h2>
-              <span className="shrink-0 rounded-full bg-surface px-1.5 py-0.5 text-[11px] font-medium text-muted tabular-nums">
-                {visible.length}
+              <span
+                title={paging.hasMore
+                  ? t('Загружено {shown} из {total}').replace('{shown}', String(visible.length)).replace('{total}', String(selectedRealFolder?.total ?? visible.length))
+                  : undefined}
+                className="shrink-0 rounded-full bg-surface px-1.5 py-0.5 text-[11px] font-medium text-muted tabular-nums"
+              >
+                {paging.hasMore ? `${visible.length} / ${selectedRealFolder?.total ?? visible.length}` : visible.length}
               </span>
             </div>
             <SelectVisibleMessages
@@ -1831,6 +1887,24 @@ export default function MailPage() {
               </div>
             );
           })}
+
+          {!demoMode && paging.hasMore && (
+            <div className="flex flex-col items-center gap-1 px-4 py-5">
+              <button
+                type="button"
+                onClick={() => void loadMoreMessages()}
+                disabled={paging.loading}
+                className="btn-secondary h-9 text-xs"
+              >
+                {paging.loading ? t('Загружаем…') : t('Показать ещё письма')}
+              </button>
+              <span className="text-[11px] text-muted">
+                {t('Показано {shown}, в папке {total}')
+                  .replace('{shown}', String(visible.length))
+                  .replace('{total}', String(selectedRealFolder?.total ?? visible.length))}
+              </span>
+            </div>
+          )}
 
           {visible.length === 0 && (
             <EmptyState
