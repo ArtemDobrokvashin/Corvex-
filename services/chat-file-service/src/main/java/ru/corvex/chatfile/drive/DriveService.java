@@ -141,7 +141,7 @@ public class DriveService {
     }
 
     public DriveNode createFolder(UUID ownerId, UUID parentId, String rawName) {
-        String name = normalizeName(rawName);
+        String name = requirePlainName(rawName);
         synchronized (mutationLock) {
             List<DriveNode> nodes = readNodes(ownerId);
             requireFolder(nodes, parentId);
@@ -218,7 +218,7 @@ public class DriveService {
     }
 
     public DriveNode rename(UUID ownerId, UUID id, String rawName) {
-        String name = normalizeName(rawName);
+        String name = requirePlainName(rawName);
         synchronized (mutationLock) {
             List<DriveNode> nodes = readNodes(ownerId);
             DriveNode node = requireNode(nodes, id);
@@ -554,6 +554,18 @@ public class DriveService {
         } catch (IOException e) {
             return new ClamAvClient.ScanResult(ClamAvClient.Result.ERROR, e.getMessage());
         }
+    }
+
+    /**
+     * Имя, которое ввёл пользователь (новая папка, переименование): путь в нём — ошибка,
+     * а не повод молча создать «etc» из «../etc». Для загружаемого файла действует
+     * {@link #normalizeName(String)}: часть старых клиентов присылает полный путь.
+     */
+    private String requirePlainName(String original) {
+        if (original != null && (original.indexOf('/') >= 0 || original.indexOf('\\') >= 0)) {
+            throw badRequest("Имя не может содержать путь");
+        }
+        return normalizeName(original);
     }
 
     private String normalizeName(String original) {

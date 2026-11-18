@@ -94,12 +94,13 @@ class DriveStoragePersistenceTest {
     @Test
     void shareSurvivesWriteAndRead() throws Exception {
         Instant now = Instant.parse("2026-01-05T10:00:00Z");
+        String tokenHash = "0123456789abcdef".repeat(4);
         DriveShare share = new DriveShare(UUID.randomUUID(), UUID.randomUUID(), owner,
-                "hash", now, null, null);
+                tokenHash, now, null, null);
 
         storage.saveShare(share);
 
-        DriveShare loaded = storage.findShare("hash").orElseThrow();
+        DriveShare loaded = storage.findShare(tokenHash).orElseThrow();
         assertEquals(share, loaded);
         assertTrue(loaded.isActive(now));
         assertFalse(loaded.isRevoked());

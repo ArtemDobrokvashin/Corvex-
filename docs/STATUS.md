@@ -33,7 +33,7 @@
 |---|---|
 | Ops scripts / Python 3 | ✅ 247 тестов |
 | Frontend / Node 22 | ✅ `npm ci`, `tsc -b`, `vitest`, modern+legacy build, проверка legacy-чанка, `npm audit --omit=dev` |
-| Java 17 / Maven reactor | ❌ сначала `COMPILATION ERROR` в `mail-storage-service` (`MailAttachmentPreviewControllerTest.java:[82,37] unreported exception java.io.IOException`), после его исправления — падение `chat-file-service`: `DriveServiceTest`, 15 тестов, 5 падений и 6 ошибок |
+| Java 17 / Maven reactor | ❌ `COMPILATION ERROR` в `mail-storage-service` (`MailAttachmentPreviewControllerTest.java:[82,37] unreported exception java.io.IOException`); после исправления — 11 падений в `chat-file-service`; после исправления Jackson — 2 (`chat-file-service`) |
 
 Причина первой ошибки: тест добавлен коммитом `82755ea` (встроенный предпросмотр), а
 последний Java-прогон был до него, на `08b7310`. Исправлено объявлением `throws Exception`.
@@ -45,6 +45,21 @@
 месте. Исправлено `@JsonIgnore` на вычисляемых методах и `ignoreUnknown` на типах, чтобы
 уже записанные файлы тоже читались. Тест `DriveStoragePersistenceTest` закрепляет все три
 случая: запись-чтение, отсутствие производных полей в файле, чтение старого JSON.
+
+Оставшиеся два падения — не Jackson, а разные дефекты:
+
+1. `DriveServiceTest.namesCannotEscapeTheFolder` — `createFolder(user, null, "../etc")` не бросал
+   исключение: `normalizeName` отрезала всё до последнего `/`, то есть `"../etc"` превращалось
+   в «etc» и создавало папку вместо ошибки. Молчаливая нормализация хороша для имени
+   загружаемого файла (некоторые клиенты присылают полный путь), но не для имени, которое
+   ввёл человек: там `/` и `\` — это ошибка ввода. Введён `requirePlainName`: он отвергает
+   путь и дальше передаёт имя в прежнюю `normalizeName` (запрещённые символы, `CON`, точка
+   на конце, длина). Применён к `createFolder` и `rename`, `upload` оставлен на
+   `normalizeName`.
+2. `DriveStoragePersistenceTest.shareSurvivesWriteAndRead` — ошибка самого теста: он передавал
+   `tokenHash = "hash"`, а `DriveStorage.sharePath` принимает только 64-символьный hex (так
+   `DriveService` и считает: `sha256Hex(token)`). Тест исправлен на реальный формат хеша,
+   продакшн-код не менялся.
 
 | Область | Результат | Чего это не доказывает |
 |---|---|---|
