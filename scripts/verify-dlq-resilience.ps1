@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Проверяет, что перезапуск mail-storage-service не теряет письма в dead-letter очередь.
 
