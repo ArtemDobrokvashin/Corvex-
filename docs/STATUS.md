@@ -61,6 +61,27 @@
    `DriveService` и считает: `sha256Hex(token)`). Тест исправлен на реальный формат хеша,
    продакшн-код не менялся.
 
+Прогон `44264546159` (коммит `69e8720`) — 3 мин 05 с, 12 модулей из 13 зелёные
+(`auth` 124, `admin` 117, `mail-smtp` 153, `mail-imap` 92, `mail-pop3` 44, **`mail-storage` 572
+(2 skip)**, `mail-spam` 17, `mail-antivirus` 34, `chat` 109, **`chat-file-service` 78**,
+**`web-gateway` 15**, **`notification` 23**, у всех «All coverage checks have been met»).
+Падает `office-preview-service` на компиляции тестов:
+
+```
+OfficeConversionServiceTest.java:[47,31] unreported exception java.lang.Exception
+... ещё 6 таких же строк (57, 66, 75, 84, 93, 103)
+```
+
+Та же ошибка, что была в `MailAttachmentPreviewControllerTest`: вспомогательный метод
+`script(...)` объявлен с `throws Exception`, а семь тестов, которые его вызывают, — без
+`throws`. Причина, почему это вылезло только сейчас: на всех прошлых прогонах сборка
+останавливалась раньше (сначала `mail-storage`, потом `chat-file-service`), а модули после
+точки падения Maven помечает `SKIPPED` и **не компилирует**. То есть `office-preview-service`
+CI не собирал ни разу до этого прогона. Исправлено объявлением `throws Exception` в семи тестах.
+
+Вывод, который стоит держать в голове: до первого полностью зелёного reactor-прогона фраза
+«модуль N зелёный» относится только к тем прогонам, где Maven до него дошёл.
+
 | Область | Результат | Чего это не доказывает |
 |---|---|---|
 | Frontend | `npm ci` (364 пакета), `tsc -b` — 0 ошибок, **71 файл / 356 тестов PASS**, production build (modern + legacy, 40 файлов в `dist/assets`), `npm audit --omit=dev` — 0 уязвимостей | реальный Windows 7 + Chrome 109, полную ручную responsive-матрицу и 200 % масштаб |

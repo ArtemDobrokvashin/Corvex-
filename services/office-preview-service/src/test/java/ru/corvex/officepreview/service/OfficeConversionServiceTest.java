@@ -43,7 +43,7 @@ class OfficeConversionServiceTest {
     }
 
     @Test
-    void rejectsOversizedInputBeforeConversion() {
+    void rejectsOversizedInputBeforeConversion() throws Exception {
         Script script = script("ok", false, false);
         var service = service(script, Duration.ofSeconds(5), DataSize.ofBytes(10));
 
@@ -53,7 +53,7 @@ class OfficeConversionServiceTest {
     }
 
     @Test
-    void rejectsEmptyInput() {
+    void rejectsEmptyInput() throws Exception {
         Script script = script("ok", false, false);
         var service = service(script, Duration.ofSeconds(5), DataSize.ofMegabytes(25));
 
@@ -62,7 +62,7 @@ class OfficeConversionServiceTest {
     }
 
     @Test
-    void rejectsUnsupportedExtensions() {
+    void rejectsUnsupportedExtensions() throws Exception {
         Script script = script("ok", false, false);
         var service = service(script, Duration.ofSeconds(5), DataSize.ofMegabytes(25));
 
@@ -71,7 +71,7 @@ class OfficeConversionServiceTest {
     }
 
     @Test
-    void reportsConvertedFailureAsUnprocessable() {
+    void reportsConvertedFailureAsUnprocessable() throws Exception {
         Script script = script("fail", false, false);
         var service = service(script, Duration.ofSeconds(5), DataSize.ofMegabytes(25));
 
@@ -80,7 +80,7 @@ class OfficeConversionServiceTest {
     }
 
     @Test
-    void reportsMissingOutputAsUnprocessable() {
+    void reportsMissingOutputAsUnprocessable() throws Exception {
         Script script = script("empty", false, false);
         var service = service(script, Duration.ofSeconds(5), DataSize.ofMegabytes(25));
 
@@ -89,7 +89,7 @@ class OfficeConversionServiceTest {
     }
 
     @Test
-    void killsConversionOnTimeout() {
+    void killsConversionOnTimeout() throws Exception {
         Script script = script("slow", true, false);
         var service = service(script, Duration.ofMillis(200), DataSize.ofMegabytes(25));
 
@@ -99,7 +99,7 @@ class OfficeConversionServiceTest {
     }
 
     @Test
-    void disabledConverterReturnsNotImplemented() {
+    void disabledConverterReturnsNotImplemented() throws Exception {
         Script script = script("ok", false, false);
         var props = properties(script, Duration.ofSeconds(5), DataSize.ofMegabytes(25), false);
         var cache = new ConversionCache(props);
