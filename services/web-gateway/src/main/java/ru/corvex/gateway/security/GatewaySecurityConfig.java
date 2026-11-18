@@ -37,7 +37,11 @@ public class GatewaySecurityConfig {
                                 "/ws/chat", "/ws/chat/**",
                                 // Ссылка «как в Google Drive»: доступ решает chat-file-service,
                                 // проверяя хеш токена, отзыв и срок на каждый запрос.
-                                "/api/v1/drive/shared/**").permitAll()
+                                "/api/v1/drive/shared/**",
+                                // Callback OAuth приходит редиректом из браузера без Authorization.
+                                // Доступ защищён одноразовым state, выданным этому же сервису:
+                                // gateway не должен обрывать возврат провайдера 401.
+                                "/api/v1/mail/external-accounts/oauth/callback").permitAll()
                         // Права на /api/v1/admin/** проверяет сам admin-service по claim permissions (SCOPE_admin в токене нет и быть не должно)
                         .anyExchange().authenticated())
                 .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()))

@@ -90,6 +90,7 @@ flowchart TB
 | `chat-service` | 8088 | `chat_db` | комнаты, сообщения, реакции, STOMP, presence |
 | `chat-file-service` | 8089 | ФС | файлы чата и личный диск `/api/v1/drive/**` на общем CAS |
 | `notification-service` | 8091 | — | email-алерты Alertmanager, напоминания календаря |
+| `office-preview-service` | 8092 | кэш на томе | внутренний конвертер Office → PDF (профиль `office-preview`, наружу не публикуется) |
 
 Отдельно: `alert-relay` (Python, non-root) — внешние каналы алертов; `james` в профиле
 `james-transition` — переход на James как ядро почты (см. [`MAIL.md`](MAIL.md)).
@@ -157,11 +158,12 @@ sequenceDiagram
 
 ## 5. Docker Compose
 
-Один `docker-compose.yml` — источник истины. В нём **30 сервисов**, из них **20**
+Один `docker-compose.yml` — источник истины. В нём **32 сервиса**, из них **20**
 поднимаются без профилей: 12 Java-сервисов, frontend, nginx, PostgreSQL, Redis, RabbitMQ,
 Elasticsearch, spamd, clamav. Остальные включаются профилями: `monitoring` (Prometheus,
-Alertmanager, alert-relay, Grafana, Loki, Promtail) и `james-transition` / `james-provision`
-(переход на James). Сетей — 5, томов — 16.
+Alertmanager, alert-relay, Grafana, Loki, Promtail), `office-preview` (внутренний
+конвертер Office → PDF) и `james-transition` / `james-provision` (переход на James).
+Сетей — 6, томов — 17.
 
 | Сеть | Кто в ней |
 |---|---|
@@ -170,11 +172,15 @@ Alertmanager, alert-relay, Grafana, Loki, Promtail) и `james-transition` / `jam
 | `data` (`internal`) | PostgreSQL, Redis, RabbitMQ, Elasticsearch — портов на хост нет |
 | `monitoring` | Prometheus, Alertmanager, alert-relay, Grafana, Loki, Promtail |
 | `james-internal` (`internal`) | James и его PostgreSQL на время перехода |
+| `office-preview` (`internal`) | конвертер Office → PDF: доступен почте и чату, выхода наружу нет |
 
-Соглашения Dockerfile одинаковы у всех 12 сервисов: сборка на `maven:3.9-eclipse-temurin-17`,
+Соглашения Dockerfile одинаковы у 12 сервисов из 13: сборка на `maven:3.9-eclipse-temurin-17`,
 runtime на `eclipse-temurin:17-jre-alpine`, пользователь `corvex` (non-root, UID:GID
 100:101), непривилегированные порты внутри контейнера, `-XX:MaxRAMPercentage=75`,
 `HEALTHCHECK` по `/actuator/health` — на нём построены `depends_on: service_healthy`.
+`office-preview-service` собирается по тем же правилам, но на Debian (`jammy`): LibreOffice
+не ставится в Alpine. В отличие от почтовых сервисов, он подключён только к сети
+`internal` и не видит ни хост, ни интернет.
 
 Что бэкапится: `postgres-data`, `mail-data`, `attachment-data`, `chat-file-data`,
 желательно `clamav-data` и `spamd-data`. Очереди, сессии, поисковый индекс и метрики —

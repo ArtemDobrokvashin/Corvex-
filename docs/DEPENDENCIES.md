@@ -21,7 +21,7 @@
 
 | Компонент | Версия | Комментарий |
 |---|---|---|
-| JDK | **17** | все 12 сервисов, `<java.version>17</java.version>`; runtime `eclipse-temurin:17-jre-alpine` |
+| JDK | **17** | все 13 Java-сервисов, `<java.version>17</java.version>`. Runtime: `eclipse-temurin:17-jre-alpine` у 12, `17-jre-jammy` у `office-preview-service` (нужен LibreOffice) |
 | Maven build image | `maven:3.9-eclipse-temurin-17` | сборка внутри Dockerfile |
 | Spring Boot parent | **3.5.16** | одинаковая версия во всех 12 POM |
 | Spring Cloud BOM, gateway | **2025.0.3** | вместе с Boot 3.5 |
@@ -102,7 +102,7 @@ Dependabot PR не смешиваются с функциональными и �
 | Ворота | Что означает | Состояние |
 |---|---|---|
 | G0 | фронтенд и статические проверки: `npm ci`, тесты, modern + legacy build, audit 0, YAML/XML/JSON, локальные ссылки | ✅ на текущем `main`, повторять на каждом релизном SHA |
-| G1 | `mvn -B clean verify` по 12 сервисам и parent | 🟡 затронутые модули собраны, полный reactor — обязательный следующий шаг |
+| G1 | `mvn -B clean verify` по 13 модулям reactor и parent | 🟡 затронутые модули собраны, полный reactor — обязательный следующий шаг |
 | G2 | `docker compose config -q`, build, `up -d`, `ps` | 🟡 16/16 build-контекстов на существующих томах; чистая установка впереди |
 | G3 | функциональная приёмка | 🚧 идёт, см. [`TESTING.md`](TESTING.md) |
 | G4 | поддерживаемая платформа: согласованные Boot/Cloud/Jackson/James/JDK, Alloy вместо Promtail | ⏳ только отдельным изменением, с повтором G1–G3 |

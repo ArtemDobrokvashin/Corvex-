@@ -30,5 +30,6 @@
         <module>services/chat-file-service</module>
         <module>services/web-gateway</module>
         <module>services/notification-service</module>
+        <module>services/office-preview-service</module>
     </modules>
 </project>

@@ -61,6 +61,10 @@ documentation are developed in the open. Contributions: [`CONTRIBUTING.md`](CONT
   reminders that arrive with the browser closed and survive a restart.
 - **Files.** Personal drive: folders, search, trash, move, and Google Drive-style links —
   private by default, shared explicitly, revoked instantly.
+- **File preview.** Images, PDF, text, CSV and tables open inside the app — in mail,
+  Files and chat, with arrows between attachments. DOCX/XLSX/PPTX are converted to PDF
+  by a separate internal LibreOffice container (profile `office-preview`, no public port,
+  no network egress).
 - **Administration.** Users, quotas, 6 built-in and custom groups, 25 atomic permissions
   (group permissions add up), audit log, health, analytics, protection of the last
   super-admin.
@@ -145,6 +149,7 @@ its evidence. Start with the map: [`docs/README.md`](docs/README.md).
 | [docs/ADMIN-GUIDE.md](docs/ADMIN-GUIDE.md) | admin panel, permissions, quotas, alerts |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | backup, monitoring, upgrades, failures, server rollout |
 | [docs/TESTING.md](docs/TESTING.md) | how to verify the system yourself |
+| [docs/OFFICE-PREVIEW.md](docs/OFFICE-PREVIEW.md) | Office preview: converter, cache, security, how to run |
 | [docs/STATUS.md](docs/STATUS.md) | what is actually verified and what is not |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | what comes next |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | code, tests, documentation, translations |

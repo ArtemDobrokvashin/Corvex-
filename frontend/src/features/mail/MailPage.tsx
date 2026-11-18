@@ -70,6 +70,7 @@ import { bodyWithSignature, loadMailPreferences, mailPreferencesKey, saveMailPre
 import { useMailNotifications } from './useMailNotifications';
 import { canAdministerExternalMail, canUseExternalMail } from './externalMailAccess';
 import MailAttachments from './MailAttachments';
+import { usePreview } from '../preview/PreviewProvider';
 import MailboxUsage from './MailboxUsage';
 import { hasRemoteImages } from './mailHtml';
 import MailHtmlFrame from './MailHtmlFrame';
@@ -303,6 +304,7 @@ export default function MailPage() {
   const [loadedBodies, setLoadedBodies] = useState<Record<string, string>>({});
   const [loadedAttachments, setLoadedAttachments] = useState<Record<string, MailAttachmentView[]>>({});
   const [downloadBusy, setDownloadBusy] = useState<string | null>(null);
+  const { openPreview } = usePreview();
   const [loadedRecipients, setLoadedRecipients] = useState<Record<string, { to: string[]; cc: string[] }>>({});
   const searchRef = useRef<HTMLInputElement>(null);
   const sortPanelRef = useRef<HTMLDivElement>(null);
@@ -482,6 +484,28 @@ export default function MailPage() {
       if (url) window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       setDownloadBusy(null);
     }
+  };
+
+  // Вложения одного письма открываются списком: ←/→ листают их без закрытия
+  // диалога, как в Gmail. Файл не скачивается целиком, пока не открыт предпросмотр.
+  const openAttachmentPreview = (
+    messageId: string,
+    attachments: MailAttachmentView[],
+    selected: MailAttachmentView,
+  ) => {
+    openPreview(
+      attachments.map((attachment) => ({
+        fileName: attachment.fileName || t('вложение'),
+        contentType: attachment.contentType,
+        sizeBytes: attachment.sizeBytes,
+        avStatus: attachment.avStatus,
+        load: (signal: AbortSignal) => mailApi.downloadAttachment(messageId, attachment.partIndex, signal),
+        // Office конвертируется на сервере в PDF; при 501 диалог честно предложит скачать.
+        loadPdf: (signal: AbortSignal) => mailApi.previewAttachment(messageId, attachment.partIndex, signal),
+        download: () => downloadAttachment(messageId, attachment),
+      })),
+      Math.max(0, attachments.findIndex((attachment) => attachment.partIndex === selected.partIndex)),
+    );
   };
 
   const activeIndex = active ? visible.findIndex((m) => m.id === active.id) : -1;
@@ -2015,6 +2039,9 @@ export default function MailPage() {
                   attachments={loadedAttachments[active.id]}
                   busy={downloadBusy !== null}
                   onDownload={(attachment) => void downloadAttachment(active.id, attachment)}
+                  onPreview={(attachment) =>
+                    openAttachmentPreview(active.id, loadedAttachments[active.id] ?? [attachment], attachment)
+                  }
                 />
               )}
 

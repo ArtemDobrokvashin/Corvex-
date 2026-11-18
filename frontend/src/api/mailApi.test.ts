@@ -31,6 +31,11 @@ describe('mailApi quota', () => {
     expect(apiBlobMock).toHaveBeenCalledWith('/api/v1/mail/messages/message-id/attachments/2');
   });
 
+  it('requests a converted PDF preview of an Office attachment', async () => {
+    await mailApi.previewAttachment('message-id', 2);
+    expect(apiBlobMock).toHaveBeenCalledWith('/api/v1/mail/messages/message-id/attachments/2/preview');
+  });
+
   it('loads the current user quota from the JWT-scoped endpoint', async () => {
     await mailApi.quota();
 

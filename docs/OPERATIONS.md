@@ -73,8 +73,11 @@ docker compose down                        # остановка, данные в
 ### Проверка восстановления без риска для рабочего стенда
 
 ```powershell
-.\scripts\restore.ps1 -DataOnly -ProjectName corvex-restore
-.\scripts\restore_verify.ps1
+# -BackupDir обязателен у обоих скриптов; без него они падают на параметре.
+.\scripts\restore.ps1 -BackupDir D:\CorvexBackup\<timestamp> `
+  -ProjectName corvex-restore-drill -DataOnly -Force
+.\scripts\restore_verify.ps1 -BackupDir D:\CorvexBackup\<timestamp> `
+  -ProjectName corvex-restore-drill
 ```
 
 Скрипты поднимают данные в отдельном проекте на других портах: 4 базы и 3 файловых тома

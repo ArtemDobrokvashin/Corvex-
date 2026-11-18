@@ -77,6 +77,19 @@ class GatewaySecurityConfigTest {
     }
 
     @Test
+    void oauthCallbackIsPublicButAuthorizationIsNot() {
+        // Возврат из Google/Microsoft приходит редиректом браузера без Authorization.
+        // Если gateway ответит 401, живой вход не заработает никогда — ровно это и проверяем.
+        assertEquals(HttpStatus.OK, execute(HttpMethod.GET,
+                "/api/v1/mail/external-accounts/oauth/callback?code=c&state=s", null));
+        // Остальной контур входа остаётся закрытым, включая выдачу адреса согласия.
+        assertEquals(HttpStatus.UNAUTHORIZED, execute(HttpMethod.POST,
+                "/api/v1/mail/external-accounts/oauth/authorize", null));
+        assertEquals(HttpStatus.UNAUTHORIZED, execute(HttpMethod.GET,
+                "/api/v1/mail/external-accounts/oauth/providers", null));
+    }
+
+    @Test
     void protectedEndpointRejectsAnonymousRequest() {
         assertEquals(HttpStatus.UNAUTHORIZED, execute(HttpMethod.GET, "/api/v1/mail/messages", null));
     }

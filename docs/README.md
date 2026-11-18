@@ -19,6 +19,8 @@
 | Настроить админку, права и квоты | [`ADMIN-GUIDE.md`](ADMIN-GUIDE.md) |
 | Эксплуатировать: бэкап, мониторинг, алерты, обновления, сбои | [`OPERATIONS.md`](OPERATIONS.md) |
 | Проверить систему самому и понять, где доказательства | [`TESTING.md`](TESTING.md), [`STATUS.md`](STATUS.md) |
+| Понять, когда задача считается сделанной и что доказывает приёмку | [`ACCEPTANCE.md`](ACCEPTANCE.md) |
+| Провести пилот и измерить результат | [`PILOT.md`](PILOT.md) |
 | Посмотреть, что дальше | [`ROADMAP.md`](ROADMAP.md) |
 | Узнать точные версии зависимостей и политику обновлений | [`DEPENDENCIES.md`](DEPENDENCIES.md) |
 | Понять визуальный язык и правила интерфейса | [`DESIGN.md`](DESIGN.md) |
@@ -47,7 +49,8 @@
 | [`api/`](api/) | OpenAPI-спецификации: `auth-api.yaml`, `mail-api.yaml`, `chat-api.yaml`, `admin-api.yaml` |
 | [`screenshots/`](screenshots/) | скриншоты интерфейса и правила их пересъёмки |
 | [`design/`](design/) | референсы дизайна почтового интерфейса |
-| [`ci/ci.yml`](ci/ci.yml) | предложенный workflow проверки PR (не подключён к GitHub Actions) |
+| [`ci/ci.yml`](ci/ci.yml) | готовый workflow проверки PR. Не подключён: у автоматизации нет права
+  `workflows`. Включается одной командой — см. шапку файла |
 
 Отдельно, вне `docs/`:
 

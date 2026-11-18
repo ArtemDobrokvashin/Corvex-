@@ -43,6 +43,16 @@ SERVICE = (
 )
 
 
+def local_paths(text: str) -> dict[str, str]:
+    """Простые `const name = \`...\`` в клиенте — чтобы понять apiBlob(path)."""
+    return {
+        match.group(1): match.group(2)
+        for match in re.finditer(
+            r"const\s+(\w+)\s*=\s*(`[^`]*`|'[^']*'|\"[^\"]*\")", text
+        )
+    }
+
+
 def frontend_calls(text: str) -> set[tuple[str, str]]:
     """(method, path) for every apiFetch/apiBlob call in the drive client.
 
@@ -51,6 +61,7 @@ def frontend_calls(text: str) -> set[tuple[str, str]]:
     обрывает их на первой закрывающей скобке.
     """
     calls = set()
+    paths = local_paths(text)
     for head in re.finditer(r"(?:apiFetch|apiBlob)(?:<[^>]*>)?\(", text):
         start = head.end()
         depth = 1
@@ -62,11 +73,15 @@ def frontend_calls(text: str) -> set[tuple[str, str]]:
                 depth -= 1
             index += 1
         args = text[start : index - 1]
-        path_match = re.match(r"\s*(`[^`]+`|\"[^\"]+\"|nodePath\(id\))", args)
+        path_match = re.match(r"\s*(`[^`]+`|\"[^\"]+\"|nodePath\(id\)|\w+)", args)
         if not path_match:
             continue
+        raw_path = path_match.group(1)
+        if raw_path in paths:
+            # const path = `${nodePath(id)}/content`; apiBlob(path, ...)
+            raw_path = paths[raw_path]
         verb = re.search(r"method:\s*'(\w+)'", args)
-        calls.add((verb.group(1) if verb else "GET", normalize(path_match.group(1))))
+        calls.add((verb.group(1) if verb else "GET", normalize(raw_path)))
     return calls
 
 

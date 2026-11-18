@@ -136,6 +136,9 @@ services:
       CORVEX_BOOTSTRAP_ADMIN_USERNAME: ${CORVEX_BOOTSTRAP_ADMIN_USERNAME:-admin}
       CORVEX_BOOTSTRAP_ADMIN_PASSWORD: ${CORVEX_BOOTSTRAP_ADMIN_PASSWORD:-}
       CORVEX_BOOTSTRAP_ADMIN_EMAIL: ${CORVEX_BOOTSTRAP_ADMIN_EMAIL:-}
+      # Secure-cookie по умолчанию включён. Для приёмки на http://localhost (Chrome считает
+      # localhost доверенным, но старые сборки — нет) можно выставить false в .env.
+      CORVEX_AUTH_COOKIE_SECURE: ${CORVEX_AUTH_COOKIE_SECURE:-true}
     volumes: ["${CORVEX_SECRETS_DIR:-./infra/secrets}:/run/secrets:ro"]
     depends_on: { postgres: { condition: service_healthy }, redis: { condition: service_healthy } }
 
@@ -191,6 +194,10 @@ services:
       CORVEX_OAUTH_TIMEOUT_SECONDS: ${CORVEX_OAUTH_TIMEOUT_SECONDS:-15}
       CORVEX_OAUTH_STATE_TTL_MINUTES: ${CORVEX_OAUTH_STATE_TTL_MINUTES:-10}
       CORVEX_OAUTH_CONNECTION_TTL_MINUTES: ${CORVEX_OAUTH_CONNECTION_TTL_MINUTES:-30}
+      # Office-предпросмотр: без профиля office-preview endpoint отвечает 501,
+      # и интерфейс честно предлагает скачать файл.
+      CORVEX_OFFICE_PREVIEW_ENABLED: ${CORVEX_OFFICE_PREVIEW_ENABLED:-false}
+      CORVEX_OFFICE_PREVIEW_URL: http://office-preview-service:8092
       CORVEX_CLAMD_HOST: clamav
       CORVEX_CLAMD_PORT: 3310
       CORVEX_JAMES_READ_ENABLED: ${CORVEX_JAMES_READ_ENABLED:-false}
@@ -381,6 +388,8 @@ services:
       CORVEX_DKIM_KEYS_DIR: /run/secrets/dkim
       CORVEX_SMTP_TLS_CERT_FILE: /certs/fullchain.pem
       CORVEX_SMTP_TLS_KEY_FILE: /certs/privkey.pem
+      # Исходящая доставка: true = письмо не уходит, если принимающий MX не предложил STARTTLS.
+      CORVEX_SMTP_REQUIRE_STARTTLS: ${CORVEX_SMTP_REQUIRE_STARTTLS:-false}
     volumes:
       - "${CORVEX_SECRETS_DIR:-./infra/secrets}:/run/secrets:ro"
       - "${CORVEX_CERTS_DIR:-./infra/certs}:/certs:ro"
@@ -466,6 +475,8 @@ services:
       CORVEX_CHAT_FILE_AV_REQUIRED: ${CORVEX_CHAT_FILE_AV_REQUIRED:-true}
       CORVEX_DRIVE_QUOTA_BYTES: ${CORVEX_DRIVE_QUOTA_BYTES:-5368709120}
       CORVEX_DRIVE_MAX_FILE_BYTES: ${CORVEX_DRIVE_MAX_FILE_BYTES:-26214400}
+      CORVEX_OFFICE_PREVIEW_ENABLED: ${CORVEX_OFFICE_PREVIEW_ENABLED:-false}
+      CORVEX_OFFICE_PREVIEW_URL: http://office-preview-service:8092
       CORVEX_CLAMD_HOST: clamav
       CORVEX_CLAMD_PORT: 3310
     volumes: [chat-file-data:/data/chat-files]
@@ -488,6 +499,34 @@ services:
       CORVEX_CALENDAR_FROM: ${CORVEX_CALENDAR_FROM:-corvex-calendar@company.local}
     depends_on: { rabbitmq: { condition: service_healthy }, admin-service: { condition: service_started } }
 
+  # Внутренний конвертер Office → PDF. Отдельный профиль: образ тянет LibreOffice
+  # (~1 ГБ) и нужен не всем стендам. Публичного маршрута нет — gateway его не знает,
+  # порты наружу не публикуются. Сеть internal: конвертеру не нужен egress.
+  office-preview-service:
+    profiles: [office-preview]
+    build: ./services/office-preview-service
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp:size=512m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      TZ: Europe/Moscow
+      CORVEX_INTERNAL_API_TOKEN: ${CORVEX_INTERNAL_API_TOKEN:?Set CORVEX_INTERNAL_API_TOKEN in .env}
+      CORVEX_OFFICE_PREVIEW_ENABLED: "true"
+      CORVEX_OFFICE_TIMEOUT: ${CORVEX_OFFICE_TIMEOUT:-20s}
+      CORVEX_OFFICE_CONCURRENCY: ${CORVEX_OFFICE_CONCURRENCY:-2}
+      CORVEX_OFFICE_MAX_BYTES: ${CORVEX_OFFICE_MAX_BYTES:-26214400}
+      CORVEX_OFFICE_CACHE_DIR: /var/cache/office-preview
+    volumes: [office-preview-cache:/var/cache/office-preview]
+    networks: [office-preview]
+    deploy:
+      resources:
+        limits: { memory: 1500M, cpus: "1.0" }
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
   web-gateway:
     <<: *java-common
     build: ./services/web-gateway
@@ -497,6 +536,18 @@ services:
   frontend:
     build: ./frontend
     restart: unless-stopped
+    networks: [edge]
+
+  # Приёмка OAuth на ноутбуке: SPA и API на одном адресе http://localhost:8080.
+  # Профиль выключен по умолчанию — в боевом запуске порт 8080 наружу не публикуется.
+  nginx-local:
+    image: nginx:1.31-alpine
+    profiles: ["local-oauth"]
+    restart: unless-stopped
+    ports: ["8080:80"]
+    volumes:
+      - ./infra/nginx/local-oauth.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on: [web-gateway, frontend]
     networks: [edge]
 
   nginx:
@@ -612,6 +663,9 @@ networks:
   monitoring: {}
   james-internal:
     internal: true
+  # Конвертер Office: только внутренние вызовы сервисов, без выхода наружу.
+  office-preview:
+    internal: true
 
 volumes:
   postgres-data: {}
@@ -623,6 +677,7 @@ volumes:
   mail-data: {}        # Maildir — самая ценная часть бэкапа
   attachment-data: {}  # CAS вложений по SHA-256
   chat-file-data: {}
+  office-preview-cache: {}
   spamd-data: {}
   clamav-data: {}
   prometheus-data: {}

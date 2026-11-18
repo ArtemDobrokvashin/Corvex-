@@ -102,8 +102,9 @@ export const driveApi = {
     return apiFetch<void>(nodePath(id), { method: 'DELETE' });
   },
 
-  download(id: string): Promise<Blob> {
-    return apiBlob(`${nodePath(id)}/content`);
+  download(id: string, signal?: AbortSignal): Promise<Blob> {
+    const path = `${nodePath(id)}/content`;
+    return signal ? apiBlob(path, { signal }) : apiBlob(path);
   },
 
   shares(id: string): Promise<DriveShare[]> {

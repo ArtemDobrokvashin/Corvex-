@@ -1,7 +1,9 @@
 # API
 
-Машиночитаемые спецификации лежат в [`api/`](api/): `auth-api.yaml`, `mail-api.yaml`,
-`chat-api.yaml`, `admin-api.yaml` — их можно импортировать в Swagger UI или Postman.
+Машиночитаемые спецификации лежат в [`api/`](api/): `auth-api.yaml` (12 путей),
+`mail-api.yaml` (56), `chat-api.yaml` (14), `admin-api.yaml` (17) — их можно импортировать
+в Swagger UI или Postman. Календаря и диска среди файлов нет: их контракт описан ниже
+текстом. Пути, которых ещё нет в коде, помечены в спецификации `x-corvex-status: planned`.
 Этот документ — карта, общие соглашения и контракты, которых нет в OpenAPI: STOMP,
 события RabbitMQ и внутренние API.
 
@@ -55,7 +57,8 @@
 Вход через Google и Microsoft 365 для внешних ящиков: `GET /mail/external-accounts/oauth/providers`
 (что настроено), `POST /mail/external-accounts/oauth/authorize` (одноразовый state и адрес
 согласия), `GET /mail/external-accounts/oauth/callback` (возврат провайдера; вызывается
-браузером без JWT, доверие — на state) и `GET …/oauth/connections/{id}`. Создание ящика
+браузером без JWT, доверие — на state; путь входит в белый список gateway, иначе возврат
+из Google/Microsoft получал бы 401) и `GET …/oauth/connections/{id}`. Создание ящика
 после согласия — `POST /mail/external-accounts` с `authType: OAUTH2` и `oauthConnectionId`.
 Право — `MAIL_EXTERNAL_ACCOUNTS` для своего ящика, `ADMIN_MAIL_POLICY` — для чужого.
 
@@ -81,6 +84,38 @@ Maildir использует плоские санитизированные и�
 email, поэтому `user+tag@example.com` и `user_tag@example.com` могут делить путь; файловые
 операции и транзакции БД не являются единой атомарной операцией. Это известное
 ограничение, а не скрытый компромисс.
+
+### 3.1. Календарь
+
+Пять операций, владелец всегда берётся из JWT subject — идентификатор события сам по себе
+доступа не даёт. Права: `CALENDAR_READ` на чтение, `CALENDAR_WRITE` на изменение.
+
+| Метод и путь | Назначение |
+|---|---|
+| `GET /calendar/events?from=&to=` | события в интервале; параметры — ISO-8601 (`2026-10-19T00:00:00Z`), неверная дата даёт `400`, а не `500` |
+| `GET /calendar/events/{id}` | одно событие |
+| `POST /calendar/events` | создать, `201` и тело события |
+| `PUT /calendar/events/{id}` | заменить целиком; `revision` в теле обязательна (без неё `400`, при расхождении `409`) |
+| `DELETE /calendar/events/{id}?revision=` | мягкое удаление; `revision` необязательна, но при устаревшем значении — `409`, чтобы окно со старым списком не стёрло чужую правку |
+
+Удаление мягкое: запись остаётся в БД с `deleted_at`, напоминание на неё отменяется.
+
+Поля `SaveRequest`: `title`, `description`, `location`, `startsAt`, `endsAt` (`Instant`),
+`allDay`, `timeZone`, `priority` (`high|medium|low`), `busyStatus` (`busy|tentative|free`),
+`recurrence`, `reminderMinutes` (до 10 080 — неделя; напоминание планирует
+mail-storage-service, письмо отправляет notification-service), `attendees` (адреса),
+`source` (`kind` + `mailId/subject/sender` при создании из письма), `revision`.
+Ответ `EventView` повторяет эти поля и добавляет `id`, `revision`, `createdAt`, `updatedAt`.
+Диапазон `GET /calendar/events` по умолчанию — 62 дня назад и вперёд; больше 400 дней
+даёт `400`.
+
+`recurrence` — одно из `none`, `daily`, `weekdays`, `weekly`, `monthly`. Список возвращает
+**одно** событие с этим полем, а не набор вхождений: сервер разворачивает серию только для
+напоминаний (`CalendarRecurrence` считает вхождения в локальной зоне события, поэтому переход
+на летнее время не сдвигает время). Сетка календаря в webmail показывает серию одной записью.
+
+Чего нет: приглашений с ответом «принять/отклонить», общего календаря команды, синхронизации
+CalDAV и отдельного редактирования одного вхождения серии.
 
 ## 4. Личный диск
 

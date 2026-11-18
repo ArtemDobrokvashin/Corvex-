@@ -182,8 +182,11 @@ class DkimKeyRingTest {
     private static boolean verify(String message, PrivateKey privateKey) throws Exception {
         String unfolded = unfoldDkimHeader(message);
         int bIndex = unfolded.lastIndexOf("; b=");
-        String withoutSignature = unfolded.substring(0, bIndex + 5);
-        String signatureValue = unfolded.substring(bIndex + 5);
+        // "; b=" — ровно 4 символа. Раньше здесь стояло +5: первый символ base64
+        // попадал в подписываемые данные, а в декодер уходила строка без него,
+        // поэтому проверка падала на «Last unit does not have enough valid bits».
+        String withoutSignature = unfolded.substring(0, bIndex + 4);
+        String signatureValue = unfolded.substring(bIndex + 4).replaceAll("\\s+", "");
         String body = message.substring(message.indexOf("\r\n\r\n") + 4);
         String bh = unfolded.replaceAll(".*bh=([^;]+).*", "$1");
 
