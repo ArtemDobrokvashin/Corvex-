@@ -27,6 +27,19 @@
 (разыменование простых `const`), после неё `247 тестов OK (1 skip)`. До этой правки
 утверждение «247 OK» в таблице ниже не соответствовало дереву.
 
+**CI включён 2026-10-19** (коммит `d0a3745`). Первый прогон, run `44259217409`:
+
+| Задание | Итог |
+|---|---|
+| Ops scripts / Python 3 | ✅ 247 тестов |
+| Frontend / Node 22 | ✅ `npm ci`, `tsc -b`, `vitest`, modern+legacy build, проверка legacy-чанка, `npm audit --omit=dev` |
+| Java 17 / Maven reactor | ❌ `COMPILATION ERROR` в `mail-storage-service`: `MailAttachmentPreviewControllerTest.java:[82,37] unreported exception java.io.IOException` |
+
+Причина: тест добавлен коммитом `82755ea` (встроенный предпросмотр), а последний
+Java-прогон был до него, на `08b7310`. Ошибка ровно того класса, для которого CI и нужен:
+код собрался в Docker-frontend, но Java-тест после этого ни разу не компилировался.
+Исправлено объявлением `throws Exception` у теста; следующий прогон — после merge.
+
 | Область | Результат | Чего это не доказывает |
 |---|---|---|
 | Frontend | `npm ci` (364 пакета), `tsc -b` — 0 ошибок, **71 файл / 356 тестов PASS**, production build (modern + legacy, 40 файлов в `dist/assets`), `npm audit --omit=dev` — 0 уязвимостей | реальный Windows 7 + Chrome 109, полную ручную responsive-матрицу и 200 % масштаб |

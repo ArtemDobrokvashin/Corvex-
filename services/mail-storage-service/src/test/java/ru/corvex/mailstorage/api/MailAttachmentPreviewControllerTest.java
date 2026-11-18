@@ -78,7 +78,9 @@ class MailAttachmentPreviewControllerTest {
     }
 
     @Test
-    void antivirusRejectionPropagatesBeforeConverter() {
+    void antivirusRejectionPropagatesBeforeConverter() throws Exception {
+        // downloadAttachment объявлен с throws IOException: стаб mock-а проверяется
+        // компилятором так же, как реальный вызов.
         when(mail.downloadAttachment(USER_ID, MESSAGE_ID, 0))
                 .thenThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "Вложение заблокировано антивирусом"));
 
