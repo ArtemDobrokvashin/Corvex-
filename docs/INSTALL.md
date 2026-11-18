@@ -301,6 +301,21 @@ Grafana доступна на `https://mail.<домен>/grafana/`; доступ
 
 Полный набор проверок, включая приёмку почты и почтовых клиентов — [`TESTING.md`](TESTING.md).
 
+Отдельно — проверка устойчивости к перезапуску хранилища: раньше рестарт
+`mail-storage-service` отправлял письма в DLQ, откуда они не возвращаются.
+
+```bash
+./scripts/verify-dlq-resilience.sh --baseline   # текущие счётчики очередей
+./scripts/verify-dlq-resilience.sh              # полный тест с перезапуском
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify-dlq-resilience.ps1 -BaselineOnly
+```
+
+Скрипт ждёт `healthy`, ждёт опустошения очередей и печатает `[PASS]` или `[FAIL]` по
+росту DLQ. Очереди не очищает. Коды возврата: `1` — DLQ вырос, `2` — сервис не поднялся.
+
 ## 10. Обновление и откат
 
 ```bash

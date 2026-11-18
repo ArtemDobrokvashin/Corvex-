@@ -8,16 +8,18 @@
   отправляли сообщения в DLQ. Оттуда они не возвращаются: курсор синхронизации внешнего
   ящика к этому моменту уже сдвинут.
 
-  Скрипт делает три замера: до перезапуска, сразу после, и после того, как очередь
-  опустеет. Вердикт выносится по росту DLQ, а не по глазам оператора.
+  Скрипт снимает счётчики очередей, перезапускает сервис, ждёт healthy, ждёт опустошения
+  рабочих очередей и выносит вердикт по росту DLQ. Очереди не очищаются и не
+  переотправляются: автоочистка DLQ запрещена docs/OPERATIONS.md.
 
-  Очереди не очищаются и не переотправляются: скрипт только читает счётчики.
+  Bash-близнец: scripts/verify-dlq-resilience.sh — для Ubuntu-VM, где контейнеры и живут,
+  если сервер на Windows Server с Hyper-V. Контракт у обоих одинаковый.
 
 .PARAMETER StorageService
   Имя сервиса compose, который перезапускается. По умолчанию mail-storage-service.
 
 .PARAMETER WaitSeconds
-  Сколько ждать возврата очереди к нулю после перезапуска.
+  Сколько ждать healthy и опустошения очередей.
 
 .PARAMETER BaselineOnly
   Только показать текущие числа и выйти: удобно перед запуском теста.
@@ -37,7 +39,7 @@ param(
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
-# Очереди, которые нас интересуют. Пропуск очереди в этом списке означает слепую зону теста.
+# Пропуск очереди в этом списке делает тест слепым к части потерь.
 $watched = @(
   "mail.spam.inbound",
   "mail.spam.inbound.dlq",
@@ -47,49 +49,49 @@ $watched = @(
   "mail.storage.av-checked.dlq"
 )
 
-function Get-QueueMessages {
-  $raw = docker compose exec -T rabbitmq rabbitmqctl list_queues name messages --formatter json 2>$null
-  if ($LASTEXITCODE -ne 0) {
+function Get-QueueTable {
+  # Обычный текстовый вывод rabbitmqctl: строки «имя<TAB>число», без заголовка.
+  # JSON-форматтер сознательно не используется: в старых образах его поведение
+  # менялось, а разбор строк одинаково работает и в PS 5.1, и в PS 7.
+  $raw = @(& docker compose exec -T rabbitmq rabbitmqctl -q list_queues name messages 2>$null)
+  if ($LASTEXITCODE -ne 0 -or $raw.Count -eq 0) {
     throw "rabbitmqctl недоступен: проверьте, что контейнер rabbitmq запущен"
   }
-  $parsed = $raw | ConvertFrom-Json
-  $result = @{}
-  foreach ($row in $parsed) {
-    $result[$row.name] = [int]$row.messages
-  }
-  return $result
-}
-
-function Show-Queues([hashtable]$queues) {
-  foreach ($name in $watched) {
-    $count = if ($queues.ContainsKey($name)) { $queues[$name] } else { 0 }
-    Write-Host ("  {0,-38} {1,6}" -f $name, $count)
-  }
-}
-
-function Wait-StorageHealthy([int]$TimeoutSeconds) {
-  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-  while ((Get-Date) -lt $deadline) {
-    $status = docker compose ps --format "{{.Service}} {{.Health}}" |
-      Select-String -SimpleMatch $StorageService
-    if ($status -and ($status.ToString() -match "healthy")) {
-      return $true
+  $table = @{}
+  foreach ($line in $raw) {
+    if ($line -match '^\s*([^\s]+)\s+(\d+)\s*$') {
+      $table[$Matches[1]] = [int]$Matches[2]
     }
-    Start-Sleep -Seconds 2
   }
-  return $false
+  return $table
+}
+
+function Get-Count([hashtable]$table, [string]$name) {
+  if ($table.ContainsKey($name)) { return $table[$name] }
+  return 0
+}
+
+function Show-Queues([hashtable]$table) {
+  foreach ($name in $watched) {
+    Write-Host ("  {0,-38} {1,6}" -f $name, (Get-Count $table $name))
+  }
+}
+
+function Get-Total([hashtable]$table, [bool]$dlqOnly) {
+  $sum = 0
+  foreach ($name in $watched) {
+    $isDlq = $name.EndsWith(".dlq")
+    if ($isDlq -eq $dlqOnly) {
+      $sum += Get-Count $table $name
+    }
+  }
+  return $sum
 }
 
 Write-Host "=== Очереди до перезапуска ==="
-$before = Get-QueueMessages
+$before = Get-QueueTable
 Show-Queues $before
-
-$dlqBefore = 0
-foreach ($name in $watched) {
-  if ($name -like "*.dlq" -and $before.ContainsKey($name)) {
-    $dlqBefore += $before[$name]
-  }
-}
+$dlqBefore = Get-Total $before $true
 
 if ($BaselineOnly) {
   Write-Host ""
@@ -101,32 +103,39 @@ Write-Host ""
 Write-Host ("=== Перезапуск {0} ===" -f $StorageService)
 docker compose restart $StorageService | Out-Host
 if ($LASTEXITCODE -ne 0) {
-  throw "docker compose restart завершился с ошибкой"
+  Write-Host "docker compose restart завершился с ошибкой"
+  exit 2
 }
 
-if (-not (Wait-StorageHealthy $WaitSeconds)) {
+Write-Host ""
+Write-Host ("=== Ожидание healthy (до {0} с) ===" -f $WaitSeconds)
+$deadline = (Get-Date).AddSeconds($WaitSeconds)
+$healthy = $false
+while ((Get-Date) -lt $deadline) {
+  $state = docker compose ps --format "{{.Service}} {{.Health}}" 2>$null
+  if ($state -contains "$StorageService healthy") {
+    $healthy = $true
+    break
+  }
+  Start-Sleep -Seconds 2
+}
+if (-not $healthy) {
   Write-Host ("[FAIL] {0} не стал healthy за {1} с" -f $StorageService, $WaitSeconds)
   exit 2
 }
 Write-Host "[OK] сервис healthy"
 
-# Очередь могла быть пустой до перезапуска; письма появляются только при новом сборе.
-# Поэтому ждём, пока все наблюдаемые очереди опустеют: это значит, что сообщения,
-# попавшие в них в момент перезапуска, обработаны, а не просто «ещё не дошли».
 Write-Host ""
-Write-Host ("=== Ожидание пустых очередей (до {0} с) ===" -f $WaitSeconds)
+Write-Host ("=== Ожидание пустых рабочих очередей (до {0} с) ===" -f $WaitSeconds)
+$after = $before
 $deadline = (Get-Date).AddSeconds($WaitSeconds)
-$after = Get-QueueMessages
 while ((Get-Date) -lt $deadline) {
-  $after = Get-QueueMessages
-  $pending = 0
-  foreach ($name in $watched) {
-    if ($name -notlike "*.dlq" -and $after.ContainsKey($name)) {
-      $pending += $after[$name]
-    }
-  }
-  if ($pending -eq 0) {
-    break
+  try {
+    $table = Get-QueueTable
+    $after = $table
+    if ((Get-Total $table $false) -eq 0) { break }
+  } catch {
+    # RabbitMQ мог кратковременно отвалиться во время перезапуска: пробуем снова.
   }
   Start-Sleep -Seconds 5
 }
@@ -135,12 +144,7 @@ Write-Host ""
 Write-Host "=== Очереди после перезапуска ==="
 Show-Queues $after
 
-$dlqAfter = 0
-foreach ($name in $watched) {
-  if ($name -like "*.dlq" -and $after.ContainsKey($name)) {
-    $dlqAfter += $after[$name]
-  }
-}
+$dlqAfter = Get-Total $after $true
 $growth = $dlqAfter - $dlqBefore
 
 Write-Host ""
