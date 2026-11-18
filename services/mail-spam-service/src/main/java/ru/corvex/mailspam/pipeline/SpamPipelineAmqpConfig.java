@@ -12,7 +12,6 @@ import org.springframework.amqp.support.converter.SimpleMessageConverter;
 import org.springframework.amqp.rabbit.config.RetryInterceptorBuilder;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
-import org.springframework.amqp.rabbit.retry.RejectAndDontRequeueRecoverer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -25,6 +24,10 @@ public class SpamPipelineAmqpConfig {
     public static final String QUEUE = "mail.spam.inbound";
     public static final String DLQ = QUEUE + ".dlq";
     public static final String ROUTING_RECEIVED = "mail.inbound.received";
+
+    static final int RETRY_MAX_ATTEMPTS = 6;
+    static final long RETRY_INITIAL_MS = 2_000;
+    static final long RETRY_MAX_MS = 20_000;
 
     @Bean
     Declarables spamPipelineDeclarables() {
@@ -56,11 +59,16 @@ public class SpamPipelineAmqpConfig {
         return factory;
     }
 
+    /**
+     * Окно ретраев должно переживать перезапуск mail-storage-service: 2+4+8+16+20 ≈ 50 секунд.
+     * Раньше было 5 попыток с суммой ≈ 15 секунд, и рестарт хранилища на полминуты отправлял
+     * пачку писем в DLQ, откуда они уже не возвращаются: курсор синхронизации к тому моменту сдвинут.
+     */
     private Advice mailRetryAdvice() {
         return RetryInterceptorBuilder.stateless()
-                .maxAttempts(5)
-                .backOffOptions(1_000, 2.0, 10_000)
-                .recoverer(new RejectAndDontRequeueRecoverer())
+                .maxAttempts(RETRY_MAX_ATTEMPTS)
+                .backOffOptions(RETRY_INITIAL_MS, 2.0, RETRY_MAX_MS)
+                .recoverer(new SpamRetryRecoverer())
                 .build();
     }
 }
