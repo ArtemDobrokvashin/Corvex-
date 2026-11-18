@@ -1,0 +1,130 @@
+name: CI
+
+# ВНИМАНИЕ: это шаблон, а не активный workflow.
+#
+# Файл лежит вне `.github/workflows/`, потому что автоматизация, создавшая этот
+# коммит, не имеет права `workflows` и не может пушить файлы в `.github/workflows/`.
+# Чтобы включить проверки, скопируйте файл на место (одна команда):
+#
+#   powershell: New-Item -ItemType Directory -Force .github\workflows | Out-Null
+#               Copy-Item docs\ci\ci.yml .github\workflows\ci.yml
+#               git add .github/workflows/ci.yml
+#               git commit -m "ci: enable automated checks"
+#               git push
+#
+# После первого запуска проверьте результат: `gh pr checks <номер PR>` или
+# вкладка Actions. Ожидаемое время: java 10-20 минут (кеш Maven), frontend 3-5,
+# python меньше минуты.
+
+# Зачем этот workflow существует.
+#
+# В репозитории не было ни одной автоматической проверки компиляции, и именно
+# поэтому сломанный `main` (не компилировался `mail-storage-service`) дошёл до
+# ноутбука и всплыл только на `docker compose build`. Кандидат на релиз не должен
+# зависеть от того, вспомнит ли человек выполнить `mvn verify` до пуша.
+#
+# Здесь быстрые проверки, которые ловят реальные классы ошибок:
+#   * Java компилируется, тесты модулей проходят, JaCoCo не понижен;
+#   * frontend: типы, тесты, modern+legacy сборка, production audit;
+#   * скрипты эксплуатации и приёмочные тесты Python.
+#
+# Чего здесь нет и почему: браузерных E2E (нужен стенд с Docker и реальными
+# сервисами), Docker build (медленно и не заменяет `mvn verify`), интеграционных
+# тестов с PostgreSQL/RabbitMQ. Это задачи стенда и приёмки, а не CI.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  java:
+    name: Java 17 / Maven reactor
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      # Полный reactor: компиляция, тесты модулей и JaCoCo-гейты. Если тесты
+      # слишком долгие для PR, их отключают явно и отдельным решением, а не
+      # молчаливым skip по умолчанию.
+      - name: mvn -B clean verify
+        run: mvn -B -ntp clean verify
+
+      - name: Upload Surefire reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: "**/target/surefire-reports/**"
+          retention-days: 7
+          if-no-files-found: ignore
+
+  frontend:
+    name: Frontend / Node 22
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: TypeScript + tests
+        run: |
+          npx tsc -b
+          npm test
+
+      - name: Production build (modern + legacy)
+        run: npm run build
+
+      - name: Legacy bundle really contains the legacy chunk
+        run: |
+          # Требование Chrome 109: сборка обязана выпустить *-legacy-*.js.
+          # Без этого файла «поддержка старого парка» остаётся обещанием.
+          ls dist/assets/*legacy*.js >/dev/null
+          grep -q "legacy" dist/index.html || true
+
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=moderate
+
+  python:
+    name: Ops scripts / Python 3
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Unit and structure tests for scripts/
+        run: python3 -m unittest discover -s scripts/tests -p "test_*.py"
