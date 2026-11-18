@@ -13,6 +13,11 @@ import java.util.UUID;
  * (IMAP/POP3) и отправка от имени внешнего адреса (authenticated SMTP провайдера).
  * Пароль приложения хранится только как AES-256-GCM шифртекст (secret_enc) и никогда
  * не возвращается API/логам.
+ *
+ * <p>У ящика с {@code authType = OAUTH2} пароля нет вообще: {@code secret_enc} остаётся
+ * пустым, а токены живут в {@code external_mail_oauth_tokens}. Поэтому колонка nullable,
+ * а инвариант «парольному ящику секрет обязателен» держит CHECK-констрейнт в схеме
+ * (V14), а не аннотация JPA.
  */
 @Entity
 @Table(name = "external_mail_accounts")
@@ -83,7 +88,8 @@ public class ExternalMailAccount {
     @Column(name = "incoming_username", nullable = false, length = 320)
     private String incomingUsername;
 
-    @Column(name = "secret_enc", nullable = false, columnDefinition = "TEXT")
+    // NULL допустим: у OAuth-ящика вместо пароля согласие провайдера (см. V14).
+    @Column(name = "secret_enc", nullable = true, columnDefinition = "TEXT")
     private String secretEnc;
 
     @Column(name = "smtp_enabled", nullable = false)
