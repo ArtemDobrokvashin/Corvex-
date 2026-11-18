@@ -33,12 +33,18 @@
 |---|---|
 | Ops scripts / Python 3 | ✅ 247 тестов |
 | Frontend / Node 22 | ✅ `npm ci`, `tsc -b`, `vitest`, modern+legacy build, проверка legacy-чанка, `npm audit --omit=dev` |
-| Java 17 / Maven reactor | ❌ `COMPILATION ERROR` в `mail-storage-service`: `MailAttachmentPreviewControllerTest.java:[82,37] unreported exception java.io.IOException` |
+| Java 17 / Maven reactor | ❌ сначала `COMPILATION ERROR` в `mail-storage-service` (`MailAttachmentPreviewControllerTest.java:[82,37] unreported exception java.io.IOException`), после его исправления — падение `chat-file-service`: `DriveServiceTest`, 15 тестов, 5 падений и 6 ошибок |
 
-Причина: тест добавлен коммитом `82755ea` (встроенный предпросмотр), а последний
-Java-прогон был до него, на `08b7310`. Ошибка ровно того класса, для которого CI и нужен:
-код собрался в Docker-frontend, но Java-тест после этого ни разу не компилировался.
-Исправлено объявлением `throws Exception` у теста; следующий прогон — после merge.
+Причина первой ошибки: тест добавлен коммитом `82755ea` (встроенный предпросмотр), а
+последний Java-прогон был до него, на `08b7310`. Исправлено объявлением `throws Exception`.
+
+Причина второй: `DriveNode`/`DriveShare` — записи с вычисляемыми `isFolder()`, `isTrashed()`,
+`isRevoked()`. Jackson писал их в JSON как `folder`/`trashed`/`revoked`, а при чтении падал
+на неизвестном поле; `DriveStorage` ловил исключение, писал `Drive node metadata is unreadable`
+и **пропускал узел**. То есть диск мог показывать пустые папки, а данные при этом лежали на
+месте. Исправлено `@JsonIgnore` на вычисляемых методах и `ignoreUnknown` на типах, чтобы
+уже записанные файлы тоже читались. Тест `DriveStoragePersistenceTest` закрепляет все три
+случая: запись-чтение, отсутствие производных полей в файле, чтение старого JSON.
 
 | Область | Результат | Чего это не доказывает |
 |---|---|---|
