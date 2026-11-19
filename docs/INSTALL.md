@@ -334,6 +334,12 @@ Grafana доступна на `https://mail.<домен>/grafana/`; доступ
 
    Интерфейс попросит сменить пароль.
 
+   > Если открываете стенд по адресу, отличному от `CORVEX_DOMAIN` (например,
+   > `https://localhost` на чистой установке или `https://192.168.x.x` с телефона),
+   > это отдельный origin. Шлюз принимает его как same-origin автоматически
+   > (`SameOriginFilter`); для остальных чужих origin нужен `CORVEX_WEB_ORIGINS`.
+   > До этой правки вход с `https://localhost` отвечал `403` без текста.
+
 2. **Gateway жив.** `curl -k https://mail.<домен>/api/v1/auth/me` → `401`
    (маршрут существует и требует токен). На Windows вместо `curl` — `curl.exe`.
 3. **JWKS.**
