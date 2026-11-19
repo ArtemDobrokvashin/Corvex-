@@ -34,13 +34,16 @@ public class ExternalMailOAuthTokenService {
     private final ExternalMailOAuthTokenRepository tokens;
     private final ExternalMailOAuthClient client;
     private final ExternalMailSecretCipher cipher;
+    private final ExternalMailReauthMarker reauth;
 
     public ExternalMailOAuthTokenService(ExternalMailOAuthTokenRepository tokens,
                                          ExternalMailOAuthClient client,
-                                         ExternalMailSecretCipher cipher) {
+                                         ExternalMailSecretCipher cipher,
+                                         ExternalMailReauthMarker reauth) {
         this.tokens = tokens;
         this.client = client;
         this.cipher = cipher;
+        this.reauth = reauth;
     }
 
     /** Сохранить токены после создания внешнего ящика (значения уже зашифрованы). */
@@ -132,16 +135,18 @@ public class ExternalMailOAuthTokenService {
      * в refresh, но и когда провайдер отверг уже выданный access-токен при входе по IMAP:
      * согласие могли отозвать, а срок токена ещё не истёк, иначе отзыв не виден часами.
      */
-    @Transactional
     public void markReauthRequired(UUID accountId) {
-        tokens.findById(accountId).ifPresent(this::markReauth);
+        reauth.mark(accountId);
     }
 
+    /**
+     * Запись идёт в отдельной транзакции: {@link #accessToken} сразу после этого бросает
+     * {@code 409}, и в общей транзакции признак откатился бы вместе с ней.
+     */
     private void markReauth(ExternalMailOAuthToken row) {
+        reauth.mark(row.getAccountId());
         row.setReauthRequired(true);
         row.setUpdatedAt(Instant.now());
-        tokens.saveAndFlush(row);
-        log.warn("Ящик {} требует повторного согласия OAuth", row.getEmail());
     }
 
     private static ResponseStatusException reauthRequired() {
