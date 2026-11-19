@@ -182,6 +182,7 @@ docker compose ps
 | Внешняя почта в спаме или bounce | нет PTR, SPF не покрывает отправителя, DKIM не совпадает, закрыт исходящий 25 | смотреть DSN, начать с SPF `~all` и DMARC `p=none`, настроить PTR, mail-tester ≥ 9/10 |
 | После пересборки сервиса сайт отдаёт `502` | nginx резолвил имена при старте | `docker compose restart nginx`; исправление конфигурации с `resolver` — отдельная проверка |
 | Напоминание календаря не приходит | разный `CORVEX_INTERNAL_API_TOKEN`, неверный `CORVEX_CALENDAR_FROM`, ошибка SMTP | логи `notification-service` и `mail-storage-service`; `503` означает, что планировщик повторит |
+| На телефоне чат «другой»: история есть, новые сообщения не приходят | телефон открывает стенд по LAN-адресу — это другой origin, и `chat-service` отклоняет WebSocket (403 на `/ws/chat/info`); плюс `CORVEX_AUTH_COOKIE_SECURE=true` не даёт сохранить cookie по http | `scripts/diagnose-mobile-access.ps1`: покажет разрешённые origin и живую проверку; добавить `http://<LAN-IP>:8080` в `CORVEX_WEB_ORIGINS` через запятую, `docker compose up -d --force-recreate chat-service web-gateway` |
 | На Windows 7 интерфейс отличается от скриншотов | отдан modern-бандл вместо legacy, кэш | проверить, что каталог `assets` содержит `*-legacy-*.js`, и очистить кэш |
 | Elasticsearch перезапускается | мало RAM или низкий `vm.max_map_count` | ≥2,5 ГБ только ему; `sysctl -w vm.max_map_count=262144` |
 
