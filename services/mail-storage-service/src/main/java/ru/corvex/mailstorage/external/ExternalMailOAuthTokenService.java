@@ -127,6 +127,16 @@ public class ExternalMailOAuthTokenService {
         }
     }
 
+    /**
+     * Помечает ящик как требующий повторного согласия. Вызывается не только при отказе
+     * в refresh, но и когда провайдер отверг уже выданный access-токен при входе по IMAP:
+     * согласие могли отозвать, а срок токена ещё не истёк, иначе отзыв не виден часами.
+     */
+    @Transactional
+    public void markReauthRequired(UUID accountId) {
+        tokens.findById(accountId).ifPresent(this::markReauth);
+    }
+
     private void markReauth(ExternalMailOAuthToken row) {
         row.setReauthRequired(true);
         row.setUpdatedAt(Instant.now());

@@ -600,6 +600,30 @@ class JakartaExternalMailClientTest {
     }
 
     @Test
+    void oauthAuthFailureSaysReconnectInsteadOfAppPassword() throws Exception {
+        // Дефект со стенда: OAuth-ящику с отозванным согласием интерфейс советовал
+        // «проверьте пароль приложения», которого у такого ящика нет вовсе.
+        var base = config(ExternalMailAccount.Protocol.IMAP, ExternalMailAccount.Security.SSL_TLS,
+                false, null, null, "access-token");
+        var oauth = new ExternalMailClient.AccountConfig(
+                base.accountId(), base.ownerId(), base.emailAddress(), base.displayName(), base.provider(),
+                base.incomingProtocol(), base.incomingHost(), base.incomingPort(), base.incomingSecurity(),
+                base.incomingUsername(), base.secret(), false, null, null,
+                ExternalMailAccount.Security.STARTTLS, base.smtpUsername(), false, false,
+                ExternalMailAccount.AuthType.OAUTH2);
+
+        var mapped = assertCategory(oauth, new AuthenticationFailedException("AUTHENTICATIONFAILED"),
+                ExternalMailClient.ExternalMailClientException.Category.AUTH, false);
+        assertTrue(mapped.getMessage().contains("подключите ящик заново"), mapped.getMessage());
+        assertFalse(mapped.getMessage().contains("пароль приложения"), mapped.getMessage());
+
+        // Для парольного ящика прежний совет остаётся верным.
+        var passwordMapped = assertCategory(base, new AuthenticationFailedException("bad"),
+                ExternalMailClient.ExternalMailClientException.Category.AUTH, false);
+        assertTrue(passwordMapped.getMessage().contains("пароль приложения"), passwordMapped.getMessage());
+    }
+
+    @Test
     void errorMappingCoversAuthTlsNetworkProtocolAndSecretMasking() throws Exception {
         var config = config(ExternalMailAccount.Protocol.IMAP, ExternalMailAccount.Security.SSL_TLS,
                 false, null, null, "super-secret");
