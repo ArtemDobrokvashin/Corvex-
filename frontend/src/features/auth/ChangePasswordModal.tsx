@@ -8,6 +8,10 @@ import { useI18n } from '../../i18n';
 /**
  * Обязательная смена временного пароля (mustChangePassword от сервера).
  * Правила зеркалят серверную PasswordPolicy: ≥10 символов, буквы+цифры.
+ *
+ * Временный пароль здесь не спрашивается: человек ввёл его на экране входа минуту
+ * назад, и сервер принимает смену без него, пока аккаунт в состоянии
+ * mustChangePassword. В обычных настройках безопасности текущий пароль обязателен.
  */
 export default function ChangePasswordModal({ onChanged }: { onChanged: () => void }) {
   const { locale, t } = useI18n();
@@ -24,8 +28,6 @@ export default function ChangePasswordModal({ onChanged }: { onChanged: () => vo
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const data = new FormData(e.currentTarget);
-    const current = String(data.get('current') ?? '');
     if (next !== repeat) {
       setError(t('Новые пароли не совпадают'));
       return;
@@ -37,7 +39,7 @@ export default function ChangePasswordModal({ onChanged }: { onChanged: () => vo
     setError('');
     setLoading(true);
     try {
-      await changePassword(current, next);
+      await changePassword('', next);
       onChanged();
     } catch (err) {
       setError(errorText(err, locale));
@@ -54,10 +56,6 @@ export default function ChangePasswordModal({ onChanged }: { onChanged: () => vo
         <p className="mb-6 mt-2 text-sm leading-relaxed text-muted">{t('Администратор выдал временный пароль. Он перестанет подходить сразу после этой смены.')}</p>
 
         <div className="space-y-4">
-          <div>
-            <label className="field-label" htmlFor="change-current">{t('Временный пароль')}</label>
-            <PasswordInput id="change-current" name="current" required autoComplete="current-password" className="field" />
-          </div>
           <div>
             <label className="field-label" htmlFor="change-next">{t('Новый пароль')}</label>
             <PasswordInput id="change-next" name="next" required autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} className="field" />

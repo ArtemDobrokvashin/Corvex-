@@ -458,6 +458,46 @@ class AuthServiceTest {
     }
 
     @Test
+    void firstSignInChangeDoesNotRequireTemporaryPasswordAgain() {
+        // Стенд: на первом входе интерфейс просил ввести временный пароль заново —
+        // его только что ввели на экране входа. Сессия уже доказывает знание пароля.
+        User user = user();
+        user.setMustChangePassword(true);
+        when(users.findById(USER_ID)).thenReturn(Optional.of(user));
+
+        service.changePassword(USER_ID, "", "NewPassword2", "current-refresh");
+
+        assertEquals("enc(NewPassword2)", user.getPasswordHash());
+        assertFalse(user.isMustChangePassword());
+        // Текущий пароль не сверяли: ввода не было.
+        verify(passwordEncoder, never()).matches(eq(""), any());
+    }
+
+    @Test
+    void ordinaryChangeStillRequiresCurrentPassword() {
+        User user = user();
+        user.setMustChangePassword(false);
+        when(users.findById(USER_ID)).thenReturn(Optional.of(user));
+
+        ApiException error = assertThrows(ApiException.class,
+                () -> service.changePassword(USER_ID, "", "NewPassword2", null));
+
+        assertEquals(HttpStatus.UNAUTHORIZED, error.status());
+        assertFalse("enc(NewPassword2)".equals(user.getPasswordHash()));
+    }
+
+    @Test
+    void missingCurrentPasswordWithNullHashIsRejectedOutsideFirstSignIn() {
+        User user = user();
+        user.setMustChangePassword(false);
+        user.setPasswordHash(null);
+        when(users.findById(USER_ID)).thenReturn(Optional.of(user));
+
+        assertEquals(HttpStatus.UNAUTHORIZED, assertThrows(ApiException.class,
+                () -> service.changePassword(USER_ID, null, "NewPassword2", null)).status());
+    }
+
+    @Test
     void changePasswordWithoutCurrentRefreshRevokesAllSessions() {
         User user = user();
         when(users.findById(USER_ID)).thenReturn(Optional.of(user));

@@ -39,8 +39,14 @@ public final class AuthDtos {
             @Pattern(regexp = "[0-9]{6}", message = "код — 6 цифр") String code) {
     }
 
+    /**
+     * Смена пароля. {@code currentPassword} необязателен только для принудительной смены
+     * временного пароля при первом входе: человек уже подтвердил его на экране входа,
+     * и требовать его второй раз подряд — лишний барьер. При обычной смене пароля
+     * (настройки безопасности) он обязателен и проверяется.
+     */
     public record ChangePasswordRequest(
-            @NotBlank String currentPassword,
+            String currentPassword,
             @NotBlank String newPassword) {
     }
 
