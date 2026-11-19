@@ -84,9 +84,17 @@ git clone https://github.com/ArtemDobrokvashin/Corvex-.git corvex-clean
 cd corvex-clean
 ./scripts/first-run.sh
 python3 scripts/preflight.py
-docker compose up -d --build
-docker compose ps
+docker compose -p corvex-fresh up -d --build
+docker compose -p corvex-fresh ps
 ```
+
+> **Почему `-p corvex-fresh`.** В `docker-compose.yml` зафиксировано `name: corvex`,
+> поэтому клон в новом каталоге — это **не** чистая установка: compose подхватит тома
+> старого стенда. Пароль PostgreSQL задаётся один раз при инициализации тома, и при
+> другом пароле в новом `.env` сервисы падают с
+> `FATAL: password authentication failed for user "corvex"`. Отдельное имя проекта
+> создаёт новые тома, а данные старого стенда остаются нетронутыми.
+> `preflight.py` предупреждает об этом строкой `project volumes`.
 
 Проверки после первого запуска — [`INSTALL.md`](INSTALL.md) §9: вход, `401` на
 `/api/v1/auth/me`, JWKS, миграции `V1…V14`, отсутствие заглушек, `SMTP listener disabled`,

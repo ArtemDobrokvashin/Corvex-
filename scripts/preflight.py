@@ -375,6 +375,58 @@ def check_elasticsearch_sysctl(results: list[Result], limits: Thresholds) -> Non
         results.append(Result("vm.max_map_count", PASS, str(value)))
 
 
+def compose_project_name(root: Path) -> str | None:
+    """Имя проекта, с которым соберётся стек.
+
+    Приоритет как у compose: флаг -p, затем COMPOSE_PROJECT_NAME, затем
+    поле `name:` в docker-compose.yml. Ошибка здесь стоит дорого: при
+    неверном имени установка молча подхватит тома другого стенда.
+    """
+    env_name = os.environ.get("COMPOSE_PROJECT_NAME", "").strip()
+    if env_name:
+        return env_name
+    compose = root / "docker-compose.yml"
+    if not compose.exists():
+        return None
+    for line in compose.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("name:"):
+            return stripped.split(":", 1)[1].strip().strip("'\"") or None
+    return None
+
+
+def check_project_volumes(root: Path, results: list[Result]) -> None:
+    """Предупреждает, что имя проекта уже занято томами другого стенда.
+
+    `docker-compose.yml` фиксирует `name: corvex`, поэтому клон в новом
+    каталоге — это НЕ чистая установка: compose переиспользует старые тома.
+    На стенде это дало `password authentication failed for user "corvex"`:
+    сервисы читали новый пароль из .env, а PostgreSQL жил на томе, где пароль
+    был задан при первой инициализации.
+    """
+    project = compose_project_name(root)
+    if not project:
+        results.append(Result("project volumes", WARN, "имя проекта не определено: пропущено"))
+        return
+    code, output = run(["docker", "volume", "ls", "--filter", f"label=com.docker.compose.project={project}",
+                        "--format", "{{.Name}}"])
+    if code != 0:
+        results.append(Result("project volumes", WARN, f"не удалось прочитать тома проекта {project}"))
+        return
+    volumes = [line.strip() for line in output.splitlines() if line.strip()]
+    if not volumes:
+        results.append(Result("project volumes", PASS, f"проект {project}: томов нет, установка чистая"))
+        return
+    results.append(
+        Result(
+            "project volumes",
+            WARN,
+            f"проект {project} уже имеет {len(volumes)} том(ов): это не чистая установка. "
+            f"Для приёмки P4 запустите с другим именем: docker compose -p {project}-fresh up -d --build",
+        )
+    )
+
+
 def check_git(root: Path, results: list[Result]) -> None:
     code, output = run(["git", "status", "--porcelain"], cwd=root)
     if code != 0:
@@ -400,6 +452,7 @@ def collect(root: Path, limits: Thresholds | None = None) -> list[Result]:
     check_secrets(root, results)
     check_compose_config(root, results)
     check_elasticsearch_sysctl(results, limits)
+    check_project_volumes(root, results)
     check_git(root, results)
     return results
 
