@@ -400,6 +400,8 @@ const EN: Record<string, string> = {
   'Успешно': 'Successful',
   'Ещё не синхронизировался': 'Not synchronized yet',
   'Новое подключение': 'New connection',
+  'Доступ выдан согласием провайдера: пароль для этого ящика не используется.': 'Access is granted by the provider consent: this mailbox does not use a password.',
+  'Синхронизация запущена: письма начнут появляться в течение минуты.': 'Sync started: messages will appear within a minute.',
   'Используйте пароль приложения провайдера, а не обычный пароль от веб-почты.': 'Use the provider app password, not the regular webmail password.',
   'Обновить': 'Refresh',
   'Папок найдено': 'Folders found',

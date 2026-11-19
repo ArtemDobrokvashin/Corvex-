@@ -582,7 +582,8 @@ export default function ExternalMailAccountsModal({
     if (migration && !window.confirm(t('Запустить импорт архива всех папок? Уже импортированные письма повторно не создадутся.'))) return;
     void runAction(migration ? 'migrate' : 'sync', async () => {
       const run = migration ? await externalMailApi.migrate(selected.id) : await externalMailApi.sync(selected.id);
-      setNotice(t('Синхронизация запущена: {status}', { status: run.status }));
+      setNotice(run.status === 'RUNNING' ? t('Синхронизация запущена: письма начнут появляться в течение минуты.')
+        : t('Синхронизация запущена: {status}', { status: run.status }));
       await load(selected.id, selected.ownerId);
     });
   };
@@ -749,7 +750,7 @@ export default function ExternalMailAccountsModal({
                         {t('Согласие Google/Microsoft отозвано: откройте ящик и войдите заново')}
                       </span>
                     )}
-                    {account.lastError && <span className="mt-2 line-clamp-2 block pl-4 text-xs leading-relaxed text-red-700">{account.lastError}</span>}
+                    {account.lastError && !account.syncRunning && <span className="mt-2 line-clamp-2 block pl-4 text-xs leading-relaxed text-red-700">{account.lastError}</span>}
                   </button>
                 ))}
               </div>
@@ -759,7 +760,11 @@ export default function ExternalMailAccountsModal({
               <div className="flex flex-wrap items-start gap-3">
                 <div className="min-w-0 flex-1">
                   <h4 className="text-base font-semibold">{selected ? selected.label : t('Новое подключение')}</h4>
-                  <p className="mt-0.5 text-sm text-muted">{t('Используйте пароль приложения провайдера, а не обычный пароль от веб-почты.')}</p>
+                  <p className="mt-0.5 text-sm text-muted">
+                    {form.authType === 'OAUTH2'
+                      ? t('Доступ выдан согласием провайдера: пароль для этого ящика не используется.')
+                      : t('Используйте пароль приложения провайдера, а не обычный пароль от веб-почты.')}
+                  </p>
                 </div>
                 <button type="button" onClick={() => void load(selectedId)} className="btn-secondary h-9 px-3 text-[13px]" disabled={loading || busy !== null}>
                   <RefreshCw size={14} />{t('Обновить')}
