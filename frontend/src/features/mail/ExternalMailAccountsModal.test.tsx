@@ -9,6 +9,7 @@ const apiMocks = vi.hoisted(() => ({
   presets: vi.fn(),
   searchOwners: vi.fn(),
   ownerFolders: vi.fn(),
+  runs: vi.fn(),
 }));
 
 vi.mock('../../api/externalMailApi', () => ({
@@ -17,6 +18,7 @@ vi.mock('../../api/externalMailApi', () => ({
     presets: apiMocks.presets,
     searchOwners: apiMocks.searchOwners,
     ownerFolders: apiMocks.ownerFolders,
+    runs: apiMocks.runs,
   },
 }));
 
@@ -66,6 +68,7 @@ describe('External Mail employee owner search', () => {
     apiMocks.list.mockReset().mockResolvedValue([]);
     apiMocks.presets.mockReset().mockResolvedValue([]);
     apiMocks.ownerFolders.mockReset().mockResolvedValue([]);
+    apiMocks.runs.mockReset().mockResolvedValue([]);
     apiMocks.searchOwners.mockReset().mockImplementation(async (query: string) => (
       query.includes('Иван') ? [employee] : [currentOwner]
     ));
@@ -146,5 +149,109 @@ describe('External Mail employee owner search', () => {
     });
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('HTTP 503 owner search');
     expect(container.querySelector('#external-owner-results')?.textContent).not.toContain('admin@company.local');
+  });
+});
+
+const oauthAccount = {
+  id: '33333333-3333-4333-8333-333333333333',
+  ownerId: currentOwner.id,
+  createdBy: currentOwner.id,
+  ownerKind: 'PERSONAL' as const,
+  label: 'Gmail',
+  emailAddress: 'user@gmail.com',
+  displayName: null,
+  provider: 'GMAIL' as const,
+  authType: 'OAUTH2' as const,
+  incomingProtocol: 'IMAP' as const,
+  incomingHost: 'imap.gmail.com',
+  incomingPort: 993,
+  incomingSecurity: 'SSL_TLS' as const,
+  incomingUsername: 'user@gmail.com',
+  secretConfigured: false,
+  smtpEnabled: true,
+  smtpHost: 'smtp.gmail.com',
+  smtpPort: 587,
+  smtpSecurity: 'STARTTLS' as const,
+  smtpUsername: 'user@gmail.com',
+  targetFolderId: null,
+  enabled: true,
+  syncEnabled: true,
+  sendEnabled: true,
+  initialSyncMode: 'NEW_ONLY' as const,
+  syncScope: 'INBOX_ONLY' as const,
+  pollIntervalSeconds: 300,
+  leaveOnServer: true,
+  markSeenOnServer: false,
+  deleteAfterFetch: false,
+  saveSentOnServer: true,
+  sentFolderName: null,
+  lastSyncAt: null,
+  lastSuccessAt: null,
+  nextSyncAt: null,
+  lastError: 'AUTH: Ошибка аутентификации внешнего ящика: проверьте пароль приложения',
+  consecutiveFailures: 1,
+  syncRunning: false,
+  queuedCount: 0,
+  deliveredCount: 0,
+  failedCount: 0,
+  createdAt: '2026-11-18T10:00:00Z',
+  updatedAt: '2026-11-19T07:45:00Z',
+  reauthRequired: false,
+};
+
+describe('External Mail hints', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.useFakeTimers();
+    useLocaleStore.setState({ locale: 'ru' });
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    apiMocks.list.mockReset().mockResolvedValue([oauthAccount]);
+    apiMocks.presets.mockReset().mockResolvedValue([]);
+    apiMocks.ownerFolders.mockReset().mockResolvedValue([]);
+    apiMocks.runs.mockReset().mockResolvedValue([]);
+    apiMocks.searchOwners.mockReset().mockResolvedValue([currentOwner]);
+  });
+
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.useRealTimers();
+    useLocaleStore.setState({ locale: 'ru' });
+  });
+
+  /**
+   * Стенд: у Gmail с входом через Google подсказка предлагала «используйте пароль
+   * приложения», которого у такого ящика нет, а на карточке висела причина прошлого
+   * сбоя, хотя сбор уже шёл. Оба текста вводили в заблуждение одновременно.
+   */
+  it('не советует пароль приложения OAuth-ящику и прячет устаревшую ошибку во время сбора', async () => {
+    await act(async () => {
+      root.render(<ExternalMailAccountsModal
+        demoMode={false}
+        canAdmin
+        currentOwner={currentOwner}
+        onClose={vi.fn()}
+      />);
+      await vi.advanceTimersByTimeAsync(0);
+      await flush();
+    });
+
+    const card = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('user@gmail.com'))!;
+    expect(card.textContent).toContain('Ошибка аутентификации');
+
+    await act(async () => {
+      card.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await vi.advanceTimersByTimeAsync(0);
+      await flush();
+    });
+
+    expect(container.textContent).toContain('Доступ выдан согласием провайдера');
+    expect(container.textContent).not.toContain('Используйте пароль приложения провайдера');
   });
 });

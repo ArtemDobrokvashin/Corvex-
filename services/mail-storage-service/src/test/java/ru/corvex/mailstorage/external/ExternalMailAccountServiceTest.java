@@ -16,6 +16,7 @@ import ru.corvex.mailstorage.repository.ExternalMailFolderStateRepository;
 import ru.corvex.mailstorage.repository.ExternalMailImportedMessageRepository;
 import ru.corvex.mailstorage.repository.MailFolderRepository;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -374,6 +375,45 @@ class ExternalMailAccountServiceTest {
         verify(imported, never()).deleteAllByAccount_Id(existing.getId());
         assertEquals("EXTERNAL_ACCOUNT_UPDATED", audits.get(audits.size() - 1).getAction());
         assertTrue(audits.get(audits.size() - 1).getDetails().contains("oauthRelinked=true"));
+    }
+
+    @Test
+    void relinkClearsStaleAuthFailureAndSchedulesImmediateSync() {
+        // Стенд: после отзыва согласия прогон упал с AUTH, планировщик отложил ящик на сутки,
+        // на карточке остался last_error. Повторный вход выдавал новые токены, но ящик
+        // продолжал «спать» до завтра и показывал причину, которой уже нет.
+        ExternalMailAccount existing = existingAccount(ownerId);
+        existing.setProvider(ExternalMailAccount.Provider.GMAIL);
+        existing.setAuthType(ExternalMailAccount.AuthType.OAUTH2);
+        existing.setIncomingHost("imap.gmail.com");
+        existing.setIncomingPort(993);
+        existing.setSecretEnc(null);
+        existing.setSmtpEnabled(false);
+        existing.setSendEnabled(false);
+        existing.setLastError("AUTH: Ошибка аутентификации внешнего ящика: проверьте пароль приложения");
+        existing.setConsecutiveFailures(1);
+        existing.setNextSyncAt(Instant.now().plus(Duration.ofDays(1)));
+        when(accounts.findById(existing.getId())).thenReturn(Optional.of(existing));
+        UUID connectionId = UUID.randomUUID();
+        ExternalMailOAuthService.Claimed claimed = new ExternalMailOAuthService.Claimed(
+                "GOOGLE", "external@mail.test", "enc-at", "enc-rt", Instant.now().plusSeconds(3600), "scope");
+        when(oauthFlows.claim(ownerId, connectionId, ExternalMailOAuthProvider.GOOGLE, "external@mail.test"))
+                .thenReturn(claimed);
+
+        RequestSpec relink = new RequestSpec();
+        relink.provider = ExternalMailAccount.Provider.GMAIL;
+        relink.authType = ExternalMailAccount.AuthType.OAUTH2;
+        relink.secret = null;
+        relink.smtpEnabled = false;
+        relink.sendEnabled = false;
+        relink.oauthConnectionId = connectionId;
+
+        service.update(ownerId, OWN, existing.getId(), relink.build());
+
+        assertNull(savedAccount.get().getLastError(), "причина прежней ошибки больше не действует");
+        assertEquals(0, savedAccount.get().getConsecutiveFailures());
+        assertTrue(savedAccount.get().getNextSyncAt().isBefore(Instant.now().plusSeconds(5)),
+                "ящик должен собираться сразу после повторного входа, а не через сутки");
     }
 
     @Test

@@ -288,6 +288,18 @@ public class ExternalMailAccountService {
         ExternalMailAccount saved = accounts.saveAndFlush(account);
         if (relink != null) {
             oauthTokens.store(saved.getId(), relink);
+            // Повторный вход — это не только новые токены. После постоянной ошибки AUTH
+            // планировщик откладывал ящик на сутки, а last_error оставался на карточке:
+            // человек видел «проверьте пароль приложения» на ящике, который уже работает,
+            // и письма не приходили до завтра, хотя он только что выдал согласие заново.
+            saved.setLastError(null);
+            saved.setConsecutiveFailures(0);
+            if (saved.isEnabled() && saved.isSyncEnabled()) {
+                saved.setSyncLockOwner(null);
+                saved.setSyncLockUntil(null);
+                saved.setNextSyncAt(Instant.now());
+            }
+            saved = accounts.saveAndFlush(saved);
         }
         if (oauthNow && saved.getAuthType() != ExternalMailAccount.AuthType.OAUTH2) {
             oauthTokens.delete(saved.getId());
