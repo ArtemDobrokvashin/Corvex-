@@ -39,7 +39,8 @@ class ExternalMailOAuthTokenServiceTest {
         tokens = mock(ExternalMailOAuthTokenRepository.class);
         client = mock(ExternalMailOAuthClient.class);
         cipher = new ExternalMailSecretCipher(Base64.getEncoder().encodeToString(new byte[32]));
-        service = new ExternalMailOAuthTokenService(tokens, client, cipher);
+        service = new ExternalMailOAuthTokenService(tokens, client, cipher,
+                new ExternalMailReauthMarker(tokens));
         account = new ExternalMailAccount();
         account.setId(UUID.randomUUID());
         account.setAuthType(ExternalMailAccount.AuthType.OAUTH2);
