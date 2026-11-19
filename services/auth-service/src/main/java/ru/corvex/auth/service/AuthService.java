@@ -289,10 +289,22 @@ public class AuthService {
     public void changePassword(UUID userId, String currentPassword, String newPassword, String currentRefreshRaw) {
         User user = users.findById(userId)
                 .orElseThrow(() -> ApiException.unauthorized("Пользователь не существует"));
-        if (user.getPasswordHash() == null || !passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+        String current = currentPassword == null ? "" : currentPassword;
+        if (current.isBlank()) {
+            // Пустой текущий пароль допустим только на принудительной смене временного:
+            // сессия выдана по этому же паролю минуту назад, повторный ввод ничего не
+            // доказывает. Для обычной смены из настроек пароль обязателен: иначе
+            // украденный access-токен позволял бы сменить пароль и забрать учётку.
+            if (!user.isMustChangePassword()) {
+                throw ApiException.unauthorized("Введите текущий пароль");
+            }
+        } else if (user.getPasswordHash() == null
+                || !passwordEncoder.matches(current, user.getPasswordHash())) {
             throw ApiException.unauthorized("Текущий пароль неверен");
         }
-        if (currentPassword.equals(newPassword)) {
+        // Сравнение по хэшу, а не по введённой строке: работает и когда текущий пароль
+        // не передавали вовсе.
+        if (user.getPasswordHash() != null && passwordEncoder.matches(newPassword, user.getPasswordHash())) {
             throw ApiException.badRequest("Новый пароль должен отличаться от текущего");
         }
         String policyError = PasswordPolicy.validate(newPassword);
