@@ -406,6 +406,7 @@ public class ExternalMailAccountService {
         ExternalMailDtos.TestConnectionResponse result = doTest(account,
                 account.getAuthType() == ExternalMailAccount.AuthType.OAUTH2 ? null
                         : cipher.decrypt(account.getSecretEnc()));
+        markOAuthReauthAfterAuthFailure(account, result);
         audit(actorId, account, "EXTERNAL_CONNECTION_TESTED",
                 "incomingOk=" + result.incomingOk() + ", smtpOk=" + result.smtpOk());
         return result;
@@ -676,6 +677,22 @@ public class ExternalMailAccountService {
         if (!result.incomingOk() || (result.smtpTested() && account.isSendEnabled() && !result.smtpOk())) {
             throw bad("Проверка подключения не пройдена. Входящие: " + result.incomingMessage()
                     + "; SMTP: " + result.smtpMessage());
+        }
+    }
+
+    /**
+     * Отказ AUTH у OAuth-ящика означает, что провайдер не принял токен. Без этой пометки
+     * признак «нужен повторный вход» появлялся бы только после истечения access-токена —
+     * до часа тишины при уже отозванном согласии.
+     */
+    private void markOAuthReauthAfterAuthFailure(ExternalMailAccount account,
+                                                 ExternalMailDtos.TestConnectionResponse result) {
+        if (account.getAuthType() != ExternalMailAccount.AuthType.OAUTH2 || result.incomingOk()) {
+            return;
+        }
+        String message = result.incomingMessage() == null ? "" : result.incomingMessage();
+        if (message.startsWith("AUTH")) {
+            oauthTokens.markReauthRequired(account.getId());
         }
     }
 

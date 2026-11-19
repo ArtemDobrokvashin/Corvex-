@@ -632,6 +632,34 @@ class ExternalMailAccountServiceTest {
     }
 
     @Test
+    void oauthAuthFailureDuringStoredTestMarksReauthRequired() throws Exception {
+        ExternalMailAccount existing = existingAccount(ownerId);
+        existing.setAuthType(ExternalMailAccount.AuthType.OAUTH2);
+        existing.setSecretEnc(null);
+        when(accounts.findById(existing.getId())).thenReturn(Optional.of(existing));
+        when(client.testIncoming(any())).thenThrow(clientError(
+                ExternalMailClient.ExternalMailClientException.Category.AUTH,
+                "Согласие провайдера отозвано или истекло: подключите ящик заново через кнопку входа"));
+
+        var result = service.testStored(ownerId, OWN, existing.getId());
+
+        assertFalse(result.incomingOk());
+        verify(oauthTokens).markReauthRequired(existing.getId());
+    }
+
+    @Test
+    void passwordAccountAuthFailureDoesNotTouchOAuthState() throws Exception {
+        ExternalMailAccount existing = existingAccount(ownerId);
+        when(accounts.findById(existing.getId())).thenReturn(Optional.of(existing));
+        when(client.testIncoming(any())).thenThrow(clientError(
+                ExternalMailClient.ExternalMailClientException.Category.AUTH, "bad password"));
+
+        service.testStored(ownerId, OWN, existing.getId());
+
+        verify(oauthTokens, never()).markReauthRequired(any());
+    }
+
+    @Test
     void auditListMapsEventsAndUsesRequestedAccountWhenReferenceIsMissing() {
         ExternalMailAccount existing = existingAccount(ownerId);
         when(accounts.findById(existing.getId())).thenReturn(Optional.of(existing));

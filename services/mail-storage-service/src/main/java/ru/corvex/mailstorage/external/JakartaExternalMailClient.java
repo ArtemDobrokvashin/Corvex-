@@ -680,8 +680,14 @@ public class JakartaExternalMailClient implements ExternalMailClient {
         if (e instanceof AuthenticationFailedException || root instanceof AuthenticationFailedException
                 || message.toLowerCase(Locale.ROOT).contains("authentication failed")
                 || message.toLowerCase(Locale.ROOT).contains("invalid credentials")) {
-            return new ExternalMailClientException(ExternalMailClientException.Category.AUTH, false,
-                    "Ошибка аутентификации внешнего ящика: проверьте пароль приложения", e);
+            // У OAuth-ящика нет пароля приложения: советовать «проверьте пароль» —
+            // значит отправить человека искать то, чего не существует. AUTH с XOAUTH2
+            // означает, что провайдер больше не принимает токен, то есть нужен
+            // повторный вход, а не новый пароль.
+            String hint = config != null && config.authType() == ExternalMailAccount.AuthType.OAUTH2
+                    ? "Согласие провайдера отозвано или истекло: подключите ящик заново через кнопку входа"
+                    : "Ошибка аутентификации внешнего ящика: проверьте пароль приложения";
+            return new ExternalMailClientException(ExternalMailClientException.Category.AUTH, false, hint, e);
         }
         if (root instanceof SSLException || message.toLowerCase(Locale.ROOT).contains("ssl")
                 || message.toLowerCase(Locale.ROOT).contains("certificate")) {
