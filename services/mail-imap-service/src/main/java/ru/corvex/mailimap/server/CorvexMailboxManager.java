@@ -201,6 +201,17 @@ public class CorvexMailboxManager implements MailboxManager {
 
     private ImapAuthClient.AuthenticatedUser authenticateAndCache(Username username, String password)
             throws MailboxException {
+        // Отпечаток того, что James действительно передал: значение не печатаем,
+        // но по «null» / «длина 0» / «длина 24» сразу видно, потерялся пароль на
+        // стороне клиента и парсера James или дошёл до auth-service.
+        if (password == null || password.isEmpty()) {
+            log.warn("IMAP-вход для {}: James передал {} пароль — auth-service отклонит "
+                    + "такой запрос (password: не должно быть пустым)",
+                    username.asString(), password == null ? "null" : "пустой");
+        } else {
+            log.info("IMAP-вход для {}: пароль получен ({} символов)",
+                    username.asString(), password.length());
+        }
         try {
             Optional<ImapAuthClient.AuthenticatedUser> user =
                     auth.authenticate(username.asString(), password == null ? "" : password);
