@@ -22,6 +22,8 @@ corvex:
     internal-token: ${CORVEX_INTERNAL_API_TOKEN:}
   auth:
     base-url: ${CORVEX_AUTH_SERVICE_URL:http://auth-service:8081}
+    # Кого искать при стартовой самопроверке (см. AuthServiceStartupProbe).
+    self-check-email: ${CORVEX_AUTH_SELF_CHECK_EMAIL:admin@company.local}
   storage:
     base-url: ${CORVEX_STORAGE_BASE_URL:http://mail-storage-service:8085}
   imap:

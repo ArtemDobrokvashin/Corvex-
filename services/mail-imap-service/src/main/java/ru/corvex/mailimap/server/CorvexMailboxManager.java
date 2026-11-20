@@ -212,8 +212,8 @@ public class CorvexMailboxManager implements MailboxManager {
         } catch (IOException e) {
             // James покажет клиенту «processing failed», а не причину, поэтому
             // причина должна быть в тексте исключения и в логе сервиса.
-            log.warn("IMAP-вход: auth-service не подтвердил пароль для {}: {}",
-                    username.asString(), e.getMessage());
+            log.warn("IMAP-вход: auth-service не подтвердил пароль для {}: {}: {}",
+                    username.asString(), e.getClass().getSimpleName(), e.getMessage());
             throw new MailboxException(
                     "auth-service недоступен при IMAP-аутентификации: " + e.getMessage(), e);
         }

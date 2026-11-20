@@ -260,10 +260,21 @@ class AlertE2eTest(unittest.TestCase):
                 "error: b'LOGIN processing failed.'"
             )
 
-        self.assertIn("сервер принял пароль", hint.lower())
+        self.assertIn("пароль при этом принят", hint.lower())
         self.assertIn("mail-storage-service", hint)
         self.assertIn("HTTP 503", hint)
         self.assertNotIn("alertmanager", hint)
+        # Причина должна идти до советов: консоль обрезает сообщение.
+        self.assertLess(hint.index("mail-storage-service"), hint.index("Пароль"))
+
+    def test_docker_log_prefix_is_stripped_from_the_shown_cause(self):
+        line = ("mail-imap-service-1  | 2026-11-20T14:21:06.172+03:00 [blocking-call-wrapper-1] "
+                "WARN  r.c.mailimap.client.ImapAuthClient [] - auth-service ответил 401 на "
+                "/internal/users/by-email — проверьте CORVEX_INTERNAL_API_TOKEN")
+        self.assertEqual(
+            "auth-service ответил 401 на /internal/users/by-email — проверьте CORVEX_INTERNAL_API_TOKEN",
+            alert_e2e._log_message(line),
+        )
 
     def test_invalid_login_hint_sends_you_to_login_probe(self):
         hint = alert_e2e.login_failure_hint(

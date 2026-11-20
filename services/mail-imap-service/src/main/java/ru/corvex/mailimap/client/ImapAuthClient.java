@@ -74,7 +74,8 @@ public class ImapAuthClient {
         } catch (IllegalStateException e) {
             throw new IOException(e.getMessage(), e);
         } catch (IOException e) {
-            log.warn("auth-service недоступен при IMAP-логине {}: {}", username, e.getMessage());
+            log.warn("auth-service недоступен при IMAP-логине {}: {}: {}",
+                    username, e.getClass().getSimpleName(), e.getMessage());
             throw e;
         }
     }
@@ -141,11 +142,94 @@ public class ImapAuthClient {
             default -> "";
         };
         String path = url.replaceFirst("^https?://[^/]+", "");
-        throw new IOException("auth-service ответил " + status + " на " + path + hint);
+        String body = response.body() == null ? "" : response.body().replaceAll("\\s+", " ").trim();
+        if (body.length() > 200) {
+            body = body.substring(0, 200) + "…";
+        }
+        throw new IOException("auth-service ответил " + status + " на " + path + hint
+                + (body.isEmpty() ? "" : "; тело: " + body));
     }
 
     private JsonNode bodyOrThrow(HttpResponse<String> response, String url) throws IOException {
         return bodyOrThrow(response, url, mapper);
+    }
+
+    /**
+     * Проверка связки «этот контейнер → auth-service» без пароля пользователя.
+     *
+     * <p>Повторяет ровно те вызовы, которые делает LOGIN: поиск пользователя по e-mail,
+     * чтение пользователя по id и проверка пароля (заведомо неверного). Если здесь
+     * что-то не так, IMAP-вход не заработает ни с каким паролем — и это видно в логе
+     * сразу после старта, а не через три минуты ожидания письма.
+     */
+    public SelfCheck selfCheck(String probeEmail) {
+        if (internalToken == null || internalToken.isBlank()) {
+            return new SelfCheck(false, "FAIL: CORVEX_INTERNAL_API_TOKEN не задан — "
+                    + "любой внутренний вызов auth-service вернёт 401");
+        }
+        StringBuilder out = new StringBuilder("token задан, ");
+        try {
+            HttpResponse<String> byEmail = http.send(
+                    request(authBaseUrl + "/internal/users/by-email?email="
+                            + URLEncoder.encode(probeEmail, StandardCharsets.UTF_8))
+                            .GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            out.append("GET by-email ").append(probeEmail).append(" -> HTTP ").append(byEmail.statusCode());
+            if (byEmail.statusCode() != 200) {
+                return new SelfCheck(false, out + describe(byEmail));
+            }
+            JsonNode user = mapper.readTree(byEmail.body());
+            String id = user.path("id").asText("");
+            out.append(" (id ").append(id.isEmpty() ? "не указан" : id).append("); ");
+
+            HttpResponse<String> byId = http.send(
+                    request(authBaseUrl + "/internal/users/" + id).GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            out.append("GET /internal/users/{id} -> HTTP ").append(byId.statusCode());
+            if (byId.statusCode() != 200) {
+                return new SelfCheck(false, out + describe(byId));
+            }
+            out.append("; ");
+
+            var body = mapper.createObjectNode();
+            body.put("username", probeEmail);
+            body.put("password", "selfcheck-" + UUID.randomUUID());
+            HttpResponse<String> verify = http.send(
+                    request(authBaseUrl + "/internal/verify-password")
+                            .header("Content-Type", "application/json")
+                            .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body)))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            out.append("POST verify-password -> HTTP ").append(verify.statusCode());
+            if (verify.statusCode() != 200) {
+                return new SelfCheck(false, out + describe(verify));
+            }
+            out.append(" (valid=").append(mapper.readTree(verify.body()).path("valid").asBoolean())
+                    .append(", ожидается false); OK");
+            return new SelfCheck(true, out.toString());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return new SelfCheck(false, out + "прервано");
+        } catch (IOException | IllegalStateException e) {
+            return new SelfCheck(false, out + e.getClass().getSimpleName() + ": " + e.getMessage());
+        }
+    }
+
+    public record SelfCheck(boolean ok, String message) {
+    }
+
+    /** Короткий ответ сервера без тела письма и секретов — только чтобы понять причину. */
+    private static String describe(HttpResponse<String> response) {
+        String body = response.body() == null ? "" : response.body().replaceAll("\s+", " ").trim();
+        if (body.length() > 200) {
+            body = body.substring(0, 200) + "…";
+        }
+        String hint = switch (response.statusCode()) {
+            case 401, 403 -> " (проверьте CORVEX_INTERNAL_API_TOKEN у auth-service и mail-imap-service)";
+            case 404 -> " (эндпоинта или пользователя нет)";
+            default -> "";
+        };
+        return hint + (body.isEmpty() ? "" : " тело: " + body);
     }
 
     private HttpRequest.Builder request(String url) {
