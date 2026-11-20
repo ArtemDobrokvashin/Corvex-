@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   Eye,
@@ -23,6 +23,10 @@ import { useSession } from '../../store/sessionStore';
 export default function LoginPage() {
   const { locale, t } = useI18n();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Пришли сюда не по кнопке «Выйти», а потому что сессия умерла: молчать об этом
+  // нельзя, иначе вход выглядит как случайный выброс на стартовый экран.
+  const sessionExpired = Boolean((location.state as { sessionExpired?: boolean } | null)?.sessionExpired);
   const setSession = useSession((s) => s.setSession);
   const [error, setError] = useState('');
   const [serverDown, setServerDown] = useState(false);
@@ -147,6 +151,11 @@ export default function LoginPage() {
             <>
               <h2 className="text-[28px] font-semibold tracking-[-0.025em]">{t('С возвращением')}</h2>
               <p className="mb-8 mt-2 text-sm leading-relaxed text-muted">{t('Войдите, чтобы продолжить работу с почтой и сообщениями компании.')}</p>
+              {sessionExpired && !error && (
+                <div className="mb-4">
+                  <Notice tone="info">{t('Сессия входа истекла, войдите заново')}</Notice>
+                </div>
+              )}
               <form onSubmit={onSubmit} className="space-y-4">
                 <div>
                   <label htmlFor="username" className="field-label">{t('Логин или e-mail')}</label>

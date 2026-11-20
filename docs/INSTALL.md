@@ -350,15 +350,33 @@ Grafana доступна на `https://mail.<домен>/grafana/`; доступ
    → JSON с публичным ключом.
 4. **Миграции.** Строки Flyway в `auth-service`, `admin-service`, `chat-service`,
    `mail-storage-service`: `docker compose logs <сервис> | grep Flyway` (Linux) или
-   `| Select-String Flyway` (Windows). Ожидается применение до последней версии
-   `V1…V14`; номер сверяет `scripts/docs_audit.py`.
+   `| Select-String Flyway` (Windows). У каждого сервиса своя история версий, поэтому
+   сверяйте с последней миграцией в `services/<сервис>/src/main/resources/db/migration`,
+   а не с общим номером: `V1…V14` в одном сервисе не значит «14 миграций везде».
+   Согласованность проверяет `scripts/docs_audit.py`.
 5. **Секреты не заглушки.** Шаг 5: в `.env` нет `change-me…` и
    `base64-32-byte-key-for-aes-gcm`.
 6. **SMTP выключен по умолчанию.** В логах `mail-smtp-service` есть
    `SMTP listener disabled`. Это ожидаемое состояние, а не ошибка.
-7. **Календарь.** Создайте событие с напоминанием «за 5 минут», обновите страницу —
-   событие сохранилось. Затем в `docker compose logs -f notification-service`
-   дождитесь строки об отправке: письмо приходит на вашу почту Corvex.
+7. **Календарь.** Создайте событие через «Все параметры» с напоминанием «за 5 минут»
+   и обновите страницу — событие должно остаться в списке. Если оно исчезло, сервер
+   его не принял: виджет показывает ошибку сохранения, но не прячет событие молча.
+
+   **Серверное напоминание по почте требует включённого SMTP.** По умолчанию
+   `CORVEX_SMTP_ENABLED=false`, приём и отправка почты выключены (шаг 6), поэтому
+   письма от `notification-service` физически некуда доставить. Для полной проверки:
+   задайте `CORVEX_SMTP_ENABLED=true` в `.env`, пересоздайте `mail-smtp-service` и
+   `notification-service`, затем создайте **новое** событие — и в
+   `docker compose logs -f notification-service` дождитесь строки об отправке.
+
+   Уже созданное напоминание повторять не нужно и нельзя: запись со статусом `FAILED`
+   не возвращается в очередь (уникальный ключ «событие + момент»), поэтому после
+   исправления настроек нужен новый слот напоминания. Статус доставки виден в
+   `mail_db`:
+
+   ```powershell
+   docker compose exec -T postgres psql -U corvex -d mail_db -c "select status, attempts, last_error from calendar_reminder_deliveries order by created_at desc limit 3;"
+   ```
 8. **Алерты.** Не останавливайте рабочий сервис: используйте `scripts/alert_e2e.py`,
    он создаёт один синтетический алерт и завершает его.
 

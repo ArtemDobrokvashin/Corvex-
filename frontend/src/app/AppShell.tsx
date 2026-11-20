@@ -22,7 +22,7 @@ import {
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { logout as apiLogout, restoreSession } from '../api/authApi';
 import { DEMO_MAILS, DEMO_ROOMS, getDemoUser } from '../api/demoData';
-import { setAccessToken } from '../api/httpClient';
+import { setAccessToken, setSessionExpiredHandler } from '../api/httpClient';
 import { AppearanceSettings } from '../components/AppearanceSettings';
 import CalendarSidebarWidget from '../components/CalendarSidebarWidget';
 import Clock from '../components/Clock';
@@ -115,6 +115,18 @@ export default function AppShell() {
   useEffect(() => {
     if (demoMode && user) setDemoCalendarLocale(locale);
   }, [demoMode, locale, setDemoCalendarLocale, user?.id]);
+
+  // Refresh-сессия больше не работает (истекла, отозвана, cookie потеряна):
+  // выходим на вход с объяснением вместо череды молчаливых 401.
+  useEffect(() => {
+    setSessionExpiredHandler(() => {
+      if (sessionStorage.getItem('corvex.demo') === '1') return;
+      setAccessToken(null);
+      clearSession();
+      navigate('/login', { replace: true, state: { sessionExpired: true } });
+    });
+    return () => setSessionExpiredHandler(null);
+  }, [navigate, clearSession]);
 
   // Restore session on initial mount
   useEffect(() => {

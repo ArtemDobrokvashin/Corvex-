@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useLocaleStore } from '../i18n';
-import { useCalendarStore } from '../store/calendarStore';
+import { buildEmptyEventDraft, useCalendarStore } from '../store/calendarStore';
 import { useSession } from '../store/sessionStore';
 import CalendarSidebarWidget, { CORVEX_MAIL_DND_MIME } from './CalendarSidebarWidget';
 
@@ -105,5 +105,31 @@ describe('My day email drop and quick add', () => {
     expect((container.querySelector('button[aria-label="Add event"]') as HTMLButtonElement).disabled).toBe(true);
     expect(container.textContent).toContain('Choose a start time before 23:59.');
     expect(useCalendarStore.getState().events).toHaveLength(0);
+  });
+});
+
+describe('failed server save is visible inside the widget', () => {
+  it('shows the save error and retries the event that stayed local', async () => {
+    const { setCalendarTransportForTests } = await import('../store/calendarStore');
+    const create = vi.fn(async () => { throw new Error('offline'); });
+    setCalendarTransportForTests({ list: vi.fn(async () => []), create, update: vi.fn(), remove: vi.fn() });
+    await act(async () => {
+      useCalendarStore.setState({ serverSynced: true, syncError: null });
+      useCalendarStore.getState().upsertEvent({
+        ...buildEmptyEventDraft('2026-01-12', '09:30'),
+        title: 'Smoke reminder',
+      });
+    });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+    const alert = container.querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain('saved in this browser only');
+    expect(container.textContent).toContain('Not saved on the server');
+    expect(create).toHaveBeenCalledTimes(1);
+
+    const retry = Array.from(alert!.querySelectorAll('button')).find((button) => button.textContent === 'Retry');
+    await act(async () => { retry!.click(); await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(create).toHaveBeenCalledTimes(2);
+    setCalendarTransportForTests(null);
   });
 });

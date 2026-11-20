@@ -651,6 +651,8 @@ interface CalendarState {
   setViewMode: (mode: CalendarViewMode) => void;
   toggleLayer: (key: keyof CalendarLayerFilters) => void;
   upsertEvent: (draft: CalendarEventDraft) => CalendarEventItem;
+  /** Повторяет сохранение событий, оставшихся только в браузере. true — все ушли на сервер. */
+  resaveLocalEvents: () => Promise<boolean>;
   deleteEvent: (id: string) => void;
   dismissReminder: (key: string) => void;
   snoozeEventReminder: (id: string, minutes?: number, date?: string) => void;
@@ -786,6 +788,29 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       });
     }
     return item;
+  },
+  resaveLocalEvents: async () => {
+    const state = get();
+    if (!state.serverSynced) return false;
+    // Событие без серверного id живёт только в браузере: его не видит ни другой
+    // клиент, ни планировщик напоминаний. Повтор — единственный способ довезти
+    // его без ручного пересоздания.
+    const pending = state.events.filter((event) => !isServerEventId(event.id));
+    if (pending.length === 0) return true;
+    for (const item of pending) {
+      try {
+        const saved = viewToItem(await transport.create(itemToSave(item)));
+        set((current) => {
+          const events = current.events.map((event) => (event.id === item.id ? saved : event));
+          persistValue(current.ownerKey, events);
+          return { events, syncError: null };
+        });
+      } catch (error) {
+        set({ syncError: syncFailureMessage(error, 'save') });
+        return false;
+      }
+    }
+    return true;
   },
   deleteEvent: (id) => {
     let removed: CalendarEventItem | undefined;

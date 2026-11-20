@@ -1137,6 +1137,7 @@ const EN: Record<string, string> = {
   'Событие изменено в другом окне. Обновите календарь.': 'The event was changed in another window. Reload the calendar.',
   'Нет права изменять календарь.': 'You do not have permission to change the calendar.',
   'Не удалось удалить событие на сервере. Оно появится снова после обновления.': 'The event could not be deleted on the server. It will reappear after a reload.',
+  'Не сохранено на сервере': 'Not saved on the server',
   'Серверные напоминания включены: они приходят на почту даже при закрытом браузере.': 'Server reminders are enabled: they arrive by email even when the browser is closed.',
   'Напоминание придёт на почту и при закрытом браузере.': 'The reminder arrives by email even when the browser is closed.',
   'Синхронизация календаря…': 'Syncing the calendar…',
