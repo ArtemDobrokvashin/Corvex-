@@ -223,13 +223,19 @@ notification-service → SMTP → Maildir/IMAP» одной командой: п
 **Чего это не доказывает:** внешняя доставляемость алертов (Telegram, MAX, внешний SMTP
 alert-relay) и поведение на Linux-хосте.
 
-**Backup и restore проверены (2026-11-20).** `scripts/backup.ps1 -ProjectName corvex-fresh`
-создал копию в `C:\CorvexBackup\2026-11-20_160613` и напечатал `Backup OK`. Восстановление
-в изолированный проект `corvex-restore-drill` (`-DataOnly`) не тронуло рабочий стенд,
-`restore_verify.ps1` напечатал `Restore verification OK: 4 databases and 4 file volumes
-match the backup` — все четыре тома (`mail-data`, `attachments`, `chat-files`,
-`alert-relay-data`) совпали побайтово, четыре базы (`auth_db`, `admin_db`, `mail_db`,
-`chat_db`) — побайтово по каноническому `pg_dump`.
+**Backup и restore: что доказано (2026-11-20).** `scripts/backup.ps1 -ProjectName corvex-fresh`
+создал копию в `C:\CorvexBackup\2026-11-20_160613` и напечатал `Backup OK` — это доказано.
+`restore.ps1 -DataOnly -Force` восстановил данные в изолированный проект
+`corvex-restore-drill` и не тронул рабочий стенд: у проекта свои тома и свои базы.
+
+**Сверка при этом не доказана.** `restore_verify.ps1` напечатал `Restore verification OK:
+4 databases and 4 file volumes match the backup`, но в том прогоне не было ни одного маркера
+`step:` с именем базы: многострочная команда доезжала до `sh` усечённой, `sh` выходил с
+кодом 0, ничего не сверив. Строка `OK` из того прогона недействительна, поэтому P3 остаётся
+«почти» до повторного прогона. Ожидаемые маркеры: `auth_db_logical_match`,
+`admin_db_logical_match`, `mail_db_logical_match`, `chat_db_logical_match` — и отдельно
+`mail_data_match`, `attachment_data_match`, `chat_file_data_match`, `alert_relay_data_match`
+по томам (`mail-data`, `attachments`, `chat-files`, `alert-relay-data`).
 
 По дороге найдены и исправлены четыре дефекта самой проверки, каждый из которых давал
 ложный сигнал:
@@ -248,7 +254,8 @@ match the backup` — все четыре тома (`mail-data`, `attachments`, 
 
 **Чего это не доказывает:** полное восстановление поверх рабочего проекта (`-Force` без
 `-DataOnly`) не выполнялось — проверялось изолированное восстановление данных; после
-аварийного сценария нужен отдельный прогон. Остался этап DLQ.
+аварийного сценария нужен отдельный прогон. Логическая сверка четырёх баз ждёт честного
+прогона с маркерами. Остался этап DLQ.
 
 **Живой OAuth: refresh-токен обновляется сам (2026-11-19).** Gmail подключён через OAuth на
 стенде (`dobrokvashinartem@gmail.com`, `auth_type=OAUTH2`, `secret_enc IS NULL`). Сбор был

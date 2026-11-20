@@ -6,15 +6,17 @@
 
 Каждый блок — одна команда, ждём вывод, разбираем. Секреты в чат не отправляются.
 
+Неделя целиком, включая вторник–пятницу, — в [`PLAN-WEEK-2026-11-23.md`](PLAN-WEEK-2026-11-23.md).
+
 ---
 
 ## Блок 0. Что уже доказано (не переделывать)
 
 | Приёмка | Состояние | Доказательство |
 |---|---|---|
-| P1. Живой OAuth | почти: вход в Google и автообновление refresh-токена пройдены; отзыв согласия не прогонялся | `STATUS.md`, «Живой OAuth: refresh-токен обновляется сам» |
+| P1. Живой OAuth | пройдено: вход, автообновление токена, отзыв согласия с `409`, повторный вход и возврат сбора | `STATUS.md`, «Живой OAuth: refresh-токен обновляется сам» и «Отзыв согласия и восстановление после него» |
 | P2. Полный `mvn verify` | пройдено | run `44266849755` на `f8f01c7`, повтор `44267475424` |
-| P3. Восстановление | данные и все 4 тома восстановлены и сверены; сверка **баз** ждёт честного прогона | `2026-11-20_160613`, маркеры `*_data_match` |
+| P3. Восстановление | копия создана, данные восстановлены в изолированный проект; сверка томов и **баз** ждёт честного прогона | `2026-11-20_160613`, `Backup OK`; маркеров сверки нет |
 | P4. Установка с нуля | пройдено | клон в `C:\corvex-clean`, 20 healthy, `STATUS.md` §2 |
 | Алерты (хвост P4) | пройдено | run `942a00dd9f964c418a53cc65c483dcd1`, `PASS=5` |
 
@@ -36,9 +38,14 @@ git pull --ff-only
 powershell -ExecutionPolicy Bypass -File scripts\restore_verify.ps1 -BackupDir C:\CorvexBackup\2026-11-20_160613 -ProjectName corvex-restore-drill
 ```
 
-**Зачёт:** в выводе есть все четыре маркера — `auth_db_logical_match`,
-`admin_db_logical_match`, `mail_db_logical_match`, `chat_db_logical_match` — и финальная
-строка `Restore verification OK: 4 databases and 4 file volumes match the backup`.
+**Зачёт:** в выводе есть все четыре маркера баз — `auth_db_logical_match`,
+`admin_db_logical_match`, `mail_db_logical_match`, `chat_db_logical_match` — и четыре маркера
+томов: `mail_data_match`, `attachment_data_match`, `chat_file_data_match`,
+`alert_relay_data_match`.
+
+Финальная строка `Restore verification OK: 4 databases and 4 file volumes match the backup`
+подтверждает только количество. Она не заменяет маркеры: именно так мы один раз получили
+`OK`, не сверив ничего.
 
 Если маркеров нет или есть `MISMATCH` — присылаем вывод, не переходим к блоку 2.
 
