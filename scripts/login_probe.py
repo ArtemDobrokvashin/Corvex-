@@ -29,6 +29,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 VERDICTS = {"PASSWORD": "основной пароль", "APP_PASSWORD": "пароль приложения"}
+# Длина пароля приложения без дефисов; в интерфейсе он показан группами по четыре.
+APP_PASSWORD_LENGTH = 20
 
 # Запрос выполняется внутри контейнера alert-relay: он в одной сети с
 # auth-service и содержит python с доступом к внутреннему токену.
@@ -56,19 +58,46 @@ def compose_command(project: str | None, tail: list[str]) -> list[str]:
     return ["docker", "compose", *prefix, *tail]
 
 
-def verdict(answer: dict[str, Any]) -> tuple[int, list[str]]:
-    lines: list[str] = []
+def shape_notes_for(password: str) -> list[str]:
+    """Что можно сказать о введённом значении, не раскрывая его.
+
+    Пароль приложения — 20 символов из алфавита без 0/O/1/l/I, в интерфейсе
+    показывается группами по четыре через дефис. Основной пароль по длине и
+    составу обычно не совпадает, и это сразу видно по форме, а не по отказу.
+    """
+    stripped = password.replace("-", "").replace(" ", "")
+    notes: list[str] = []
+    if len(stripped) == APP_PASSWORD_LENGTH and stripped.isalnum():
+        notes.append("форма: похоже на пароль приложения (20 символов)")
+    else:
+        notes.append(
+            f"форма: {len(stripped)} символов без дефисов — пароль приложения "
+            f"состоит из {APP_PASSWORD_LENGTH}"
+        )
+    if any(character in "0O1lI" for character in stripped):
+        notes.append("в значении есть 0, O, 1, l или I — в пароле приложения их не бывает")
+    return notes
+
+
+def verdict(answer: dict[str, Any], shape_notes: list[str] | None = None) -> tuple[int, list[str]]:
+    notes = list(shape_notes or [])
     if answer.get("valid") is True:
         method = str(answer.get("method") or "")
-        lines.append(f"ПРИНЯТ: {VERDICTS.get(method, method or 'метод не указан')}")
-        lines.append("auth-service подтвердил пароль — вход по IMAP не должен ломаться.")
+        lines = [
+            f"SUCCESS: пароль подошёл — {VERDICTS.get(method, method or 'метод не указан')}",
+            f"  пользователь: {answer.get('userId') or 'не указан'}",
+            "  auth-service подтвердил пароль: IMAP-вход тем же значением пройдёт.",
+        ]
         return 0, lines
-    lines.append("ОТКАЗ: auth-service вернул valid = false")
-    lines.append("Проверьте по порядку:")
-    lines.append("  1. учётка ACTIVE: select username, status, totp_enabled from users;")
-    lines.append("  2. пароль приложения действительно тот: list-app-password показывается один раз;")
-    lines.append("  3. в алфавите нет символов 0, O, 1, l, I — их нельзя «поправить» на глаз;")
-    lines.append("  4. при включённой 2FA основной пароль не принимается, нужен пароль приложения.")
+    lines = [
+        "FAIL: пароль не подошёл (auth-service вернул valid = false)",
+        *[f"  {note}" for note in notes],
+        "Проверьте по порядку:",
+        "  1. учётка ACTIVE: select username, status, totp_enabled from users;",
+        "  2. пароль приложения показывается один раз — если плашку закрыли, нужен новый;",
+        "  3. вводите ровно 20 символов; в алфавите нет 0, O, 1, l, I;",
+        "  4. при включённой 2FA основной пароль не принимается, нужен пароль приложения.",
+    ]
     return 1, lines
 
 
@@ -100,7 +129,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        raw = ask_password_with_project(args)
+        raw, shape_notes = ask_password_with_project(args)
         answer = json.loads(raw)
     except ValueError as failure:
         print(f"{failure}", file=sys.stderr)
@@ -113,19 +142,20 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
-    code, lines = verdict(answer)
+    code, lines = verdict(answer, shape_notes)
     for line in lines:
         print(line)
     return code
 
 
-def ask_password_with_project(args: argparse.Namespace) -> str:
-    """Как ask_password, но с именем проекта из аргументов."""
+def ask_password_with_project(args: argparse.Namespace) -> tuple[str, list[str]]:
+    """Запрашивает пароль и возвращает ответ auth-service и заметки о его форме."""
     password = os.environ.get("CORVEX_TEST_ALERT_PASSWORD") or getpass.getpass(
         f"Пароль для {args.username} (скрытый ввод): "
     )
     if not password:
         raise ValueError("Пустой пароль не проверяется")
+    shape_notes = shape_notes_for(password)
     command = compose_command(
         args.project,
         [
@@ -143,7 +173,7 @@ def ask_password_with_project(args: argparse.Namespace) -> str:
         detail = (result.stderr.strip() or result.stdout.strip())[:400]
         detail = detail.replace(password, "***")
         raise RuntimeError(detail)
-    return result.stdout.strip()
+    return result.stdout.strip(), shape_notes
 
 
 if __name__ == "__main__":
