@@ -118,9 +118,13 @@ class ImapClientsTest {
         assertTrue(auth.authenticate("ivanov@corp.local", "wrong").isEmpty());
         assertEquals(1, requests.size());
 
+        // 5xx — это сбой auth-service, а не неверный пароль: раньше ответ 503
+        // превращался в «Invalid login/password» и уводил диагностику в сторону пароля.
         requests.clear();
         responder.set(request -> StubResponse.json(503, "{}"));
-        assertTrue(auth.authenticate("ivanov@corp.local", "wrong").isEmpty());
+        IOException backendFailure = assertThrows(IOException.class,
+                () -> auth.authenticate("ivanov@corp.local", "wrong"));
+        assertTrue(backendFailure.getMessage().contains("503"));
 
         requests.clear();
         responder.set(request -> request.uri().equals("/internal/verify-password")
@@ -168,6 +172,71 @@ class ImapClientsTest {
 
         responder.set(ignored -> StubResponse.json(200, "not-json"));
         assertThrows(IOException.class, () -> auth.findActiveByUsername("ivanov@corp.local"));
+    }
+
+    @Test
+    void non200AnswerIsAnInfrastructureFailureNotABadPassword() {
+        // 401 = несовпадение внутреннего токена, 400 = тело не прошло валидацию.
+        // Клиент обязан сказать это словами, а не притвориться, что пароль неверный.
+        IOException unauthorized = assertThrows(IOException.class,
+                () -> ImapAuthClient.bodyOrThrow(
+                        response(401, ""), "http://auth-service:8081/internal/verify-password", mapper));
+        assertTrue(unauthorized.getMessage().contains("401"));
+        assertTrue(unauthorized.getMessage().contains("CORVEX_INTERNAL_API_TOKEN"));
+
+        IOException badRequest = assertThrows(IOException.class,
+                () -> ImapAuthClient.bodyOrThrow(
+                        response(400, ""), "http://auth-service:8081/internal/verify-password", mapper));
+        assertTrue(badRequest.getMessage().contains("400"));
+        assertTrue(badRequest.getMessage().contains("пустой логин или пароль"));
+
+        JsonNode parsed = ImapAuthClient.bodyOrThrow(
+                response(200, "{\"valid\":true}"), "http://auth-service:8081/internal/verify-password", mapper);
+        assertTrue(parsed.path("valid").asBoolean());
+    }
+
+    private static HttpResponse<String> response(int status, String body) {
+        return new HttpResponse<>() {
+            @Override
+            public int statusCode() {
+                return status;
+            }
+
+            @Override
+            public HttpRequest request() {
+                return null;
+            }
+
+            @Override
+            public java.util.Optional<HttpResponse<String>> previousResponse() {
+                return java.util.Optional.empty();
+            }
+
+            @Override
+            public java.net.http.HttpHeaders headers() {
+                return java.net.http.HttpHeaders.of(Map.of(), (a, b) -> true);
+            }
+
+            @Override
+            public String body() {
+                return body;
+            }
+
+            @Override
+            public java.util.Optional<javax.net.ssl.SSLSession> sslSession() {
+                return java.util.Optional.empty();
+            }
+
+            @Override
+            public java.net.URI uri() {
+                return java.net.URI.create("http://auth-service:8081");
+            }
+
+            @Override
+            public HttpClient.Version version() {
+                return HttpClient.Version.HTTP_1_1;
+            }
+        };
     }
 
     // ------------------------------------------------------------------ storage
