@@ -86,6 +86,21 @@ class BackupScriptsTest(unittest.TestCase):
         self.assertIn("оставлена для разбора", VERIFY)
         self.assertNotIn("/^$/d", VERIFY)
 
+    def test_verify_command_is_converted_to_lf_before_sh_c(self):
+        # Here-string в PowerShell на Windows содержит CRLF. `sh -c` получает
+        # `set -e\r`, dash отвечает "Illegal option" и выходит с кодом 2 — без
+        # единого echo. Это уже стоило одного круга диагностики.
+        self.assertIn('-replace "`r`n", "`n"', VERIFY)
+        self.assertLess(
+            VERIFY.index('-replace "`r`n", "`n"'),
+            VERIFY.rindex('"sh", "-c", $Cmd'),
+        )
+
+    def test_verify_failure_message_does_not_dump_the_whole_command(self):
+        # Подробности печатаются внутри контейнера; в throw — короткий вердикт.
+        self.assertIn("Сверка $Db не прошла (код $LASTEXITCODE)", VERIFY)
+        self.assertNotIn("Run \"docker\" @(\"run\", \"--rm\", \"--network\", \"${ProjectName}_data\"", VERIFY)
+
     def test_verify_clears_the_password_from_the_process_environment(self):
         self.assertIn("finally {", VERIFY)
         self.assertLess(VERIFY.index("finally {"), VERIFY.rindex("$env:PGPASSWORD = $null"))
