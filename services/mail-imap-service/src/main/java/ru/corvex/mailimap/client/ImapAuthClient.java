@@ -54,11 +54,16 @@ public class ImapAuthClient {
             body.put("password", password);
             JsonNode verify = postJson(authBaseUrl + "/internal/verify-password", mapper.writeValueAsString(body));
             if (verify == null || !verify.path("valid").asBoolean(false)) {
+                // Пароль не подтверждён: это единственный случай, когда IMAP обязан
+                // ответить «неверный логин/пароль». Раньше сюда же попадали 401 и 400
+                // от auth-service, и сбой инфраструктуры выглядел как опечатка в пароле.
+                log.warn("IMAP-вход отклонён: auth-service не подтвердил пароль для {}", username);
                 return Optional.empty();
             }
             UUID userId = UUID.fromString(verify.path("userId").asText());
             JsonNode user = getJson(authBaseUrl + "/internal/users/" + userId);
             if (user == null || !"ACTIVE".equalsIgnoreCase(user.path("status").asText(""))) {
+                log.warn("IMAP-вход отклонён: учётная запись {} не ACTIVE", username);
                 return Optional.empty();
             }
             return Optional.of(new AuthenticatedUser(
@@ -100,7 +105,11 @@ public class ImapAuthClient {
 
     private JsonNode getJson(String url) throws IOException, InterruptedException {
         HttpResponse<String> response = http.send(request(url).GET().build(), HttpResponse.BodyHandlers.ofString());
-        return response.statusCode() == 200 ? mapper.readTree(response.body()) : null;
+        // 404 — содержательный ответ «такого пользователя нет», остальное — сбой.
+        if (response.statusCode() == 404) {
+            return null;
+        }
+        return bodyOrThrow(response, url);
     }
 
     private JsonNode postJson(String url, String json) throws IOException, InterruptedException {
@@ -109,7 +118,34 @@ public class ImapAuthClient {
                 .POST(HttpRequest.BodyPublishers.ofString(json))
                 .build();
         HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-        return response.statusCode() == 200 ? mapper.readTree(response.body()) : null;
+        return bodyOrThrow(response, url);
+    }
+
+    /**
+     * 200 разбирается как JSON, всё остальное — ошибка, а не «пароль не подошёл».
+     *
+     * <p>Раньше любой не-200 превращался в {@code null}, и вызывающий код отвечал
+     * {@code BadCredentialsException}: James показывал «Invalid login/password» при
+     * 401 (несовпадение {@code CORVEX_INTERNAL_API_TOKEN}), 400 (пустое значение не
+     * прошло валидацию) и 5xx. Диагностика упиралась в пароль, хотя причина была в
+     * инфраструктуре.
+     */
+    static JsonNode bodyOrThrow(HttpResponse<String> response, String url, ObjectMapper mapper) throws IOException {
+        int status = response.statusCode();
+        if (status == 200) {
+            return mapper.readTree(response.body());
+        }
+        String hint = switch (status) {
+            case 401, 403 -> " — проверьте CORVEX_INTERNAL_API_TOKEN у auth-service и mail-imap-service";
+            case 400 -> " — auth-service отклонил тело запроса (пустой логин или пароль?)";
+            default -> "";
+        };
+        String path = url.replaceFirst("^https?://[^/]+", "");
+        throw new IOException("auth-service ответил " + status + " на " + path + hint);
+    }
+
+    private JsonNode bodyOrThrow(HttpResponse<String> response, String url) throws IOException {
+        return bodyOrThrow(response, url, mapper);
     }
 
     private HttpRequest.Builder request(String url) {

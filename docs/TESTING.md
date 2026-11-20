@@ -212,7 +212,26 @@ py scripts\login_probe.py --username admin@company.local --project <имя-пр�
 **20 символов**, в интерфейсе показан группами по четыре (`xxxx-xxxx-xxxx-xxxx-xxxx`),
 дефисы при вводе необязательны. Символов `0`, `O`, `1`, `l`, `I` в нём не бывает.
 
-Пароль не печатается, не попадает в аргументы и в историю PowerShell.
+Пароль не печатается, не попадает в аргументы и в историю PowerShell. Значение
+передаётся в контейнер через окружение процесса, а не через `-e VAR=value`, иначе оно
+было бы видно в списке процессов хоста.
+
+Одной командой можно закрыть оба звена — и auth-service, и настоящий IMAP:
+
+```powershell
+py scripts\login_probe.py --username admin@company.local --project <имя-проекта> --imap --ca-file infra\certs\fullchain.pem
+```
+
+Порядок вывода повторяет путь запроса: сначала `SUCCESS`/`FAIL` от auth-service, затем
+`IMAP LOGIN: SUCCESS` или `FAIL`. Комбинация «auth-service сказал SUCCESS, IMAP сказал
+FAIL» означает, что пароль верный, а сломано звено между `mail-imap-service` и
+auth-service: несовпадение `CORVEX_INTERNAL_API_TOKEN` (401), отклонённое тело (400) или
+недоступный auth-service. С версии, где `ImapAuthClient` различает коды, причина
+непустая и попадает в лог `mail-imap-service`:
+
+```powershell
+docker compose -p <имя-проекта> logs --tail 50 mail-imap-service
+```
 
 Проверить, что app-password действительно принят, можно и по `last_used_at`:
 
@@ -220,8 +239,12 @@ py scripts\login_probe.py --username admin@company.local --project <имя-пр�
 docker compose exec -T postgres psql -U corvex -d auth_db -c "select label, last_used_at from app_passwords order by created_at desc;"
 ```
 
-Пусто после успешного `LOGIN` — пароль не совпал. Символы `0/O/1/l/I` в алфавит пароля
-не входят: если при вводе «поправить» похожий символ вручную, пароль станет неверным.
+Пусто после успешного `LOGIN` — пароль не совпал, либо IMAP-сервис не смог вызвать
+auth-service: при отказе auth-service (401/400/5xx) отметка тоже не ставится, но в логе
+будет `auth-service ответил <код>` с подсказкой.
+
+Символы `0/O/1/l/I` в алфавит пароля не входят: если при вводе «поправить» похожий
+символ вручную, пароль станет неверным.
 
 **IMAP без клиента:**
 

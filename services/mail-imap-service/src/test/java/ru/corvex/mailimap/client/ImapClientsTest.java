@@ -118,9 +118,13 @@ class ImapClientsTest {
         assertTrue(auth.authenticate("ivanov@corp.local", "wrong").isEmpty());
         assertEquals(1, requests.size());
 
+        // 5xx — это сбой auth-service, а не неверный пароль: раньше ответ 503
+        // превращался в «Invalid login/password» и уводил диагностику в сторону пароля.
         requests.clear();
         responder.set(request -> StubResponse.json(503, "{}"));
-        assertTrue(auth.authenticate("ivanov@corp.local", "wrong").isEmpty());
+        IOException backendFailure = assertThrows(IOException.class,
+                () -> auth.authenticate("ivanov@corp.local", "wrong"));
+        assertTrue(backendFailure.getMessage().contains("503"));
 
         requests.clear();
         responder.set(request -> request.uri().equals("/internal/verify-password")
@@ -168,6 +172,23 @@ class ImapClientsTest {
 
         responder.set(ignored -> StubResponse.json(200, "not-json"));
         assertThrows(IOException.class, () -> auth.findActiveByUsername("ivanov@corp.local"));
+    }
+
+    @Test
+    void unauthorizedAndBadRequestAreInfrastructureFailuresNotAWrongPassword() {
+        // 401 = несовпадение CORVEX_INTERNAL_API_TOKEN, 400 = тело не прошло валидацию.
+        // Клиент обязан назвать код и подсказку, а не притвориться, что пароль неверный.
+        responder.set(ignored -> StubResponse.json(401, "{}"));
+        IOException unauthorized = assertThrows(IOException.class,
+                () -> auth.authenticate("ivanov@corp.local", "secret"));
+        assertTrue(unauthorized.getMessage().contains("401"));
+        assertTrue(unauthorized.getMessage().contains("CORVEX_INTERNAL_API_TOKEN"));
+
+        responder.set(ignored -> StubResponse.json(400, "{}"));
+        IOException badRequest = assertThrows(IOException.class,
+                () -> auth.authenticate("ivanov@corp.local", "secret"));
+        assertTrue(badRequest.getMessage().contains("400"));
+        assertTrue(badRequest.getMessage().contains("пустой логин или пароль"));
     }
 
     // ------------------------------------------------------------------ storage

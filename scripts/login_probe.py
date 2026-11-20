@@ -1,27 +1,31 @@
 #!/usr/bin/env python3
-"""Диагностика входа: что auth-service на самом деле отвечает на пароль.
+"""Диагностика входа: auth-service и, по флагу, настоящий IMAP LOGIN.
 
-IMAP не отвечает причиной отказа: James возвращает одно и то же
+IMAP не отдаёт причину отказа: James возвращает одно и то же
 ``LOGIN failed. Invalid login/password.`` и на неверный пароль, и на
-несуществующего пользователя, и на неактивную учётку. Этот скрипт делает тот же
-запрос, что делает mail-imap-service (``POST /internal/verify-password``), но
-показывает результат явно — включая метод, которым пароль был принят.
+несуществующего пользователя, и на неактивную учётку, и на сбой auth-service.
+Этот скрипт проверяет те же данные в двух местах:
 
-Скрипт только читает: пользователи и сессии не меняются, кроме отметки
-``last_used_at`` у пароля приложения, которую ставит сам auth-service при
-успешной проверке.
+1. ``POST /internal/verify-password`` — ровно тот запрос, что делает
+   mail-imap-service. Отвечает, подтвердил ли auth-service пароль и каким методом.
+2. ``--imap`` — настоящий ``LOGIN`` на 993 тем же значением.
 
-Пароль вводится скрыто и не печатается, не попадает в аргументы командной
-строки и в историю PowerShell (он передаётся контейнеру через переменную
-окружения только на время запроса).
+Если (1) даёт SUCCESS, а (2) FAIL — проблема между mail-imap-service и
+auth-service, а не в пароле. Это и было главной ловушкой приёмки: обе ошибки
+выглядели одинаково.
+
+Пароль вводится скрыто, не печатается, не попадает в аргументы командной
+строки и в историю PowerShell.
 """
 
 from __future__ import annotations
 
 import argparse
 import getpass
+import imaplib
 import json
 import os
+import ssl
 import subprocess
 import sys
 from pathlib import Path
@@ -31,6 +35,7 @@ ROOT = Path(__file__).resolve().parent.parent
 VERDICTS = {"PASSWORD": "основной пароль", "APP_PASSWORD": "пароль приложения"}
 # Длина пароля приложения без дефисов; в интерфейсе он показан группами по четыре.
 APP_PASSWORD_LENGTH = 20
+FORBIDDEN_IN_APP_PASSWORD = "0O1lI"
 
 # Запрос выполняется внутри контейнера alert-relay: он в одной сети с
 # auth-service и содержит python с доступом к внутреннему токену.
@@ -74,7 +79,7 @@ def shape_notes_for(password: str) -> list[str]:
             f"форма: {len(stripped)} символов без дефисов — пароль приложения "
             f"состоит из {APP_PASSWORD_LENGTH}"
         )
-    if any(character in "0O1lI" for character in stripped):
+    if any(character in FORBIDDEN_IN_APP_PASSWORD for character in stripped):
         notes.append("в значении есть 0, O, 1, l или I — в пароле приложения их не бывает")
     return notes
 
@@ -83,13 +88,12 @@ def verdict(answer: dict[str, Any], shape_notes: list[str] | None = None) -> tup
     notes = list(shape_notes or [])
     if answer.get("valid") is True:
         method = str(answer.get("method") or "")
-        lines = [
+        return 0, [
             f"SUCCESS: пароль подошёл — {VERDICTS.get(method, method or 'метод не указан')}",
             f"  пользователь: {answer.get('userId') or 'не указан'}",
-            "  auth-service подтвердил пароль: IMAP-вход тем же значением пройдёт.",
+            "  auth-service подтвердил пароль: IMAP-вход тем же значением должен пройти.",
         ]
-        return 0, lines
-    lines = [
+    return 1, [
         "FAIL: пароль не подошёл (auth-service вернул valid = false)",
         *[f"  {note}" for note in notes],
         "Проверьте по порядку:",
@@ -98,14 +102,13 @@ def verdict(answer: dict[str, Any], shape_notes: list[str] | None = None) -> tup
         "  3. вводите ровно 20 символов; в алфавите нет 0, O, 1, l, I;",
         "  4. при включённой 2FA основной пароль не принимается, нужен пароль приложения.",
     ]
-    return 1, lines
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Проверяет, что auth-service отвечает на пароль так же, как увидел бы IMAP. "
-            "Только чтение, пароль вводится скрыто и не печатается."
+            "Проверяет, что auth-service подтверждает пароль, и по флагу --imap — "
+            "что настоящий IMAP LOGIN проходит. Пароль вводится скрыто и не печатается."
         )
     )
     parser.add_argument("--username", required=True, help="Логин или e-mail")
@@ -114,6 +117,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=os.environ.get("COMPOSE_PROJECT_NAME") or None,
         help="Имя compose-проекта, если стенд поднят с -p",
     )
+    parser.add_argument("--imap", action="store_true", help="Дополнительно выполнить настоящий IMAP LOGIN")
+    parser.add_argument("--host", default=os.environ.get("CORVEX_TEST_HOST", "mail.company.local"))
+    parser.add_argument("--port", type=int, default=993)
+    parser.add_argument("--ca-file", help="PEM тестового CA")
     parser.add_argument("--timeout", type=int, default=30)
     args = parser.parse_args(argv)
     if args.timeout <= 0:
@@ -126,14 +133,83 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
+def prompt_password(username: str) -> str:
+    password = os.environ.get("CORVEX_TEST_ALERT_PASSWORD") or getpass.getpass(
+        f"Пароль для {username} (скрытый ввод): "
+    )
+    if not password:
+        raise ValueError("Пустой пароль не проверяется")
+    return password
+
+
+def probe_auth_service(args: argparse.Namespace, password: str) -> str:
+    """Ответ auth-service на тот же запрос, что делает mail-imap-service."""
+    command = compose_command(
+        args.project,
+        [
+            "exec", "-T",
+            # Без "=значение": compose возьмёт переменную из окружения процесса.
+            # С "=значение" пароль попал бы в список процессов хоста.
+            "-e", "CORVEX_PROBE_USERNAME",
+            "-e", "CORVEX_PROBE_PASSWORD",
+            "alert-relay", "python", "-c", PROBE,
+        ],
+    )
+    environment = dict(os.environ)
+    environment["CORVEX_PROBE_USERNAME"] = args.username
+    environment["CORVEX_PROBE_PASSWORD"] = password
+    try:
+        result = subprocess.run(
+            command, cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=args.timeout, check=False, env=environment,
+        )
+    finally:
+        environment.clear()
+    if result.returncode != 0:
+        detail = (result.stderr.strip() or result.stdout.strip())[:400]
+        raise RuntimeError(detail.replace(password, "***"))
+    return result.stdout.strip()
+
+
+def imap_login_check(args: argparse.Namespace, password: str) -> tuple[bool, str]:
+    """Настоящий LOGIN тем же значением — то, что делает почтовый клиент."""
+    try:
+        context = ssl.create_default_context(cafile=args.ca_file)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        context.check_hostname = True
+    except (OSError, ssl.SSLError) as failure:
+        return False, f"TLS не настроен: {failure}"
+    client = None
+    try:
+        client = imaplib.IMAP4_SSL(args.host, args.port, ssl_context=context, timeout=10)
+        client.login(args.username, password)
+        return True, f"{args.host}:{args.port}, TLS {client.sock.version() if client.sock else 'ok'}"
+    except imaplib.IMAP4.error as failure:
+        text = failure.args[0] if failure.args else failure
+        if isinstance(text, bytes):
+            text = text.decode("utf-8", "replace")
+        return False, str(text)
+    except (OSError, ssl.SSLError) as failure:
+        return False, f"{failure.__class__.__name__}: {failure}"
+    finally:
+        if client is not None:
+            try:
+                client.logout()
+            except (imaplib.IMAP4.error, OSError):
+                pass
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        raw, shape_notes = ask_password_with_project(args)
-        answer = json.loads(raw)
+        password = prompt_password(args.username)
     except ValueError as failure:
-        print(f"{failure}", file=sys.stderr)
+        print(failure, file=sys.stderr)
         return 2
+
+    shape_notes = shape_notes_for(password)
+    try:
+        answer = json.loads(probe_auth_service(args, password))
     except (RuntimeError, json.JSONDecodeError) as failure:
         print(f"ОШИБКА: {failure}", file=sys.stderr)
         print(
@@ -142,38 +218,27 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+
     code, lines = verdict(answer, shape_notes)
     for line in lines:
         print(line)
-    return code
 
+    if not args.imap:
+        return code
 
-def ask_password_with_project(args: argparse.Namespace) -> tuple[str, list[str]]:
-    """Запрашивает пароль и возвращает ответ auth-service и заметки о его форме."""
-    password = os.environ.get("CORVEX_TEST_ALERT_PASSWORD") or getpass.getpass(
-        f"Пароль для {args.username} (скрытый ввод): "
-    )
-    if not password:
-        raise ValueError("Пустой пароль не проверяется")
-    shape_notes = shape_notes_for(password)
-    command = compose_command(
-        args.project,
-        [
-            "exec", "-T",
-            "-e", f"CORVEX_PROBE_USERNAME={args.username}",
-            "-e", f"CORVEX_PROBE_PASSWORD={password}",
-            "alert-relay", "python", "-c", PROBE,
-        ],
-    )
-    result = subprocess.run(
-        command, cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
-        errors="replace", timeout=args.timeout, check=False,
-    )
-    if result.returncode != 0:
-        detail = (result.stderr.strip() or result.stdout.strip())[:400]
-        detail = detail.replace(password, "***")
-        raise RuntimeError(detail)
-    return result.stdout.strip(), shape_notes
+    ok, detail = imap_login_check(args, password)
+    if ok:
+        print(f"IMAP LOGIN: SUCCESS ({detail})")
+        # Оба звена подтвердили одно и то же значение — больше искать нечего.
+        return 0 if code == 0 else 1
+    print(f"IMAP LOGIN: FAIL — {detail}")
+    if code == 0:
+        print(
+            "  auth-service пароль подтвердил, а IMAP — нет: проблема не в пароле. "
+            "Смотрите docker compose logs mail-imap-service: клиент пишет в лог "
+            "причину (401/400/недоступность auth-service), а не только «Invalid login»."
+        )
+    return 1
 
 
 if __name__ == "__main__":
