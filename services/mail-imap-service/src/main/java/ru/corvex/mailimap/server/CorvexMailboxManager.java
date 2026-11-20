@@ -210,7 +210,12 @@ public class CorvexMailboxManager implements MailboxManager {
             usersByLogin.put(username.asString().toLowerCase(Locale.ROOT), user.get());
             return user.get();
         } catch (IOException e) {
-            throw new MailboxException("auth-service недоступен при IMAP-аутентификации", e);
+            // James покажет клиенту «processing failed», а не причину, поэтому
+            // причина должна быть в тексте исключения и в логе сервиса.
+            log.warn("IMAP-вход: auth-service не подтвердил пароль для {}: {}",
+                    username.asString(), e.getMessage());
+            throw new MailboxException(
+                    "auth-service недоступен при IMAP-аутентификации: " + e.getMessage(), e);
         }
     }
 
@@ -238,7 +243,12 @@ public class CorvexMailboxManager implements MailboxManager {
             usersByLogin.put(username.asString().toLowerCase(Locale.ROOT), found.get());
             return found.get();
         } catch (IOException e) {
-            throw new MailboxException("auth-service недоступен при IMAP-аутентификации", e);
+            // James покажет клиенту «processing failed», а не причину, поэтому
+            // причина должна быть в тексте исключения и в логе сервиса.
+            log.warn("IMAP-вход: auth-service не нашёл пользователя {}: {}",
+                    username.asString(), e.getMessage());
+            throw new MailboxException(
+                    "auth-service недоступен при поиске IMAP-пользователя: " + e.getMessage(), e);
         }
     }
 
