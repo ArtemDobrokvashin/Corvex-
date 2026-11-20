@@ -12,9 +12,19 @@ import { getCurrentLocale, localeTag } from '../i18n';
  */
 let accessToken: string | null = null;
 let refreshInFlight: Promise<boolean> | null = null;
+let sessionExpiredHandler: (() => void) | null = null;
 
 export const setAccessToken = (t: string | null) => { accessToken = t; };
 export const getAccessToken = () => accessToken;
+
+/**
+ * Оболочка приложения подписывается здесь, чтобы показать экран входа, когда
+ * refresh больше не работает: молчаливый 401 на каждом действии выглядит как
+ * «кнопка не нажимается», а пользователь так и не узнаёт, что сессия кончилась.
+ */
+export const setSessionExpiredHandler = (handler: (() => void) | null) => {
+  sessionExpiredHandler = handler;
+};
 
 /** Ошибка API с HTTP-статусом и detail из Problem Details (RFC 7807). */
 export class ApiError extends Error {
@@ -30,12 +40,23 @@ export class ApiError extends Error {
 
 const NO_AUTO_REFRESH = ['/auth/login', '/auth/refresh', '/auth/mfa/', '/auth/logout'];
 
+/**
+ * Запросы, которые аутентифицируются cookie или телом, но НЕ access-токеном.
+ * Просроченный Bearer в заголовке Gateway отклоняет ещё до маршрутизации
+ * (401 с пустым телом), поэтому refresh с ним не мог сработать в принципе:
+ * пока в памяти лежал истёкший токен, обновить его было нельзя. Ровно этот
+ * тупик ломал календарь через 15 минут после входа.
+ */
+const NO_BEARER = ['/auth/login', '/auth/refresh', '/auth/mfa/', '/auth/logout'];
+
+const requiresBearer = (path: string) => !NO_BEARER.some((p) => path.includes(p));
+
 async function raw(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   if (init.body != null && !(typeof FormData !== 'undefined' && init.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
-  if (accessToken && !headers.has('Authorization')) {
+  if (accessToken && requiresBearer(path) && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${accessToken}`);
   }
   if (!headers.has('Accept-Language')) {
@@ -87,6 +108,10 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   if (res.status === 401 && !NO_AUTO_REFRESH.some((p) => path.includes(p))) {
     if (await refreshAccessToken()) {
       res = await raw(path, init);
+    } else {
+      // Сессию не восстановить: приложение обязано выйти на экран входа,
+      // а не показывать «сохранено» после отказа.
+      sessionExpiredHandler?.();
     }
   }
   if (!res.ok) throw await toApiError(res, path);
@@ -108,6 +133,8 @@ export async function apiBlob(path: string, init: RequestInit = {}): Promise<Blo
   if (res.status === 401 && !NO_AUTO_REFRESH.some((p) => path.includes(p))) {
     if (await refreshAccessToken()) {
       res = await raw(path, init);
+    } else {
+      sessionExpiredHandler?.();
     }
   }
   if (!res.ok) throw await toApiError(res, path);

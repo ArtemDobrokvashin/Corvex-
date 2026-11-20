@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { isServerEventId } from '../api/calendarApi';
 import ConfirmEventDelete from '../features/calendar/ConfirmEventDelete';
 import EventModal from '../features/calendar/EventModal';
 import { localeTag, useI18n } from '../i18n';
@@ -59,6 +60,9 @@ export default function CalendarSidebarWidget({
   const upsertEvent = useCalendarStore((s) => s.upsertEvent);
   const deleteEvent = useCalendarStore((s) => s.deleteEvent);
   const serverSynced = useCalendarStore((s) => s.serverSynced);
+  const syncError = useCalendarStore((s) => s.syncError);
+  const clearSyncError = useCalendarStore((s) => s.clearSyncError);
+  const resaveLocalEvents = useCalendarStore((s) => s.resaveLocalEvents);
 
   const [quickTitle, setQuickTitle] = useState('');
   const [quickTime, setQuickTime] = useState('14:00');
@@ -226,6 +230,23 @@ export default function CalendarSidebarWidget({
           </div>
         </header>
 
+        {/* Ошибка сохранения была видна только на полной странице календаря:
+            событие, созданное здесь, оставалось на экране, хотя сервер его
+            отверг. Виджет обязан говорить то же, что и страница. */}
+        {syncError && (
+          <div role="alert" className="flex shrink-0 items-start justify-between gap-2 border-b border-amber-200 bg-amber-50 px-3.5 py-2 text-[11px] leading-snug text-amber-900">
+            <span className="min-w-0">{t(syncError)}</span>
+            <span className="flex shrink-0 items-center gap-1.5">
+              {serverSynced && (
+                <button type="button" onClick={() => { void resaveLocalEvents(); }} className="font-medium underline">
+                  {t('Повторить')}
+                </button>
+              )}
+              <button type="button" onClick={clearSyncError} aria-label={t('Закрыть')} className="px-1 text-amber-700">×</button>
+            </span>
+          </div>
+        )}
+
         <div className="scroll-area flex-1 divide-y divide-line-subtle">
           {/* One stable drop target covers widget children only while an email is dragged.
               This avoids losing a native drop when the pointer crosses child boundaries. */}
@@ -352,9 +373,16 @@ export default function CalendarSidebarWidget({
                       />
                       <div className="pl-2">
                         <div className="flex items-start justify-between gap-2">
-                          <h4 className="text-[13px] font-semibold leading-snug text-ink">
-                            {ev.title}
-                          </h4>
+                          <div className="min-w-0">
+                            <h4 className="text-[13px] font-semibold leading-snug text-ink">
+                              {ev.title}
+                            </h4>
+                            {serverSynced && !isServerEventId(ev.id) && (
+                              <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700">
+                                {t('Не сохранено на сервере')}
+                              </p>
+                            )}
+                          </div>
                           <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
                             <button
                               type="button"

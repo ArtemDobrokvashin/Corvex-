@@ -66,3 +66,53 @@ describe('apiFetch', () => {
     await expect(apiFetch<void>('/api/v1/auth/logout', { method: 'POST' })).resolves.toBeUndefined();
   });
 });
+
+describe('refresh after the access token expired', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('sends the refresh request without the stale bearer token', async () => {
+    const seen: (string | null)[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const headers = new Headers(init?.headers);
+      if (url.endsWith('/auth/refresh')) {
+        seen.push(headers.get('Authorization'));
+        return jsonResponse({ accessToken: 'fresh-token' });
+      }
+      if (headers.get('Authorization') !== 'Bearer fresh-token') {
+        return jsonResponse({ detail: 'expired' }, 401);
+      }
+      return jsonResponse({ ok: true });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { apiFetch, setAccessToken } = await import('./httpClient');
+    // Истёкший access-токен остаётся в памяти: именно он раньше попадал
+    // в заголовок refresh и шлюз отвечал 401 на сам запрос обновления.
+    setAccessToken('expired-token');
+    await apiFetch('/api/v1/calendar/events');
+
+    expect(seen).toEqual([null]);
+    expect(seen.filter((value) => value === 'Bearer expired-token')).toHaveLength(0);
+  });
+
+  it('reports a dead session instead of failing silently', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => (
+      String(input).includes('/auth/refresh')
+        ? jsonResponse({ detail: 'invalid' }, 401)
+        : jsonResponse({ detail: 'expired' }, 401)
+    )));
+
+    const { apiFetch, setSessionExpiredHandler, setAccessToken } = await import('./httpClient');
+    const expired = vi.fn();
+    setSessionExpiredHandler(expired);
+    setAccessToken('expired-token');
+
+    await expect(apiFetch('/api/v1/calendar/events')).rejects.toMatchObject({ status: 401 });
+    expect(expired).toHaveBeenCalledTimes(1);
+    setSessionExpiredHandler(null);
+  });
+});
