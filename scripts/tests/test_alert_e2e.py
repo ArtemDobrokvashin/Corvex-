@@ -17,6 +17,7 @@ import alert_e2e
 from smoke_common import SmokeError
 
 RUN_ID = "a" * 32
+ADDRESS = "admin@company.local"
 
 
 class FakeImap:
@@ -141,6 +142,7 @@ class AlertE2eTest(unittest.TestCase):
             patch.object(alert_e2e, "parse_args", return_value=args),
             patch.dict(os.environ, {"CORVEX_TEST_ALERT_PASSWORD": "secret"}),
             patch.object(alert_e2e, "make_ssl_context", return_value=object()),
+            patch.object(alert_e2e, "verify_imap_login", return_value={}),
             patch.object(alert_e2e, "check_configured_recipient", return_value={}),
             patch.object(alert_e2e, "submit_alert", return_value={}),
             patch.object(
@@ -266,6 +268,80 @@ class AlertE2eTest(unittest.TestCase):
         self.assertNotIn("alertmanager", hint)
         # Причина должна идти до советов: консоль обрезает сообщение.
         self.assertLess(hint.index("mail-storage-service"), hint.index("Пароль"))
+
+    def test_login_rejection_stops_immediately_instead_of_nineteen_retries(self):
+        # Неверный или пустой пароль даст тот же отказ все 180 секунд. Раньше это
+        # стоило 19 попыток, трёх минут и вердикта «письмо не найдено».
+        attempts = {"open": 0}
+
+        def rejected(*_args, **_kwargs):
+            attempts["open"] += 1
+            raise alert_e2e.imaplib.IMAP4.error(b"LOGIN processing failed.")
+
+        with (
+            patch.object(alert_e2e, "open_imap", side_effect=rejected),
+            patch.object(alert_e2e.time, "sleep"),
+            patch.object(alert_e2e, "imap_login_diagnostics", return_value=[]),
+        ):
+            with self.assertRaises(SmokeError) as caught:
+                alert_e2e.wait_for_alert(
+                    "mail.company.local", "admin@company.local", "secret", RUN_ID,
+                    object(), 30, 180, 5,
+                )
+
+        self.assertEqual(1, attempts["open"])
+        self.assertIn("LOGIN processing failed", str(caught.exception))
+
+    def test_connection_abort_is_still_retried_but_login_is_not(self):
+        attempts = {"open": 0}
+
+        def flaky(*_args, **_kwargs):
+            attempts["open"] += 1
+            if attempts["open"] == 1:
+                raise ConnectionResetError(10053, "aborted")
+            raise alert_e2e.imaplib.IMAP4.error(b"LOGIN failed. Invalid login/password.")
+
+        with (
+            patch.object(alert_e2e, "open_imap", side_effect=flaky),
+            patch.object(alert_e2e.time, "sleep"),
+            patch.object(alert_e2e, "imap_login_diagnostics", return_value=[]),
+        ):
+            with self.assertRaises(SmokeError):
+                alert_e2e.wait_for_alert(
+                    "mail.company.local", "admin@company.local", "secret", RUN_ID,
+                    object(), 30, 180, 5,
+                )
+
+        # один обрыв + один честный отказ, дальше цикл не идёт
+        self.assertEqual(2, attempts["open"])
+
+    def test_preflight_login_failure_creates_no_alert(self):
+        with (
+            patch.object(alert_e2e, "parse_args") as parse,
+            patch.object(alert_e2e.getpass, "getpass", return_value="abcd" * 5),
+            patch.object(alert_e2e, "shape_notes_for", return_value=["форма: ok"]),
+            patch.object(alert_e2e, "make_ssl_context", return_value=object()),
+            patch.object(alert_e2e, "verify_imap_login",
+                         side_effect=SmokeError("IMAP не пустил в ящик: LOGIN failed")),
+            patch.object(alert_e2e, "submit_alert") as submit,
+            patch.object(alert_e2e, "resolve_alert") as resolve,
+        ):
+            args = SimpleNamespace(
+                host="mail.company.local", username=ADDRESS, ca_file=None,
+                project=None, timeout=30, wait_seconds=180, poll_seconds=5, report=None,
+            )
+            parse.return_value = args
+            with patch.object(alert_e2e, "SmokeReport") as report_cls:
+                report = report_cls.return_value
+                report.run.return_value = False
+                report.finish.return_value = 1
+                code = alert_e2e.main()
+
+        self.assertEqual(1, code)
+        submit.assert_not_called()
+        resolve.assert_not_called()
+        skipped = [call.args[0] for call in report.add.call_args_list]
+        self.assertIn("alertmanager:submit", skipped)
 
     def test_docker_log_prefix_is_stripped_from_the_shown_cause(self):
         line = ("mail-imap-service-1  | 2026-11-20T14:21:06.172+03:00 [blocking-call-wrapper-1] "

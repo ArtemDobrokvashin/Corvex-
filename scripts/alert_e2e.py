@@ -22,6 +22,7 @@ from email.parser import BytesParser
 from pathlib import Path
 from typing import Any
 
+from login_probe import shape_notes_for
 from mail_e2e import open_imap, text_content, validate_address
 from mail_smoke import expect_ok, imap_message_payload
 from smoke_common import SmokeError, SmokeReport, make_ssl_context
@@ -171,6 +172,15 @@ def resolve_alert(run_id: str, timeout: int) -> dict[str, Any]:
     return set_alert(run_id, datetime.now(UTC), timeout)
 
 
+def _error_text(failure: BaseException) -> str:
+    """Текст ошибки imaplib приходит байтами — приводим к строке один раз."""
+    if isinstance(failure, imaplib.IMAP4.error) and failure.args:
+        raw = failure.args[0]
+        if isinstance(raw, bytes):
+            return raw.decode("utf-8", "replace")
+    return str(failure)
+
+
 def _log_message(line: str) -> str:
     """Убирает префикс `docker compose logs`: «mail-imap-service-1 | время [поток] WARN … - ».
 
@@ -297,11 +307,19 @@ def wait_for_alert(
             client, tls = open_imap(host, username, password, context, timeout)
             raw = find_alert_message(client, run_id)
         except (OSError, imaplib.IMAP4.error) as failure:
+            text = _error_text(failure)
+            # Отказ входа — не «сеть моргнула»: те же данные дадут тот же отказ
+            # все 180 секунд. Раньше это стоило 19 попыток и трёх минут, а
+            # человек получал вердикт «письмо не найдено», хотя письма никто не
+            # искал. Такие ошибки прекращают ожидание сразу.
+            if "LOGIN" in text.upper():
+                raise SmokeError(
+                    f"IMAP не пустил в ящик с первой попытки: {text}."
+                    + login_failure_hint(text)
+                ) from failure
             # Обрыв соединения — не приговор проверке. Ожидание длится минуты, а
             # сервер может закрыть сессию (WinError 10053, разрыв TLS, рестарт
-            # James). Раньше одна такая ошибка вылетала из цикла и хоронила
-            # весь тест, хотя письмо могло прийти через секунду. Повторяем до
-            # дедлайна и показываем последнюю ошибку, если так и не вышло.
+            # James). Повторяем до дедлайна и показываем последнюю ошибку.
             last_error = f"{failure.__class__.__name__}: {failure}"
         finally:
             if client is not None:
@@ -326,6 +344,34 @@ def wait_for_alert(
         f"Alert-письмо с run_id не найдено в INBOX за {wait_seconds} с; "
         f"попыток: {attempts}. Проверьте логи alertmanager и notification-service.{detail}"
     )
+
+
+def verify_imap_login(
+    host: str,
+    username: str,
+    password: str,
+    context: ssl.SSLContext,
+    timeout: int,
+) -> dict[str, Any]:
+    """Один вход в ящик до создания алерта.
+
+    Alertmanager шумит, письмо уходит в реальный ящик, а проверка потом три
+    минуты ждёт письмо, которого не будет, потому что вход не удался. Вход
+    проверяется первым: он дешёвый и от него зависит всё остальное.
+    """
+    client = None
+    try:
+        client, tls = open_imap(host, username, password, context, timeout)
+        return {**tls, "mailbox": "INBOX", "login": "ok"}
+    except (OSError, imaplib.IMAP4.error) as failure:
+        text = _error_text(failure)
+        raise SmokeError(
+            f"IMAP не пустил в ящик: {text}." + login_failure_hint(text)
+        ) from failure
+    finally:
+        if client is not None:
+            with suppress(imaplib.IMAP4.error, OSError):
+                client.logout()
 
 
 def check_delivery(
@@ -418,6 +464,10 @@ def main() -> int:
     if not password:
         print("Пустой пароль не допускается", file=sys.stderr)
         return 2
+    # Скрытый ввод слепой: человек не видит, доехала ли вставка и не съел ли
+    # терминал символы. Печатаем форму, но не значение — по ней видно, что
+    # введено ровно 20 символов пароля приложения, а не пусто.
+    print(" ".join(shape_notes_for(password)), flush=True)
     try:
         context = make_ssl_context(args.ca_file)
     except (OSError, ssl.SSLError) as exc:
@@ -428,6 +478,19 @@ def main() -> int:
     report = SmokeReport("alert-e2e", ROOT)
     delivered = False
     print(f"Run ID: {run_id}; synthetic alert будет автоматически завершён", flush=True)
+    # Вход проверяется до всего остального: без него остальные шаги бессмысленны,
+    # а созданный alert пришлось бы потом снимать.
+    logged_in = report.run(
+        "imap:login",
+        lambda: verify_imap_login(args.host, args.username, password, context, args.timeout),
+    )
+    if not logged_in:
+        for name in ("alert:recipient-config", "alertmanager:submit", "imap:alert-email",
+                     "alertmanager:resolve"):
+            report.add(name, "SKIP", error="не выполнялось: IMAP-вход не прошёл")
+        print("Alert не создавался: без входа в ящик проверять доставку нечем, "
+              "и снимать в Alertmanager нечего.", flush=True)
+        return report.finish()
     configured = report.run(
         "alert:recipient-config",
         lambda: check_configured_recipient(args.username, args.timeout),
