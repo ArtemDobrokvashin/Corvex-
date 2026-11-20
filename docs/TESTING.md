@@ -230,6 +230,7 @@ James ловит `MailboxException` и отвечает общим тексто�
 Диагностика доставки (что видно на сервере):
   - rabbitmq: очередь corvex.alerts — сообщений 0, консьюмеров 1
   - notification-service: Alert email sent: warning CorvexAlertSmoke firing -> admin@company.local
+  - политика доставки: internalEmailEnabled=True, получатели=admin@company.local, источник=ADMIN
   - mail-smtp-service: SMTP listeners disabled by corvex.smtp.enabled=false
   - последние письма в базе: INBOX | [Corvex] Напоминание: … | 2026-11-20 10:15
 ```

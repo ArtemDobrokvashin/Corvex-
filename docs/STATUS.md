@@ -196,6 +196,14 @@ SMTP-слушателей и шесть последних писем из `mail
 не родилось, не отправилось, лежит в другой папке или SMTP выключен
 (`CORVEX_SMTP_ENABLED=false` — тогда и напоминания не уходят).
 
+**SMTP включён и слушает.** `mail-smtp-service` в трёх последних запусках пишет
+`SMTP inbound listener started on port 2525 (STARTTLS enabled)`, то есть
+`CORVEX_SMTP_ENABLED=true` применён и гипотеза «SMTP выключен» отпадает. Значит рвётся
+либо очередь/консьюмер, либо политика доставки notification-service, либо бэкенд SMTP.
+Диагностика в `alert_e2e.py` дополнена статусом политики
+(`/internal/alerts/runtime-status`: `internalEmailEnabled`, получатели, источник), чтобы
+следующий прогон назвал виновного без новой переписки.
+
 **Чего это не доказывает:** `PASS` на `imap:alert-email` пока нет. Этап P4 не закрыт.
 
 **Живой OAuth: refresh-токен обновляется сам (2026-11-19).** Gmail подключён через OAuth на

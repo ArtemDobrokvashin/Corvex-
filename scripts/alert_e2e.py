@@ -394,6 +394,21 @@ def delivery_diagnostics(run_id: str) -> list[str]:
     if seen:
         lines.append("notification-service: " + " | ".join(seen[-3:]))
 
+    # Политика доставки: включена ли внутренняя почта и кому шлём. Эндпоинт
+    # несекретный, поэтому читаем его прямо из контейнера (в alpine есть wget).
+    status = _compose_text("exec", "-T", "notification-service", "wget", "-qO-",
+                           "http://127.0.0.1:8091/internal/alerts/runtime-status")
+    if status.strip():
+        try:
+            import json as _json
+            data = _json.loads(status)
+            lines.append(
+                "политика доставки: internalEmailEnabled={}, получатели={}, источник={}".format(
+                    data.get("internalEmailEnabled"), data.get("internalRecipients") or "—",
+                    data.get("source") or "—"))
+        except ValueError:
+            lines.append("политика доставки: " + status.strip()[:200])
+
     smtp = _compose_text("logs", "--tail", "300", "mail-smtp-service")
     smtp_markers = ("SMTP listeners disabled", "inbound listener started",
                     "submission listener", "Требуется TLS")
