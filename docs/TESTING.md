@@ -217,6 +217,24 @@ James ловит `MailboxException` и отвечает общим тексто�
 недоступен или вернул ошибку: HTTP 503
 ```
 
+**Самопроверка при старте.** `mail-imap-service` сразу после запуска проходит те же три
+вызова, что и `LOGIN`: поиск пользователя по e-mail, чтение по id и проверка заведомо
+неверного пароля. Пароль пользователя для этого не нужен, результат — в логе:
+
+```powershell
+docker compose -p <имя-проекта> logs mail-imap-service | Select-String "self-check"
+```
+
+```text
+auth-service self-check: token задан, GET by-email admin@company.local -> HTTP 200 (id …);
+GET /internal/users/{id} -> HTTP 200; POST verify-password -> HTTP 200 (valid=false, ожидается false); OK
+```
+
+Провал выглядит так: `ПРОВАЛЕН: token задан, GET by-email … -> HTTP 401 (проверьте
+CORVEX_INTERNAL_API_TOKEN …) тело: {"error":"…"}`. Пока эта строка не `OK`, IMAP-вход не
+заработает ни с каким паролем — пароль тут ни при чём. Кого искать, задаётся
+`CORVEX_AUTH_SELF_CHECK_EMAIL` (по умолчанию `admin@company.local`).
+
 Первый шаг (`mailboxExists`) не имеет права падать: James вызывает его внутри обработки
 `LOGIN`, а исключение из `Mono.fromCallable` приходит в `block()` уже как
 `ReactiveException`, мимо `catch (MailboxException)`. Тогда в логе не остаётся **ни одной

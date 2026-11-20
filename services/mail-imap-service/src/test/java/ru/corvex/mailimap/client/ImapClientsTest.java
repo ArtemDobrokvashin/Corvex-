@@ -191,6 +191,42 @@ class ImapClientsTest {
         assertTrue(badRequest.getMessage().contains("пустой логин или пароль"));
     }
 
+    @Test
+    void selfCheckWalksTheSameCallsAsLoginAndNamesTheFirstFailure() throws Exception {
+        // Ровно то, что делает LOGIN: поиск по e-mail, чтение по id, проверка пароля.
+        // Результат попадает в лог при старте, чтобы не гадать по «processing failed».
+        responder.set(request -> {
+            String uri = request.uri();
+            if (uri.startsWith("/internal/users/by-email")) {
+                return StubResponse.json(200, "{\"id\":\"" + USER_ID + "\",\"status\":\"ACTIVE\"}");
+            }
+            if (uri.equals("/internal/users/" + USER_ID)) {
+                return StubResponse.json(200, "{\"id\":\"" + USER_ID + "\",\"status\":\"ACTIVE\"}");
+            }
+            if (uri.equals("/internal/verify-password")) {
+                return StubResponse.json(200, "{\"valid\":false}");
+            }
+            return StubResponse.json(404, "{}");
+        });
+
+        ImapAuthClient.SelfCheck ok = auth.selfCheck("ivanov@corp.local");
+        assertTrue(ok.ok(), ok.message());
+        assertTrue(ok.message().contains("HTTP 200"));
+        assertTrue(ok.message().contains("valid=false"));
+
+        responder.set(ignored -> StubResponse.json(401, "{\"error\":\"unauthorized\"}"));
+        ImapAuthClient.SelfCheck denied = auth.selfCheck("ivanov@corp.local");
+        assertFalse(denied.ok());
+        assertTrue(denied.message().contains("401"));
+        assertTrue(denied.message().contains("CORVEX_INTERNAL_API_TOKEN"));
+        assertTrue(denied.message().contains("unauthorized"));
+
+        ImapAuthClient.SelfCheck noToken =
+                new ImapAuthClient(baseUrl, " ", mapper).selfCheck("ivanov@corp.local");
+        assertFalse(noToken.ok());
+        assertTrue(noToken.message().contains("не задан"));
+    }
+
     // ------------------------------------------------------------------ storage
 
     @Test

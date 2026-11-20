@@ -8,6 +8,7 @@ import getpass
 import imaplib
 import json
 import os
+import re
 import ssl
 import subprocess
 import sys
@@ -170,8 +171,20 @@ def resolve_alert(run_id: str, timeout: int) -> dict[str, Any]:
     return set_alert(run_id, datetime.now(UTC), timeout)
 
 
+def _log_message(line: str) -> str:
+    """Убирает префикс `docker compose logs`: «mail-imap-service-1 | время [поток] WARN … - ».
+
+    Без этого в сообщении об ошибке остаются имя контейнера, метка времени и логгер —
+    ровно та мишура, из-за которой причина не помещалась в вывод.
+    """
+    cleaned = re.sub(r"^.*?\[\]\s+-\s+", "", line)
+    if cleaned == line:
+        cleaned = line.split("|", 1)[-1]
+    return cleaned.strip()
+
+
 def imap_login_diagnostics(service: str = "mail-imap-service", tail: int = 400) -> list[str]:
-    """Последние строки лога IMAP-сервиса, объясняющие отказ LOGIN.
+    """Последние осмысленные строки лога IMAP-сервиса, объясняющие отказ LOGIN.
 
     James отвечает клиенту одинаково скупым текстом: «Invalid login/password» на
     неверный пароль и «processing failed» на любую ошибку после успешной
@@ -196,29 +209,40 @@ def imap_login_diagnostics(service: str = "mail-imap-service", tail: int = 400) 
     if result.returncode != 0:
         return []
     markers = (
+        "auth-service self-check",
         "Error encountered while login",
         "Unexpected error",
         "IMAP LOGIN",
         "IMAP-вход",
         "mail-storage-service",
-        "auth-service",
     )
-    found = [line.strip() for line in result.stdout.splitlines()
-             if any(marker in line for marker in markers)]
-    return found[-5:]
+    found: list[str] = []
+    for line in result.stdout.splitlines():
+        if not any(marker in line for marker in markers):
+            continue
+        message = _log_message(line)
+        # 19 попыток дают 19 одинаковых строк — хватит последних уникальных.
+        if message not in found:
+            found.append(message)
+    return found[-3:]
 
 
 def login_failure_hint(last_error: str | None) -> str:
-    """Что делать при отказе LOGIN — отличие «не тот пароль» от «сервер сломался»."""
+    """Что делать при отказе LOGIN — отличие «не тот пароль» от «сервер сломался».
+
+    Причина идёт первой: в консоли сообщение обрезается, и всё, что ниже, до
+    человека не доходит. Именно так уже терялась строка с настоящей ошибкой.
+    """
     if not last_error:
         return ""
     if "processing failed" in last_error:
         reasons = imap_login_diagnostics()
-        detail = f" Причина на сервере: {' | '.join(reasons)}" if reasons else ""
-        return (" Сервер принял пароль и упал на следующем шаге (provisionInbox: "
-                "mailboxExists → mail-storage-service, либо вызов auth-service)."
-                " Смотрите: docker compose logs --tail 200 mail-imap-service | "
-                "Select-String \"IMAP LOGIN\"" + detail)
+        cause = (" Причина на сервере: " + " | ".join(reasons)) if reasons else (
+            " Причина на сервере не найдена в логе — смотрите "
+            "docker compose logs --tail 200 mail-imap-service"
+        )
+        return (cause + ". Пароль при этом принят: упал шаг после проверки пароля "
+                "(provisionInbox → mailboxExists → mail-storage-service или auth-service).")
     if "Invalid login" in last_error:
         return (" Пароль не подошёл. Проверьте тем же значением: "
                 "py scripts\\login_probe.py --imap --username <ящик> --project <проект>")
