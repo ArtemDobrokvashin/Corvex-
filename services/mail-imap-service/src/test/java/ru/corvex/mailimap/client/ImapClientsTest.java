@@ -10,6 +10,10 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
+import java.net.http.HttpClient;
+import java.net.http.HttpHeaders;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
@@ -208,12 +212,12 @@ class ImapClientsTest {
             }
 
             @Override
-            public java.util.Optional<HttpResponse<String>> previousResponse() {
+            public Optional<HttpResponse<String>> previousResponse() {
                 return java.util.Optional.empty();
             }
 
             @Override
-            public java.net.http.HttpHeaders headers() {
+            public HttpHeaders headers() {
                 return java.net.http.HttpHeaders.of(Map.of(), (a, b) -> true);
             }
 
@@ -223,7 +227,7 @@ class ImapClientsTest {
             }
 
             @Override
-            public java.util.Optional<javax.net.ssl.SSLSession> sslSession() {
+            public Optional<javax.net.ssl.SSLSession> sslSession() {
                 return java.util.Optional.empty();
             }
 
