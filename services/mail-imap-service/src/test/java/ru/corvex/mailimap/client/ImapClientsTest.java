@@ -10,10 +10,6 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
-import java.net.http.HttpClient;
-import java.net.http.HttpHeaders;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
@@ -179,68 +175,20 @@ class ImapClientsTest {
     }
 
     @Test
-    void non200AnswerIsAnInfrastructureFailureNotABadPassword() {
-        // 401 = несовпадение внутреннего токена, 400 = тело не прошло валидацию.
-        // Клиент обязан сказать это словами, а не притвориться, что пароль неверный.
+    void unauthorizedAndBadRequestAreInfrastructureFailuresNotAWrongPassword() {
+        // 401 = несовпадение CORVEX_INTERNAL_API_TOKEN, 400 = тело не прошло валидацию.
+        // Клиент обязан назвать код и подсказку, а не притвориться, что пароль неверный.
+        responder.set(ignored -> StubResponse.json(401, "{}"));
         IOException unauthorized = assertThrows(IOException.class,
-                () -> ImapAuthClient.bodyOrThrow(
-                        response(401, ""), "http://auth-service:8081/internal/verify-password", mapper));
+                () -> auth.authenticate("ivanov@corp.local", "secret"));
         assertTrue(unauthorized.getMessage().contains("401"));
         assertTrue(unauthorized.getMessage().contains("CORVEX_INTERNAL_API_TOKEN"));
 
+        responder.set(ignored -> StubResponse.json(400, "{}"));
         IOException badRequest = assertThrows(IOException.class,
-                () -> ImapAuthClient.bodyOrThrow(
-                        response(400, ""), "http://auth-service:8081/internal/verify-password", mapper));
+                () -> auth.authenticate("ivanov@corp.local", "secret"));
         assertTrue(badRequest.getMessage().contains("400"));
         assertTrue(badRequest.getMessage().contains("пустой логин или пароль"));
-
-        JsonNode parsed = ImapAuthClient.bodyOrThrow(
-                response(200, "{\"valid\":true}"), "http://auth-service:8081/internal/verify-password", mapper);
-        assertTrue(parsed.path("valid").asBoolean());
-    }
-
-    private static HttpResponse<String> response(int status, String body) {
-        return new HttpResponse<>() {
-            @Override
-            public int statusCode() {
-                return status;
-            }
-
-            @Override
-            public HttpRequest request() {
-                return null;
-            }
-
-            @Override
-            public Optional<HttpResponse<String>> previousResponse() {
-                return java.util.Optional.empty();
-            }
-
-            @Override
-            public HttpHeaders headers() {
-                return java.net.http.HttpHeaders.of(Map.of(), (a, b) -> true);
-            }
-
-            @Override
-            public String body() {
-                return body;
-            }
-
-            @Override
-            public Optional<javax.net.ssl.SSLSession> sslSession() {
-                return java.util.Optional.empty();
-            }
-
-            @Override
-            public java.net.URI uri() {
-                return java.net.URI.create("http://auth-service:8081");
-            }
-
-            @Override
-            public HttpClient.Version version() {
-                return HttpClient.Version.HTTP_1_1;
-            }
-        };
     }
 
     // ------------------------------------------------------------------ storage
