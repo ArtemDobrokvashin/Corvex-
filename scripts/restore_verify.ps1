@@ -1,4 +1,4 @@
-<#
+﻿<#
  Verifies an isolated restore from scripts/restore.ps1 -DataOnly against its backup.
  The source corvex project is forbidden. No application containers are started/stopped.
 
