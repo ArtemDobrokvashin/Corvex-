@@ -208,12 +208,22 @@ def wait_for_alert(
 ) -> LocatedAlert:
     deadline = time.monotonic() + wait_seconds
     attempts = 0
+    last_error: str | None = None
     while True:
         attempts += 1
         client = None
+        raw = None
+        tls: dict[str, str] = {}
         try:
             client, tls = open_imap(host, username, password, context, timeout)
             raw = find_alert_message(client, run_id)
+        except (OSError, imaplib.IMAP4.error) as failure:
+            # Обрыв соединения — не приговор проверке. Ожидание длится минуты, а
+            # сервер может закрыть сессию (WinError 10053, разрыв TLS, рестарт
+            # James). Раньше одна такая ошибка вылетала из цикла и хоронила
+            # весь тест, хотя письмо могло прийти через секунду. Повторяем до
+            # дедлайна и показываем последнюю ошибку, если так и не вышло.
+            last_error = f"{failure.__class__.__name__}: {failure}"
         finally:
             if client is not None:
                 with suppress(imaplib.IMAP4.error, OSError):
@@ -224,9 +234,10 @@ def wait_for_alert(
         if remaining <= 0:
             break
         time.sleep(min(poll_seconds, remaining))
+    detail = f" Последняя ошибка подключения: {last_error}." if last_error else ""
     raise SmokeError(
         f"Alert-письмо с run_id не найдено в INBOX за {wait_seconds} с; "
-        f"попыток: {attempts}. Проверьте логи alertmanager и notification-service"
+        f"попыток: {attempts}. Проверьте логи alertmanager и notification-service.{detail}"
     )
 
 

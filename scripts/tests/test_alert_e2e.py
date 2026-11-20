@@ -202,6 +202,48 @@ class AlertE2eTest(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 alert_e2e.parse_args()
 
+    def test_transient_connection_abort_is_retried_until_the_message_appears(self):
+        # WinError 10053 на Windows: сервер оборвал уже открытую сессию.
+        # Одна такая ошибка не должна хоронить ожидание письма целиком.
+        attempts = {"open": 0}
+
+        def flaky_open(*_args, **_kwargs):
+            attempts["open"] += 1
+            if attempts["open"] < 3:
+                raise ConnectionResetError(10053, "An established connection was aborted")
+            return SimpleNamespace(logout=lambda: None), {
+                "tls": "TLSv1.3", "cipher": "TLS_AES_256_GCM_SHA384",
+            }
+
+        with (
+            patch.object(alert_e2e, "open_imap", side_effect=flaky_open),
+            patch.object(alert_e2e, "find_alert_message", return_value=b"raw"),
+            patch.object(alert_e2e.time, "sleep"),
+        ):
+            located = alert_e2e.wait_for_alert(
+                "mail.company.local", "admin@company.local", "secret", RUN_ID,
+                object(), 30, 180, 5,
+            )
+
+        self.assertEqual(3, located.attempts)
+        self.assertEqual(b"raw", located.raw)
+
+    def test_repeated_connection_failure_reports_the_last_error(self):
+        with (
+            patch.object(
+                alert_e2e, "open_imap",
+                side_effect=ConnectionResetError(10053, "aborted by host"),
+            ),
+            patch.object(alert_e2e.time, "sleep"),
+        ):
+            with self.assertRaises(SmokeError) as caught:
+                alert_e2e.wait_for_alert(
+                    "mail.company.local", "admin@company.local", "secret", RUN_ID,
+                    object(), 30, 0, 5,
+                )
+
+        self.assertIn("ConnectionResetError", str(caught.exception))
+
     def test_rfc3339_is_utc(self):
         value = datetime(2026, 11, 3, 12, 30, tzinfo=timezone.utc)  # noqa: UP017
         self.assertEqual("2026-11-03T12:30:00Z", alert_e2e.rfc3339(value))
