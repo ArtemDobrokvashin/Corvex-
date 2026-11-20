@@ -124,9 +124,24 @@ IMAP LOGIN: SUCCESS (mail.company.local:993, TLS TLSv1.3)
 учётным данным, а не по транспорту. Маскировка инфраструктурных сбоев под «неверный
 пароль» оставалась настоящим дефектом диагностики и исправлена отдельно.
 
-**Чего это не доказывает:** `imap:alert-email` внутри `scripts/alert_e2e.py` после
-исправления ещё не прогонялся — сквозной сценарий «алерт → письмо → IMAP-чтение»
-одной командой пока не подтверждён.
+**Прогон `alert_e2e.py` (2026-11-20 10:41–10:44, run `48ec17007e7c4916ae208af4a817c253`).**
+`PASS=3 FAIL=1`: конфиг получателя, submit и resolve прошли, письмо доставлено (в ящике
+`[Corvex] Напоминание: тест уведомлений` от 10:15 подтверждает, что доставка работает и
+для напоминаний). Упал `imap:alert-email`, но **уже с другим текстом**: `LOGIN processing
+failed.` вместо `Invalid login/password.` По исходнику James 3.8.2 (`AbstractAuthProcessor`,
+`LoginProcessor`) `INVALID_LOGIN` возвращается только на `BadCredentialsException`, а
+`processing failed` — на `MailboxException` после успешной проверки пароля: в `doAuth`
+сразу за `authenticate` идёт `provisionInbox` → `mailboxManager.mailboxExists` → наш
+`mail-storage-service`. То есть пароль на этом прогоне был принят, а упал следующий шаг.
+
+Чтобы это перестало быть загадкой, `mail-imap-service` пишет причину в лог и в текст
+исключения, а `alert_e2e.py` при таком отказе сам печатает строки из лога сервиса вместо
+совета «проверьте alertmanager и notification-service» (письма на этом шаге никто не
+искал). Таблица «какой ответ IMAP что значит» добавлена в `docs/TESTING.md`.
+
+**Чего это не доказывает:** `PASS` на `imap:alert-email` пока нет — причина падения
+`provisionInbox` (ожидаемо `mail-storage-service` или auth-service) не подтверждена логом,
+пока лог не снят. Этап P4 не закрыт.
 
 **Живой OAuth: refresh-токен обновляется сам (2026-11-19).** Gmail подключён через OAuth на
 стенде (`dobrokvashinartem@gmail.com`, `auth_type=OAUTH2`, `secret_enc IS NULL`). Сбор был

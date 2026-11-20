@@ -199,6 +199,30 @@ docker compose logs --tail 200 mail-imap-service
 
 Пароль для входа — основной или app-password, если включена 2FA.
 
+Отказ IMAP читается по тексту ответа, а не по догадке:
+
+| Ответ | Что значит |
+|---|---|
+| `NO LOGIN failed. Invalid login/password.` | не подошли логин или пароль (`BadCredentialsException`) |
+| `NO LOGIN processing failed.` | пароль **принят**, упал следующий шаг: `provisionInbox` → `mailboxExists` → `mail-storage-service`, либо вызов auth-service после проверки |
+| `NO LOGIN failed. Plain login / authentication are disabled.` | `LOGIN` отключён на этом порту |
+
+Второй случай раньше выглядел как «неверный пароль», хотя к паролю отношения не имеет:
+James ловит `MailboxException` и отвечает общим текстом. Причину пишет сам сервис, и
+`scripts/alert_e2e.py` теперь показывает её рядом с `FAIL`:
+
+```text
+[FAIL] imap:alert-email — ... Последняя ошибка подключения: error: b'LOGIN processing failed.'
+Сервер принял пароль и упал на следующем шаге ... Причина на сервере: mail-storage-service
+недоступен или вернул ошибку: HTTP 503
+```
+
+То же вручную:
+
+```powershell
+docker compose -p <имя-проекта> logs --tail 500 mail-imap-service | Select-String "Error encountered while login" -Context 0,8
+```
+
 James на любой отказ отвечает одинаково: `LOGIN failed. Invalid login/password.`
 Поэтому причину ищут отдельным запросом — тем же, что делает `mail-imap-service`:
 

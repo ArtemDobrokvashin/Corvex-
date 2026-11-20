@@ -244,6 +244,41 @@ class AlertE2eTest(unittest.TestCase):
 
         self.assertIn("ConnectionResetError", str(caught.exception))
 
+    def test_login_processing_failure_points_at_the_server_side_cause(self):
+        # «processing failed» означает: пароль принят, упал следующий шаг.
+        # Раньше скрипт советовал смотреть alertmanager, хотя письма никто не искал.
+        log = (
+            "2026-11-20T10:41:00 ERROR o.a.j.i.p.AbstractAuthProcessor - "
+            "Error encountered while login\n"
+            "org.apache.james.mailbox.exception.MailboxException: "
+            "mail-storage-service недоступен или вернул ошибку: HTTP 503\n"
+            "2026-11-20T10:41:01 INFO — не относится к делу\n"
+        )
+        finished = SimpleNamespace(returncode=0, stdout=log, stderr="")
+        with patch.object(alert_e2e.subprocess, "run", return_value=finished):
+            hint = alert_e2e.login_failure_hint(
+                "error: b'LOGIN processing failed.'"
+            )
+
+        self.assertIn("сервер принял пароль", hint.lower())
+        self.assertIn("mail-storage-service", hint)
+        self.assertIn("HTTP 503", hint)
+        self.assertNotIn("alertmanager", hint)
+
+    def test_invalid_login_hint_sends_you_to_login_probe(self):
+        hint = alert_e2e.login_failure_hint(
+            "error: b'LOGIN failed. Invalid login/password.'"
+        )
+        self.assertIn("пароль не подошёл", hint.lower())
+        self.assertIn("login_probe.py --imap", hint)
+
+    def test_no_error_means_no_guess(self):
+        self.assertEqual("", alert_e2e.login_failure_hint(None))
+
+    def test_login_diagnostics_survive_missing_docker(self):
+        with patch.object(alert_e2e.subprocess, "run", side_effect=OSError("no docker")):
+            self.assertEqual([], alert_e2e.imap_login_diagnostics())
+
     def test_rfc3339_is_utc(self):
         value = datetime(2026, 11, 3, 12, 30, tzinfo=timezone.utc)  # noqa: UP017
         self.assertEqual("2026-11-03T12:30:00Z", alert_e2e.rfc3339(value))

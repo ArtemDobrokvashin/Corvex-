@@ -170,6 +170,58 @@ def resolve_alert(run_id: str, timeout: int) -> dict[str, Any]:
     return set_alert(run_id, datetime.now(UTC), timeout)
 
 
+def imap_login_diagnostics(service: str = "mail-imap-service", tail: int = 400) -> list[str]:
+    """Последние строки лога IMAP-сервиса, объясняющие отказ LOGIN.
+
+    James отвечает клиенту одинаково скупым текстом: «Invalid login/password» на
+    неверный пароль и «processing failed» на любую ошибку после успешной
+    проверки пароля. Причину знает только сам сервис, поэтому скрипт читает его
+    лог и показывает найденные строки рядом с FAIL, а не отправляет человека
+    искать их руками.
+    """
+    command = compose_command("logs", "--tail", str(tail), service)
+    try:
+        result = subprocess.run(
+            command,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=20,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if result.returncode != 0:
+        return []
+    markers = (
+        "Error encountered while login",
+        "IMAP-вход",
+        "auth-service",
+        "mail-storage-service",
+    )
+    found = [line.strip() for line in result.stdout.splitlines()
+             if any(marker in line for marker in markers)]
+    return found[-3:]
+
+
+def login_failure_hint(last_error: str | None) -> str:
+    """Что делать при отказе LOGIN — отличие «не тот пароль» от «сервер сломался»."""
+    if not last_error:
+        return ""
+    if "processing failed" in last_error:
+        reasons = imap_login_diagnostics()
+        detail = f" Причина на сервере: {' | '.join(reasons)}" if reasons else ""
+        return (" Сервер принял пароль и упал на следующем шаге (provisionInbox: "
+                "mailboxExists → mail-storage-service, либо вызов auth-service)."
+                " Смотрите: docker compose logs --tail 200 mail-imap-service" + detail)
+    if "Invalid login" in last_error:
+        return (" Пароль не подошёл. Проверьте тем же значением: "
+                "py scripts\\login_probe.py --imap --username <ящик> --project <проект>")
+    return ""
+
+
 def find_alert_message(client: Any, run_id: str) -> bytes | None:
     response_type, data = client.select("INBOX", readonly=True)
     expect_ok(response_type, data, "IMAP EXAMINE INBOX")
@@ -235,6 +287,14 @@ def wait_for_alert(
             break
         time.sleep(min(poll_seconds, remaining))
     detail = f" Последняя ошибка подключения: {last_error}." if last_error else ""
+    hint = login_failure_hint(last_error)
+    # Если вход не удался, письма никто не искал: подсказка про alertmanager и
+    # notification-service вводила бы в заблуждение.
+    if hint:
+        raise SmokeError(
+            f"Alert-письмо с run_id не найдено в INBOX за {wait_seconds} с; "
+            f"попыток: {attempts}.{detail}{hint}"
+        )
     raise SmokeError(
         f"Alert-письмо с run_id не найдено в INBOX за {wait_seconds} с; "
         f"попыток: {attempts}. Проверьте логи alertmanager и notification-service.{detail}"
