@@ -647,6 +647,11 @@ class AuthServiceTest {
         assertEquals("ivan petrov", AuthService.normalize("  Ivan Petrov  "));
         assertEquals("", AuthService.normalizeAppPassword(null));
         assertEquals("abcd1234", AuthService.normalizeAppPassword("ab-cd 12-34"));
+        // Вставка из буфера обмена на Windows добавляет CR/LF, табуляцию и
+        // неразрывный пробел: без их удаления верный пароль выглядит неверным.
+        assertEquals("abcd1234", AuthService.normalizeAppPassword(" ab-cd-12-34\r\n"));
+        assertEquals("abcd1234", AuthService.normalizeAppPassword("ab-cd\t12-34"));
+        assertEquals("abcd1234", AuthService.normalizeAppPassword("ab-cd\u00A012-34"));
         assertEquals("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
                 AuthService.sha256Hex("abc"));
         assertFalse(new LoginFlow(null, null).mfaRequired());

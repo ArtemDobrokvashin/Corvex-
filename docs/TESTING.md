@@ -177,15 +177,35 @@ CORVEX_POP3_KEYSTORE_PASSWORD=<пароль от pop3.p12>
 CORVEX_POP3_PLAIN_ENABLED=false
 ```
 
+`first-run` создаёт только PEM-сертификат; для 993/995 нужен PKCS12, и сервис
+работает от uid `100`, поэтому файлу нужен владелец `100:101`:
+
 ```powershell
+docker run --rm -v "${PWD}\infra\certs:/certs" alpine sh -c "apk add --no-cache openssl >/dev/null && openssl pkcs12 -export -in /certs/fullchain.pem -inkey /certs/privkey.pem -out /certs/imap.p12 -passout pass:<пароль-keystore> -name corvex-imap && chown 100:101 /certs/imap.p12 && chmod 640 /certs/imap.p12"
 docker compose up -d --force-recreate mail-imap-service mail-pop3-service
 docker compose logs --tail 200 mail-imap-service
-Test-NetConnection 127.0.0.1 -Port 993
-Test-NetConnection 127.0.0.1 -Port 995
 ```
 
-Порт закрыт — смотрите лог: чаще всего отсутствует `.p12` или неверный пароль keystore.
-Пароли — app-password, если включён 2FA.
+Проверять готовность нужно **по логу**, а не пробой порта: `Test-NetConnection` даёт
+ложное «порт открыт», потому что Docker принимает соединение сам, а внутри никто не
+слушает — клиент получает обрыв (`WinError 10053`) или отказ (`10061`). В логе должно
+быть `listener started` для 143/993. Симптомы в логе:
+
+| Строка | Причина |
+|---|---|
+| `IMAP отключён флагом CORVEX_IMAP_ENABLED=false` | флаг в `.env` не применён (нужен `--force-recreate`) |
+| `Файл не найден или недоступен для чтения: /certs/imap.p12` | файла нет, либо он чужой для uid 100 |
+| `HEADLESS`/стектрейс на keystore | неверный `CORVEX_IMAP_KEYSTORE_PASSWORD` |
+
+Пароль для входа — основной или app-password, если включена 2FA. Проверить, что
+app-password действительно принят, можно по `last_used_at`:
+
+```powershell
+docker compose exec -T postgres psql -U corvex -d auth_db -c "select label, last_used_at from app_passwords order by created_at desc;"
+```
+
+Пусто после успешного `LOGIN` — пароль не совпал. Символы `0/O/1/l/I` в алфавит пароля
+не входят: если при вводе «поправить» похожий символ вручную, пароль станет неверным.
 
 **IMAP без клиента:**
 
