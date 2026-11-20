@@ -351,6 +351,13 @@ class AlertE2eTest(unittest.TestCase):
                     stdout="name\tmessages\tconsumers\ncorvex.alerts\t0\t1\n",
                     stderr="",
                 )
+            if any("runtime-status" in part for part in command):
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout='{"revision": 0, "source": "ADMIN", '
+                           '"internalEmailEnabled": true, "internalRecipients": "admin@company.local"}',
+                    stderr="",
+                )
             if "notification-service" in command:
                 return SimpleNamespace(
                     returncode=0,
@@ -376,6 +383,9 @@ class AlertE2eTest(unittest.TestCase):
         self.assertIn("corvex.alerts", joined)
         self.assertIn("сообщений 0", joined)
         self.assertIn("Alert email sent", joined)
+        self.assertIn("политика доставки", joined)
+        self.assertIn("internalEmailEnabled=True", joined)
+        self.assertIn("admin@company.local", joined)
         self.assertIn("последние письма в базе", joined)
         self.assertIn("INBOX", joined)
 
