@@ -57,6 +57,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -582,6 +583,19 @@ class CorvexMailboxManagerExtendedTest {
         assertFalse(manager.hasChildren(path("Sent"), session));
         assertTrue(Mono.from(manager.hasChildrenReactive(path("Проекты"), session)).block());
         assertThrows(MailboxNotFoundException.class, () -> manager.hasChildren(path("Missing"), session));
+    }
+
+    @Test
+    void mailboxExistsSurvivesUnavailableStorageSoLoginKeepsALoggedCause() throws Exception {
+        // James вызывает mailboxExists из provisionInbox внутри LOGIN. Если отсюда
+        // вылетит MailboxException, Mono завернёт её в ReactiveException, catch в
+        // AbstractAuthProcessor не сработает, и в логе не останется ни строки —
+        // клиент видит только «processing failed». Поэтому недоступное хранилище
+        // не должно ломать Publisher: отвечаем «папки нет», причину пишем в лог.
+        when(storage.listFolders(userId)).thenThrow(new IOException("storage down"));
+
+        assertFalse(Mono.from(manager.mailboxExists(path("inbox"), session)).block());
+        verify(storage, atLeast(1)).listFolders(userId);
     }
 
     // -------------------------------------------------------------- rights / acl

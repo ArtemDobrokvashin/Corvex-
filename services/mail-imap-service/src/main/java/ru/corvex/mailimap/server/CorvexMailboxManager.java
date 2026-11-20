@@ -740,14 +740,22 @@ public class CorvexMailboxManager implements MailboxManager {
 
     @Override
     public Publisher<Boolean> mailboxExists(MailboxPath mailboxPath, MailboxSession session) {
-        return Mono.fromCallable(() -> {
-            try {
-                resolveFolder(session, mailboxPath);
-                return true;
-            } catch (MailboxNotFoundException e) {
-                return false;
-            }
-        });
+        // James вызывает это из provisionInbox, то есть внутри обработки LOGIN. Если
+        // отсюда вылетит MailboxException, Mono завернёт его в ReactiveException,
+        // catch (MailboxException) в AbstractAuthProcessor не сработает, и в лог не
+        // попадёт ни строки — клиент увидит только «processing failed». Поэтому при
+        // недоступном хранилище честно логируем причину и отвечаем «папки нет»:
+        // дальше James попробует её создать и упадёт уже штатно, с записью в лог.
+        try {
+            resolveFolder(session, mailboxPath);
+            return Mono.just(true);
+        } catch (MailboxNotFoundException e) {
+            return Mono.just(false);
+        } catch (MailboxException e) {
+            log.warn("IMAP LOGIN: не удалось проверить существование {} для {}: {}",
+                    mailboxPath.getName(), session.getUser().asString(), e.getMessage());
+            return Mono.just(false);
+        }
     }
 
     @Override

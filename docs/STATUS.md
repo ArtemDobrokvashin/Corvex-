@@ -139,9 +139,18 @@ failed.` вместо `Invalid login/password.` По исходнику James 3.
 совета «проверьте alertmanager и notification-service» (письма на этом шаге никто не
 искал). Таблица «какой ответ IMAP что значит» добавлена в `docs/TESTING.md`.
 
+**Почему лог молчал при `processing failed`.** Грепы по `mail-imap-service` и
+`mail-storage-service` не дали ничего, и это не случайность: `CorvexMailboxManager.mailboxExists`
+бросает проверяемое `MailboxException` внутрь `Mono.fromCallable`, а `block()` в James
+приносит его уже как `ReactiveException` — мимо `catch (MailboxException)` в
+`AbstractAuthProcessor`. В итоге причина не попадала ни в лог, ни в текст ответа, и клиент
+видел только `processing failed`. Исправлено: `mailboxExists` при недоступном хранилище
+пишет причину в лог и отвечает «папки нет», а `alert_e2e.py` печатает найденные строки
+(`IMAP LOGIN`, `Error encountered while login`) рядом с `FAIL`.
+
 **Чего это не доказывает:** `PASS` на `imap:alert-email` пока нет — причина падения
-`provisionInbox` (ожидаемо `mail-storage-service` или auth-service) не подтверждена логом,
-пока лог не снят. Этап P4 не закрыт.
+`provisionInbox` (ожидаемо `mail-storage-service`) логом ещё не подтверждена. Этап P4 не
+закрыт.
 
 **Живой OAuth: refresh-токен обновляется сам (2026-11-19).** Gmail подключён через OAuth на
 стенде (`dobrokvashinartem@gmail.com`, `auth_type=OAUTH2`, `secret_enc IS NULL`). Сбор был
