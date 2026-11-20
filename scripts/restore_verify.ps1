@@ -137,9 +137,19 @@ diff /tmp/expected.norm /tmp/actual.norm | head -n 40 || true
 echo "Reference $ReferenceDb оставлена для разбора. Восстановленная $Db не тронута."
 exit 3
 "@
-    Run "docker" @("run", "--rm", "--network", "${ProjectName}_data",
+    # Here-string в PowerShell на Windows содержит CRLF. Для `sh -c` это не мелочь:
+    # первая строка приезжает как `set -e\r`, dash отвечает "Illegal option" и
+    # выходит с кодом 2 — до первого echo дело не доходит, и в выводе нет ни одного
+    # шага. Поэтому перед передачей приводим строку к LF.
+    $Cmd = ($Cmd -replace "`r`n", "`n").TrimEnd("`n", "`r")
+    & docker @("run", "--rm", "--network", "${ProjectName}_data",
       "-e", "PGUSER", "-e", "PGPASSWORD",
       "-v", "${BackupDir}:/backup:ro", "postgres:16-alpine", "sh", "-c", $Cmd)
+    if ($LASTEXITCODE -ne 0) {
+      # Сообщение без всей команды: подробности (шаг и первые отличия) уже напечатаны
+      # выше, а дампить сюда трёхкилобайтную строку sh -c — значит снова их спрятать.
+      throw "Сверка $Db не прошла (код $LASTEXITCODE). Смотрите шаг и отличия выше."
+    }
   }
 } finally {
   # Пароль живёт в окружении только на время сверки.

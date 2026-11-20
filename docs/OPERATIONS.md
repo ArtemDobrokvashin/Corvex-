@@ -97,6 +97,12 @@ docker compose down                        # остановка, данные в
 [IO.File]::ReadAllBytes("C:\corvex-clean\.env") -contains 13   # True = CRLF
 ```
 
+Строки для `sh -c` передаются с LF. Here-string в PowerShell на Windows содержит CRLF,
+и `sh` видит первую строку как `set -e\r`: dash отвечает `set: Illegal option -` и выходит
+с кодом 2, не выполнив ни одной команды — ни одного `step:` в выводе. Если сверка упала
+мгновенно и без шагов, причина в этом, и лечится нормализацией перевода строк перед
+`docker run`.
+
 Сверка идёт шагами и называет упавший: `step: createdb …`, `step: pg_restore …`,
 `step: pg_dump both sides`, `step: normalize and compare`. `set -e` и
 `pg_restore --exit-on-error` останавливают процесс на первом сбое, а не через три базы.
