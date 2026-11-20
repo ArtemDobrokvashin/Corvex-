@@ -135,6 +135,7 @@ class AlertE2eTest(unittest.TestCase):
             wait_seconds=180,
             poll_seconds=5,
             report=None,
+            project=None,
         )
         with (
             patch.object(alert_e2e, "parse_args", return_value=args),
@@ -154,6 +155,52 @@ class AlertE2eTest(unittest.TestCase):
         resolve.assert_called_once()
         self.assertRegex(resolve.call_args.args[0], r"^[0-9a-f]{32}$")
         self.assertEqual(30, resolve.call_args.args[1])
+
+    def test_compose_exec_passes_project_so_a_renamed_stand_is_visible(self):
+        # Стенд приёмки поднимается с -p corvex-fresh. Без проекта compose ищет
+        # контейнеры проекта corvex-clean и отвечает «service is not running».
+        with patch.object(alert_e2e.subprocess, "run") as run:
+            run.return_value = SimpleNamespace(returncode=0, stdout="ok", stderr="")
+            with patch.object(alert_e2e, "COMPOSE_PROJECT", "corvex-fresh"):
+                alert_e2e.compose_exec("alert-relay", ["python", "-c", "pass"], 30)
+
+        command = run.call_args.args[0]
+        self.assertEqual(
+            ["docker", "compose", "-p", "corvex-fresh", "exec", "-T", "alert-relay",
+             "python", "-c", "pass"],
+            command,
+        )
+
+    def test_compose_exec_without_project_keeps_the_default(self):
+        with patch.object(alert_e2e.subprocess, "run") as run:
+            run.return_value = SimpleNamespace(returncode=0, stdout="ok", stderr="")
+            with patch.object(alert_e2e, "COMPOSE_PROJECT", None):
+                alert_e2e.compose_exec("alert-relay", ["true"], 30)
+
+        self.assertEqual(
+            ["docker", "compose", "exec", "-T", "alert-relay", "true"],
+            run.call_args.args[0],
+        )
+
+    def test_missing_service_hint_mentions_the_project(self):
+        with patch.object(alert_e2e.subprocess, "run") as run:
+            run.return_value = SimpleNamespace(
+                returncode=1,
+                stdout="",
+                stderr='service "alert-relay" is not running',
+            )
+            with patch.object(alert_e2e, "COMPOSE_PROJECT", None):
+                with self.assertRaises(SmokeError) as caught:
+                    alert_e2e.compose_exec("alert-relay", ["true"], 30)
+
+        self.assertIn("--project", str(caught.exception))
+
+    def test_project_is_validated_before_reaching_docker(self):
+        with patch.object(alert_e2e.sys, "argv", ["alert_e2e.py", "--username",
+                                                  "admin@company.local",
+                                                  "--project", "corvex; rm -rf /"]):
+            with self.assertRaises(SystemExit):
+                alert_e2e.parse_args()
 
     def test_rfc3339_is_utc(self):
         value = datetime(2026, 11, 3, 12, 30, tzinfo=timezone.utc)  # noqa: UP017
