@@ -104,52 +104,44 @@ try {
 # pg_restore and pg_dump can render equivalent DDL differently. Restore the backup to
 # a fresh reference DB, then use the same pg_dump on both databases for a canonical diff.
 $Suffix = Get-Date -Format "yyyyMMddHHmmss"
+$Verified = New-Object System.Collections.Generic.List[string]
 try {
   foreach ($Db in $Databases) {
     $ReferenceDb = "verify_${Db}_$Suffix"
     Write-Host "Verifying $Db using temporary reference $ReferenceDb..."
-    # Каждый шаг называет себя. Раньше вся цепочка шла одной длинной командой, и при
-    # сбое было видно только "exit 1": какой именно шаг упал — createdb, pg_restore,
-    # pg_dump или diff — приходилось угадывать. set -e останавливает на первом сбое.
-    # Пустые строки не удаляем: в plain-дампе они расставлены детерминированно, а
-    # шаблон для пустых строк внутри here-string в PowerShell требует
-    # экранирования и легко превращается в другое выражение. Убираем только
-    # комментарии и SET.
-    $Cmd = @"
-set -e
-echo "step: createdb $ReferenceDb"
-createdb -h postgres -U `$PGUSER $ReferenceDb
-echo "step: pg_restore $Db"
-pg_restore -h postgres -U `$PGUSER -d $ReferenceDb -Fc --no-owner --no-privileges --exit-on-error /backup/$Db.dump
-echo "step: pg_dump both sides"
-pg_dump -h postgres -U `$PGUSER -Fp --no-owner --no-privileges -f /tmp/actual.sql $Db
-pg_dump -h postgres -U `$PGUSER -Fp --no-owner --no-privileges -f /tmp/expected.sql $ReferenceDb
-echo "step: normalize and compare"
-sed -e /^--/d -e /^SET/d -e /^SELECT.pg_catalog.set_config/d -e /^.restrict/d -e /^.unrestrict/d /tmp/expected.sql > /tmp/expected.norm
-sed -e /^--/d -e /^SET/d -e /^SELECT.pg_catalog.set_config/d -e /^.restrict/d -e /^.unrestrict/d /tmp/actual.sql > /tmp/actual.norm
-if diff -q /tmp/expected.norm /tmp/actual.norm > /dev/null; then
-  dropdb -h postgres -U `$PGUSER $ReferenceDb
-  echo "${Db}_logical_match"
-  exit 0
-fi
-echo "MISMATCH in $($Db): первые отличия (строки expected, затем actual):"
-diff /tmp/expected.norm /tmp/actual.norm | head -n 40 || true
-echo "Reference $ReferenceDb оставлена для разбора. Восстановленная $Db не тронута."
-exit 3
-"@
-    # Here-string в PowerShell на Windows содержит CRLF. Для `sh -c` это не мелочь:
-    # первая строка приезжает как `set -e\r`, dash отвечает "Illegal option" и
-    # выходит с кодом 2 — до первого echo дело не доходит, и в выводе нет ни одного
-    # шага. Поэтому перед передачей приводим строку к LF.
-    $Cmd = ($Cmd -replace "`r`n", "`n").TrimEnd("`n", "`r")
-    & docker @("run", "--rm", "--network", "${ProjectName}_data",
+    # Команда собирается ОДНОЙ строкой без переводов строк. Причина не косметическая:
+    # PowerShell передаёт нативному exe одну командную строку, и многострочный
+    # аргумент на Windows доезжает усечённым — sh получал огрызок сценария и выходил
+    # с кодом 0, а скрипт печатал "Restore verification OK", ничего не сверив.
+    # Второй рубеж — маркер ${Db}_logical_match: без него успех не засчитывается.
+    $Cmd = "set -e; " +
+      "echo 'step: createdb ${ReferenceDb}'; createdb -h postgres -U `$PGUSER `${ReferenceDb}; " +
+      "echo 'step: pg_restore ${Db}'; pg_restore -h postgres -U `$PGUSER -d `${ReferenceDb} -Fc --no-owner --no-privileges --exit-on-error /backup/${Db}.dump; " +
+      "echo 'step: pg_dump both sides'; pg_dump -h postgres -U `$PGUSER -Fp --no-owner --no-privileges -f /tmp/actual.sql ${Db}; " +
+      "pg_dump -h postgres -U `$PGUSER -Fp --no-owner --no-privileges -f /tmp/expected.sql `${ReferenceDb}; " +
+      "echo 'step: normalize and compare'; " +
+      "sed -e /^--/d -e /^SET/d -e /^SELECT.pg_catalog.set_config/d -e /^.restrict/d -e /^.unrestrict/d /tmp/expected.sql > /tmp/expected.norm; " +
+      "sed -e /^--/d -e /^SET/d -e /^SELECT.pg_catalog.set_config/d -e /^.restrict/d -e /^.unrestrict/d /tmp/actual.sql > /tmp/actual.norm; " +
+      "diff -q /tmp/expected.norm /tmp/actual.norm && { dropdb -h postgres -U `$PGUSER `${ReferenceDb}; echo '${Db}_logical_match'; } || " +
+      "{ echo 'MISMATCH in ${Db}: первые отличия (expected < > actual):'; diff /tmp/expected.norm /tmp/actual.norm | head -n 40 || true; " +
+      "echo 'Reference `${ReferenceDb} оставлена для разбора. Восстановленная ${Db} не тронута.'; exit 3; }"
+    $Output = & docker @("run", "--rm", "--network", "${ProjectName}_data",
       "-e", "PGUSER", "-e", "PGPASSWORD",
-      "-v", "${BackupDir}:/backup:ro", "postgres:16-alpine", "sh", "-c", $Cmd)
-    if ($LASTEXITCODE -ne 0) {
-      # Сообщение без всей команды: подробности (шаг и первые отличия) уже напечатаны
-      # выше, а дампить сюда трёхкилобайтную строку sh -c — значит снова их спрятать.
-      throw "Сверка $Db не прошла (код $LASTEXITCODE). Смотрите шаг и отличия выше."
+      "-v", "${BackupDir}:/backup:ro", "postgres:16-alpine", "sh", "-c", $Cmd) 2>&1
+    $Code = $LASTEXITCODE
+    $Output | ForEach-Object { Write-Host $_ }
+    if ($Code -ne 0) {
+      throw "Сверка $Db не прошла (код $Code). Смотрите шаг и отличия выше."
     }
+    if (-not ($Output -match "${Db}_logical_match")) {
+      # Ровно этот случай однажды дал ложный «OK»: выход 0 без единой проверки.
+      throw "Сверка $Db не подтвердила совпадение: маркер ${Db}_logical_match не найден. " +
+        "Успех без маркера не засчитывается."
+    }
+    $Verified.Add($Db)
+  }
+  if ($Verified.Count -ne $Databases.Count) {
+    throw "Проверено баз: $($Verified.Count) из $($Databases.Count). Сверка неполная."
   }
 } finally {
   # Пароль живёт в окружении только на время сверки.
