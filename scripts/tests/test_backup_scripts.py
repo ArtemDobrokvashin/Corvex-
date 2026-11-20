@@ -70,6 +70,22 @@ class BackupScriptsTest(unittest.TestCase):
             VERIFY.index("createdb"),
         )
 
+    def test_verify_names_the_failing_step_and_stops_at_first_error(self):
+        # Раньше вся сверка шла одной длинной командой: при сбое было видно только
+        # "exit 1" и приходилось угадывать, упал createdb, pg_restore или diff.
+        self.assertIn("set -e", VERIFY)
+        for marker in ("step: createdb", "step: pg_restore", "step: pg_dump both sides",
+                       "step: normalize and compare"):
+            self.assertIn(marker, VERIFY)
+        self.assertIn("--exit-on-error", VERIFY)
+
+    def test_verify_shows_the_first_differences_instead_of_silent_exit(self):
+        self.assertIn("MISMATCH in $($Db)", VERIFY)
+        self.assertIn("diff /tmp/expected.norm /tmp/actual.norm | head -n 40", VERIFY)
+        # При расхождении reference-база остаётся, восстановленная не трогается.
+        self.assertIn("оставлена для разбора", VERIFY)
+        self.assertNotIn("/^$/d", VERIFY)
+
     def test_verify_clears_the_password_from_the_process_environment(self):
         self.assertIn("finally {", VERIFY)
         self.assertLess(VERIFY.index("finally {"), VERIFY.rindex("$env:PGPASSWORD = $null"))
