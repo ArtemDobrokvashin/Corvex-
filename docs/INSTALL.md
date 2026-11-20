@@ -380,6 +380,35 @@ Grafana доступна на `https://mail.<домен>/grafana/`; доступ
 8. **Алерты.** Не останавливайте рабочий сервис: используйте `scripts/alert_e2e.py`,
    он создаёт один синтетический алерт и завершает его.
 
+   Скрипт проверяет цепочку `alertmanager → alert-relay → notification-service → SMTP →
+   IMAP`, поэтому у него есть четыре предпосылки. Без них он честно остановится на
+   первой же, и это не поломка стенда:
+
+   1. **Профиль `monitoring` поднят** (по умолчанию он выключен):
+      `docker compose --profile monitoring up -d`.
+   2. **Внутренний email-канал включён** и получатель указан: *Админ → Настройки →
+      Алерты*. Скрипт читает фактический runtime status, поэтому перезапуск не нужен.
+   3. **IMAP включён**: `CORVEX_IMAP_ENABLED=true` в `.env`, затем пересоздать
+      `mail-imap-service`. Порт 993 должен отвечать: `Test-NetConnection <домен> -Port 993`.
+   4. **Пароль приложения**, а не пароль входа: *Безопасность → Пароли приложений →
+      Создать*. Он показывается один раз; в консоли вводится скрыто либо передаётся
+      переменной `CORVEX_TEST_ALERT_PASSWORD`.
+
+   ```bash
+   python3 scripts/alert_e2e.py --username admin@company.local --host mail.<домен> \
+     --ca-file infra/certs/fullchain.pem
+   ```
+
+   ```powershell
+   py scripts\alert_e2e.py --username admin@company.local --host mail.company.local `
+     --ca-file infra\certs\fullchain.pem
+   ```
+
+   **Если стенд поднят с другим именем проекта** (`docker compose -p corvex-fresh …`),
+   передайте его скрипту: `--project corvex-fresh` или переменной
+   `COMPOSE_PROJECT_NAME`. Иначе compose ищет контейнеры проекта по имени каталога и
+   отвечает `service "alert-relay" is not running`, хотя сервис работает.
+
 Полный набор проверок, включая приёмку почты и почтовых клиентов — [`TESTING.md`](TESTING.md).
 
 Отдельно — проверка устойчивости к перезапуску хранилища: раньше рестарт

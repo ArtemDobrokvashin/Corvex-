@@ -37,8 +37,20 @@ class LocatedAlert:
     attempts: int
 
 
+# Имя compose-проекта. По умолчанию compose берёт его из имени каталога, поэтому
+# стенд, поднятый как `docker compose -p corvex-fresh`, для скрипта невидим:
+# `exec` отвечает «service "alert-relay" is not running», хотя сервис работает.
+# Значение задаётся флагом --project или переменной COMPOSE_PROJECT_NAME.
+COMPOSE_PROJECT: str | None = None
+
+
+def compose_command(*tail: str) -> list[str]:
+    prefix = ["-p", COMPOSE_PROJECT] if COMPOSE_PROJECT else []
+    return ["docker", "compose", *prefix, *tail]
+
+
 def compose_exec(service: str, arguments: list[str], timeout: int) -> str:
-    command = ["docker", "compose", "exec", "-T", service, *arguments]
+    command = compose_command("exec", "-T", service, *arguments)
     try:
         result = subprocess.run(
             command,
@@ -54,8 +66,15 @@ def compose_exec(service: str, arguments: list[str], timeout: int) -> str:
         raise SmokeError(f"docker compose exec {service}: {exc}") from exc
     if result.returncode != 0:
         detail = (result.stderr.strip() or result.stdout.strip())[:800]
+        hint = ""
+        if "is not running" in detail and not COMPOSE_PROJECT:
+            # Самая частая причина на приёмочном стенде: проект поднят с -p.
+            hint = (
+                " Похоже, стенд поднят с другим именем проекта. "
+                "Укажите его флагом --project или переменной COMPOSE_PROJECT_NAME."
+            )
         raise SmokeError(
-            f"docker compose exec {service} завершился с {result.returncode}: {detail}"
+            f"docker compose exec {service} завершился с {result.returncode}: {detail}{hint}"
         )
     return result.stdout.strip()
 
@@ -260,6 +279,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--ca-file", help="PEM тестового CA; системное доверие используется без флага"
     )
+    parser.add_argument(
+        "--project",
+        default=os.environ.get("COMPOSE_PROJECT_NAME") or None,
+        help=(
+            "Имя compose-проекта, если стенд поднят с -p (например corvex-fresh). "
+            "По умолчанию берётся COMPOSE_PROJECT_NAME или имя каталога"
+        ),
+    )
     parser.add_argument("--timeout", type=int, default=30)
     parser.add_argument("--wait-seconds", type=int, default=180)
     parser.add_argument("--poll-seconds", type=int, default=5)
@@ -273,11 +300,20 @@ def parse_args() -> argparse.Namespace:
         args.username = validate_address(args.username, "username")
     except SmokeError as exc:
         parser.error(str(exc))
+    if args.project is not None:
+        # Имя проекта уходит в аргументы docker, поэтому проверяем сами:
+        # compose принимает только буквы, цифры, дефис и подчёркивание.
+        project = str(args.project).strip()
+        if not project or not all(c.isalnum() or c in "-_" for c in project):
+            parser.error("--project: допустимы буквы, цифры, дефис и подчёркивание")
+        args.project = project
     return args
 
 
 def main() -> int:
+    global COMPOSE_PROJECT
     args = parse_args()
+    COMPOSE_PROJECT = args.project
     password = os.environ.get("CORVEX_TEST_ALERT_PASSWORD") or getpass.getpass(
         "Alert recipient protocol password (скрытый ввод): "
     )
