@@ -197,8 +197,20 @@ docker compose logs --tail 200 mail-imap-service
 | `Файл не найден или недоступен для чтения: /certs/imap.p12` | файла нет, либо он чужой для uid 100 |
 | `HEADLESS`/стектрейс на keystore | неверный `CORVEX_IMAP_KEYSTORE_PASSWORD` |
 
-Пароль для входа — основной или app-password, если включена 2FA. Проверить, что
-app-password действительно принят, можно по `last_used_at`:
+Пароль для входа — основной или app-password, если включена 2FA.
+
+James на любой отказ отвечает одинаково: `LOGIN failed. Invalid login/password.`
+Поэтому причину ищут отдельным запросом — тем же, что делает `mail-imap-service`:
+
+```powershell
+py scripts\login_probe.py --username admin@company.local --project <имя-проекта>
+```
+
+Скрипт спрашивает пароль скрыто и печатает решение auth-service: `ПРИНЯТ` (с методом —
+основной пароль или пароль приложения) либо `ОТКАЗ` с чек-листом причин. Пароль не
+печатается, не попадает в аргументы и в историю PowerShell.
+
+Проверить, что app-password действительно принят, можно и по `last_used_at`:
 
 ```powershell
 docker compose exec -T postgres psql -U corvex -d auth_db -c "select label, last_used_at from app_passwords order by created_at desc;"
