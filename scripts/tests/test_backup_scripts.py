@@ -80,26 +80,39 @@ class BackupScriptsTest(unittest.TestCase):
         self.assertIn("--exit-on-error", VERIFY)
 
     def test_verify_shows_the_first_differences_instead_of_silent_exit(self):
-        self.assertIn("MISMATCH in $($Db)", VERIFY)
+        self.assertIn("MISMATCH in ${Db}", VERIFY)
         self.assertIn("diff /tmp/expected.norm /tmp/actual.norm | head -n 40", VERIFY)
         # При расхождении reference-база остаётся, восстановленная не трогается.
         self.assertIn("оставлена для разбора", VERIFY)
         self.assertNotIn("/^$/d", VERIFY)
 
-    def test_verify_command_is_converted_to_lf_before_sh_c(self):
-        # Here-string в PowerShell на Windows содержит CRLF. `sh -c` получает
-        # `set -e\r`, dash отвечает "Illegal option" и выходит с кодом 2 — без
-        # единого echo. Это уже стоило одного круга диагностики.
-        self.assertIn('-replace "`r`n", "`n"', VERIFY)
+    def test_verify_command_has_no_newlines_for_a_native_argument(self):
+        # PowerShell передаёт нативному exe одну строку, и многострочный аргумент на
+        # Windows доезжает усечённым: sh получал огрызок и выходил с кодом 0, а скрипт
+        # печатал "Restore verification OK", ничего не сверив. Команда — однострочная.
+        start = VERIFY.index('$Cmd = "set -e; "')
+        end = VERIFY.index('$Output = & docker')
+        block = VERIFY[start:end]
+        self.assertNotIn('@"', block)
+        self.assertNotIn('`n', block)
+        self.assertIn('echo \'step: createdb ${ReferenceDb}\'', block)
+        for marker in ("step: pg_restore", "step: pg_dump both sides",
+                       "step: normalize and compare"):
+            self.assertIn(marker, block)
+
+    def test_verify_requires_the_match_marker_not_just_exit_zero(self):
+        # Ложный «OK» уже случался: код 0 при полностью усечённой команде.
+        self.assertIn('-not ($Output -match "${Db}_logical_match")', VERIFY)
+        self.assertIn("Успех без маркера не засчитывается", VERIFY)
+        self.assertIn("проверено баз", VERIFY.lower())
+        self.assertIn("$Verified.Add($Db)", VERIFY)
         self.assertLess(
-            VERIFY.index('-replace "`r`n", "`n"'),
-            VERIFY.rindex('"sh", "-c", $Cmd'),
+            VERIFY.index("$Verified.Add($Db)"),
+            VERIFY.index('Write-Host "Restore verification OK:'),
         )
 
     def test_verify_failure_message_does_not_dump_the_whole_command(self):
-        # Подробности печатаются внутри контейнера; в throw — короткий вердикт.
-        self.assertIn("Сверка $Db не прошла (код $LASTEXITCODE)", VERIFY)
-        self.assertNotIn("Run \"docker\" @(\"run\", \"--rm\", \"--network\", \"${ProjectName}_data\"", VERIFY)
+        self.assertIn("Сверка $Db не прошла (код $Code)", VERIFY)
 
     def test_verify_clears_the_password_from_the_process_environment(self):
         self.assertIn("finally {", VERIFY)
@@ -146,8 +159,8 @@ class BackupScriptsTest(unittest.TestCase):
         self.assertIn("createdb -h postgres", VERIFY)
         self.assertIn("pg_restore -h postgres", VERIFY)
         self.assertIn("pg_dump -h postgres", VERIFY)
-        self.assertIn("/tmp/actual.sql $Db", VERIFY)
-        self.assertIn("/tmp/expected.sql $ReferenceDb", VERIFY)
+        self.assertIn("/tmp/actual.sql ${Db}", VERIFY)
+        self.assertIn("/tmp/expected.sql `${ReferenceDb}", VERIFY)
         self.assertLess(VERIFY.index("diff -q /tmp/expected.norm"), VERIFY.index("dropdb"))
         self.assertIn("${Db}_logical_match", VERIFY)
 
