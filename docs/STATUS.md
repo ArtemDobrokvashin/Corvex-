@@ -204,7 +204,25 @@ SMTP-слушателей и шесть последних писем из `mail
 (`/internal/alerts/runtime-status`: `internalEmailEnabled`, получатели, источник), чтобы
 следующий прогон назвал виновного без новой переписки.
 
-**Чего это не доказывает:** `PASS` на `imap:alert-email` пока нет. Этап P4 не закрыт.
+**P4 закрыт: сквозной алерт дошёл до ящика (run `942a00dd9f964c418a53cc65c483dcd1`).**
+`PASS=5 FAIL=0 SKIP=0`, `exit=0`:
+
+```text
+[PASS] imap:login — TLSv1.3, INBOX, login ok
+[PASS] alert:recipient-config — mailbox_in_alert_recipients true, configured_recipients 1
+[PASS] alertmanager:submit — CorvexAlertSmoke / 942a00dd9f964c418a53cc65c483dcd1
+[PASS] imap:alert-email — folder INBOX, attempts 5, message_bytes 964,
+       subject_and_body_verified true, duplicates 0, readonly true
+[PASS] alertmanager:resolve
+```
+
+Это первая подтверждённая сквозная цепочка «synthetic alert → Alertmanager →
+notification-service → SMTP → Maildir/IMAP» одной командой: письмо найдено в `INBOX` по
+`run_id`, тема и текст совпали, дублей нет, ящик читался только на чтение.
+
+**Чего это не доказывает:** внешняя доставляемость алертов (Telegram, MAX, внешний SMTP
+alert-relay) и поведение на Linux-хосте. Остальные этапы приёмки — backup/restore и DLQ —
+ещё впереди.
 
 **Живой OAuth: refresh-токен обновляется сам (2026-11-19).** Gmail подключён через OAuth на
 стенде (`dobrokvashinartem@gmail.com`, `auth_type=OAUTH2`, `secret_enc IS NULL`). Сбор был
