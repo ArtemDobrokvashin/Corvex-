@@ -420,9 +420,15 @@ public class AuthService {
         return sb.toString();
     }
 
-    /** Нормализация ввода пароля приложения: дефисы и пробелы игнорируются. */
+    /**
+     * Нормализация ввода пароля приложения: дефисы и любые пробельные символы
+     * игнорируются. Одного {@code replace(" ", "")} мало: вставка из буфера обмена
+     * на Windows приносит CR/LF, табуляцию и неразрывный пробел (U+00A0), которые
+     * остаются в строке и превращают верный пароль в неверный без всякой подсказки —
+     * сервер отвечает просто «Invalid login/password».
+     */
     public static String normalizeAppPassword(String input) {
-        return input == null ? "" : input.replace("-", "").replace(" ", "");
+        return input == null ? "" : input.replaceAll("[-\\s\\u00A0]", "");
     }
 
     // ---------- Утилиты ----------
