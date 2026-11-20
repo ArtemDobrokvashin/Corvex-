@@ -346,6 +346,92 @@ def wait_for_alert(
     )
 
 
+def _compose_text(*tail: str, timeout: int = 20) -> str:
+    """Вывод команды compose; пусто при любой проблеме с docker."""
+    try:
+        result = subprocess.run(
+            compose_command(*tail),
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return result.stdout if result.returncode == 0 else ""
+
+
+def delivery_diagnostics(run_id: str) -> list[str]:
+    """Где застряло письмо: очередь, notification-service, Alertmanager, папки ящика.
+
+    Проверка «письма нет в INBOX» не говорит, дошло ли оно до сервера вообще:
+    оно может лежать в другой папке, стоять в очереди RabbitMQ или не родиться
+    в notification-service. Поэтому при FAIL собираем все четыре ответа сразу.
+    """
+    lines: list[str] = []
+
+    queues = _compose_text("exec", "-T", "rabbitmq", "rabbitmqctl", "list_queues",
+                           "name", "messages", "consumers")
+    for line in queues.splitlines():
+        if line.startswith("corvex.alerts"):
+            fields = line.split()
+            if len(fields) >= 3:
+                lines.append(f"rabbitmq: очередь {fields[0]} — сообщений {fields[1]}, "
+                             f"консьюмеров {fields[2]}")
+
+    notification = _compose_text("logs", "--tail", "300", "notification-service")
+    markers = ("Alert email sent", "Internal alert", "corvex.alerts", "Exception", "ERROR")
+    seen: list[str] = []
+    for line in notification.splitlines():
+        if not any(marker in line for marker in markers):
+            continue
+        message = _log_message(line)
+        if message not in seen:
+            seen.append(message)
+    if seen:
+        lines.append("notification-service: " + " | ".join(seen[-3:]))
+
+    smtp = _compose_text("logs", "--tail", "300", "mail-smtp-service")
+    smtp_markers = ("SMTP listeners disabled", "inbound listener started",
+                    "submission listener", "Требуется TLS")
+    smtp_lines = [line.strip() for line in smtp.splitlines()
+                  if any(marker in line for marker in smtp_markers)]
+    if smtp_lines:
+        lines.append("mail-smtp-service: " + " | ".join(smtp_lines[-2:]))
+
+    alertmanager = _compose_text("logs", "--tail", "300", "alertmanager")
+    notify = [line.strip() for line in alertmanager.splitlines()
+              if "Notify" in line or "notify" in line or "error" in line.lower()]
+    if notify:
+        lines.append("alertmanager: " + " | ".join(notify[-2:]))
+
+    # Письмо могло прийти, но не в INBOX: смотрим, что вообще легло в ящик.
+    sql = ("select f.name, m.subject, m.internal_date from message_metadata m "
+           "join mail_folders f on f.id = m.folder_id "
+           "order by m.internal_date desc limit 6;")
+    inbox = _compose_text("exec", "-T", "postgres", "psql", "-U", "corvex", "-d", "mail_db",
+                          "-t", "-A", "-F", " | ", "-c", sql)
+    rows = [line.strip() for line in inbox.splitlines() if line.strip()]
+    if rows:
+        lines.append("последние письма в базе: " + " ; ".join(rows))
+
+    return lines
+
+
+def print_delivery_diagnostics(run_id: str) -> None:
+    print("Диагностика доставки (что видно на сервере):", flush=True)
+    found = delivery_diagnostics(run_id)
+    if not found:
+        print("  ничего не удалось прочитать: docker недоступен или сервисы не запущены",
+              flush=True)
+        return
+    for line in found:
+        print(f"  - {line}", flush=True)
+
+
 def verify_imap_login(
     host: str,
     username: str,
@@ -517,6 +603,8 @@ def main() -> int:
                     args.poll_seconds,
                 ),
             )
+            if not delivered:
+                print_delivery_diagnostics(run_id)
             # Выполняется и после FAIL доставки, чтобы не оставить тестовый alert активным.
             report.run(
                 "alertmanager:resolve",

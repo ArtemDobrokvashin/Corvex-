@@ -223,6 +223,28 @@ James ловит `MailboxException` и отвечает общим тексто�
 соединения, а отказ входа даёт вердикт сразу. Сразу после скрытого ввода печатается форма
 пароля — сколько символов дошло, без самого значения: слепой ввод перестаёт быть слепым.
 
+**Когда письмо не найдено.** `alert_e2e.py` при `FAIL` на доставке сам собирает четыре
+ответа и печатает их до вердикта:
+
+```text
+Диагностика доставки (что видно на сервере):
+  - rabbitmq: очередь corvex.alerts — сообщений 0, консьюмеров 1
+  - notification-service: Alert email sent: warning CorvexAlertSmoke firing -> admin@company.local
+  - mail-smtp-service: SMTP listeners disabled by corvex.smtp.enabled=false
+  - последние письма в базе: INBOX | [Corvex] Напоминание: … | 2026-11-20 10:15
+```
+
+По этим строкам видно, где застряло: письмо не родилось (очередь растёт, консьюмеров 0),
+не отправилось (ошибка SMTP), отправлено но лежит в другой папке (последняя строка) или
+SMTP вообще выключен — тогда `CORVEX_SMTP_ENABLED=false` в `.env`, и напоминания не уходят
+тоже. Включение:
+
+```powershell
+# в .env: CORVEX_SMTP_ENABLED=true
+docker compose -p <имя-проекта> up -d --force-recreate mail-smtp-service notification-service
+docker compose -p <имя-проекта> logs --tail 20 mail-smtp-service | Select-String "listener started"
+```
+
 **Самопроверка при старте.** `mail-imap-service` сразу после запуска проходит те же три
 вызова, что и `LOGIN`: поиск пользователя по e-mail, чтение по id и проверка заведомо
 неверного пароля. Пароль пользователя для этого не нужен, результат — в логе:
