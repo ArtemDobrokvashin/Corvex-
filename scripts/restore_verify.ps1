@@ -72,14 +72,44 @@ foreach ($V in $Volumes) {
     "alpine", "sh", "-c", $Cmd)
 }
 
+# Пароль и пользователь берутся у работающего контейнера, а не из .env.
+# `docker run --env-file .env` — отдельный парсер (docker CLI), он не совпадает с
+# compose-go: BOM, CRLF после правки в Блокноте или кавычки дают значение с мусором
+# на конце, и psql отвечает "password authentication failed" при верном пароле.
+# Контейнер уже подключён к своей базе, поэтому printenv — единственный честный
+# источник. Значение передаётся через -e без "=value": в списке процессов его нет.
+$PgUser = & docker compose -p $ProjectName exec -T postgres printenv POSTGRES_USER
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($PgUser)) {
+  throw "Cannot read POSTGRES_USER from the isolated postgres container"
+}
+$PgPassword = & docker compose -p $ProjectName exec -T postgres printenv POSTGRES_PASSWORD
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($PgPassword)) {
+  throw "Cannot read POSTGRES_PASSWORD from the isolated postgres container"
+}
+$PgUser = $PgUser.Trim()
+$PgPassword = $PgPassword.Trim()
+$env:PGUSER = $PgUser
+$env:PGPASSWORD = $PgPassword
+try {
+  & docker compose -p $ProjectName exec -T -e PGPASSWORD postgres psql -U $PgUser -d postgres -tAc "select 1" | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    throw "Cannot authenticate inside the isolated postgres container as $PgUser"
+  }
+} catch {
+  $env:PGUSER = $null
+  $env:PGPASSWORD = $null
+  throw
+}
+
 # pg_restore and pg_dump can render equivalent DDL differently. Restore the backup to
 # a fresh reference DB, then use the same pg_dump on both databases for a canonical diff.
 $Suffix = Get-Date -Format "yyyyMMddHHmmss"
-$ShellUser = '${POSTGRES_USER:-corvex}'
-foreach ($Db in $Databases) {
-  $ReferenceDb = "verify_${Db}_$Suffix"
-  Write-Host "Verifying $Db using temporary reference $ReferenceDb..."
-  $Cmd = "export PGPASSWORD=`$POSTGRES_PASSWORD; " +
+$ShellUser = '$PGUSER'
+try {
+  foreach ($Db in $Databases) {
+    $ReferenceDb = "verify_${Db}_$Suffix"
+    Write-Host "Verifying $Db using temporary reference $ReferenceDb..."
+    $Cmd = "" +
     "createdb -h postgres -U $ShellUser $ReferenceDb && " +
     "pg_restore -h postgres -U $ShellUser -d $ReferenceDb -Fc --no-owner --no-privileges /backup/$Db.dump && " +
     "pg_dump -h postgres -U $ShellUser -Fp --no-owner --no-privileges -f /tmp/actual.sql $Db && " +
@@ -88,8 +118,14 @@ foreach ($Db in $Databases) {
     "sed -e /^--/d -e /^$/d -e /^SET/d -e /^SELECT.pg_catalog.set_config/d -e /^.restrict/d -e /^.unrestrict/d /tmp/actual.sql > /tmp/actual.norm && " +
     "diff -q /tmp/expected.norm /tmp/actual.norm && " +
     "dropdb -h postgres -U $ShellUser $ReferenceDb && echo ${Db}_logical_match"
-  Run "docker" @("run", "--rm", "--network", "${ProjectName}_data", "--env-file", ".env",
-    "-v", "${BackupDir}:/backup:ro", "postgres:16-alpine", "sh", "-c", $Cmd)
+    Run "docker" @("run", "--rm", "--network", "${ProjectName}_data",
+      "-e", "PGUSER", "-e", "PGPASSWORD",
+      "-v", "${BackupDir}:/backup:ro", "postgres:16-alpine", "sh", "-c", $Cmd)
+  }
+} finally {
+  # Пароль живёт в окружении только на время сверки.
+  $env:PGUSER = $null
+  $env:PGPASSWORD = $null
 }
 
 Write-Host "Restore verification OK: $($Databases.Count) databases and $($Volumes.Count) file volumes match the backup."
