@@ -217,10 +217,16 @@ James ловит `MailboxException` и отвечает общим тексто�
 недоступен или вернул ошибку: HTTP 503
 ```
 
+Первый шаг (`mailboxExists`) не имеет права падать: James вызывает его внутри обработки
+`LOGIN`, а исключение из `Mono.fromCallable` приходит в `block()` уже как
+`ReactiveException`, мимо `catch (MailboxException)`. Тогда в логе не остаётся **ни одной
+строки**, и клиент видит только `processing failed`. Поэтому при недоступном хранилище
+сервис пишет причину сам и отвечает «папки нет», а James падает уже штатно.
+
 То же вручную:
 
 ```powershell
-docker compose -p <имя-проекта> logs --tail 500 mail-imap-service | Select-String "Error encountered while login" -Context 0,8
+docker compose -p <имя-проекта> logs --tail 500 mail-imap-service | Select-String "IMAP LOGIN|Error encountered while login" -Context 0,8
 ```
 
 James на любой отказ отвечает одинаково: `LOGIN failed. Invalid login/password.`

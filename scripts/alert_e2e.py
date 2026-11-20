@@ -197,13 +197,15 @@ def imap_login_diagnostics(service: str = "mail-imap-service", tail: int = 400) 
         return []
     markers = (
         "Error encountered while login",
+        "Unexpected error",
+        "IMAP LOGIN",
         "IMAP-вход",
-        "auth-service",
         "mail-storage-service",
+        "auth-service",
     )
     found = [line.strip() for line in result.stdout.splitlines()
              if any(marker in line for marker in markers)]
-    return found[-3:]
+    return found[-5:]
 
 
 def login_failure_hint(last_error: str | None) -> str:
@@ -215,7 +217,8 @@ def login_failure_hint(last_error: str | None) -> str:
         detail = f" Причина на сервере: {' | '.join(reasons)}" if reasons else ""
         return (" Сервер принял пароль и упал на следующем шаге (provisionInbox: "
                 "mailboxExists → mail-storage-service, либо вызов auth-service)."
-                " Смотрите: docker compose logs --tail 200 mail-imap-service" + detail)
+                " Смотрите: docker compose logs --tail 200 mail-imap-service | "
+                "Select-String \"IMAP LOGIN\"" + detail)
     if "Invalid login" in last_error:
         return (" Пароль не подошёл. Проверьте тем же значением: "
                 "py scripts\\login_probe.py --imap --username <ящик> --project <проект>")
