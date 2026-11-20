@@ -45,6 +45,36 @@ class BackupScriptsTest(unittest.TestCase):
             RESTORE.index("Stopping only Compose project"),
         )
 
+    def test_verify_reads_db_password_from_the_container_not_from_env_file(self):
+        # `docker run --env-file .env` — отдельный парсер (docker CLI), не compose-go:
+        # CRLF после правки в Блокноте или BOM дают значение с мусором, и psql
+        # отвечает "password authentication failed" при верном пароле. Проверка
+        # поэтому берёт пароль у уже подключённого контейнера.
+        self.assertNotIn('"--env-file"', VERIFY)
+        self.assertIn("printenv POSTGRES_PASSWORD", VERIFY)
+        self.assertIn("printenv POSTGRES_USER", VERIFY)
+        self.assertIn('"-e", "PGUSER", "-e", "PGPASSWORD"', VERIFY)
+        self.assertIn("-tAc \"select 1\"", VERIFY)
+        # Пароль не должен попадать в командную строку как PGxxxx=value.
+        self.assertNotRegex(VERIFY, r"PGPASSWORD=")
+        self.assertNotRegex(VERIFY, r"PGUSER=")
+
+    def test_verify_authenticates_before_creating_any_reference_database(self):
+        self.assertLess(
+            VERIFY.index("select 1"),
+            VERIFY.index("createdb"),
+            "подключение проверяется до createdb, чтобы падать с внятной причиной",
+        )
+        self.assertLess(
+            VERIFY.index("printenv POSTGRES_PASSWORD"),
+            VERIFY.index("createdb"),
+        )
+
+    def test_verify_clears_the_password_from_the_process_environment(self):
+        self.assertIn("finally {", VERIFY)
+        self.assertLess(VERIFY.index("finally {"), VERIFY.rindex("$env:PGPASSWORD = $null"))
+        self.assertIn("$env:PGPASSWORD = $null", VERIFY)
+
     def test_isolated_dataonly_is_mandatory_for_non_source_project(self):
         self.assertIn("DataOnly requires an isolated -ProjectName", RESTORE)
         self.assertIn("An isolated project supports only -DataOnly", RESTORE)
