@@ -545,7 +545,7 @@ CI не собирал ни разу до этого прогона. Испра�
 | `chat-file-service` | тематический smoke | файлы чата и личный диск; большие файлы и граничные случаи — впереди |
 | `notification-service` | собрано | алерты и напоминания календаря; реальная цепочка до администратора требует smoke |
 | Наблюдаемость | базово поднято | Prometheus, Grafana, Loki, Alertmanager; delivery логов, 72 часа, DR не приняты |
-| Мобильный клиент (Android) | каркас, не проверен | 27 файлов на ветке `arena/b9fa12e4-corvex` (PR #205): сеть, авторизация, Room, STOMP, PDF. **Ни разу не собирался**: нет wrapper'а и задания CI, тест перехватчика не создаёт перехватчик. Разбор и чек-лист — [`MOBILE.md`](MOBILE.md). iOS — только контракт, приложения нет |
+| Мобильный клиент (Android) | в `main`, сборка не проверена | 36 файлов (+1723) после #205: блокеры B1–B6 закрыты в коде — `LoginRequest(username, password)`, MFA по `mfaTicket` со статусом 202, Bearer в кадре CONNECT и ожидание `CONNECTED` перед `SUBSCRIBE`, cookie с path/expiresAt, `AuthInterceptorTest` создаёт реальный перехватчик; добавлены `MailBackend`/`Capabilities` и пресеты IMAP (mail.ru, Яндекс, Gmail). **`./gradlew` не запускается**: в дереве только `gradle-wrapper.properties`, нет `gradlew` и `gradle-wrapper.jar`; Android-задания в CI нет. Живой вход не проверялся. Разбор — [`MOBILE.md`](MOBILE.md). iOS — только контракт [`MOBILE_IOS_CONTRACT.md`](MOBILE_IOS_CONTRACT.md), приложения нет |
 
 ## 5. Ворота
 
