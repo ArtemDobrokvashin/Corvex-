@@ -11,7 +11,7 @@ import javax.inject.Singleton
 @Singleton
 class SecureStorage @Inject constructor(
     @ApplicationContext context: Context
-) {
+) : TokenStore {
     private val masterKey = MasterKey.Builder(context)
         .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
         .build()
@@ -24,33 +24,54 @@ class SecureStorage @Inject constructor(
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )
 
-    var serverUrl: String?
+    override var serverUrl: String?
         get() = prefs.getString(KEY_SERVER_URL, null)
         set(value) = prefs.edit().putString(KEY_SERVER_URL, value).apply()
 
-    var accessToken: String?
+    override var accessToken: String?
         get() = prefs.getString(KEY_ACCESS_TOKEN, null)
         set(value) = prefs.edit().putString(KEY_ACCESS_TOKEN, value).apply()
 
-    var refreshCookie: String?
-        get() = prefs.getString(KEY_REFRESH_COOKIE, null)
-        set(value) = prefs.edit().putString(KEY_REFRESH_COOKIE, value).apply()
+    override var refreshCookieName: String?
+        get() = prefs.getString(KEY_REFRESH_COOKIE_NAME, null)
+        set(value) = prefs.edit().putString(KEY_REFRESH_COOKIE_NAME, value).apply()
 
-    var pinnedCertSha256: String?
-        get() = prefs.getString(KEY_CERT_PIN, null)
-        set(value) = prefs.edit().putString(KEY_CERT_PIN, value).apply()
+    override var refreshCookieValue: String?
+        get() = prefs.getString(KEY_REFRESH_COOKIE_VALUE, null)
+        set(value) = prefs.edit().putString(KEY_REFRESH_COOKIE_VALUE, value).apply()
 
-    fun clearAuth() {
+    override var refreshCookiePath: String?
+        get() = prefs.getString(KEY_REFRESH_COOKIE_PATH, null)
+        set(value) = prefs.edit().putString(KEY_REFRESH_COOKIE_PATH, value).apply()
+
+    override var refreshCookieExpiresAtMs: Long?
+        get() = if (prefs.contains(KEY_REFRESH_COOKIE_EXPIRES)) prefs.getLong(KEY_REFRESH_COOKIE_EXPIRES, 0L) else null
+        set(value) {
+            if (value == null) prefs.edit().remove(KEY_REFRESH_COOKIE_EXPIRES).apply()
+            else prefs.edit().putLong(KEY_REFRESH_COOKIE_EXPIRES, value).apply()
+        }
+
+    override var pinnedSpkiSha256: String?
+        get() = prefs.getString(KEY_SPKI_PIN, null)
+        set(value) = prefs.edit().putString(KEY_SPKI_PIN, value).apply()
+
+    override fun clearAuth() {
         prefs.edit()
             .remove(KEY_ACCESS_TOKEN)
-            .remove(KEY_REFRESH_COOKIE)
+            .remove(KEY_REFRESH_COOKIE_NAME)
+            .remove(KEY_REFRESH_COOKIE_VALUE)
+            .remove(KEY_REFRESH_COOKIE_PATH)
+            .remove(KEY_REFRESH_COOKIE_EXPIRES)
             .apply()
     }
 
     private companion object {
         const val KEY_SERVER_URL = "server_url"
         const val KEY_ACCESS_TOKEN = "access_token"
-        const val KEY_REFRESH_COOKIE = "refresh_cookie"
-        const val KEY_CERT_PIN = "cert_pin_sha256"
+        const val KEY_REFRESH_COOKIE_NAME = "refresh_cookie_name"
+        const val KEY_REFRESH_COOKIE_VALUE = "refresh_cookie_value"
+        const val KEY_REFRESH_COOKIE_PATH = "refresh_cookie_path"
+        const val KEY_REFRESH_COOKIE_EXPIRES = "refresh_cookie_expires_ms"
+        const val KEY_SPKI_PIN = "pinned_spki_sha256"
     }
 }

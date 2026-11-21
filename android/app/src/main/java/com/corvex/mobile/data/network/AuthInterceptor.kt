@@ -1,6 +1,6 @@
 package com.corvex.mobile.data.network
 
-import com.corvex.mobile.data.security.SecureStorage
+import com.corvex.mobile.data.security.TokenStore
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.Interceptor
@@ -20,7 +20,7 @@ data class RefreshResponse(
 
 @Singleton
 class AuthInterceptor @Inject constructor(
-    private val secureStorage: SecureStorage,
+    private val tokenStore: TokenStore,
     @Named("RefreshClient") private val refreshClient: OkHttpClient,
     private val json: Json
 ) : Interceptor {
@@ -29,9 +29,11 @@ class AuthInterceptor @Inject constructor(
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val original = chain.request()
-        val token = secureStorage.accessToken
+        val path = original.url.encodedPath
+        val skipAuth = path.endsWith("/auth/login") || path.endsWith("/auth/refresh")
+        val token = tokenStore.accessToken
 
-        val authenticatedRequest = if (!token.isNullOrBlank() && !original.url.encodedPath.contains("/auth/login")) {
+        val authenticatedRequest = if (!token.isNullOrBlank() && !skipAuth) {
             original.newBuilder()
                 .header("Authorization", "Bearer $token")
                 .build()
@@ -40,21 +42,21 @@ class AuthInterceptor @Inject constructor(
         }
 
         val response = chain.proceed(authenticatedRequest)
-        if (response.code != 401 || original.url.encodedPath.contains("/auth/refresh")) {
+        if (response.code != 401 || skipAuth) {
             return response
         }
 
         response.close()
 
         val newToken = synchronized(lock) {
-            val currentToken = secureStorage.accessToken
+            val currentToken = tokenStore.accessToken
             if (currentToken != null && currentToken != token) {
                 currentToken
             } else {
                 refreshAccessToken(original.url.scheme, original.url.host, original.url.port)
             }
         } ?: run {
-            secureStorage.clearAuth()
+            tokenStore.clearAuth()
             return chain.proceed(original)
         }
 
@@ -76,7 +78,7 @@ class AuthInterceptor @Inject constructor(
                 if (!res.isSuccessful) return null
                 val body = res.body?.string() ?: return null
                 val parsed = json.decodeFromString<RefreshResponse>(body)
-                secureStorage.accessToken = parsed.accessToken
+                tokenStore.accessToken = parsed.accessToken
                 parsed.accessToken
             }
         } catch (_: Exception) {

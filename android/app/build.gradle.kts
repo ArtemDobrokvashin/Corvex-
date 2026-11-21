@@ -44,6 +44,12 @@ android {
         compose = true
         buildConfig = true
     }
+
+    packaging {
+        resources {
+            pickFirsts += listOf("META-INF/LICENSE.md", "META-INF/NOTICE.md")
+        }
+    }
 }
 
 dependencies {
@@ -74,6 +80,10 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+
+    // IMAP/SMTP (Jakarta Mail / Eclipse Angus)
+    implementation("org.eclipse.angus:angus-mail:2.0.3")
+    implementation("org.eclipse.angus:angus-activation:2.0.2")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

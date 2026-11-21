@@ -7,7 +7,7 @@ import retrofit2.http.POST
 
 @Serializable
 data class LoginRequest(
-    val email: String,
+    val username: String,
     val password: String
 )
 
@@ -15,12 +15,12 @@ data class LoginRequest(
 data class LoginResponse(
     val accessToken: String? = null,
     val mfaRequired: Boolean = false,
-    val mfaToken: String? = null
+    val mfaTicket: String? = null
 )
 
 @Serializable
 data class MfaVerifyRequest(
-    val mfaToken: String,
+    val mfaTicket: String,
     val code: String
 )
 
