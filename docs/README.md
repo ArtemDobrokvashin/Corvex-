@@ -27,6 +27,7 @@
 | Посмотреть, что дальше | [`ROADMAP.md`](ROADMAP.md) |
 | Узнать точные версии зависимостей и политику обновлений | [`DEPENDENCIES.md`](DEPENDENCIES.md) |
 | Понять визуальный язык и правила интерфейса | [`DESIGN.md`](DESIGN.md) |
+| Узнать состояние мобильного клиента и что нужно до MVP | [`MOBILE.md`](MOBILE.md) |
 | Участвовать в разработке | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) |
 | Сообщить об уязвимости | [`../SECURITY.md`](../SECURITY.md) |
 
