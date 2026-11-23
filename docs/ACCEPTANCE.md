@@ -147,6 +147,57 @@ docker compose ps               # все сервисы healthy
 **Чего не доказывает:** приём почты из интернета (нужен MX и порт 25), работу под
 нагрузкой 50 ящиков, 72 часа без перезапуска.
 
+### P5. Устойчивость DLQ и судьба письма при простое хранилища
+
+**Зачем:** предыдущая проверка DLQ (`verify-dlq-resilience.ps1`) на пустом стенде давала
+честный `0 → 0`, но ничего не доказывала: в очередях не было ни одного сообщения, поэтому
+воспроизводить сбой из 2026-10-19 было нечем. Зелёный результат без сообщения в конвейере —
+это проверка, которая не проверяет.
+
+**Как** (23.11.2026, стенд `corvex`, `C:\corvex-clean`):
+
+```powershell
+# 1. положить синтетическое письмо в durable spool и запомнить rawRef
+docker compose cp artifacts\dlq-probe.eml "mail-storage-service:/data/mail/_spool/<rawRef>.eml"
+# 2. остановить хранилище и опубликовать событие в corvex.mail
+docker compose stop mail-storage-service
+docker run --rm --network corvex_data -e RABBITMQ_USER -e RABBITMQ_PASSWORD -e RAWREF=<rawRef> \
+  -v "${PWD}\artifacts:/w" -w /w python:3-alpine python publish_event.py
+# 3. поднять хранилище, дать конвейеру догнать, снять счётчики
+docker compose start mail-storage-service
+powershell -ExecutionPolicy Bypass -File scripts\verify-dlq-resilience.ps1 -BaselineOnly
+```
+
+**Доказательство:**
+
+| Шаг | Наблюдение |
+|---|---|
+| Публикация | `{"routed":true}`, `mail.spam.inbound = 1` при остановленном хранилище |
+| После старта хранилища (90 с) | все шесть очередей `0`, `mail.spam.inbound.dlq = 0` |
+| Судьба письма | spool `<rawRef>.eml` удалён самим конвейером (`No such file or directory`) |
+| Прохождение до последнего звена | `mail-storage-service`: `Пропущена доставка rawRef=<rawRef>: получатель dlq-probe@company.local не найден или неактивен` |
+| Подписка потребителя | `mail.spam.inbound consumers = 1` |
+| **Негативный контроль** | событие с несуществующим `rawRef` дало `mail.spam.inbound.dlq = 1` |
+
+Негативный контроль — главное. Без него `DLQ = 0` неотличимо от «DLQ сломана и не
+наполняется никогда». Ядовитое сообщение ушло в DLQ через `SpamRetryRecoverer` →
+`RejectAndDontRequeueRecoverer`, то есть очередь мёртвых писем работает и сбои видит.
+
+**Чего не доказывает:**
+
+- ветка `StorageUnavailableException` → `ImmediateRequeueAmqpException` (возврат в очередь
+  при недоступном хранилище) **не подтверждена логом**: строк с маркером `SpamRetryRecoverer`
+  на уровне warn за окно простоя не найдено, единственный stack trace относится к
+  негативному контролю и заканчивается `SpamRetryRecoverer.java:33` — это fallback в DLQ.
+  То есть доказано «сообщение пережило простой хранилища», но не доказано, что оно
+  пережило его именно через повторную постановку в очередь;
+- недельная устойчивость, поведение при падении самого спам- или AV-звена, реальный `.eml`
+  от настоящего SMTP (письмо синтетическое).
+
+**Состояние данных после проверки:** в `mail.spam.inbound.dlq` остаётся одно синтетическое
+сообщение (`rawRef` `4535d561-b3a7-4e99-96e6-83a2b5b84348`) — это негативный контроль.
+Очередь не очищается: автоочистка DLQ запрещена `OPERATIONS.md`.
+
 ## 4. Состояние
 
 | Приёмка | Статус | Где доказательство |
@@ -155,6 +206,7 @@ docker compose ps               # все сервисы healthy
 | P2. Полный `mvn verify` | **пройдено:** полный reactor `BUILD SUCCESS`, 3 м 02 с: 13 сервисных модулей + агрегатор | `STATUS.md`, §2, run [`44266849755`](https://github.com/ArtemDobrokvashin/Corvex-/actions/runs/44266849755) на `f8f01c7`; повтор на `d3fd7c0` — run `44267475424` |
 | P3. Восстановление из бэкапа | **пройдено (23.11.2026, 10:00):** `restore_verify.ps1` напечатал все восемь маркеров — `auth_db_logical_match`, `admin_db_logical_match`, `mail_db_logical_match`, `chat_db_logical_match`, `mail_data_match`, `attachment_data_match`, `chat_file_data_match`, `alert_relay_data_match` — и финальную строку `Restore verification OK: 4 databases and 4 file volumes match the backup`. Порядок: копия `C:\CorvexBackup\2026-11-20_160613` → `restore.ps1 -DataOnly -Force` в `corvex-restore-drill` → сверка по TCP. Контрольный ящик (письмо, вложение, событие, комната) в восстановленном проекте не открывался | `STATUS.md`, «Backup и restore: что доказано (2026-11-20, сверка 23.11)» |
 | P4. Установка с нуля | **пройдено:** клон `main` в `C:\corvex-clean`, `first-run.ps1` `[OK]`, `preflight.py` 12 PASS / 2 WARN / 0 FAIL, 20 контейнеров healthy, вход администратором, письмо внутри домена | `STATUS.md`, §2, «Чистая установка с нуля (2026-11-20, P4)» |
+| P5. Устойчивость DLQ | **пройдено с оговоркой (23.11.2026):** событие опубликовано в конвейер при остановленном `mail-storage-service`; после старта все очереди `0`, DLQ не выросла, spool удалён конвейером, доставка дошла до последнего звена. Негативный контроль дал `mail.spam.inbound.dlq = 1`. **Не подтверждена логом** ветка возврата в очередь при `StorageUnavailableException` | `STATUS.md`, «Устойчивость DLQ проверена на живом сообщении (23.11.2026)» |
 
 Правило обновления: строка меняется только вместе с доказательством. Перенос из «в работе»
 в «пройдено» без вывода команды запрещён.
