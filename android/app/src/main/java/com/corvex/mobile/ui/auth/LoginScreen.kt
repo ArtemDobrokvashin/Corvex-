@@ -1,7 +1,9 @@
 package com.corvex.mobile.ui.auth
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -12,7 +14,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.corvex.mobile.domain.mail.AccountType
+import com.corvex.mobile.domain.mail.ImapProviderPresets
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun LoginScreen(
     onAuthenticated: () -> Unit,
@@ -27,38 +32,115 @@ fun LoginScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         verticalArrangement = Arrangement.Center
     ) {
         Text("Corvex", style = MaterialTheme.typography.headlineMedium)
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         if (state.mfaToken == null) {
-            OutlinedTextField(
-                value = state.serverUrl,
-                onValueChange = viewModel::onServerUrlChange,
-                label = { Text("Адрес сервера (https://mail.company.ru)") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
-                value = state.email,
-                onValueChange = viewModel::onEmailChange,
-                label = { Text("Email") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
-                value = state.password,
-                onValueChange = viewModel::onPasswordChange,
-                label = { Text("Пароль") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth()
-            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = state.accountType == AccountType.CORVEX,
+                    onClick = { viewModel.onAccountTypeChange(AccountType.CORVEX) },
+                    label = { Text("Сервер Corvex") }
+                )
+                FilterChip(
+                    selected = state.accountType == AccountType.IMAP,
+                    onClick = { viewModel.onAccountTypeChange(AccountType.IMAP) },
+                    label = { Text("Обычная почта (IMAP)") }
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (state.accountType == AccountType.CORVEX) {
+                OutlinedTextField(
+                    value = state.serverUrl,
+                    onValueChange = viewModel::onServerUrlChange,
+                    label = { Text("Адрес сервера (https://mail.company.ru)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = state.email,
+                    onValueChange = viewModel::onEmailChange,
+                    label = { Text("Логин или почта") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = state.password,
+                    onValueChange = viewModel::onPasswordChange,
+                    label = { Text("Пароль") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            } else {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ImapProviderPresets.presets.forEach { preset ->
+                        FilterChip(
+                            selected = state.selectedPreset?.id == preset.id,
+                            onClick = { viewModel.onPresetSelected(preset) },
+                            label = { Text(preset.title) }
+                        )
+                    }
+                    FilterChip(
+                        selected = state.selectedPreset == null,
+                        onClick = viewModel::onCustomImapSelected,
+                        label = { Text("Свой сервер") }
+                    )
+                }
+
+                state.selectedPreset?.let { preset ->
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = preset.hint,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = state.email,
+                    onValueChange = viewModel::onEmailChange,
+                    label = { Text("Адрес почты") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = state.password,
+                    onValueChange = viewModel::onPasswordChange,
+                    label = { Text("Пароль приложения") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = state.imapHost,
+                    onValueChange = viewModel::onImapHostChange,
+                    label = { Text("IMAP-сервер (например, imap.mail.ru)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = state.smtpHost,
+                    onValueChange = viewModel::onSmtpHostChange,
+                    label = { Text("SMTP-сервер (например, smtp.mail.ru)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
             Button(
                 onClick = viewModel::submitLogin,
