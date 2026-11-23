@@ -103,14 +103,33 @@ describe('mailPrintDocument', () => {
 });
 
 describe('attachmentPrintDocument', () => {
-  it('экранирует имя файла в заголовке и подписи', () => {
+  it('не печатает имя файла в теле листа — ни шапкой, ни подписью', () => {
+    // Дефект: имя печаталось дважды (заголовок сверху и подпись снизу) и
+    // выглядело как ошибка вёрстки. В теле листа его быть не должно.
+    const fileName = 'st_small_507x507-pad_600x600_f8f8f8-u2.jpg';
+    const html = attachmentPrintDocument({
+      fileName,
+      imageDataUrl: 'data:image/jpeg;base64,YWJj',
+      footer: '31 КБ',
+    });
+    const body = html.slice(html.indexOf('<body>'));
+    // В видимом содержимом листа имени нет; `alt` картинки не печатается, а нужен
+    // там, где документ откроется в табе и картинка не загрузится.
+    const visible = body.replace(/alt="[^"]*"/g, '');
+    expect(visible).not.toContain(fileName);
+    expect(body).not.toContain('<h1');
+    expect(html).toContain('<title>');
+    expect(body).toContain('31 КБ');
+  });
+
+  it('экранирует имя файла в alt картинки и подписи', () => {
     const html = attachmentPrintDocument({
       fileName: '<img src=x onerror=alert(1)>.txt',
-      text: 'содержимое',
+      imageDataUrl: 'data:image/png;base64,YWJj',
       footer: 'a & b',
     });
     expect(html).not.toContain('<img src=x');
-    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;.txt');
+    expect(html).toContain('alt="&lt;img src=x onerror=alert(1)&gt;.txt"');
     expect(html).toContain('a &amp; b');
   });
 

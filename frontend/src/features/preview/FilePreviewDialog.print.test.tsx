@@ -82,6 +82,8 @@ describe('FilePreviewDialog: печать файла', () => {
 
     expect(printed.length).toBe(1);
     expect(printed[0]).toContain('v1499');
+    // Имя файла не печатается в теле листа вовсе — раньше шло дважды.
+    expect(printed[0]).not.toContain('выгрузка.csv');
     // На экране предупреждение об обрезке остаётся честным: там по-прежнему 1000 строк.
     expect(printed[0]).not.toContain('Показаны не все строки');
   });
