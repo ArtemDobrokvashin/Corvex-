@@ -35,7 +35,8 @@ export function useAttachmentPrinter() {
     sizeLabel?: string;
   }): Promise<PrintSource> => {
     const { kind, fileName, blob, imageUrl, sizeLabel } = params;
-    const footer = [fileName, sizeLabel].filter(Boolean).join(' · ');
+    // Только размер: имя файла на листе не печатается ни в каком виде.
+    const footer = sizeLabel;
 
     // Office уже приходит как PDF от серверного конвертера — печатается так же,
     // как обычный PDF: через встроенный просмотрщик.

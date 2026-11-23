@@ -94,6 +94,11 @@ export function mailPrintDocument(input: MailPrintInput): string {
 }
 
 export interface AttachmentPrintInput {
+  /**
+   * Имя файла: идёт только в `alt` картинки и в `<title>` документа (заголовок
+   * вкладки и имя PDF по умолчанию), но не в тело листа. На бумаге имя файла
+   * ничего не добавляет: пользователь и так знает, что открывал.
+   */
   fileName: string;
   /** Готовый HTML: текст в `<pre>`, таблица, и так далее. Уже экранирован вызывающим кодом. */
   html?: string;
@@ -101,13 +106,19 @@ export interface AttachmentPrintInput {
   imageDataUrl?: string;
   /** Абзацы обычного текста. Экранируются здесь. */
   text?: string;
-  /** Подпись внизу листа: имя файла, размер. */
+  /** Подпись внизу листа: размер. Имени файла здесь быть не должно — это дубль шапки. */
   footer?: string;
 }
 
-/** Документ «файл из предпросмотра»: PDF, картинка, текст, таблица. */
+/**
+ * Документ «файл из предпросмотра»: PDF, картинка, текст, таблица.
+ *
+ * Без шапки с именем файла. Раньше имя печаталось дважды — заголовком сверху и
+ * подписью снизу, — и это выглядело как ошибка вёрстки. Теперь имени в теле
+ * листа нет вовсе.
+ */
 export function attachmentPrintDocument(input: AttachmentPrintInput): string {
-  const parts: string[] = [`<h1 style="font:600 13pt/1.3 system-ui,sans-serif;margin:0 0 5mm">${escapeHtml(input.fileName)}</h1>`];
+  const parts: string[] = [];
   if (input.imageDataUrl) {
     parts.push(`<img src="${escapeHtml(input.imageDataUrl)}" alt="${escapeHtml(input.fileName)}" style="max-width:100%;height:auto">`);
   } else if (input.html) {
