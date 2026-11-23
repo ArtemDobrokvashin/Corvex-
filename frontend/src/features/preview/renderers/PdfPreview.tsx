@@ -11,6 +11,7 @@ export default function PdfPreview({ url, fileName }: { url: string; fileName: s
     <iframe
       title={`${t('Предпросмотр PDF')}: ${fileName}`}
       src={url}
+      data-print-frame="pdf"
       className="h-full w-full border-0 bg-white"
       referrerPolicy="no-referrer"
     />

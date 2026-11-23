@@ -11,6 +11,7 @@ import {
   FileVideo,
   FileWarning,
   Loader2,
+  Printer,
   RotateCcw,
   ShieldAlert,
   ShieldCheck,
@@ -31,6 +32,10 @@ import { previewFailure, type PreviewFailure } from './previewFailure';
 import { isPreviewTooLarge, previewKindFor, previewSizeLimit, type PreviewKind } from './previewKind';
 import type { PreviewSource } from './types';
 import { usePreviewBlob } from './usePreviewBlob';
+import { useAttachmentPrinter } from '../print/useAttachmentPrinter';
+import { attachmentPrintDocument } from '../print/printDocument';
+import { openPrintWindow } from '../print/printing';
+import { formatBytes as formatBytesForPrint } from '../../api/driveApi';
 
 function iconForKind(kind: PreviewKind): LucideIcon {
   switch (kind) {
@@ -87,6 +92,9 @@ export default function FilePreviewDialog({ items, index, onIndexChange, onClose
   const titleId = useId();
   const [downloadError, setDownloadError] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [printError, setPrintError] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const printAttachment = useAttachmentPrinter();
   useModalFocus(panelRef);
 
   // Диалог занимает весь экран: фон не должен прокручиваться под ним.
@@ -101,6 +109,8 @@ export default function FilePreviewDialog({ items, index, onIndexChange, onClose
   useEffect(() => {
     setDownloadError(false);
     setDownloading(false);
+    setPrintError(false);
+    setPrinting(false);
   }, [index]);
 
   useEffect(() => {
@@ -186,6 +196,50 @@ export default function FilePreviewDialog({ items, index, onIndexChange, onClose
       setDownloadError(true);
     } finally {
       setDownloading(false);
+    }
+  };
+
+  // Печать доступна, когда есть что печатать: файл уже загружен в просмотр,
+  // не заблокирован антивирусом и не является HTML-вложением.
+  const printable = !blocked && !tooLarge && !scanUnconfirmed
+    && (activeState.status === 'ready' || (kind === 'office' && officePreview.state.status === 'ready'));
+
+  const startPrint = async () => {
+    if (!printable || printing) return;
+    setPrintError(false);
+    setPrinting(true);
+    try {
+      const readyState = officeMode ? officePreview.state : state;
+      const blob = readyState.status === 'ready' ? readyState.blob : undefined;
+      const imageUrl = readyState.status === 'ready' && kind === 'image' ? readyState.url : undefined;
+      const result = await printAttachment({
+        kind,
+        fileName: source.fileName,
+        blob,
+        imageUrl,
+        sizeLabel: source.sizeBytes != null ? formatBytesForPrint(source.sizeBytes, locale) : undefined,
+      });
+      if (result.kind === 'pdf-frame') {
+        // PDF печатает встроенный просмотрщик: у него своя разметка страниц.
+        const frame = document.querySelector<HTMLIFrameElement>('iframe[data-print-frame="pdf"]');
+        const frameWindow = frame?.contentWindow;
+        if (frameWindow) {
+          try {
+            frameWindow.focus();
+            frameWindow.print();
+            return;
+          } catch {
+            // Просмотрщик не дал себя напечатать — уходим в запасной путь ниже.
+          }
+        }
+        // Встроенной печати нет: отдаём PDF в новом табе, там печать вызовет
+        // пользователь. Пустой документ без объяснения хуже, чем новый таб.
+        setPrintError(!openPrintWindow(attachmentPrintDocument({ fileName: source.fileName })));
+      }
+    } catch {
+      setPrintError(true);
+    } finally {
+      setPrinting(false);
     }
   };
 
@@ -318,6 +372,19 @@ export default function FilePreviewDialog({ items, index, onIndexChange, onClose
                 </button>
               </>
             )}
+            {printable && kind !== 'unsupported' && kind !== 'html' && (
+              <button
+                type="button"
+                className="btn-secondary h-8 px-2.5 text-xs"
+                aria-label={t('Печать')}
+                title={t('Печать')}
+                disabled={printing}
+                onClick={() => void startPrint()}
+              >
+                {printing ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />}
+                <span className="hidden sm:inline">{t('Печать')}</span>
+              </button>
+            )}
             {source.download && !blocked && (
               <button
                 type="button"
@@ -348,6 +415,11 @@ export default function FilePreviewDialog({ items, index, onIndexChange, onClose
         {downloadError && (
           <p role="alert" className="shrink-0 border-t border-line bg-surface px-3 py-2 text-[12px] text-danger sm:px-4">
             {t('Не удалось скачать файл. Проверьте соединение и попробуйте ещё раз.')}
+          </p>
+        )}
+        {printError && (
+          <p role="alert" className="shrink-0 border-t border-line bg-surface px-3 py-2 text-[12px] text-danger sm:px-4">
+            {t('Не удалось открыть печать. Попробуйте скачать файл и напечатать его из своей программы.')}
           </p>
         )}
       </div>
