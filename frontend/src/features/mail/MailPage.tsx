@@ -21,6 +21,7 @@ import {
   OctagonAlert,
   Paperclip,
   PenSquare,
+  Printer,
   Reply,
   ReplyAll,
   Search,
@@ -38,6 +39,7 @@ import { demoFolders, demoMails, DemoMail } from '../../api/demoData';
 import { externalMailApi, ExternalMailAccount } from '../../api/externalMailApi';
 import { contactsApi } from '../../api/contactsApi';
 import { onboardingApi, type OnboardingView } from '../../api/onboardingApi';
+import { formatBytes } from '../../api/driveApi';
 import { ApiError } from '../../api/httpClient';
 import {
   mailApi,
@@ -74,6 +76,9 @@ import { usePreview } from '../preview/PreviewProvider';
 import MailboxUsage from './MailboxUsage';
 import { hasRemoteImages } from './mailHtml';
 import MailHtmlFrame from './MailHtmlFrame';
+import { mailPrintDocument } from '../print/printDocument';
+import { openPrintWindow, printHtmlDocument } from '../print/printing';
+import { isMailPrintShortcut } from '../print/printShortcut';
 import {
   applyMailListControls,
   hasActiveMailFilters,
@@ -542,6 +547,38 @@ export default function MailPage() {
     active && !demoMode && activeRecipientData?.cc.length
       ? formatMailRecipients(activeRecipientData.cc, recipientIdentity, recipientFallbacks)
       : '';
+  // Печать письма целиком: отдельный документ, а не `window.print()` страницы.
+  // Печатает шапку (от/кому/копия/дата/тема) и тело, вложения — только перечнем.
+  const printActiveMail = async () => {
+    if (!active) return;
+    const html = mailPrintDocument({
+      subject: active.subject,
+      from: active.from,
+      to: recipientText,
+      cc: ccText || undefined,
+      date: active.date,
+      html: activeHtml && !showPlainText ? activeHtml : undefined,
+      text: activeHtml && !showPlainText ? undefined : activeBody,
+      attachments: (loadedAttachments[active.id] ?? []).map((attachment) => {
+        // У вложений письма нет размера до загрузки: печатаем только имя.
+        const size = (attachment as { sizeBytes?: number | null }).sizeBytes;
+        return size != null ? `${attachment.fileName} (${formatBytes(size, locale)})` : attachment.fileName;
+      }),
+      allowRemoteImages: showRemoteImages,
+      labels: {
+        from: t('От'),
+        to: t('Кому'),
+        cc: t('Копия'),
+        date: t('Дата'),
+        attachments: t('Вложения'),
+      },
+    });
+    const outcome = await printHtmlDocument(html);
+    // Safari на iOS игнорирует print() у невидимого фрейма: тогда открываем
+    // документ в новом табе, где печать вызывается самим пользователем.
+    if (!outcome.printed) openPrintWindow(html);
+  };
+
   const replyAllReady = demoMode || activeRecipientData !== undefined;
   const replyCc = active
     ? replyAllCc(active.from, activeRecipientData?.to ?? [], activeRecipientData?.cc ?? [], sessionUser?.email)
@@ -1336,6 +1373,13 @@ export default function MailPage() {
         setComposeDraft(null);
         return;
       }
+      // Ctrl/Cmd+P на открытом письме печатает письмо, а не интерфейс страницы.
+      // Без открытого письма отдаём сочетание браузеру: печать списка — его дело.
+      if (isMailPrintShortcut(e, { hasActiveMail: Boolean(active), composing: Boolean(composeDraft), typing: Boolean(typing) })) {
+        e.preventDefault();
+        void printActiveMail();
+        return;
+      }
       if (typing || composeDraft || e.ctrlKey || e.metaKey || e.altKey) return;
       const key = e.key.toLowerCase();
       if (key === '/') {
@@ -1976,6 +2020,12 @@ export default function MailPage() {
                 className="hidden 2xl:inline-flex"
                 disabled={bulkBusy}
                 onClick={() => void forwardMessages([active.id])}
+              />
+              <IconButton
+                icon={Printer}
+                label={t('Печать')}
+                size={17}
+                onClick={() => void printActiveMail()}
               />
 
               <span className="mx-1 h-4 w-px bg-line" aria-hidden="true" />
