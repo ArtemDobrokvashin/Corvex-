@@ -4,21 +4,29 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.corvex.mobile.data.security.TokenStore
 import com.corvex.mobile.ui.auth.LoginScreen
+import com.corvex.mobile.ui.home.HomeScreen
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var tokenStore: TokenStore
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val startDestination = if (tokenStore.isLoggedIn()) "home" else "login"
+
         setContent {
             MaterialTheme {
                 val navController = rememberNavController()
-                NavHost(navController = navController, startDestination = "login") {
+                NavHost(navController = navController, startDestination = startDestination) {
                     composable("login") {
                         LoginScreen(
                             onAuthenticated = {
@@ -29,7 +37,13 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable("home") {
-                        Text("Corvex Mail & Chat")
+                        HomeScreen(
+                            onLoggedOut = {
+                                navController.navigate("login") {
+                                    popUpTo("home") { inclusive = true }
+                                }
+                            }
+                        )
                     }
                 }
             }

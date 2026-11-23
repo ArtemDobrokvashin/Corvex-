@@ -9,5 +9,15 @@ interface TokenStore {
     var refreshCookieExpiresAtMs: Long?
     var pinnedSpkiSha256: String?
 
+    var accountType: String?
+    var imapHost: String?
+    var imapPort: Int
+    var smtpHost: String?
+    var smtpPort: Int
+    var imapEmail: String?
+    var imapPassword: String?
+
+    fun isLoggedIn(): Boolean = !accessToken.isNullOrBlank() || !imapEmail.isNullOrBlank()
+
     fun clearAuth()
 }

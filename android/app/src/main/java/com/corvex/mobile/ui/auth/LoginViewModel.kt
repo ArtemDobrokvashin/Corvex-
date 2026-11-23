@@ -2,8 +2,10 @@ package com.corvex.mobile.ui.auth
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.corvex.mobile.data.imap.ImapMailService
 import com.corvex.mobile.data.repository.AuthRepository
 import com.corvex.mobile.data.repository.AuthResult
+import com.corvex.mobile.data.security.TokenStore
 import com.corvex.mobile.domain.mail.AccountType
 import com.corvex.mobile.domain.mail.ImapPreset
 import com.corvex.mobile.domain.mail.ImapProviderPresets
@@ -34,7 +36,9 @@ data class LoginUiState(
 
 @HiltViewModel
 class LoginViewModel @Inject constructor(
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    private val imapMailService: ImapMailService,
+    private val tokenStore: TokenStore
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LoginUiState())
@@ -78,8 +82,34 @@ class LoginViewModel @Inject constructor(
                 _uiState.update { it.copy(error = "Заполните адрес почты, пароль приложения и IMAP-сервер") }
                 return
             }
-            // TODO(M2): подключить ImapMailBackend для проверки входа по IMAP
-            _uiState.update { it.copy(isAuthenticated = true) }
+            val imapPortInt = state.imapPort.toIntOrNull() ?: 993
+            val smtpPortInt = state.smtpPort.toIntOrNull() ?: 465
+            viewModelScope.launch {
+                _uiState.update { it.copy(isLoading = true, error = null) }
+                val res = imapMailService.verifyConnection(
+                    host = state.imapHost.trim(),
+                    port = imapPortInt,
+                    email = state.email.trim(),
+                    password = state.password
+                )
+                res.onSuccess {
+                    tokenStore.accountType = AccountType.IMAP.name
+                    tokenStore.imapHost = state.imapHost.trim()
+                    tokenStore.imapPort = imapPortInt
+                    tokenStore.smtpHost = state.smtpHost.trim()
+                    tokenStore.smtpPort = smtpPortInt
+                    tokenStore.imapEmail = state.email.trim()
+                    tokenStore.imapPassword = state.password
+                    _uiState.update { it.copy(isLoading = false, isAuthenticated = true) }
+                }.onFailure { err ->
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            error = "Не удалось подключиться: ${err.message ?: "проверьте адрес и пароль приложения"}"
+                        )
+                    }
+                }
+            }
             return
         }
 

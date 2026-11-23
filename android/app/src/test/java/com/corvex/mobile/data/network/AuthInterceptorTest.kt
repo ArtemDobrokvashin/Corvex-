@@ -21,7 +21,14 @@ private class FakeTokenStore(
     override var refreshCookieValue: String? = null,
     override var refreshCookiePath: String? = null,
     override var refreshCookieExpiresAtMs: Long? = null,
-    override var pinnedSpkiSha256: String? = null
+    override var pinnedSpkiSha256: String? = null,
+    override var accountType: String? = null,
+    override var imapHost: String? = null,
+    override var imapPort: Int = 993,
+    override var smtpHost: String? = null,
+    override var smtpPort: Int = 465,
+    override var imapEmail: String? = null,
+    override var imapPassword: String? = null
 ) : TokenStore {
     override fun clearAuth() {
         accessToken = null
