@@ -3,6 +3,9 @@ package com.corvex.mobile.di
 import com.corvex.mobile.data.network.AuthCookieJar
 import com.corvex.mobile.data.network.AuthInterceptor
 import com.corvex.mobile.data.network.BaseUrlInterceptor
+import com.corvex.mobile.data.network.api.AuthApi
+import com.corvex.mobile.data.network.api.CalendarApi
+import com.corvex.mobile.data.network.api.MailApi
 import com.corvex.mobile.data.security.TokenStore
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import dagger.Module
