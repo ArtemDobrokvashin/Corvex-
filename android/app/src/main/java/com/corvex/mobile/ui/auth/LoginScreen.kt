@@ -17,7 +17,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.corvex.mobile.domain.mail.AccountType
 import com.corvex.mobile.domain.mail.ImapProviderPresets
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
     onAuthenticated: () -> Unit,
