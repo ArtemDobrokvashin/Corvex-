@@ -24,6 +24,7 @@
 | Узнать, что осталось сделать и что для этого нужно от вас | [`NEXT-STEPS.md`](NEXT-STEPS.md) |
 | Посмотреть план на неделю и на понедельник | [`PLAN-WEEK-2026-11-23.md`](PLAN-WEEK-2026-11-23.md), [`PLAN-MONDAY.md`](PLAN-MONDAY.md) |
 | Узнать, что делать во вторник 24.11 (почтовые клиенты, следующий блок) | [`PLAN-TUESDAY.md`](PLAN-TUESDAY.md) |
+| Ставить на сервер, у которого ещё нет домена (запасной сценарий) | [`PLAN-TUESDAY-FALLBACK.md`](PLAN-TUESDAY-FALLBACK.md) |
 | Прочитать разбор недели: плюсы, минусы, оценка | [`RETRO.md`](RETRO.md) |
 | Посмотреть, что дальше | [`ROADMAP.md`](ROADMAP.md) |
 | Узнать точные версии зависимостей и политику обновлений | [`DEPENDENCIES.md`](DEPENDENCIES.md) |
