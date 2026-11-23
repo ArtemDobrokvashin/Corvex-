@@ -2,6 +2,9 @@
 
 Инструкция для администратора: от чистого сервера до рабочего веб-интерфейса. Команды
 приведены для PowerShell; внутри Linux-VM они те же, отличается только установка Docker.
+Пошаговый путь для Ubuntu Server — отдельной страницей: [`UBUNTU.md`](UBUNTU.md).
+Он же объясняет две вещи, из-за которых чистый сервер обычно «не открывается»:
+`vm.max_map_count` для Elasticsearch и `CORVEX_WEB_ORIGINS` при входе по IP.
 
 Перед началом:
 
@@ -238,11 +241,17 @@ sudo cp /etc/letsencrypt/live/mail.company.ru/privkey.pem   infra/certs/
 sudo chown 100:101 infra/certs/privkey.pem && sudo chmod 600 infra/certs/privkey.pem
 ```
 
-Имя в сертификате — `mail.<ваш-домен>`: оно обслуживает веб, IMAP и POP3. В файле
-`infra/nginx/conf.d/corvex.conf` поправьте `server_name` на то же имя:
+Имя в сертификате — `mail.<ваш-домен>`: оно обслуживает веб, IMAP и POP3.
+`server_name` в `infra/nginx/conf.d/corvex.conf` **править больше не нужно**: там
+catch-all `server_name _;`, поэтому сервер одинаково открывается и по домену, и по IP
+(это и нужно в первые дни, пока DNS ещё не разошёлся). Проверка имени остаётся за
+сертификатом: если он выдан на другое имя, браузер и клиенты предупредят.
+
+Единственное имя, которое обязано совпасть с адресом, — `CORVEX_DOMAIN` и
+`CORVEX_WEB_ORIGINS` в `.env`:
 
 ```bash
-sed -i 's/server_name .*/server_name mail.company.ru;/' infra/nginx/conf.d/corvex.conf
+./scripts/ubuntu_origin.py --env .env --domain mail.company.ru
 ```
 
 На Windows-хосте пути те же, но с обратными слэшами: `infra\nginx\conf.d\corvex.conf`.
@@ -484,7 +493,7 @@ Elasticsearch не входит — он перестраивается. Коп�
 
 - [ ] В `.env` не осталось ни одного `change-me...` и ни одной заглушки `base64-32-byte-key-for-aes-gcm`.
 - [ ] TLS — настоящий сертификат, не пилотный самоподписанный.
-- [ ] В nginx поправлены `server_name` и подсеть доступа к `/grafana/`.
+- [ ] В nginx поправлена подсеть доступа к `/grafana/` (`server_name _;` менять не нужно).
 - [ ] Порты 25, 80, 443, 587 проверены **снаружи** (`Test-NetConnection <IP> -Port 25`).
 - [ ] Алерты приходят на внешний ящик.
 - [ ] Одна копия бэкапа лежит вне сервера, восстановление проверено.

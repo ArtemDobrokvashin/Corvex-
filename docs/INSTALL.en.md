@@ -144,8 +144,10 @@ The self-signed certificate from step 4 is for an internal pilot only.
 - **Internal domain:** a corporate CA certificate for `mail.<domain>`; the root CA must be
   trusted on user machines.
 
-The certificate name is `mail.<domain>`: it serves web, IMAP and POP3. Update `server_name`
-in `infra\nginx\conf.d\corvex.conf` to the same name.
+The certificate name is `mail.<domain>`: it serves web, IMAP and POP3. You do **not** need
+to edit `server_name` in `infra/nginx/conf.d/corvex.conf` — it is a catch-all `server_name _;`,
+so the server answers on both the domain and the IP. What must match is `CORVEX_DOMAIN` and
+`CORVEX_WEB_ORIGINS` in `.env`: `python3 scripts/ubuntu_origin.py --env .env --domain mail.<domain>`.
 
 ## 7. DNS
 
@@ -255,7 +257,7 @@ physical medium**. Restore verification — [`OPERATIONS.md`](OPERATIONS.md).
 
 - [ ] No `change-me...` value is left in `.env`.
 - [ ] TLS uses a real certificate, not the pilot self-signed one.
-- [ ] `server_name` and the `/grafana/` allowlist in nginx are adjusted.
+- [ ] The `/grafana/` allowlist in nginx is adjusted (`server_name _;` needs no change).
 - [ ] Alerts reach an external mailbox.
 - [ ] A backup copy lives off the server and a restore has been verified.
 - [ ] If Google external accounts are connected: it is known that in **Testing** status
