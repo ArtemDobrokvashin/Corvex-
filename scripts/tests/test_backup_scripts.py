@@ -169,7 +169,16 @@ class BackupScriptsTest(unittest.TestCase):
         self.assertIn("pg_restore -h postgres", VERIFY)
         self.assertIn("pg_dump -h postgres", VERIFY)
         self.assertIn("/tmp/actual.sql ${Db}", VERIFY)
-        self.assertIn("/tmp/expected.sql `${ReferenceDb}", VERIFY)
+        # `${ReferenceDb}` в PowerShell — литерал: ` гасит $, и в базу уезжает
+        # "-d ${ReferenceDb}". 23.11 pg_restore принял это за опцию и ругался
+        # database "-Fc" does not exist. Имя подставляется значением.
+        # Незакрытый ${ReferenceDb} в echo-маркерах — нормальная интерполяция PowerShell.
+        # Ловим экранированный вариант: ` перед $ превращает имя в литерал.
+        block = VERIFY[VERIFY.index('$Cmd = "set -e; "'):VERIFY.index('$Output = & docker')]
+        self.assertNotIn("`${ReferenceDb}", block)
+        self.assertIn('$Ref = "\'" + $ReferenceDb + "\'"', VERIFY)
+        self.assertIn("/tmp/expected.sql $Ref", VERIFY)
+        self.assertIn("-d $Ref -Fc", VERIFY)
         self.assertLess(VERIFY.index("diff -q /tmp/expected.norm"), VERIFY.index("dropdb"))
         self.assertIn("${Db}_logical_match", VERIFY)
 

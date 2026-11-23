@@ -124,17 +124,22 @@ try {
     # аргумент на Windows доезжает усечённым — sh получал огрызок сценария и выходил
     # с кодом 0, а скрипт печатал "Restore verification OK", ничего не сверив.
     # Второй рубеж — маркер ${Db}_logical_match: без него успех не засчитывается.
+    # `${ReferenceDb}` в PowerShell НЕ интерполируется: ` — escape-символ, и он
+    # съедает `$`, оставляя литерал "${ReferenceDb}". 23.11 pg_restore поэтому получил
+    # "-d ${ReferenceDb}", принял имя за опцию, и `-Fc` уехал в имя базы:
+    # database "-Fc" does not exist. Подставляем имя значением в кавычках PowerShell.
+    $Ref = "'" + $ReferenceDb + "'"
     $Cmd = "set -e; " +
-      "echo 'step: createdb ${ReferenceDb}'; createdb -h postgres -U `$PGUSER `${ReferenceDb}; " +
-      "echo 'step: pg_restore ${Db}'; pg_restore -h postgres -U `$PGUSER -d `${ReferenceDb} -Fc --no-owner --no-privileges --exit-on-error /backup/${Db}.dump; " +
+      "echo 'step: createdb ${ReferenceDb}'; createdb -h postgres -U `$PGUSER $Ref; " +
+      "echo 'step: pg_restore ${Db}'; pg_restore -h postgres -U `$PGUSER -d $Ref -Fc --no-owner --no-privileges --exit-on-error /backup/${Db}.dump; " +
       "echo 'step: pg_dump both sides'; pg_dump -h postgres -U `$PGUSER -Fp --no-owner --no-privileges -f /tmp/actual.sql ${Db}; " +
-      "pg_dump -h postgres -U `$PGUSER -Fp --no-owner --no-privileges -f /tmp/expected.sql `${ReferenceDb}; " +
+      "pg_dump -h postgres -U `$PGUSER -Fp --no-owner --no-privileges -f /tmp/expected.sql $Ref; " +
       "echo 'step: normalize and compare'; " +
       "sed -e /^--/d -e /^SET/d -e /^SELECT.pg_catalog.set_config/d -e /^.restrict/d -e /^.unrestrict/d /tmp/expected.sql > /tmp/expected.norm; " +
       "sed -e /^--/d -e /^SET/d -e /^SELECT.pg_catalog.set_config/d -e /^.restrict/d -e /^.unrestrict/d /tmp/actual.sql > /tmp/actual.norm; " +
-      "diff -q /tmp/expected.norm /tmp/actual.norm && { dropdb -h postgres -U `$PGUSER `${ReferenceDb}; echo '${Db}_logical_match'; } || " +
+      "diff -q /tmp/expected.norm /tmp/actual.norm && { dropdb -h postgres -U `$PGUSER $Ref; echo '${Db}_logical_match'; } || " +
       "{ echo 'MISMATCH in ${Db}: первые отличия (expected < > actual):'; diff /tmp/expected.norm /tmp/actual.norm | head -n 40 || true; " +
-      "echo 'Reference `${ReferenceDb} оставлена для разбора. Восстановленная ${Db} не тронута.'; exit 3; }"
+      "echo 'Reference '$Ref' оставлена для разбора. Восстановленная ${Db} не тронута.'; exit 3; }"
     $Output = & docker @("run", "--rm", "--network", "${ProjectName}_data",
       "-e", "PGUSER", "-e", "PGPASSWORD",
       "-v", "${BackupDir}:/backup:ro", "postgres:16-alpine", "sh", "-c", $Cmd) 2>&1
