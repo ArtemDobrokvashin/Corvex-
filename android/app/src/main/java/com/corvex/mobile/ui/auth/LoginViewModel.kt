@@ -47,7 +47,7 @@ class LoginViewModel @Inject constructor(
             _uiState.update { it.copy(isLoading = true, error = null) }
             when (val res = authRepository.login(state.serverUrl, state.email, state.password)) {
                 is AuthResult.Authenticated -> _uiState.update { it.copy(isLoading = false, isAuthenticated = true) }
-                is AuthResult.MfaRequired -> _uiState.update { it.copy(isLoading = false, mfaToken = res.mfaToken) }
+                is AuthResult.MfaRequired -> _uiState.update { it.copy(isLoading = false, mfaToken = res.mfaTicket) }
                 is AuthResult.Error -> _uiState.update { it.copy(isLoading = false, error = res.message) }
             }
         }
