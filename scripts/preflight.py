@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
 import re
 import shutil
 import socket
@@ -228,6 +229,45 @@ def check_docker(root: Path, results: list[Result]) -> None:
         )
     else:
         results.append(Result("docker daemon", PASS, "движок linux"))
+
+
+def check_host_readiness(results: list[Result]) -> None:
+    """То, без чего Ubuntu-сервер «работает», но не переживает перезагрузку.
+
+    Две проверки, обе из настоящих отказов: пользователь не в группе docker —
+    каждый скрипт требует sudo и падает на первой команде; Docker не включён в
+    автозапуск — после перезагрузки сервера стек не поднимается, а причина видна
+    только тому, кто помнит про systemctl.
+    """
+    if platform.system() != "Linux":
+        return
+
+    user = os.environ.get("SUDO_USER") or os.environ.get("USER") or ""
+    if user:
+        try:
+            in_group = "docker" in subprocess.run(
+                ["id", "-nG", user], capture_output=True, text=True, check=False
+            ).stdout.split()
+        except OSError:
+            in_group = False
+        if in_group:
+            results.append(Result("docker group", PASS, f"{user} может вызывать docker без sudo"))
+        else:
+            results.append(
+                Result("docker group", WARN,
+                       f"{user} не в группе docker: скрипты вызовут docker и получат отказ. "
+                       "sudo usermod -aG docker " + user + " и перелогиниться")
+            )
+
+    code, output = run(["systemctl", "is-enabled", "docker"])
+    if code == 0:
+        results.append(Result("docker autostart", PASS, "включён"))
+    else:
+        results.append(
+            Result("docker autostart", WARN,
+                   "Docker не включён в автозапуск: после перезагрузки стек не поднимется. "
+                   "sudo systemctl enable --now docker")
+        )
 
 
 def check_resources(root: Path, results: list[Result], limits: Thresholds) -> None:
@@ -447,6 +487,7 @@ def collect(root: Path, limits: Thresholds | None = None) -> list[Result]:
     results: list[Result] = []
     check_docker(root, results)
     check_resources(root, results, limits)
+    check_host_readiness(results)
     check_ports(results)
     check_env(root, results)
     check_secrets(root, results)

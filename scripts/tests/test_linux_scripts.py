@@ -148,9 +148,20 @@ class DocumentationTest(unittest.TestCase):
 
     def test_scripts_readme_lists_every_bash_script(self):
         readme = (SCRIPTS / "README.md").read_text(encoding="utf-8")
-        for name in ("first-run.sh", "backup.sh", "restore.sh", "restore_verify.sh", "acceptance.sh"):
+        for name in ("first-run.sh", "backup.sh", "restore.sh", "restore_verify.sh",
+                     "acceptance.sh", "prepare-ubuntu.sh", "ubuntu_origin.py"):
             with self.subTest(script=name):
                 self.assertIn(name, readme)
+
+    def test_ubuntu_guide_covers_every_script_it_promises(self):
+        # Инструкция для Ubuntu ссылается на скрипты; если файл переименуют, а
+        # страницу забудут — установка встанет на шаге, где скрипта нет.
+        guide = (ROOT / "docs" / "UBUNTU.md").read_text(encoding="utf-8")
+        for name in ("prepare-ubuntu.sh", "ubuntu_origin.py", "first-run.sh", "backup.sh",
+                     "restore.sh", "restore_verify.sh", "preflight.py"):
+            with self.subTest(script=name):
+                self.assertIn(name, guide)
+                self.assertTrue((SCRIPTS / name).exists() or name == "preflight.py")
 
 
 if __name__ == "__main__":

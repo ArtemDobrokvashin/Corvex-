@@ -71,6 +71,12 @@ powershell -ExecutionPolicy Bypass -File scripts\verify-dlq-resilience.ps1 -Base
 .\scripts\backup.ps1 -BackupRoot D:\CorvexBackup
 ```
 
+```bash
+./scripts/backup.sh --backup-root /srv/backup
+```
+
+Первая команда — Windows-хост, вторая — Ubuntu: состав копии и проверки совпадают.
+
 Что попадает в копию:
 
 | Данные | Формат |
@@ -91,7 +97,54 @@ powershell -ExecutionPolicy Bypass -File scripts\verify-dlq-resilience.ps1 -Base
    считается как данные × число копий.
 3. Расписание — Планировщик Windows, например ежедневно в 02:30:
    `powershell -ExecutionPolicy Bypass -File C:\Corvex\scripts\backup.ps1 -BackupRoot D:\CorvexBackup`.
+   На Ubuntu — systemd-таймер (юнит и таймер ниже), а не cron: в cron у задания нет
+   окружения и логов, и `docker` из него отвечает «command not found».
 4. **Восстановление проверяется.** Копия без проверенного восстановления — это надежда.
+
+### Расписание копий на Ubuntu (systemd)
+
+Два файла. Первый — что делать:
+
+```ini
+# /etc/systemd/system/corvex-backup.service
+[Unit]
+Description=Corvex backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/corvex
+ExecStart=/srv/corvex/scripts/backup.sh --backup-root /srv/backup
+# Копия содержит .env и ключи: читать её может только владелец.
+UMask=0077
+```
+
+Второй — когда:
+
+```ini
+# /etc/systemd/system/corvex-backup.timer
+[Unit]
+Description=Corvex backup daily
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now corvex-backup.timer
+sudo systemctl start corvex-backup.service   # первый прогон вручную
+systemctl list-timers corvex-backup.timer
+```
+
+`Persistent=true` догоняет пропущенный запуск после перезагрузки. Проверка результата —
+не «таймер включён», а свежий каталог в `/srv/backup` и `sha256sum -c manifest.sha256`
+внутри него.
 
 ### Проверка восстановления без риска для рабочего стенда
 
