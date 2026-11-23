@@ -12,8 +12,13 @@
  *   получает `false` и может открыть документ в новом табе.
  */
 
-/** Предел ожидания `afterprint`: не все браузеры его присылают. */
-export const PRINT_TIMEOUT_MS = 1500;
+/**
+ * Сколько `print()` должен «висеть», чтобы считать, что диалог действительно
+ * открылся. Chrome, Firefox и Safari блокируют JS, пока пользователь не закроет
+ * диалог печати. Если вызов вернулся мгновенно — его проигнорировали (например,
+ * sandbox без `allow-modals`), и нужен запасной путь.
+ */
+export const BLOCKING_PRINT_MS = 100;
 
 export interface PrintOutcome {
   /** `true`, если печать запущена; `false` — фрейм не смог распечатать документ. */
@@ -37,16 +42,22 @@ function removeActiveFrame() {
  * `attachmentPrintDocument`), но здесь дополнительно ставится `sandbox`:
  * печать — не повод исполнять код вложения.
  */
-export function printHtmlDocument(html: string, timeoutMs = PRINT_TIMEOUT_MS): Promise<PrintOutcome> {
+export function printHtmlDocument(html: string): Promise<PrintOutcome> {
   removeActiveFrame();
   if (typeof document === 'undefined') return Promise.resolve({ printed: false, html });
 
   const frame = document.createElement('iframe');
   frame.setAttribute('aria-hidden', 'true');
   frame.setAttribute('title', 'print');
-  frame.setAttribute('sandbox', 'allow-same-origin');
-  // Не `display:none` и не `left:-10000px`: WebKit в таком фрейме не печатает.
-  frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+  // `allow-modals` обязателен: Chrome считает печать модальным диалогом и без
+  // этого ключа молча игнорирует `print()` — без ошибки и без диалога. Именно
+  // на этом печать не работала в собранном приложении.
+  // `allow-scripts` не выдаём: печатать чужой код мы не собираемся.
+  frame.setAttribute('sandbox', 'allow-same-origin allow-modals');
+  // Фрейм размером 0×0 в углу экрана: не `display:none` и не `left:-10000px` —
+  // WebKit в таких фреймах не печатает. `visibility:hidden` тоже убран: браузер
+  // может исключить такой фрейм из печати и выдать пустые страницы.
+  frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
   document.body.appendChild(frame);
   activeFrame = frame;
 
@@ -55,14 +66,13 @@ export function printHtmlDocument(html: string, timeoutMs = PRINT_TIMEOUT_MS): P
     const finish = (printed: boolean) => {
       if (settled) return;
       settled = true;
-      window.clearTimeout(timer);
       window.removeEventListener('afterprint', onAfterPrint);
+      frame.contentWindow?.removeEventListener('afterprint', onAfterPrint);
       // Даём браузеру дорисовать диалог, затем убираем фрейм.
       window.setTimeout(removeActiveFrame, 1000);
       resolve({ printed, html });
     };
     const onAfterPrint = () => finish(true);
-    const timer = window.setTimeout(() => finish(true), timeoutMs);
 
     const frameWindow = frame.contentWindow;
     const frameDocument = frame.contentDocument;
@@ -74,16 +84,22 @@ export function printHtmlDocument(html: string, timeoutMs = PRINT_TIMEOUT_MS): P
     frameDocument.write(html);
     frameDocument.close();
 
-    // `afterprint` в части браузеров не приходит вовсе — тогда считаем попытку
-    // удавшейся по таймауту, но факт печати остаётся «неизвестным», и это
-    // отражено в названии поля, а не выдаётся за подтверждение.
+    // `afterprint` приходит на то окно, чей документ печатали, то есть на окно
+    // фрейма, а не родителя. Слушаем оба: часть браузеров поднимает событие выше.
+    frameWindow.addEventListener('afterprint', onAfterPrint);
     window.addEventListener('afterprint', onAfterPrint);
+    const startedAt = Date.now();
     try {
       frameWindow.focus();
       frameWindow.print();
     } catch {
       finish(false);
+      return;
     }
+    // Решение принимает не таймер, а длительность вызова: `print()` мгновенный
+    // значит проигнорированный. Таймер здесь был бы вреден — он срабатывал бы
+    // раньше, чем пользователь закроет диалог, и открывал бы лишний таб.
+    finish(Date.now() - startedAt >= BLOCKING_PRINT_MS);
   });
 }
 

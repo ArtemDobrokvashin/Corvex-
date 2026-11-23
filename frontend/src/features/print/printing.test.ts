@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PRINT_TIMEOUT_MS, openPrintWindow, printHtmlDocument } from './printing';
+import { BLOCKING_PRINT_MS, openPrintWindow, printHtmlDocument } from './printing';
 
 const frames = () => Array.from(document.querySelectorAll('iframe'));
 
@@ -14,8 +14,6 @@ function stubFramePrinting() {
   const appendChild = document.body.appendChild.bind(document.body);
   vi.spyOn(document.body, 'appendChild').mockImplementation(((node: Node) => {
     const appended = appendChild(node as never);
-    // У окна фрейма вне DOM нет contentWindow, поэтому подменяем после вставки —
-    // и до возврата из appendChild, то есть раньше, чем код печати вызовет print().
     if (node instanceof HTMLIFrameElement && node.contentWindow) {
       Object.defineProperty(node.contentWindow, 'print', { value: printSpy, configurable: true });
       Object.defineProperty(node.contentWindow, 'focus', { value: focusSpy, configurable: true });
@@ -24,8 +22,32 @@ function stubFramePrinting() {
   }) as typeof document.body.appendChild);
 }
 
+/**
+ * `print()` в настоящем браузере блокирует JS, пока пользователь не закроет
+ * диалог. Здесь это изображается подменой `Date.now()`: первый вызов — старт,
+ * второй — конец. `vi.useFakeTimers()` тоже подменяет `Date.now()`, поэтому
+ * такой способ единственный, который не превращает проверку в вечный цикл.
+ */
+/**
+ * Настоящий `print()` в браузере блокирует JS, пока пользователь не закроет
+ * диалог. Здесь это изображается сдвигом часов ровно на время вызова: `now`
+ * читается перед `print()` и после него, а сдвигает его сам мок.
+ *
+ * Часы задаются одной переменной, а не очередью значений: `Date.now()` зовут и
+ * посторонние механизмы, и очередь «первый вызов — старт» ломалась бы от них.
+ */
+let now = 1_000_000;
+
+function printTakes(ms: number) {
+  vi.spyOn(Date, 'now').mockImplementation(() => now);
+  printSpy.mockImplementation(() => {
+    now += ms;
+  });
+}
+
 describe('printHtmlDocument', () => {
   beforeEach(() => {
+    now = 1_000_000;
     vi.useFakeTimers();
     stubFramePrinting();
     printSpy.mockClear();
@@ -40,44 +62,55 @@ describe('printHtmlDocument', () => {
 
   it('создаёт изолированный фрейм, пишет в него документ и вызывает print', async () => {
     const html = '<!doctype html><html><body><h1>Печать</h1></body></html>';
-    const result = printHtmlDocument(html, 10);
+    printTakes(BLOCKING_PRINT_MS + 200);
+    const result = printHtmlDocument(html);
 
     const [frame] = frames();
     expect(frame).toBeTruthy();
-    expect(frame.getAttribute('sandbox')).toBe('allow-same-origin');
-    expect(frame.getAttribute('aria-hidden')).toBe('true');
+    // Без `allow-modals` Chrome молча игнорирует `print()`: печать не открывается,
+    // и именно так она «не работала» в собранном приложении.
+    expect(frame.getAttribute('sandbox')).toContain('allow-modals');
+    expect(frame.getAttribute('sandbox')).toContain('allow-same-origin');
+    expect(frame.getAttribute('sandbox')).not.toContain('allow-scripts');
+    // `visibility:hidden` убран: браузер может выкинуть такой фрейм из печати.
+    expect(frame.style.visibility).not.toBe('hidden');
     expect(frame.contentDocument?.body.innerHTML ?? '').toContain('Печать');
     expect(printSpy).toHaveBeenCalledTimes(1);
     expect(focusSpy).toHaveBeenCalledTimes(1);
 
-    await vi.advanceTimersByTimeAsync(10);
     await expect(result).resolves.toEqual({ printed: true, html });
   });
 
-  it('не считает печать проваленной, если afterprint не пришёл: по таймауту printed=true', async () => {
-    const pending = printHtmlDocument('<p>x</p>', 20);
-    await vi.advanceTimersByTimeAsync(20);
-    await expect(pending).resolves.toMatchObject({ printed: true });
-    expect(PRINT_TIMEOUT_MS).toBeGreaterThan(0);
+  it('мгновенный print() считаем проигнорированным: printed=false, а не ложный успех', async () => {
+    // Так выглядит sandbox без `allow-modals`: Chrome выбрасывает вызов без
+    // ошибки и без диалога. Раньше по таймауту здесь возвращалось `true`, и
+    // запасной путь не вызывался никогда — пользователь видел «ничего не происходит».
+    printTakes(0);
+    await expect(printHtmlDocument('<p>x</p>')).resolves.toMatchObject({ printed: false });
+    expect(BLOCKING_PRINT_MS).toBeGreaterThan(0);
+  });
+
+  it('считает печать состоявшейся, если фрейм прислал afterprint во время печати', async () => {
+    printSpy.mockImplementation(() => {
+      document.querySelector('iframe')?.contentWindow?.dispatchEvent(new Event('afterprint'));
+    });
+    await expect(printHtmlDocument('<p>x</p>')).resolves.toMatchObject({ printed: true });
   });
 
   it('убирает фрейм после печати, а не оставляет его в DOM', async () => {
-    const pending = printHtmlDocument('<p>x</p>', 5);
-    await vi.advanceTimersByTimeAsync(5);
-    await pending;
+    printTakes(0);
+    await printHtmlDocument('<p>x</p>');
     expect(frames().length).toBeGreaterThan(0);
     await vi.advanceTimersByTimeAsync(1000);
     expect(frames().length).toBe(0);
   });
 
   it('закрывает предыдущий фрейм, если печать вызвали повторно', async () => {
-    const first = printHtmlDocument('<p>1</p>', 5);
-    await vi.advanceTimersByTimeAsync(0);
+    printTakes(0);
+    const first = printHtmlDocument('<p>1</p>');
     expect(frames().length).toBe(1);
-    const second = printHtmlDocument('<p>2</p>', 5);
-    await vi.advanceTimersByTimeAsync(0);
+    const second = printHtmlDocument('<p>2</p>');
     expect(frames().length).toBe(1);
-    await vi.advanceTimersByTimeAsync(5);
     await Promise.all([first, second]);
     await vi.advanceTimersByTimeAsync(1000);
     expect(frames().length).toBe(0);
@@ -94,7 +127,7 @@ describe('printHtmlDocument', () => {
       return element;
     }) as typeof document.createElement);
 
-    await expect(printHtmlDocument('<p>x</p>', 5)).resolves.toMatchObject({ printed: false });
+    await expect(printHtmlDocument('<p>x</p>')).resolves.toMatchObject({ printed: false });
   });
 });
 
