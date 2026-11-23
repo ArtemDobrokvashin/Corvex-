@@ -67,7 +67,7 @@ services:
     networks: [data]
 
   rabbitmq:
-    image: rabbitmq:4.3.7-management-alpine
+    image: rabbitmq:4.3.8-management-alpine
     restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-corvex}
@@ -636,7 +636,7 @@ services:
     networks: [monitoring, edge]
 
   loki:
-    image: grafana/loki:3.7.9
+    image: grafana/loki:3.7.10
     profiles: [monitoring]
     restart: unless-stopped
     command: ["-config.file=/etc/loki/loki.yml"]
