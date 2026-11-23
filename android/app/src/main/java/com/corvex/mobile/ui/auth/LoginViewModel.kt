@@ -4,6 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.corvex.mobile.data.repository.AuthRepository
 import com.corvex.mobile.data.repository.AuthResult
+import com.corvex.mobile.domain.mail.AccountType
+import com.corvex.mobile.domain.mail.ImapPreset
+import com.corvex.mobile.domain.mail.ImapProviderPresets
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,7 +16,13 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class LoginUiState(
+    val accountType: AccountType = AccountType.CORVEX,
+    val selectedPreset: ImapPreset? = ImapProviderPresets.presets.firstOrNull(),
     val serverUrl: String = "https://",
+    val imapHost: String = ImapProviderPresets.presets.first().imapHost,
+    val imapPort: String = ImapProviderPresets.presets.first().imapPort.toString(),
+    val smtpHost: String = ImapProviderPresets.presets.first().smtpHost,
+    val smtpPort: String = ImapProviderPresets.presets.first().smtpPort.toString(),
     val email: String = "",
     val password: String = "",
     val totpCode: String = "",
@@ -31,7 +40,28 @@ class LoginViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
 
+    fun onAccountTypeChange(type: AccountType) = _uiState.update {
+        it.copy(accountType = type, error = null)
+    }
+
+    fun onPresetSelected(preset: ImapPreset) = _uiState.update {
+        it.copy(
+            selectedPreset = preset,
+            imapHost = preset.imapHost,
+            imapPort = preset.imapPort.toString(),
+            smtpHost = preset.smtpHost,
+            smtpPort = preset.smtpPort.toString(),
+            error = null
+        )
+    }
+
+    fun onCustomImapSelected() = _uiState.update {
+        it.copy(selectedPreset = null, imapHost = "", imapPort = "993", smtpHost = "", smtpPort = "465", error = null)
+    }
+
     fun onServerUrlChange(value: String) = _uiState.update { it.copy(serverUrl = value, error = null) }
+    fun onImapHostChange(value: String) = _uiState.update { it.copy(imapHost = value, error = null) }
+    fun onSmtpHostChange(value: String) = _uiState.update { it.copy(smtpHost = value, error = null) }
     fun onEmailChange(value: String) = _uiState.update { it.copy(email = value, error = null) }
     fun onPasswordChange(value: String) = _uiState.update { it.copy(password = value, error = null) }
     fun onTotpChange(value: String) {
@@ -43,6 +73,16 @@ class LoginViewModel @Inject constructor(
     fun submitLogin() {
         val state = _uiState.value
         if (state.isLoading) return
+        if (state.accountType == AccountType.IMAP) {
+            if (state.email.isBlank() || state.password.isBlank() || state.imapHost.isBlank()) {
+                _uiState.update { it.copy(error = "Заполните адрес почты, пароль приложения и IMAP-сервер") }
+                return
+            }
+            // TODO(M2): подключить ImapMailBackend для проверки входа по IMAP
+            _uiState.update { it.copy(isAuthenticated = true) }
+            return
+        }
+
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             when (val res = authRepository.login(state.serverUrl, state.email, state.password)) {
