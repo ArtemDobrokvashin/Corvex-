@@ -3,6 +3,8 @@ package com.corvex.mobile.di
 import com.corvex.mobile.data.network.AuthCookieJar
 import com.corvex.mobile.data.network.AuthInterceptor
 import com.corvex.mobile.data.network.BaseUrlInterceptor
+import com.corvex.mobile.data.network.api.AuthApi
+import com.corvex.mobile.data.network.api.MailApi
 import com.corvex.mobile.data.security.TokenStore
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import dagger.Module
@@ -87,4 +89,16 @@ object NetworkModule {
             .client(okHttpClient)
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()
+
+    // Retrofit-интерфейсы Hilt не создаёт сам: у них нет @Inject-конструктора.
+    // Без этих провайдеров граф падает на MissingBinding для AuthRepository и
+    // MailRepository. CalendarApi никто не инжектит, поэтому провайдера нет:
+    // мёртвый бин в графе — лишний шум, а не задел на будущее.
+    @Provides
+    @Singleton
+    fun provideAuthApi(retrofit: Retrofit): AuthApi = retrofit.create(AuthApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideMailApi(retrofit: Retrofit): MailApi = retrofit.create(MailApi::class.java)
 }
