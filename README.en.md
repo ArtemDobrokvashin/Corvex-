@@ -38,11 +38,12 @@ The project is led by one developer, **Artem Dobrokvashin**. Code, architecture 
 documentation are developed in the open. Contributions: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 > [!CAUTION]
-> **Corvex is not production-ready yet.** Install, login, admin, mail, chat, calendar and the
-> drive are written and build, and some scenarios have been verified on a test stand, but the
-> full end-to-end mail run, mail-client acceptance and backup restore are still open. This is
-> a development and acceptance stand, not a replacement for working mail: do not point
-> production MX records at it and do not migrate live mailboxes. See
+> **Corvex is not production-ready yet.** Clean install and backup restore are done, and
+> acceptance items P1–P4 are closed with evidence in [`docs/STATUS.md`](docs/STATUS.md);
+> still open are external mail (needs a domain, MX records and a public IP), mail-client
+> acceptance and 72 hours of observation on production hardware. This is a development and
+> acceptance stand, not a replacement for working mail: do not point production MX records
+> at it and do not migrate live mailboxes. See
 > [`docs/STATUS.md`](docs/STATUS.md) for exactly what has been verified.
 
 ## Features
