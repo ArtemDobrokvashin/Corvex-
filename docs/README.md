@@ -12,6 +12,7 @@
 | Узнать, что нужно для запуска: сервер, сеть, DNS, доступы | [`SERVER-REQUIREMENTS.md`](SERVER-REQUIREMENTS.md) |
 | Установить и впервые запустить | [`INSTALL.md`](INSTALL.md) · [English](INSTALL.en.md) |
 | Поставить на Ubuntu с нуля, по шагам | [`UBUNTU.md`](UBUNTU.md) |
+| Сделать тестовый стенд на загрузочном USB-носителе | [`USB-LINUX.md`](USB-LINUX.md) |
 | Понять, как устроена система внутри | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
 | Работать с API, писать интеграцию | [`API.md`](API.md), [`api/`](api/) |
 | Разобраться в почтовом контуре (SMTP, IMAP, POP3, James, внешние ящики) | [`MAIL.md`](MAIL.md) |
