@@ -67,6 +67,33 @@ def provided_apis() -> set[str]:
     return created
 
 
+# ViewModels get their dependencies through the Hilt graph too. A service the
+# ViewModel injects is built by Hilt (the `Service` suffix is the project's
+# naming rule), so a new service without `@Inject constructor` compiles fine
+# and then fails at runtime with MissingBinding -- exactly what the API tests
+# above catch one layer up.
+VIEWMODEL_CTOR = re.compile(r'class\s+\w*ViewModel\b[\s\S]{0,600}?constructor\s*\(([\s\S]*?)\)\s*:')
+
+
+def injected_services() -> set[str]:
+    found: set[str] = set()
+    for path in _files('ViewModel.kt'):
+        for match in VIEWMODEL_CTOR.finditer(_read(path)):
+            found.update(re.findall(r':\s*([A-Z]\w*Service)\b', match.group(1)))
+    return found
+
+
+def hilt_provided_types() -> set[str]:
+    """Types Hilt can build itself: `@Inject constructor` or an explicit provider."""
+    provided: set[str] = set()
+    for path in _files('.kt'):
+        text = _read(path)
+        provided.update(re.findall(r'class\s+([A-Z]\w*)\b[\s\S]{0,400}?@Inject\s+constructor', text))
+        provided.update(re.findall(r'class\s+([A-Z]\w*)\b[\s\S]{0,400}?constructor\s*\([^)]*@Inject', text))
+        provided.update(re.findall(r'\)\s*:\s*([A-Z]\w*Service)\s*=', text))
+    return provided
+
+
 class AndroidHiltWiringTest(unittest.TestCase):
     def test_android_sources_are_present(self):
         if not DI_MODULES.is_dir():
@@ -92,3 +119,14 @@ class AndroidHiltWiringTest(unittest.TestCase):
         self.assertEqual(set(), imported - created,
                          'These APIs are imported in NetworkModule but never created; '
                          'the import alone does not satisfy Hilt.')
+
+
+    def test_services_injected_into_viewmodels_are_provided(self):
+        """The failure this guards against: `private val mail: MailService` with no @Inject."""
+        if not ANDROID.is_dir():
+            self.skipTest('android client is not in this checkout')
+        missing = sorted(injected_services() - hilt_provided_types())
+        self.assertEqual([], missing,
+                         'ViewModels inject services that the Hilt graph cannot build; '
+                         'Hilt will fail with MissingBinding. Add @Inject constructor to the '
+                         'service or a @Provides that creates it.')
