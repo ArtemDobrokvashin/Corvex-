@@ -6,7 +6,9 @@
 | Инструмент | Что проверяет | Меняет стенд? |
 |---|---|---|
 | `verify.ps1` / `verify.sh` | Frontend, Python operations/alert-relay tests, production audit, Maven 12 сервисов + JaCoCo, Compose config; опционально Docker build | Собирает артефакты/образы, но не запускает и не удаляет контейнеры |
-| `backup.ps1` / `restore.ps1` / `restore_verify.ps1` | Binary-safe PostgreSQL dumps, Maildir/CAS/chat files, SHA-256 manifest, isolated restore и содержательная сверка | Backup не останавливает стенд; `-DataOnly` создаёт отдельный проект, verify не меняет рабочий `corvex`; полный restore требует `-Force` |
+| `backup.ps1` / `backup.sh` | Binary-safe PostgreSQL dumps, Maildir/CAS/chat files, SHA-256 manifest | Backup не останавливает стенд и не удаляет старые копии |
+| `restore.ps1` / `restore.sh` | Полное восстановление и изолированный прогон только данных (`-DataOnly` / `--data-only`) | `--data-only` создаёт отдельный проект; полное восстановление требует `-Force`; манифест проверяется до изменения данных |
+| `restore_verify.ps1` / `restore_verify.sh` | Сверка восстановленного с копией: тома через архивы, базы через `pg_dump` обеих сторон, по маркеру на каждую | **Нет**: рабочий `corvex` запрещён, приложения не запускаются |
 | `runtime_smoke.py` | Уже созданные контейнеры, running/healthy, HTTPS frontend | **Нет**: не выполняет `up`, `down`, restart или prune |
 | `alert_e2e.py` | Synthetic Alertmanager alert → webhook/Rabbit → SMTP → IMAP INBOX | **Да, ограниченно**: создаёт и завершает один alert с run ID; не останавливает сервисы и не меняет существующие письма |
 | `alerts.ps1` | Repeat intervals в статусе и Alertmanager silence для внутреннего + внешнего каналов | **Да, ограниченно**: `silence/unsilence` меняет только правила уведомлений; мониторинг и сервисы не останавливаются |
@@ -21,7 +23,7 @@
 | `preflight.py` | То же для Linux-VM и Docker Desktop до первого `up`: Docker и его движок, ресурсы, порты (чтение `/proc/net/tcp`, права root не нужны), разбор `.env` (BOM, CRLF, дубли, заглушки, обязательные `:?`-ключи), ключи и права, `compose config -q`, `vm.max_map_count`, git. Коды возврата `0`/`1`/`2` | **Нет**: только чтение; единственная внешняя команда — `compose config -q` |
 | `capacity.py` | Расчёт диска под число ящиков и квоту; печатает допущения и рекомендации по дискам | **Нет** |
 | `runtime_usage.py` | Снимок RAM/CPU контейнеров и `docker system df` для калибровки размера сервера | **Нет** |
-| `acceptance.ps1` | Последовательный прогон приёмки сервера с единым журналом и PASS/FAIL по шагам | Только то, что делают вызываемые им скрипты; сам ничего не меняет | **Нет**: не читает содержимое писем, не удаляет и не восстанавливает файлы |
+| `acceptance.ps1` / `acceptance.sh` | Последовательный прогон приёмки сервера с единым журналом и PASS/FAIL по шагам | Только то, что делают вызываемые им скрипты; сам ничего не меняет | **Нет**: не читает содержимое писем, не удаляет и не восстанавливает файлы |
 
 Для Python-скриптов нужен **Python 3.10+**, сторонние pip-пакеты не требуются.
 Windows: `py -3`; Linux/macOS: `python3`. Все команды ниже выполняются из корня
