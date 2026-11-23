@@ -55,14 +55,23 @@ class BackupScriptsTest(unittest.TestCase):
         self.assertIn("printenv POSTGRES_USER", VERIFY)
         self.assertIn('"-e", "PGUSER", "-e", "PGPASSWORD"', VERIFY)
         self.assertIn("-tAc \"select 1\"", VERIFY)
+        # Проверка обязана идти по TCP, а не через `docker compose exec psql`:
+        # в официальном образе postgres unix-сокет доверяет всем ("local all all trust"),
+        # поэтому exec-проверка проходит и с неверным паролем. 2026-11-23 скрипт напечатал
+        # четыре маркера томов и упал на createdb — проверка не поймала ничего.
+        self.assertNotIn("exec -T -e PGPASSWORD postgres psql", VERIFY)
+        self.assertIn('"--network", "${ProjectName}_data"', VERIFY)
+        self.assertIn("Cannot authenticate over TCP", VERIFY)
         # Пароль не должен попадать в командную строку как PGxxxx=value.
         self.assertNotRegex(VERIFY, r"PGPASSWORD=")
         self.assertNotRegex(VERIFY, r"PGUSER=")
 
     def test_verify_authenticates_before_creating_any_reference_database(self):
+        # Сравниваем позицию самой проверки, а не строки "select 1": она встречается
+        # и в тексте ошибки про TCP-вход, который стоит уже после createdb.
         self.assertLess(
-            VERIFY.index("select 1"),
-            VERIFY.index("createdb"),
+            VERIFY.index('psql -h postgres -U $PgUser -d postgres -tAc "select 1"'),
+            VERIFY.index('"echo \'step: createdb ${ReferenceDb}\''),
             "подключение проверяется до createdb, чтобы падать с внятной причиной",
         )
         self.assertLess(

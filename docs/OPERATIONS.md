@@ -264,3 +264,38 @@ docker compose ps
 - Общие календари, AD/LDAP, второй компьютер.
 
 Текущее состояние доказательств — [`STATUS.md`](STATUS.md); планы — [`ROADMAP.md`](ROADMAP.md).
+
+### Диагноз: `password authentication failed` на сверке баз
+
+Симптом: `restore_verify.ps1` печатает зелёные маркеры томов и падает на `step: createdb`
+с `FATAL: password authentication failed for user "corvex"`.
+
+Причина не в скрипте: **drill-проект создан при одном значении `POSTGRES_PASSWORD`, а сейчас
+в `.env` другое.** Проверка `docker compose exec postgres psql` этот случай не ловит — в
+официальном образе postgres по unix-сокету действует `local all all trust`, и пароль не
+спрашивается. Сверка же ходит по TCP, где пароль обязателен. С 2026-11-23 проверка перед
+созданием reference-базы идёт тем же путём — по TCP, — поэтому причина видна сразу.
+
+Диагностика (ничего не меняет, секрет не печатается):
+
+```powershell
+$env:PGPASSWORD = (& docker compose -p corvex-restore-drill exec -T postgres printenv POSTGRES_PASSWORD).Trim()
+docker run --rm --network corvex-restore-drill_data -e PGPASSWORD postgres:16-alpine psql -h postgres -U corvex -d postgres -tAc "select 'tcp_auth_ok'"
+$env:PGPASSWORD = $null
+```
+
+`tcp_auth_ok` — пароль верный, ищем причину дальше. `password authentication failed` —
+пароль разошёлся, лечение:
+
+```powershell
+docker compose -p corvex-restore-drill down -v
+powershell -ExecutionPolicy Bypass -File scripts\restore.ps1 -BackupDir C:\CorvexBackup\<timestamp> -ProjectName corvex-restore-drill -DataOnly -Force
+powershell -ExecutionPolicy Bypass -File scripts\restore_verify.ps1 -BackupDir C:\CorvexBackup\<timestamp> -ProjectName corvex-restore-drill
+```
+
+`down -v` удаляет только drill-проект `corvex-restore-drill`, рабочий стенд `corvex` не
+затрагивается. Это допустимая потеря: drill пересобирается из бэкапа за десять минут.
+
+Чего делать нельзя: подменять `POSTGRES_PASSWORD` в `.env` под пароль базы, чтобы сверка
+«прошла». Сверка после этого доказывает не восстановление, а совпадение двух неверных
+значений.

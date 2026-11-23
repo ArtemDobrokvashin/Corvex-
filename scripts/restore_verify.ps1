@@ -91,9 +91,19 @@ $PgPassword = $PgPassword.Trim()
 $env:PGUSER = $PgUser
 $env:PGPASSWORD = $PgPassword
 try {
-  & docker compose -p $ProjectName exec -T -e PGPASSWORD postgres psql -U $PgUser -d postgres -tAc "select 1" | Out-Null
+  # Проверка идёт по TCP, тем же путём, что и сверка ниже. `docker compose exec psql`
+  # для этого не годится: официальный образ postgres разрешает "local all all trust",
+  # то есть по unix-сокету пароль не спрашивается и проверка проходит даже тогда, когда
+  # TCP-вход с этим паролем отвергается. Так и вышло 2026-11-23: скрипт сказал
+  # "Cannot authenticate" только на createdb, через десять минут после четырёх зелёных
+  # маркеров томов.
+  & docker run --rm --network "${ProjectName}_data" -e PGPASSWORD postgres:16-alpine `
+    psql -h postgres -U $PgUser -d postgres -tAc "select 1" | Out-Null
   if ($LASTEXITCODE -ne 0) {
-    throw "Cannot authenticate inside the isolated postgres container as $PgUser"
+    throw ("Cannot authenticate over TCP in the isolated postgres as $PgUser. " +
+      "Значит пароль в контейнере не совпадает с паролем в самой базе: " +
+      "drill-проект создан при одном значении POSTGRES_PASSWORD, а сейчас в .env другое. " +
+      "Пересоздайте drill: docker compose -p $ProjectName down -v")
   }
 } catch {
   $env:PGUSER = $null
