@@ -74,4 +74,22 @@ describe('send size limits', () => {
     expect(remainingAttachmentBytes([fileOf(3 * 1024 * 1024, 'a.bin')]))
       .toBe(SEND_LIMITS.requestBudgetBytes - 4 * 1024 * 1024);
   });
+
+  it('keeps the scheduled time and the reply branch in the draft payload', async () => {
+    // Без этих двух полей черновик ответа терял ветку, а отложенное письмо —
+    // время: после перезагрузки оно уходило бы сразу.
+    const payload = await buildDraftPayload(
+      {
+        to: 'alice@example.com',
+        subject: 'Re: Budget',
+        body: 'Approved',
+        sendAt: '2026-11-02T08:00:00.000Z',
+        inReplyToMessageId: 'm-42',
+      },
+      [],
+    );
+
+    expect(payload.sendAt).toBe('2026-11-02T08:00:00.000Z');
+    expect(payload.inReplyToMessageId).toBe('m-42');
+  });
 });

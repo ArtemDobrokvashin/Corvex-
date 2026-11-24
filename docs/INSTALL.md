@@ -361,7 +361,7 @@ Grafana доступна на `https://mail.<домен>/grafana/`; доступ
    `mail-storage-service`: `docker compose logs <сервис> | grep Flyway` (Linux) или
    `| Select-String Flyway` (Windows). У каждого сервиса своя история версий, поэтому
    сверяйте с последней миграцией в `services/<сервис>/src/main/resources/db/migration`,
-   а не с общим номером: `V1…V14` в одном сервисе не значит «14 миграций везде».
+   а не с общим номером: `V1…V16` в одном сервисе не значит «14 миграций везде».
    Согласованность проверяет `scripts/docs_audit.py`.
 5. **Секреты не заглушки.** Шаг 5: в `.env` нет `change-me…` и
    `base64-32-byte-key-for-aes-gcm`.

@@ -638,6 +638,10 @@ export default function MailPage() {
         body: saved.payload.bodyText,
         bodyHtml: saved.payload.bodyHtml || undefined,
         externalAccountId: saved.payload.externalAccountId,
+        // Без этих двух полей черновик ответа терял ветку, а отложенное
+        // письмо — запланированное время.
+        inReplyToMessageId: saved.payload.inReplyToMessageId ?? null,
+        sendAt: saved.payload.sendAt ?? null,
       });
     } catch (error) {
       setLoadError(`${t('Не удалось открыть черновик.')} ${errorMessage(error)}`);

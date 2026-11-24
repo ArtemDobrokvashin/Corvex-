@@ -79,6 +79,10 @@ export interface DraftFields {
   body: string;
   bodyHtml?: string | null;
   externalAccountId?: string | null;
+  /** «Отправить позже»: сохраняется вместе с черновиком, иначе теряется. */
+  sendAt?: string | null;
+  /** Письмо, на которое отвечаем: без него черновик ответа терял ветку. */
+  inReplyToMessageId?: string | null;
 }
 
 export async function buildDraftPayload(fields: DraftFields, files: File[]): Promise<WebmailDraftPayload> {
@@ -90,6 +94,8 @@ export async function buildDraftPayload(fields: DraftFields, files: File[]): Pro
     bodyHtml: fields.bodyHtml ?? '',
     externalAccountId: fields.externalAccountId ?? null,
     attachments: await Promise.all(files.map(fileToAttachment)),
+    sendAt: fields.sendAt ?? null,
+    inReplyToMessageId: fields.inReplyToMessageId ?? null,
   };
 }
 

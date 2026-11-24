@@ -104,7 +104,12 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   // «Отправить позже»: null — обычная отправка, иначе локальное время.
-  const [sendAtLocal, setSendAtLocal] = useState<string | null>(initial.sendAt ?? null);
+  const [sendAtLocal, setSendAtLocal] = useState<string | null>(() => {
+    // Черновик хранит время в ISO, input — в локальном виде без зоны.
+    if (!initial.sendAt) return null;
+    const parsed = new Date(initial.sendAt);
+    return Number.isNaN(parsed.getTime()) ? null : toLocalInputValue(parsed);
+  });
   const [savedId, setSavedId] = useState<string | null>(initialDraft?.id ?? null);
   const savedRevision = useRef<number>(initialDraft?.revision ?? 0);
   const [draftStatus, setDraftStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');

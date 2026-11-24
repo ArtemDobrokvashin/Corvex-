@@ -127,6 +127,9 @@ export interface WebmailDraftPayload {
   bodyHtml: string;
   externalAccountId: string | null;
   attachments: SendAttachment[];
+  /** «Отправить позже» и ветка ответа: без них черновик терял время и тред. */
+  sendAt?: string | null;
+  inReplyToMessageId?: string | null;
 }
 
 export interface SavedDraft {
