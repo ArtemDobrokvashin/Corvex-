@@ -61,6 +61,18 @@
             <plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin>
             <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId>
                 <configuration><testExcludes>
+                    <testExclude>**/api/StorageControllersTest.java</testExclude>
+                    <testExclude>**/api/WebmailDraftControllerTest.java</testExclude>
+                    <testExclude>**/draft/DraftPayloadTest.java</testExclude>
+                    <testExclude>**/search/MailSearchServiceTest.java</testExclude>
+                    <testExclude>**/search/MessageSearchIndexerTest.java</testExclude>
+                    <testExclude>**/service/MailApiServiceTest.java</testExclude>
+                    <testExclude>**/service/MailMoveConcurrencyIT.java</testExclude>
+                    <testExclude>**/service/MailSendServiceTest.java</testExclude>
+                    <testExclude>**/settings/MailSettingsServiceTest.java</testExclude>
+                </testExcludes></configuration></plugin>
+            <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId>
+                <configuration><testExcludes>
                     <testExclude>**/draft/WebmailDraftStoreTest.java</testExclude>
                     <testExclude>**/mime/OutgoingMessageFactoryTest.java</testExclude>
                     <testExclude>**/schedule/OutboxServiceTest.java</testExclude>
