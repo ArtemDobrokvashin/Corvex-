@@ -15,6 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.mockito.ArgumentMatchers;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -72,7 +74,7 @@ class OutboxServiceTest {
 
     @Test
     void cancelDeletesTheSpoolCopyOfAScheduledMessage() throws Exception {
-        when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class))).thenReturn(List.of("raw-1"));
+        when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<String>>any(), any(Object[].class))).thenReturn(List.of("raw-1"));
         when(jdbc.update(anyString(), any(Object[].class))).thenReturn(1);
 
         assertTrue(service.cancel(ownerId, UUID.randomUUID()));
@@ -82,7 +84,7 @@ class OutboxServiceTest {
 
     @Test
     void dispatchOfAMissingRowSendsNothing() {
-        when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class))).thenReturn(List.of());
+        when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<String>>any(), any(Object[].class))).thenReturn(List.of());
 
         service.dispatch(UUID.randomUUID());
 

@@ -246,7 +246,7 @@ public class MailSendService {
     private UUID scheduleSend(AuthUserClient.MailboxOwner sender, MailDtos.SendMessageRequest req,
                               OutgoingMessageFactory.ComposedMessage composed, List<String> local,
                               List<String> external, String fromAddress, String messageId,
-                              ExternalMailAccount externalAccount) {
+                              ExternalMailAccount externalAccount) throws IOException {
         RawMessageSpool.StoredRawMessage raw = store(composed.eml());
         try {
             return outbox.schedule(sender.id(), raw, local, external, fromAddress, messageId,
