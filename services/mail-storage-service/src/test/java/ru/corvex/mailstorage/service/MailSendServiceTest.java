@@ -258,7 +258,7 @@ class MailSendServiceTest {
         assertEquals(senderId, event.senderId());
         assertTrue(spool.exists(event.rawRef()));
         verify(externalAccounts).audit(eq(senderId), eq(own), eq("EXTERNAL_SEND_AS_QUEUED"), anyString());
-        verify(factory).compose(eq("external@mail.test"), eq("Sender Name"), anyString(), any(), any(), any());
+        verify(factory).compose(eq("external@mail.test"), eq("Sender Name"), anyString(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -275,7 +275,7 @@ class MailSendServiceTest {
         assertEquals(List.of("a@company.local"), result.localRecipients());
         verify(events).publishConfirmed(eq("mail.inbound.received"), any(), anyString());
         verify(events, never()).publishConfirmed(eq("mail.outbound.external.queued"), any(), anyString());
-        verify(factory).compose(eq("external@mail.test"), eq("External Name"), anyString(), any(), any(), any());
+        verify(factory).compose(eq("external@mail.test"), eq("External Name"), anyString(), any(), any(), any(), any(), any());
     }
 
     @Test
