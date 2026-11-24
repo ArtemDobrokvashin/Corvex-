@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -115,6 +116,46 @@ class OutgoingMessageFactoryTest {
                 List.of("to@example.test"), List.of(), badAttachment));
     }
 
+    @Test
+    void setsInReplyToAndReferencesForAThreadedReply() throws Exception {
+        MailDtos.SendMessageRequest req = request(
+                List.of("to@example.test"), List.of(), "Re: Topic", "Body", null, null);
+
+        OutgoingMessageFactory.ComposedMessage composed = factory.compose(
+                "sender@company.local", "Sender", "<reply@company.local>",
+                List.of("to@example.test"), List.of(), req,
+                "<parent@example.test>", "<root@example.test> <parent@example.test>");
+        MimeMessage parsed = parse(composed.eml());
+
+        assertEquals("<parent@example.test>", parsed.getHeader("In-Reply-To")[0]);
+        // Родитель уже был в цепочке: дублей быть не должно.
+        assertEquals("<root@example.test> <parent@example.test>", parsed.getHeader("References")[0]);
+    }
+
+    @Test
+    void omitsThreadHeadersWhenThereIsNothingToReference() throws Exception {
+        MailDtos.SendMessageRequest req = request(
+                List.of("to@example.test"), List.of(), "Topic", "Body", null, null);
+
+        MimeMessage parsed = parse(factory.compose(
+                "sender@company.local", "Sender", "<new@company.local>",
+                List.of("to@example.test"), List.of(), req, null, null).eml());
+
+        assertNull(parsed.getHeader("In-Reply-To"));
+        assertNull(parsed.getHeader("References"));
+    }
+
+    @Test
+    void rejectsHeaderInjectionThroughMessageId() {
+        // Перевод строки в Message-ID — попытка добавить свой заголовок в письмо.
+        assertNull(OutgoingMessageFactory.sanitizeMessageId("<a@b>\r\nBcc: victim@example.test"));
+        assertNull(OutgoingMessageFactory.sanitizeMessageId("   "));
+        assertEquals("<a@b>", OutgoingMessageFactory.sanitizeMessageId("  <a@b>  "));
+        // В References попадает только корректная часть, остальное отбрасывается.
+        assertEquals("<a@b> <c@d>", OutgoingMessageFactory.buildReferences("<a@b>", "<c@d>"));
+        assertNull(OutgoingMessageFactory.buildReferences(null, "bad line\r\nInjected: yes"));
+    }
+
     private static MailDtos.SendMessageRequest request(
             List<String> to,
             List<String> cc,
@@ -122,7 +163,7 @@ class OutgoingMessageFactoryTest {
             String text,
             String html,
             List<MailDtos.SendAttachment> attachments) {
-        return new MailDtos.SendMessageRequest(to, cc, List.of(), subject, text, html, attachments, true, null);
+        return new MailDtos.SendMessageRequest(to, cc, List.of(), subject, text, html, attachments, true, null, null, null);
     }
 
     private static MimeMessage parse(byte[] eml) throws Exception {

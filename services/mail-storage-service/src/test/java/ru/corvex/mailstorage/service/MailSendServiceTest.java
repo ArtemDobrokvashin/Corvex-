@@ -16,6 +16,8 @@ import ru.corvex.mailstorage.mime.MimeMailParser;
 import ru.corvex.mailstorage.mime.OutgoingMessageFactory;
 import ru.corvex.mailstorage.pipeline.MailEventPublisher;
 import ru.corvex.mailstorage.pipeline.MailPipelineEvents;
+import ru.corvex.mailstorage.repository.MessageMetadataRepository;
+import ru.corvex.mailstorage.schedule.OutboxService;
 import ru.corvex.mailstorage.search.MessageSearchIndexer;
 import ru.corvex.mailstorage.storage.RawMessageSpool;
 
@@ -39,6 +41,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -63,6 +66,8 @@ class MailSendServiceTest {
     private MailEventPublisher events;
     private MessageSearchIndexer indexer;
     private ExternalMailAccountService externalAccounts;
+    private MessageMetadataRepository messages;
+    private OutboxService outbox;
     private MailSendService service;
 
     @BeforeEach
@@ -76,9 +81,12 @@ class MailSendServiceTest {
         events = mock(MailEventPublisher.class);
         indexer = mock(MessageSearchIndexer.class);
         externalAccounts = mock(ExternalMailAccountService.class);
+        messages = mock(MessageMetadataRepository.class);
+        outbox = mock(OutboxService.class);
         service = service(spool);
         when(auth.findById(senderId)).thenReturn(Optional.of(sender));
-        when(factory.compose(anyString(), anyString(), anyString(), any(), any(), any()))
+        when(factory.compose(anyString(), anyString(), anyString(), any(), any(), any(),
+                any(), any()))
                 .thenAnswer(inv -> new OutgoingMessageFactory.ComposedMessage(
                         "raw-eml".getBytes(StandardCharsets.UTF_8), inv.getArgument(2)));
     }
@@ -185,18 +193,18 @@ class MailSendServiceTest {
     void mapsFactoryFailuresToStableHttpErrors() throws Exception {
         MailDtos.SendMessageRequest req = request(
                 List.of("a@company.local"), List.of(), List.of(), false, null);
-        when(factory.compose(anyString(), anyString(), anyString(), any(), any(), any()))
+        when(factory.compose(anyString(), anyString(), anyString(), any(), any(), any(), any(), any()))
                 .thenThrow(new AddressException("bad"));
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, assertThrows(ResponseStatusException.class,
                 () -> service.send(senderId, ALL, req)).getStatusCode());
 
         doThrow(new IllegalArgumentException("bad base64"))
-                .when(factory).compose(anyString(), anyString(), anyString(), any(), any(), any());
+                .when(factory).compose(anyString(), anyString(), anyString(), any(), any(), any(), any(), any());
         assertEquals(HttpStatus.BAD_REQUEST, assertThrows(ResponseStatusException.class,
                 () -> service.send(senderId, ALL, req)).getStatusCode());
 
         doThrow(new MessagingException("mime"))
-                .when(factory).compose(anyString(), anyString(), anyString(), any(), any(), any());
+                .when(factory).compose(anyString(), anyString(), anyString(), any(), any(), any(), any(), any());
         assertThrows(IllegalStateException.class, () -> service.send(senderId, ALL, req));
     }
 
@@ -278,7 +286,7 @@ class MailSendServiceTest {
                 Set.of("company.local"), store, java.time.Duration.ofSeconds(30),
                 java.time.Duration.ofMinutes(5), java.time.Clock.systemUTC());
         MailSendService withRegistry = new MailSendService(auth, factory, spool, delivery, events, indexer,
-                externalAccounts, accepted);
+                externalAccounts, accepted, messages, outbox);
         when(delivery.storeSentCopy(eq(sender), anyString(), anyLong())).thenReturn(Optional.empty());
 
         var result = withRegistry.send(senderId, ALL, request(
@@ -297,7 +305,7 @@ class MailSendServiceTest {
                 Set.of("company.local"), store, java.time.Duration.ofSeconds(30),
                 java.time.Duration.ofMinutes(5), java.time.Clock.systemUTC());
         MailSendService withRegistry = new MailSendService(auth, factory, spool, delivery, events, indexer,
-                externalAccounts, accepted);
+                externalAccounts, accepted, messages, outbox);
 
         var error = assertThrows(ResponseStatusException.class, () -> withRegistry.send(senderId, ALL,
                 request(List.of("a@new.example"), List.of(), List.of(), false, null)));
@@ -306,9 +314,43 @@ class MailSendServiceTest {
         verify(events, never()).publishConfirmed(eq("mail.outbound.queued"), any(), anyString());
     }
 
+    @Test
+    void replyCarriesParentMessageIdAndItsReferences() throws Exception {
+        var parent = new ru.corvex.mailstorage.domain.MessageMetadata();
+        UUID parentId = UUID.randomUUID();
+        parent.setId(parentId);
+        parent.setMessageIdHeader("<parent@company.local>");
+        parent.setRawRef("raw-parent");
+        // Сырое письмо лежит под именем <rawRef>.eml: без него References не прочитать.
+        java.nio.file.Files.writeString(tmp.resolve("spool").resolve("raw-parent.eml"),
+                "References: <root@company.local>\r\nSubject: Re: Subject\r\n\r\nbody");
+        when(messages.findByIdAndOwnerId(parentId, senderId)).thenReturn(Optional.of(parent));
+
+        MailDtos.SendMessageRequest req = new MailDtos.SendMessageRequest(
+                List.of("peer@company.local"), null, null, "Re: Subject", "Body", null, List.of(),
+                false, null, parentId, null);
+        service.send(senderId, ALL, req);
+
+        verify(factory).compose(anyString(), anyString(), anyString(), any(), any(), eq(req),
+                eq("<parent@company.local>"), eq("<root@company.local>"));
+    }
+
+    @Test
+    void replyToAMessageOfAnotherOwnerIsNotThreaded() throws Exception {
+        // Чужое письмо: репозиторий ищет строго по (id, owner) и ничего не находит.
+        var req = new MailDtos.SendMessageRequest(
+                List.of("peer@company.local"), null, null, "Re: Subject", "Body", null, List.of(),
+                false, null, UUID.randomUUID(), null);
+        service.send(senderId, ALL, req);
+
+        verify(factory).compose(anyString(), anyString(), anyString(), any(), any(), eq(req),
+                isNull(), isNull());
+    }
+
     private MailSendService service(RawMessageSpool spoolToUse) {
         return new MailSendService(auth, factory, spoolToUse, delivery, events, indexer, externalAccounts,
-                ru.corvex.mailstorage.maildomain.AcceptedDomains.staticOnly(" Company.Local, Example.Internal "));
+                ru.corvex.mailstorage.maildomain.AcceptedDomains.staticOnly(" Company.Local, Example.Internal "),
+                messages, outbox);
     }
 
     private MailDeliveryService.DeliveryResult deliveryResult(UUID id) {
@@ -332,6 +374,6 @@ class MailSendServiceTest {
     private static MailDtos.SendMessageRequest request(
             List<String> to, List<String> cc, List<String> bcc, Boolean saveToSent, UUID externalAccountId) {
         return new MailDtos.SendMessageRequest(to, cc, bcc, "Subject", "Body", null, List.of(), saveToSent,
-                externalAccountId);
+                externalAccountId, null, null);
     }
 }
