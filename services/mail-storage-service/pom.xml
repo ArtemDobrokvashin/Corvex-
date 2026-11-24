@@ -70,11 +70,11 @@
                             <concat destfile="${project.build.directory}/diag.txt">
                                 <fileset dir="${project.build.directory}/surefire-reports" includes="*.txt"/>
                             </concat>
-                            <loadfile property="diag" srcFile="${project.build.directory}/diag.txt"/>
-                            <replaceregexp flags="gm">
+                            <replaceregexp file="${project.build.directory}/diag.txt" flags="gm">
                                 <regexp pattern="^(.*)$"/>
                                 <substitution expression="::error::\1"/>
                             </replaceregexp>
+                            <loadfile property="diag" srcFile="${project.build.directory}/diag.txt"/>
                             <echo message="${diag}"/>
                         </target></configuration>
                     </execution>
