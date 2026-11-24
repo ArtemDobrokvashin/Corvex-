@@ -67,11 +67,9 @@ class OutboxServiceTest {
 
     @Test
     void cancelRefusesWhenTheMessageIsAlreadySending() {
-        // Отменять нечего: строка не в SCHEDULED. Возврат false — это ответ
+        // Отменять нечего: строка уже не в SCHEDULED. Возврат false — это ответ
         // «уже поздно», а не ошибка, и спул трогать нельзя.
-        doReturn(List.of()).when(jdbc)
-                .query(anyString(), ArgumentMatchers.<RowMapper<String>>any(), any(Object[].class));
-        when(jdbc.update(anyString(), any(Object[].class))).thenReturn(0);
+        service = new OutboxService(outbox(0, List.of()), spool, events);
 
         assertFalse(service.cancel(ownerId, UUID.randomUUID()));
         verify(spool, never()).delete(anyString());
@@ -90,15 +88,30 @@ class OutboxServiceTest {
 
     @Test
     void dispatchOfAMissingRowSendsNothing() {
-        // dispatch читает строку своим RowMapper<ScheduledRow>: общий мок на
-        // RowMapper<String> сюда не подходит, поэтому отвечаем на любой RowMapper.
-        // doReturn, а не when: у query() четыре перегруза, и типизированный when
-        // заставляет компилятор угадывать, какой из них имелся в виду.
-        doReturn(List.of()).when(jdbc)
-                .query(anyString(), ArgumentMatchers.<RowMapper<?>>any(), any(Object[].class));
+        // Строки нет: письмо уже ушло или отменено. Ничего не публикуем.
+        service = new OutboxService(outbox(0, List.of()), spool, events);
 
         service.dispatch(UUID.randomUUID());
 
         verify(events, never()).publishConfirmed(anyString(), any(), anyString());
+    }
+
+    /**
+     * Заглушка JdbcTemplate без Mockito: у query() четыре перегруза, и тест не
+     * должен зависеть от того, какой из них выберет компилятор.
+     */
+    private static JdbcTemplate outbox(int updated, List<String> refs) {
+        return new JdbcTemplate() {
+            @Override
+            @SuppressWarnings("unchecked")
+            public <T> List<T> query(String sql, RowMapper<T> rowMapper, Object... args) {
+                return (List<T>) refs;
+            }
+
+            @Override
+            public int update(String sql, Object... args) {
+                return updated;
+            }
+        };
     }
 }
