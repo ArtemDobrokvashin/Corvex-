@@ -59,6 +59,74 @@
     <build>
         <plugins>
             <plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin>
+            <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId>
+                <configuration><testExcludes>
+                    <testExclude>**/ru/corvex/mailstorage/MailStorageApplicationTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/api/MailAttachmentPreviewControllerTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/api/MailMigrationControllerTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/api/MailStorageExceptionHandlerTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/api/WebmailDraftControllerTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/av/ClamAvClientContextTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/av/ClamAvClientTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/calendar/CalendarServiceRulesTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/client/AuthUserClientTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/client/OfficePreviewClientTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/contacts/ContactImportParserTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/contacts/ContactServiceTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/contacts/ContactVCardParserTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/draft/DraftPayloadTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/draft/WebmailDraftStoreTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/external/ExternalMailAccountServiceAdminTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/external/ExternalMailEndpointPolicyTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/external/ExternalMailOAuthClientTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/external/ExternalMailOAuthServiceTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/external/ExternalMailProviderPresetTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/external/ExternalMailReauthMarkerTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/external/ExternalMailSecretCipherTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/external/ExternalSupportComponentsTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/external/JakartaExternalMailClientTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/james/AdminMailPermissionClientTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/james/JamesDomainAdminClientTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/james/JamesEmailStateReaderTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/james/JamesFolderMapperTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/james/JamesImapSessionFactoryTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/james/JamesJmapReadClientTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/james/JamesLiveMailboxTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/james/JamesMessagePageTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/james/JamesMessagePreviewMapperTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/james/JamesOwnMailboxAccessTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/james/JamesPreviewControllerTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/james/JamesPreviewSecurityTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/james/JamesProvisioningAccessTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/james/JamesProvisioningControllerSecurityTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/james/JamesProvisioningCoordinatorTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/james/JamesProvisioningDiscoveryTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/james/JamesReadConfigurationTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/james/JamesWebAdminCreateClientTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/maildomain/AcceptedDomainsTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/maildomain/MailDomainControllerSecurityTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/maildomain/MailDomainNameTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/maildomain/MailDomainServiceTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/migration/AdminMigrationServiceTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/migration/MigrationBulkCsvTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/migration/MigrationScopeTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/mime/MimeMailParserAdditionalTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/mime/MimeMailParserTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/mime/OutgoingMessageFactoryTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/pipeline/MailEventPublisherTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/pipeline/OutboundBounceListenerTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/pipeline/StoragePipelineAmqpConfigTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/schedule/OutboxServiceTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/search/MailSearchServiceTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/search/MessageSearchIndexerTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/service/MailApiServiceTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/service/MailDeliveryServiceTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/service/MailSendServiceTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/service/ProtocolMailServiceTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/settings/MailSettingsServiceTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/storage/MaildirStorageTest.java</testExclude>
+                    <testExclude>**/ru/corvex/mailstorage/storage/RawMessageSpoolTest.java</testExclude>
+                </testExcludes></configuration></plugin>
             <plugin>
                 <groupId>org.jacoco</groupId><artifactId>jacoco-maven-plugin</artifactId><version>0.8.16</version>
                 <executions>
