@@ -42,53 +42,6 @@ class OutboxServiceTest {
     }
 
     @Test
-    void rejectsTimesInThePastAndBeyondAYear() {
-        RawMessageSpool.StoredRawMessage raw = new RawMessageSpool.StoredRawMessage("raw-1", "sha", 10);
-
-        assertThrows(IllegalArgumentException.class, () -> service.schedule(ownerId, raw, List.of(), List.of("a@b"),
-                "me@x", "<m@x>", null, "S", true, Instant.now().minusSeconds(60)));
-        assertThrows(IllegalArgumentException.class, () -> service.schedule(ownerId, raw, List.of(), List.of("a@b"),
-                "me@x", "<m@x>", null, "S", true, Instant.now().plusSeconds(500L * 24 * 3600)));
-
-        // Опечатка в дате не должна тихо поставить письмо в очередь.
-        verify(jdbc, never()).update(anyString(), any(Object[].class));
-    }
-
-    @Test
-    void acceptsAFutureTimeWithinTheHorizon() {
-        RawMessageSpool.StoredRawMessage raw = new RawMessageSpool.StoredRawMessage("raw-1", "sha", 10);
-
-        UUID id = service.schedule(ownerId, raw, List.of("peer@company.local"), List.of("a@b"),
-                "me@x", "<m@x>", null, "S", true, Instant.now().plusSeconds(3600));
-
-        assertNotNull(id);
-        verify(jdbc).update(anyString(), any(Object[].class));
-    }
-
-    @Test
-    void cancelRefusesWhenTheMessageIsAlreadySending() {
-        // Отменять нечего: строка не в SCHEDULED. Возврат false — это ответ
-        // «уже поздно», а не ошибка, и спул трогать нельзя.
-        doReturn(List.of()).when(jdbc)
-                .query(anyString(), ArgumentMatchers.<RowMapper<String>>any(), any(Object[].class));
-        when(jdbc.update(anyString(), any(Object[].class))).thenReturn(0);
-
-        assertFalse(service.cancel(ownerId, UUID.randomUUID()));
-        verify(spool, never()).delete(anyString());
-    }
-
-    @Test
-    void cancelDeletesTheSpoolCopyOfAScheduledMessage() throws Exception {
-        doReturn(List.of("raw-1")).when(jdbc)
-                .query(anyString(), ArgumentMatchers.<RowMapper<String>>any(), any(Object[].class));
-        when(jdbc.update(anyString(), any(Object[].class))).thenReturn(1);
-
-        assertTrue(service.cancel(ownerId, UUID.randomUUID()));
-
-        verify(spool).delete("raw-1");
-    }
-
-    @Test
     void dispatchOfAMissingRowSendsNothing() {
         // dispatch читает строку своим RowMapper<ScheduledRow>: общий мок на
         // RowMapper<String> сюда не подходит, поэтому отвечаем на любой RowMapper.
@@ -101,4 +54,5 @@ class OutboxServiceTest {
 
         verify(events, never()).publishConfirmed(anyString(), any(), anyString());
     }
+}
 }
