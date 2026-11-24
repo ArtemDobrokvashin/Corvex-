@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class DraftPayloadTest {
     private DraftPayload draft(List<DraftPayload.Attachment> attachments) {
-        return new DraftPayload("one@example.test", "", "subject", "body", "<p>body</p>", null, attachments);
+        return new DraftPayload("one@example.test", "", "subject", "body", "<p>body</p>", null, attachments, null, null);
     }
     @Test void acceptsEmptyFieldsAndValidAttachment() {
         assertDoesNotThrow(() -> draft(null).validate());
@@ -19,7 +19,7 @@ class DraftPayloadTest {
         assertThrows(IllegalArgumentException.class, () -> draft(java.util.Collections.nCopies(11, new DraftPayload.Attachment("a", "text/plain", ""))).validate());
     }
     @Test void boundsTextInUtf8Bytes() {
-        assertThrows(IllegalArgumentException.class, () -> new DraftPayload("", "", "a".repeat(999), "", null, null, List.of()).validate());
-        assertThrows(IllegalArgumentException.class, () -> new DraftPayload("", "", "", "я".repeat(250_001), null, null, List.of()).validate());
+        assertThrows(IllegalArgumentException.class, () -> new DraftPayload("", "", "a".repeat(999), "", null, null, List.of(), null, null).validate());
+        assertThrows(IllegalArgumentException.class, () -> new DraftPayload("", "", "", "я".repeat(250_001), null, null, List.of(), null, null).validate());
     }
 }

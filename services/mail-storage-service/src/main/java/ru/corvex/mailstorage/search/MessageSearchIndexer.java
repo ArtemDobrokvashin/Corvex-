@@ -20,6 +20,18 @@ public class MessageSearchIndexer {
         this.search = search;
     }
 
+    /** Обновление флага прочтения: без этого `is:unread` отстаёт от реальности. */
+    public void markSeen(String messageId, boolean seen) {
+        try {
+            search.findById(messageId).ifPresent(doc -> {
+                doc.withSeen(seen);
+                search.save(doc);
+            });
+        } catch (RuntimeException e) {
+            log.warn("Elasticsearch seen-update failed for message {}: {}", messageId, e.getMessage());
+        }
+    }
+
     public void index(MailDeliveryService.DeliveryResult result) {
         List<String> recipients = new ArrayList<>();
         result.parsed().to().forEach(a -> recipients.add(a.address()));
@@ -39,6 +51,9 @@ public class MessageSearchIndexer {
                 result.parsed().internalDate(),
                 !result.parsed().attachments().isEmpty());
         try {
+            // Новое письмо ещё не прочитано: `is:unread` должен находить его сразу,
+            // ещё до первого обновления индекса флагами.
+            doc.withSeen(false);
             search.save(doc);
         } catch (RuntimeException e) {
             // По архитектуре ES — производные данные: письмо уже в Maildir/PostgreSQL,

@@ -1,26 +1,39 @@
 import type { MailSortOrder } from './mailListControls';
 
-/** Browser-only preferences; server-wide signatures and autoresponders are not implemented. */
+/**
+ * Browser-only preferences. Серверного хранения пока нет: подпись, плотность
+ * и уведомления живут в `localStorage` этого браузера и на другое устройство
+ * не переезжают. Это ограничение честно написано в окне настроек.
+ */
 export interface MailPreferences {
   density: 'comfortable' | 'compact';
   showPreview: boolean;
+  /** Цепочки писем в списке. Выключено — плоский список, как было до P2-1. */
+  conversations: boolean;
   markRead: 'automatic' | 'manual';
   defaultSort: MailSortOrder;
   signature: string;
   signatureForNew: boolean;
   signatureForReplies: boolean;
   notifications: boolean;
+  /**
+   * Подпись в письмах, отправленных не из webmail (Thunderbird, Outlook).
+   * По умолчанию выключено: дописывать текст в чужое письмо без спроса нельзя.
+   */
+  signatureForSubmission: boolean;
 }
 
 export const DEFAULT_MAIL_PREFERENCES: MailPreferences = {
   density: 'comfortable',
   showPreview: true,
+  conversations: true,
   markRead: 'automatic',
   defaultSort: 'date-desc',
   signature: '',
   signatureForNew: true,
   signatureForReplies: false,
   notifications: false,
+  signatureForSubmission: false,
 };
 
 export function mailPreferencesKey(userId: string | null | undefined, demo: boolean): string | null {
@@ -29,16 +42,22 @@ export function mailPreferencesKey(userId: string | null | undefined, demo: bool
 
 export function normalizeMailPreferences(value: unknown): MailPreferences {
   const v = value && typeof value === 'object' ? value as Partial<MailPreferences> : {};
-  const sortOrders: MailSortOrder[] = ['date-desc', 'date-asc', 'sender-asc', 'subject-asc'];
+  // `unread-first` появился позже: старые сохранённые настройки без него
+  // продолжают читаться, а новый порядок не сбрасывается в «сначала новые».
+  const sortOrders: MailSortOrder[] = ['date-desc', 'date-asc', 'sender-asc', 'subject-asc', 'unread-first'];
   return {
     density: v.density === 'compact' ? 'compact' : 'comfortable',
     showPreview: typeof v.showPreview === 'boolean' ? v.showPreview : true,
+    // По умолчанию включено: у Gmail и Outlook переписка собрана, и человек
+    // ждёт того же. Кому нужен плоский список — снимает галочку в настройках.
+    conversations: typeof v.conversations === 'boolean' ? v.conversations : true,
     markRead: v.markRead === 'manual' ? 'manual' : 'automatic',
     defaultSort: sortOrders.includes(v.defaultSort as MailSortOrder) ? v.defaultSort as MailSortOrder : 'date-desc',
     signature: typeof v.signature === 'string' ? v.signature.slice(0, 5000) : '',
     signatureForNew: typeof v.signatureForNew === 'boolean' ? v.signatureForNew : true,
     signatureForReplies: typeof v.signatureForReplies === 'boolean' ? v.signatureForReplies : false,
     notifications: typeof v.notifications === 'boolean' ? v.notifications : false,
+    signatureForSubmission: typeof v.signatureForSubmission === 'boolean' ? v.signatureForSubmission : false,
   };
 }
 
@@ -72,4 +91,17 @@ export function bodyWithSignature(body: string, preferences: MailPreferences, ki
   if (!include || !signature) return body;
   if (kind === 'forward') return `\n\n${signature}${body}`;
   return body ? `${body}\n\n${signature}` : `\n\n${signature}`;
+}
+
+/**
+ * Настройки из ответа сервера. Неизвестные значения не роняют окно: сервер уже
+ * нормализовал их, но старая версия сервера могла не знать о новом поле.
+ */
+export function preferencesFromServer(value: unknown): MailPreferences {
+  return normalizeMailPreferences(value);
+}
+
+/** Настройки для отправки на сервер. Ровно те поля, что он хранит. */
+export function preferencesToServer(value: MailPreferences): MailPreferences {
+  return normalizeMailPreferences(value);
 }

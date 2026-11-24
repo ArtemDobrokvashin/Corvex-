@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/corvex.svg" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <!-- PWA-манифест: иконка на рабочем столе и запуск в отдельном окне.
+         Офлайн-режима пока нет — service worker не регистрируется. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#1D63ED" />
+    <meta name="application-name" content="Corvex" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Corvex" />
     <title>Corvex — корпоративная почта и чат</title>
     <!-- Передеплой удаляет старые чанки: если браузер сохранил прежний index.html,
          входной модуль не загрузится и приложение даже не стартует. Ловим ошибку

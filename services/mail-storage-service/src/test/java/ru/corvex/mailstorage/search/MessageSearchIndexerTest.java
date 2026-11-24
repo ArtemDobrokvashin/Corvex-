@@ -44,6 +44,42 @@ class MessageSearchIndexerTest {
     }
 
     @Test
+    void marksNewMessagesUnreadSoIsUnreadFindsThemBeforeTheFirstFlagUpdate() {
+        MessageSearchRepository repository = mock(MessageSearchRepository.class);
+        MessageSearchIndexer indexer = new MessageSearchIndexer(repository);
+
+        indexer.index(result(List.of(address("to@company.local")), List.of(), List.of()));
+
+        ArgumentCaptor<MessageSearchDocument> captor = ArgumentCaptor.forClass(MessageSearchDocument.class);
+        verify(repository).save(captor.capture());
+        assertEquals(false, captor.getValue().isSeen());
+    }
+
+    @Test
+    void updatesSeenFlagWhenTheMessageIsRead() {
+        MessageSearchRepository repository = mock(MessageSearchRepository.class);
+        MessageSearchDocument doc = new MessageSearchDocument(
+                "id", "owner", "folder", 1L, "s", List.of(), "subject", "body", Instant.now(), false);
+        org.mockito.Mockito.when(repository.findById("id")).thenReturn(java.util.Optional.of(doc));
+
+        new MessageSearchIndexer(repository).markSeen("id", true);
+
+        ArgumentCaptor<MessageSearchDocument> captor = ArgumentCaptor.forClass(MessageSearchDocument.class);
+        verify(repository).save(captor.capture());
+        assertEquals(true, captor.getValue().isSeen());
+    }
+
+    @Test
+    void searchIndexOutageDoesNotBreakFlagging() {
+        MessageSearchRepository repository = mock(MessageSearchRepository.class);
+        org.mockito.Mockito.when(repository.findById("missing"))
+                .thenThrow(new org.springframework.dao.DataAccessResourceFailureException("es down"));
+
+        // Индекс производный: ошибка Elasticsearch не должна ронять операцию.
+        assertDoesNotThrow(() -> new MessageSearchIndexer(repository).markSeen("missing", true));
+    }
+
+    @Test
     void doesNotDuplicateMailboxRecipient() throws Exception {
         MessageSearchRepository repository = mock(MessageSearchRepository.class);
         MessageSearchIndexer indexer = new MessageSearchIndexer(repository);

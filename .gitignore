@@ -26,3 +26,7 @@ artifacts/
 
 # unpublishable working log of the local session
 LOCAL_SESSION_HISTORY.md
+
+# Playwright: отчёты и скриншоты падений генерируются на прогоне
+frontend/playwright-report/
+frontend/test-results/

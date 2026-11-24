@@ -1,0 +1,54 @@
+{
+  "name": "Corvex — corporate mail and chat",
+  "short_name": "Corvex",
+  "description": "Корпоративная почта, чат, календарь и файлы.",
+  "lang": "ru",
+  "dir": "ltr",
+  "start_url": "/mail",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "background_color": "#F6F7F9",
+  "theme_color": "#1D63ED",
+  "icons": [
+    {
+      "src": "/corvex.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Написать письмо",
+      "short_name": "Написать",
+      "url": "/mail?compose=1",
+      "description": "Открыть новое письмо"
+    },
+    {
+      "name": "Календарь",
+      "short_name": "Календарь",
+      "url": "/calendar"
+    }
+  ],
+  "categories": ["business", "productivity"]
+}

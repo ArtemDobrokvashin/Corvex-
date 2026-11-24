@@ -220,6 +220,8 @@ paths:
                       contentBase64: { type: string, format: byte, nullable: true }
                 saveToSent: { type: boolean, nullable: true, default: true }
                 externalAccountId: { type: string, format: uuid, nullable: true, description: "Подключённый внешний ящик для send-as через SMTP провайдера; null — адрес Corvex" }
+                inReplyToMessageId: { type: string, format: uuid, nullable: true, description: "Идентификатор письма, на которое отвечаем. Сервер берёт его Message-ID и References для заголовков In-Reply-To/References. Чужое письмо молча игнорируется." }
+                sendAt: { type: string, format: date-time, nullable: true, description: "«Отправить позже»: письмо собирается сейчас, а уходит по расписанию. Время в прошлом или дальше года — 422. Копия в «Отправленные» сохраняется сразу." }
       responses:
         '200':
           description: Письмо поставлено в очередь; sentMessageId может быть null, если копия в Sent не сохранена (например, из-за квоты)
@@ -234,11 +236,110 @@ paths:
                   externalRecipients: { type: array, items: { type: string } }
                   fromAddress: { type: string }
                   externalAccountId: { type: string, format: uuid, nullable: true }
+                  scheduledSendId: { type: string, format: uuid, nullable: true, description: "Заполнен только для отложенного письма: по нему отправку отменяют." }
+                  scheduledSendAt: { type: string, format: date-time, nullable: true }
         '400': { description: Некорректное вложение }
         '403': { description: Недостаточно прав на отправку }
         '409': { description: Выбранный внешний ящик не разрешает отправку }
         '413': { description: Превышен лимит размера письма }
-        '422': { description: Некорректные получатели }
+        '422': { description: Некорректные получатели или время отложенной отправки вне допустимого окна }
+  /mail/scheduled-sends:
+    get:
+      summary: Отложенные отправки пользователя (ещё не ушедшие письма)
+      responses:
+        '200':
+          description: Список записей очереди
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string, format: uuid }
+                    sendAt: { type: string, format: date-time }
+                    status: { type: string, enum: [SCHEDULED, SENDING, FAILED] }
+  /mail/scheduled-sends/{id}:
+    delete:
+      summary: Отменить отложенную отправку
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Отменено, спул-копия удалена }
+        '409': { description: Письмо уже отправляется или отправлено — отменить нельзя }
+  /mail/messages/{messageId}/snooze:
+    post:
+      summary: Отложить письмо до указанного момента (письмо не перемещается, UID не меняется)
+      parameters:
+        - { name: messageId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [wakeAt]
+              properties:
+                wakeAt: { type: string, format: date-time, description: "Время возврата. Прошлое или дальше года — 422." }
+      responses:
+        '200': { description: Письмо скрыто из списка папки до срока }
+        '404': { description: Письмо не найдено или чужое }
+        '422': { description: Недопустимое время возврата }
+    delete:
+      summary: Вернуть письмо в список раньше срока (идемпотентно)
+      parameters:
+        - { name: messageId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Письмо снова в списке }
+  /mail/snoozed:
+    get:
+      summary: Письма, скрытые до указанного момента
+      responses:
+        '200':
+          description: Список «спящих» писем
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    messageId: { type: string, format: uuid }
+                    subject: { type: string }
+                    sender: { type: string }
+                    folderId: { type: string, format: uuid }
+                    wakeAt: { type: string, format: date-time }
+  /mail/settings:
+    get:
+      summary: Настройки почты пользователя (одни и те же на всех устройствах)
+      responses:
+        '200':
+          description: Текущие настройки; для нового пользователя — умолчания
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  density: { type: string, enum: [comfortable, compact] }
+                  showPreview: { type: boolean }
+                  conversations: { type: boolean }
+                  markRead: { type: string, enum: [automatic, manual] }
+                  defaultSort: { type: string, enum: [date-desc, date-asc, sender-asc, subject-asc, unread-first] }
+                  signature: { type: string, maxLength: 5000 }
+                  signatureForNew: { type: boolean }
+                  signatureForReplies: { type: boolean }
+                  notifications: { type: boolean }
+                  signatureForSubmission: { type: boolean, description: "Подпись в письмах из Thunderbird/Outlook; по умолчанию выключено." }
+    put:
+      summary: Сохранить настройки (неизвестные значения заменяются умолчаниями, а не дают 400)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200': { description: Сохранённые и нормализованные настройки }
   /mail/drafts:
     get:
       summary: Список своих черновиков (свежие первыми, только метаданные)
@@ -360,14 +461,25 @@ paths:
         '503': { description: Проверка недоступна }
         '404': { description: Письмо или вложение не найдено либо принадлежит другому пользователю }
   /mail/search:
-    x-corvex-status: planned
     get:
-      summary: Полнотекстовый поиск (Elasticsearch — тема, отправитель, получатель, тело, имена/текст вложений)
+      summary: Полнотекстовый поиск по всем письмам владельца (Elasticsearch — тема, отправитель, получатель, тело)
+      description: |
+        Понимает фильтры в стиле Gmail: `from:`, `subject:`, `to:`, `is:unread`,
+        `is:read`, `has:attachment`, `before:YYYY-MM-DD`, `after:YYYY-MM-DD`.
+        Остальные слова ищутся как текст. Владелец берётся из JWT: чужих писем
+        выдача не содержит. `limit` ограничен сверху значением 100.
       parameters:
         - { name: q, in: query, required: true, schema: { type: string }, example: 'from:buhgalteria счёт has:attachment after:2026-01-01' }
-        - { name: limit, in: query, schema: { type: integer, default: 50 } }
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 100 } }
       responses:
-        '200': { description: Результаты с подсветкой, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/MessageSummary' } }, tookMs: { type: integer } } } } } }
+        '200':
+          description: Результаты с коротким превью (до 180 символов)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/MailSearchResult' }
+        '503': { description: Индекс поиска недоступен; это не пустой результат }
   /mail/external-accounts/presets:
     get:
       summary: Пресеты Mail.ru, Яндекс, Gmail и Outlook для формы подключения внешнего ящика
@@ -886,6 +998,18 @@ paths:
                     note: { type: string }
 components:
   schemas:
+    MailSearchResult:
+      type: object
+      required: [messageId]
+      properties:
+        messageId: { type: string, format: uuid }
+        folderId: { type: string, format: uuid, nullable: true }
+        uid: { type: integer, format: int64 }
+        sender: { type: string }
+        subject: { type: string }
+        snippet: { type: string, description: 'Короткое превью тела (до 180 символов)' }
+        internalDate: { type: string, format: date-time, nullable: true }
+
     DraftPayload:
       type: object
       description: |

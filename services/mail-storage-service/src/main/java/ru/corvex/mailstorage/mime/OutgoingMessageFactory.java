@@ -28,8 +28,73 @@ public class OutgoingMessageFactory {
     public record ComposedMessage(byte[] eml, String messageIdHeader) {
     }
 
+    /**
+     * Добавляет серверную подпись к обычному тексту письма.
+     *
+     * <p>Нужна письмам, отправленным не из webmail (SMTP submission): там текст
+     * собирает чужой клиент, и подписи из настроек Corvex в нём нет. Правила
+     * простые и предсказуемые: пустая подпись ничего не меняет, уже
+     * присутствующая подпись не дублируется, а разделитель — одна пустая
+     * строка (RFC 3676 предлагает `-- `, но чужие клиенты на него не смотрят).
+     */
+    public static String withSignature(String body, String signature) {
+        if (body == null) body = "";
+        if (signature == null || signature.isBlank()) return body;
+        String trimmed = signature.strip();
+        if (body.contains(trimmed)) return body;
+        return body.isBlank() ? trimmed : body.stripTrailing() + "\n\n" + trimmed;
+    }
+
+    public static String sanitizeMessageId(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) return null;
+        // Заголовки ограничены ASCII и не содержат управляющих символов.
+        if (!trimmed.matches("[\\x20-\\x7E]{1,998}")) return null;
+        return trimmed;
+    }
+
+    /**
+     * Собирает значение `References`: существующая цепочка + родитель, без
+     * дублей и без превышения разумной длины (998 символов на заголовок).
+     */
+    public static String buildReferences(String existingReferences, String parentMessageId) {
+        java.util.LinkedHashSet<String> ids = new java.util.LinkedHashSet<>();
+        if (existingReferences != null) {
+            for (String part : existingReferences.trim().split("\\s+")) {
+                String clean = sanitizeMessageId(part);
+                if (clean != null) ids.add(clean);
+            }
+        }
+        String parent = sanitizeMessageId(parentMessageId);
+        if (parent != null) ids.add(parent);
+        if (ids.isEmpty()) return null;
+        StringBuilder value = new StringBuilder();
+        for (String id : ids) {
+            // Если очередной идентификатор не влезает, цепочку обрываем: лучше
+            // короткая корректная, чем заголовок, который почтовик отвергнет.
+            if (value.length() + id.length() + 1 > 990) break;
+            if (value.length() > 0) value.append(' ');
+            value.append(id);
+        }
+        return value.length() == 0 ? null : value.toString();
+    }
+
     public ComposedMessage compose(String senderEmail, String senderName, String messageIdHeader,
                                    List<String> to, List<String> cc, MailDtos.SendMessageRequest req)
+            throws MessagingException, IOException {
+        return compose(senderEmail, senderName, messageIdHeader, to, cc, req, null, null);
+    }
+
+    /**
+     * Собирает письмо с заголовками ветки. `inReplyTo` — `Message-ID`
+     * непосредственного родителя, `references` — уже накопленная цепочка;
+     * оба значения санируются, потому что перевод строки в заголовке — это
+     * инъекция в MIME.
+     */
+    public ComposedMessage compose(String senderEmail, String senderName, String messageIdHeader,
+                                   List<String> to, List<String> cc, MailDtos.SendMessageRequest req,
+                                   String inReplyTo, String references)
             throws MessagingException, IOException {
         Properties props = new Properties();
         props.put("mail.mime.charset", StandardCharsets.UTF_8.name());
@@ -45,6 +110,14 @@ public class OutgoingMessageFactory {
         message.setSentDate(new Date());
         message.setHeader("Message-ID", messageIdHeader);
         message.setHeader("X-Mailer", "Corvex");
+        String safeInReplyTo = sanitizeMessageId(inReplyTo);
+        if (safeInReplyTo != null) {
+            message.setHeader("In-Reply-To", safeInReplyTo);
+        }
+        String safeReferences = buildReferences(references, safeInReplyTo);
+        if (safeReferences != null) {
+            message.setHeader("References", safeReferences);
+        }
 
         MimeBodyPart bodyPart = new MimeBodyPart();
         String text = req.bodyText() == null ? "" : req.bodyText();

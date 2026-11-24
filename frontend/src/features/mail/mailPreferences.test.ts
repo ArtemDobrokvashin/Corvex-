@@ -40,4 +40,11 @@ describe('folder name validation', () => {
     expect(folderNameProblem('💙'.repeat(128))).toBeNull();
     expect(folderNameProblem(' Проекты 2026 ')).toBeNull();
   });
+
+  it('keeps the unread-first sort order instead of resetting it', () => {
+    // Новый порядок добавлен позже: список допустимых значений — единственное
+    // место, где сохранённая настройка могла молча превратиться в «сначала новые».
+    expect(normalizeMailPreferences({ defaultSort: 'unread-first' }).defaultSort).toBe('unread-first');
+    expect(normalizeMailPreferences({ defaultSort: 'nonsense' }).defaultSort).toBe('date-desc');
+  });
 });

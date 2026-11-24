@@ -66,6 +66,44 @@ export interface SendMessageRequest {
   attachments?: SendAttachment[];
   saveToSent?: boolean;
   externalAccountId?: string | null;
+  /**
+   * Письмо, на которое отвечаем. Сервер берёт из него `Message-ID` и `References`
+   * и ставит заголовки `In-Reply-To`/`References` — по ним почтовики собирают тред.
+   */
+  inReplyToMessageId?: string | null;
+  /** «Отправить позже»: время в ISO. null/undefined — отправить сразу. */
+  sendAt?: string | null;
+}
+
+/** Серверный вид настроек почты (совпадает с полями интерфейса). */
+export interface ServerMailSettings {
+  density: 'comfortable' | 'compact';
+  showPreview: boolean;
+  conversations: boolean;
+  markRead: 'automatic' | 'manual';
+  defaultSort: 'date-desc' | 'date-asc' | 'sender-asc' | 'subject-asc' | 'unread-first';
+  signature: string;
+  signatureForNew: boolean;
+  signatureForReplies: boolean;
+  notifications: boolean;
+  /** Подпись в письмах из Thunderbird/Outlook; по умолчанию выключено. */
+  signatureForSubmission: boolean;
+}
+
+/** Письмо, скрытое из списка до указанного момента. */
+export interface SnoozedMessage {
+  messageId: string;
+  subject: string;
+  sender: string;
+  folderId: string;
+  wakeAt: string;
+}
+
+/** Отложенная отправка: ещё не ушедшее письмо. */
+export interface ScheduledSend {
+  id: string;
+  sendAt: string;
+  status: 'SCHEDULED' | 'SENDING' | 'FAILED' | string;
 }
 
 export interface SendMessageResult {
@@ -75,6 +113,9 @@ export interface SendMessageResult {
   externalRecipients: string[];
   fromAddress?: string;
   externalAccountId?: string | null;
+  /** Заполнено, если письмо отложено: по этому id отправку отменяют. */
+  scheduledSendId?: string | null;
+  scheduledSendAt?: string | null;
 }
 
 /** Черновики: owner-scope на сервере, ревизия защищает от перезаписи из другой вкладки. */
@@ -86,6 +127,9 @@ export interface WebmailDraftPayload {
   bodyHtml: string;
   externalAccountId: string | null;
   attachments: SendAttachment[];
+  /** «Отправить позже» и ветка ответа: без них черновик терял время и тред. */
+  sendAt?: string | null;
+  inReplyToMessageId?: string | null;
 }
 
 export interface SavedDraft {
@@ -105,6 +149,17 @@ export interface DraftSummary {
   updatedAt: string;
 }
 
+/** Результат серверного поиска: письмо и короткое превью. */
+export interface MailSearchResult {
+  messageId: string;
+  folderId: string | null;
+  uid: number;
+  sender: string;
+  subject: string;
+  snippet: string;
+  internalDate: string | null;
+}
+
 export const mailApi = {
   quota: () => apiFetch<MailboxQuota>('/api/v1/mail/quota'),
   folders: () => apiFetch<MailFolderView[]>('/api/v1/mail/folders'),
@@ -118,6 +173,16 @@ export const mailApi = {
     const params = new URLSearchParams({ limit: String(limit) });
     if (cursorUid != null) params.set('cursorUid', String(cursorUid));
     return apiFetch<MailMessageListItem[]>(`/api/v1/mail/folders/${folderId}/messages?${params.toString()}`);
+  },
+  /**
+   * Полнотекстовый поиск по всему ящику. `q` понимает Gmail-подобные фильтры
+   * (`from:`, `subject:`, `is:unread`, `has:attachment`, `before:`, `after:`).
+   * 503 означает «индекс недоступен»: это не пустой результат.
+   */
+  search: (query: string, limit = 50, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ q: query, limit: String(limit) });
+    const path = `/api/v1/mail/search?${params.toString()}`;
+    return signal ? apiFetch<MailSearchResult[]>(path, { signal }) : apiFetch<MailSearchResult[]>(path);
   },
   message: (id: string) => apiFetch<MailMessageDetail>(`/api/v1/mail/messages/${id}`),
   downloadAttachment: (id: string, partIndex: number, signal?: AbortSignal) => {
@@ -144,6 +209,27 @@ export const mailApi = {
       method: 'POST',
       body: JSON.stringify(request),
     }),
+  /** Настройки почты на сервере: одни и те же на всех устройствах пользователя. */
+  settings: () => apiFetch<ServerMailSettings>('/api/v1/mail/settings'),
+  saveSettings: (settings: ServerMailSettings) =>
+    apiFetch<ServerMailSettings>('/api/v1/mail/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    }),
+  /** «Отложить до…»: письмо скрыто из списка папки, но не перемещено. */
+  snooze: (id: string, wakeAt: string) =>
+    apiFetch<MailMessageListItem>(`/api/v1/mail/messages/${encodeURIComponent(id)}/snooze`, {
+      method: 'POST',
+      body: JSON.stringify({ wakeAt }),
+    }),
+  wake: (id: string) =>
+    apiFetch<MailMessageListItem>(`/api/v1/mail/messages/${encodeURIComponent(id)}/snooze`, {
+      method: 'DELETE',
+    }),
+  snoozed: () => apiFetch<SnoozedMessage[]>('/api/v1/mail/snoozed'),
+  scheduledSends: () => apiFetch<ScheduledSend[]>('/api/v1/mail/scheduled-sends'),
+  cancelScheduledSend: (id: string) =>
+    apiFetch<void>(`/api/v1/mail/scheduled-sends/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   drafts: (limit = 50) => apiFetch<DraftSummary[]>(`/api/v1/mail/drafts?limit=${limit}`),
   draft: (id: string) => apiFetch<SavedDraft>(`/api/v1/mail/drafts/${encodeURIComponent(id)}`),
   createDraft: (payload: WebmailDraftPayload) =>

@@ -1,11 +1,43 @@
 import { SendAttachment, WebmailDraftPayload } from '../../api/mailApi';
 
-/** Совпадает с серверной валидацией DraftPayload. */
+/**
+ * Пределы вложений. Один источник правды для трёх мест:
+ * - черновик (DraftPayload.validate) — 10 файлов, 3 МиБ на файл, 10 МиБ всего;
+ * - отправка (MailSendService.validateAttachments) — 20 МиБ суммарно, 20 файлов;
+ * - прокси (nginx client_max_body_size 26m) — потолок запроса.
+ *
+ * Раньше три числа жили порознь: клиент разрешал отправить 9 МиБ, сервер
+ * принимал 8 МиБ на запрос, и человек получал «413» без объяснения.
+ */
 export const DRAFT_LIMITS = {
   maxFiles: 10,
   maxFileBytes: 3 * 1024 * 1024,
   maxTotalBytes: 10 * 1024 * 1024,
 } as const;
+
+/** Пределы отправки: то, что реально дойдёт до сервера через nginx. */
+export const SEND_LIMITS = {
+  maxFiles: 20,
+  maxTotalBytes: 20 * 1024 * 1024,
+  /** base64 занимает на треть больше: оставляем запас до nginx 26m. */
+  requestBudgetBytes: 26 * 1024 * 1024,
+} as const;
+
+export type SendSizeProblem = 'count' | 'total' | null;
+
+/** Проверка перед отправкой: человек узнаёт о размере до запроса, а не из «413». */
+export function sendSizeProblem(files: File[]): SendSizeProblem {
+  if (files.length > SEND_LIMITS.maxFiles) return 'count';
+  const encoded = files.reduce((total, file) => total + Math.ceil(file.size / 3) * 4, 0);
+  if (encoded > SEND_LIMITS.requestBudgetBytes) return 'total';
+  return null;
+}
+
+/** Сколько ещё можно приложить — для подписи «можно приложить ещё N МБ». */
+export function remainingAttachmentBytes(files: File[]): number {
+  const used = files.reduce((total, file) => total + Math.ceil(file.size / 3) * 4, 0);
+  return Math.max(0, SEND_LIMITS.requestBudgetBytes - used);
+}
 
 /** Файл в base64 без чтения через сеть: черновик остаётся локальным до отправки. */
 export async function fileToAttachment(file: File): Promise<SendAttachment> {
@@ -47,6 +79,10 @@ export interface DraftFields {
   body: string;
   bodyHtml?: string | null;
   externalAccountId?: string | null;
+  /** «Отправить позже»: сохраняется вместе с черновиком, иначе теряется. */
+  sendAt?: string | null;
+  /** Письмо, на которое отвечаем: без него черновик ответа терял ветку. */
+  inReplyToMessageId?: string | null;
 }
 
 export async function buildDraftPayload(fields: DraftFields, files: File[]): Promise<WebmailDraftPayload> {
@@ -58,6 +94,8 @@ export async function buildDraftPayload(fields: DraftFields, files: File[]): Pro
     bodyHtml: fields.bodyHtml ?? '',
     externalAccountId: fields.externalAccountId ?? null,
     attachments: await Promise.all(files.map(fileToAttachment)),
+    sendAt: fields.sendAt ?? null,
+    inReplyToMessageId: fields.inReplyToMessageId ?? null,
   };
 }
 

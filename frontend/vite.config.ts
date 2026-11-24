@@ -46,6 +46,11 @@ export default defineConfig({
       },
     },
   },
+  // Playwright-спеки не должны попадать в vitest: у них другой раннер и
+  // настоящий браузер, а в jsdom они падают на импорте @playwright/test.
+  test: {
+    exclude: ['**/node_modules/**', '**/dist/**', 'e2e/**'],
+  },
   server: {
     allowedHosts: true, // dev-сервер может открываться через внешний preview-прокси с другим Host
     // В dev-режиме браузер не ходит на localhost сервисов: все запросы относительные, Vite проксирует в gateway

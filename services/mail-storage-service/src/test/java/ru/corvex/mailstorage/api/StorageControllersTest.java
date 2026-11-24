@@ -16,6 +16,8 @@ import ru.corvex.mailstorage.domain.ExternalMailSyncRun;
 import ru.corvex.mailstorage.external.ExternalMailAccountService;
 import ru.corvex.mailstorage.external.ExternalMailSyncService;
 import ru.corvex.mailstorage.security.InternalTokenGuard;
+import ru.corvex.mailstorage.schedule.OutboxService;
+import ru.corvex.mailstorage.search.MailSearchService;
 import ru.corvex.mailstorage.service.MailApiService;
 import ru.corvex.mailstorage.service.MailSendService;
 import ru.corvex.mailstorage.service.ProtocolMailService;
@@ -60,15 +62,15 @@ class StorageControllersTest {
         MailApiService mail = mock(MailApiService.class);
         MailSendService sender = mock(MailSendService.class);
         ProtocolMailService protocol = mock(ProtocolMailService.class);
-        MailController controller = new MailController(mail, sender, protocol);
+        MailController controller = new MailController(mail, sender, protocol, mock(MailSearchService.class), mock(OutboxService.class));
         UUID folderId = UUID.randomUUID();
         UUID messageId = UUID.randomUUID();
         MailDtos.FolderView folder = new MailDtos.FolderView(folderId, "INBOX", "INBOX", 2, 1);
         when(mail.listFolders(userId)).thenReturn(List.of(folder));
         MailDtos.SendMessageRequest request = new MailDtos.SendMessageRequest(
-                List.of("a@x"), List.of(), List.of(), "S", "B", null, List.of(), true, null);
+                List.of("a@x"), List.of(), List.of(), "S", "B", null, List.of(), true, null, null, null);
         MailDtos.SendMessageResult sent = new MailDtos.SendMessageResult(
-                "<m@x>", null, List.of(), List.of("a@x"), "me@x", null);
+                "<m@x>", null, List.of(), List.of("a@x"), "me@x", null, null, null);
         when(sender.send(userId, Set.of("MAIL_READ_OWN", "MAIL_EXTERNAL_ACCOUNTS", "ADMIN_MAIL_POLICY"), request))
                 .thenReturn(sent);
         when(protocol.quota(userId)).thenReturn(new ProtocolDtos.QuotaView(3_435_973_837L, 4_611_686_018L, 12));
@@ -90,7 +92,7 @@ class StorageControllersTest {
     @Test
     void createFolderUsesJwtOwnerAndRequiresFolderPermission() throws Exception {
         ProtocolMailService protocol = mock(ProtocolMailService.class);
-        MailController controller = new MailController(mock(MailApiService.class), mock(MailSendService.class), protocol);
+        MailController controller = new MailController(mock(MailApiService.class), mock(MailSendService.class), protocol, mock(MailSearchService.class), mock(OutboxService.class));
         UUID folderId = UUID.randomUUID();
         UUID parentId = UUID.randomUUID();
         var request = new MailDtos.CreateFolderRequest("Projects", parentId);
@@ -112,7 +114,7 @@ class StorageControllersTest {
     @Test
     void deleteFolderUsesJwtOwnerAndRequiresFolderPermission() throws Exception {
         var protocol = mock(ProtocolMailService.class);
-        var controller = new MailController(mock(MailApiService.class), mock(MailSendService.class), protocol);
+        var controller = new MailController(mock(MailApiService.class), mock(MailSendService.class), protocol, mock(MailSearchService.class), mock(OutboxService.class));
         var id = UUID.randomUUID();
         assertEquals(HttpStatus.NO_CONTENT, controller.deleteFolder(jwt, id).getStatusCode());
         verify(protocol).deleteEmptyWebFolder(userId, id);
@@ -124,7 +126,7 @@ class StorageControllersTest {
     @Test
     void attachmentResponseUsesJwtOwnerAndSafeDownloadHeaders() throws Exception {
         MailApiService mail = mock(MailApiService.class);
-        MailController controller = new MailController(mail, mock(MailSendService.class), mock(ProtocolMailService.class));
+        MailController controller = new MailController(mail, mock(MailSendService.class), mock(ProtocolMailService.class), mock(MailSearchService.class), mock(OutboxService.class));
         UUID messageId = UUID.randomUUID();
         byte[] content = "hello".getBytes(StandardCharsets.UTF_8);
         when(mail.downloadAttachment(userId, messageId, 3)).thenReturn(
@@ -144,18 +146,16 @@ class StorageControllersTest {
 
     @Test
     void mailControllerRejectsJwtWithoutUuidSubject() throws Exception {
-        MailController controller = new MailController(
-                mock(MailApiService.class), mock(MailSendService.class), mock(ProtocolMailService.class));
+        MailController controller = new MailController(mock(MailApiService.class), mock(MailSendService.class), mock(ProtocolMailService.class), mock(MailSearchService.class), mock(OutboxService.class));
         Jwt bad = jwt("not-a-uuid", null);
         assertEquals(HttpStatus.UNAUTHORIZED, assertThrows(ResponseStatusException.class,
                 () -> controller.folders(bad)).getStatusCode());
 
         Jwt noPermissions = jwt(userId.toString(), null);
         MailSendService sender = mock(MailSendService.class);
-        MailController local = new MailController(
-                mock(MailApiService.class), sender, mock(ProtocolMailService.class));
+        MailController local = new MailController(mock(MailApiService.class), sender, mock(ProtocolMailService.class), mock(MailSearchService.class), mock(OutboxService.class));
         MailDtos.SendMessageRequest req = new MailDtos.SendMessageRequest(
-                List.of(), List.of(), List.of(), null, null, null, null, null, null);
+                List.of(), List.of(), List.of(), null, null, null, null, null, null, null, null);
         when(sender.send(userId, Set.of(), req)).thenReturn(null);
 
         assertNull(local.send(noPermissions, req));

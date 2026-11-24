@@ -14,12 +14,15 @@ export default function MailAttachments({
   attachments,
   busy,
   onDownload,
+  onDownloadAll,
   onPreview,
 }: {
   demoMode: boolean;
   attachments?: MailAttachmentView[];
   busy: boolean;
   onDownload: (attachment: MailAttachmentView) => void;
+  /** Пакетное скачивание: по одному файлу, если ZIP на сервере недоступен. */
+  onDownloadAll?: () => void;
   /** Без колбэка карточка остаётся только для скачивания. */
   onPreview?: (attachment: MailAttachmentView) => void;
 }) {
@@ -29,7 +32,23 @@ export default function MailAttachments({
   if (!attachments.length) return <p className="mt-6 text-sm text-muted">{t('Вложения не найдены')}</p>;
 
   return (
-    <div className="mt-6 grid gap-2 sm:grid-cols-2">
+    <div className="mt-6">
+      {attachments.length > 1 && onDownloadAll && (
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-faint">
+            {t('Вложений: {count}', { count: attachments.length })}
+          </span>
+          <button
+            type="button"
+            onClick={onDownloadAll}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-md border border-line-control bg-surface px-2 py-1 text-xs font-medium text-ink-soft transition hover:bg-canvas disabled:opacity-50"
+          >
+            <Download size={13} /> {t('Скачать все')}
+          </button>
+        </div>
+      )}
+    <div className="grid gap-2 sm:grid-cols-2">
       {attachments.map((attachment) => {
         const statusText = t(
           attachment.avStatus === 'CLEAN'
@@ -120,6 +139,7 @@ export default function MailAttachments({
           </div>
         );
       })}
+    </div>
     </div>
   );
 }

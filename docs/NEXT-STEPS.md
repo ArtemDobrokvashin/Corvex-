@@ -104,7 +104,7 @@ docker compose -p corvex-fresh ps
 > `preflight.py` предупреждает об этом строкой `project volumes`.
 
 Проверки после первого запуска — [`INSTALL.md`](INSTALL.md) §9: вход, `401` на
-`/api/v1/auth/me`, JWKS, миграции `V1…V14`, отсутствие заглушек, `SMTP listener disabled`,
+`/api/v1/auth/me`, JWKS, миграции `V1…V16`, отсутствие заглушек, `SMTP listener disabled`,
 календарь с напоминанием, `scripts/alert_e2e.py`.
 
 Если что-то падает — присылайте **первую** ошибку целиком, не хвост лога.

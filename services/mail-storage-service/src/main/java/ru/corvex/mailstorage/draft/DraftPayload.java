@@ -7,7 +7,11 @@ import java.util.UUID;
 
 /** Validation for private webmail drafts; used by WebmailDraftController (owner-scoped, revision-checked). */
 public record DraftPayload(String to, String cc, String subject, String bodyText, String bodyHtml,
-                           UUID externalAccountId, List<Attachment> attachments) {
+                           UUID externalAccountId, List<Attachment> attachments,
+                           /** «Отправить позже»: время в ISO; null — отправить сразу. */
+                           String sendAt,
+                           /** Письмо, на которое отвечаем: без него черновик терял ветку. */
+                           UUID inReplyToMessageId) {
     private static final int MAX_TEXT = 500_000;
     private static final int MAX_RECIPIENTS_TEXT = 16_000;
     private static final int MAX_FILES = 10;
@@ -18,6 +22,15 @@ public record DraftPayload(String to, String cc, String subject, String bodyText
     public void validate() {
         bounded(to, MAX_RECIPIENTS_TEXT); bounded(cc, MAX_RECIPIENTS_TEXT);
         bounded(subject, 998); bounded(bodyText, MAX_TEXT); bounded(bodyHtml, MAX_TEXT);
+        // Строка, а не Instant: черновик хранится как JSON, и старая запись без
+        // поля должна читаться, а не падать на десериализации.
+        bounded(sendAt, 64);
+        if (sendAt != null && !sendAt.isBlank()) {
+            try { java.time.Instant.parse(sendAt); }
+            catch (java.time.format.DateTimeParseException e) {
+                throw new IllegalArgumentException("Invalid sendAt", e);
+            }
+        }
         if (attachments == null) return;
         if (attachments.size() > MAX_FILES) throw new IllegalArgumentException("Too many attachments");
         long total = 0;

@@ -4,11 +4,13 @@ import {
   Archive,
   ArrowLeft,
   ArrowUpDown,
+  Ellipsis,
   Calendar as CalendarIcon,
   CalendarPlus,
   Check,
   ChevronDown,
   ChevronUp,
+  Clock,
   FilePenLine,
   Folder,
   FolderInput,
@@ -33,6 +35,7 @@ import {
   Sparkles,
   Star,
   Trash2,
+  UserPlus,
   X,
 } from 'lucide-react';
 import { demoFolders, demoMails, DemoMail } from '../../api/demoData';
@@ -49,10 +52,12 @@ import {
   MailMessageListItem,
   MailAttachmentView,
   SendAttachment,
+  type ScheduledSend,
 } from '../../api/mailApi';
 import { CORVEX_MAIL_DND_MIME } from '../../components/CalendarSidebarWidget';
 import SidebarSlot, { useSidebarSlotContext } from '../../components/SidebarSlot';
 import { Avatar, EmptyState, IconButton, cleanPersonName, emailFromHeader } from '../../components/ui';
+import { useToast } from '../../components/ToastProvider';
 import WorkspaceUtilityBar from '../../components/WorkspaceUtilityBar';
 import { formatDateTime, useI18n } from '../../i18n';
 import { truncateGraphemes } from '../../lib/text';
@@ -68,8 +73,7 @@ import ContactsModal from './ContactsModal';
 import MigrationWizard from './MigrationWizard';
 import CreateFolderModal from './CreateFolderModal';
 import MailSettingsModal from './MailSettingsModal';
-import { bodyWithSignature, loadMailPreferences, mailPreferencesKey, saveMailPreferences, type MailPreferences } from './mailPreferences';
-import { useMailNotifications } from './useMailNotifications';
+import { bodyWithSignature, loadMailPreferences, preferencesFromServer, mailPreferencesKey, preferencesToServer, saveMailPreferences, type MailPreferences } from './mailPreferences';
 import { canAdministerExternalMail, canUseExternalMail } from './externalMailAccess';
 import MailAttachments from './MailAttachments';
 import { usePreview } from '../preview/PreviewProvider';
@@ -81,10 +85,13 @@ import { openPrintWindow, printHtmlDocument } from '../print/printing';
 import { isMailPrintShortcut } from '../print/printShortcut';
 import {
   applyMailListControls,
+  groupMailByDate,
   hasActiveMailFilters,
+  type MailDateGroup,
   type MailReadFilter,
   type MailSortOrder,
 } from './mailListControls';
+import { conversationCountLabel, groupIntoConversations } from './conversations';
 import { formatMailRecipients, replyAllCc } from './mailRecipients';
 import {
   activeMailAfterRefresh,
@@ -96,7 +103,10 @@ import {
 import MailSidebarActions from './MailSidebarActions';
 import { BulkActionBar, SelectMessage, SelectVisibleMessages } from './BulkSelection';
 import { ComposePanel, type ComposeDraft } from './ComposePanel';
+import { buildReplyBody, replySubject } from './replyBody';
+import { loadOfflineSnapshot, offlineBannerText, offlineSnapshotAge, saveOfflineSnapshot } from '../../lib/offlineCache';
 import DraftsPanel from './DraftsPanel';
+import ShortcutsHelp from './ShortcutsHelp';
 import { moveSequentially } from './bulkMail';
 import {
   buildForwardBody,
@@ -171,6 +181,7 @@ export default function MailPage() {
   const navigate = useNavigate();
   const { onOpenCommandPalette, onOpenCalendarWidget, onOpenSecurity, onCloseNavigation } = useSidebarSlotContext();
 
+  const { notify } = useToast();
   const demoMode = useSession((s) => s.demoMode);
   const sessionUser = useSession((s) => s.user);
   const demoReadMailIds = useSession((s) => s.demoReadMailIds);
@@ -203,7 +214,6 @@ export default function MailPage() {
       return { id: key, name: localized.find((d) => d.id === key)?.name ?? f.name, unread: f.unread };
     });
   }, [demoMode, demoCustomFolders, locale, realFolders]);
-  useMailNotifications(preferences.notifications, demoMode, realFolders.find((item) => item.specialUse === 'INBOX')?.id);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [folder, setFolder] = useState('INBOX');
@@ -295,6 +305,10 @@ export default function MailPage() {
   const [bulkSelection, setBulkSelection] = useState<string[]>([]);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkNotice, setBulkNotice] = useState('');
+  const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const morePanelRef = useRef<HTMLDivElement>(null);
   const bulkBusyRef = useRef(false);
   // Внешние изображения в письме не загружаются, пока пользователь не разрешил.
   const [showRemoteImages, setShowRemoteImages] = useState(false);
@@ -321,8 +335,23 @@ export default function MailPage() {
   const [loadedBodies, setLoadedBodies] = useState<Record<string, string>>({});
   const [loadedAttachments, setLoadedAttachments] = useState<Record<string, MailAttachmentView[]>>({});
   const [downloadBusy, setDownloadBusy] = useState<string | null>(null);
+  const [downloadAllBusy, setDownloadAllBusy] = useState(false);
+  /**
+   * Отложенные отправки (P2-6). Список нужен, чтобы человек мог отменить
+   * письмо до его ухода: без этого «Отправить позже» — ловушка без выхода.
+   */
+  const [scheduledSends, setScheduledSends] = useState<ScheduledSend[]>([]);
+  /** Синхронизация настроек с сервером: молчать о её сбое нельзя. */
+  const [settingsSynced, setSettingsSynced] = useState<'idle' | 'saved' | 'error'>('idle');
   const { openPreview } = usePreview();
   const [loadedRecipients, setLoadedRecipients] = useState<Record<string, { to: string[]; cc: string[] }>>({});
+  // Пока идёт первая загрузка папки, список не должен показывать «пусто».
+  const [listLoading, setListLoading] = useState(!demoMode);
+  // Офлайн-снимок: время сохранения, если список показан из кэша.
+  const [offlineSavedAt, setOfflineSavedAt] = useState<number | null>(null);
+  const [offline, setOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
+  // Повтор после ошибки: загрузчик папки вызывается из того же места, что и первый раз.
+  const reloadRef = useRef<(() => void) | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const sortPanelRef = useRef<HTMLDivElement>(null);
   const filtersPanelRef = useRef<HTMLDivElement>(null);
@@ -374,7 +403,17 @@ export default function MailPage() {
     setShowRemoteImages(false);
   }, [activeId]);
 
-  const visible = useMemo(
+  // Результат поиска по загруженному окну может быть большим, а DOM — нет:
+  // показываем первые 50 совпадений и даём кнопку «Ещё». Счётчик совпадений
+  // остаётся полным, поэтому «нашлось 700» не превращается в «нашлось 50».
+  const SEARCH_INITIAL_LIMIT = 50;
+  const [searchLimit, setSearchLimit] = useState(SEARCH_INITIAL_LIMIT);
+  // Серверный поиск: локальный фильтр не видит письма за пределами загруженной
+  // страницы, поэтому в реальном режиме ищем на сервере (с задержкой на ввод).
+  const [serverHits, setServerHits] = useState<DemoMail[] | null>(null);
+  const [serverSearchError, setServerSearchError] = useState<string | null>(null);
+  const [searchPending, setSearchPending] = useState(false);
+  const matched = useMemo(
     () =>
       applyMailListControls(
         mails,
@@ -390,6 +429,118 @@ export default function MailPage() {
       ),
     [mails, folder, search, filter, onlyFlagged, onlyAttachments, sortOrder, locale],
   );
+  const searchSource = serverHits ?? matched;
+  const visible = useMemo(
+    () => (search ? searchSource.slice(0, searchLimit) : matched),
+    [searchSource, matched, search, searchLimit],
+  );
+  /**
+   * Поиск в реальном режиме идёт на сервер: письмо из 2023 года отсутствует в
+   * загруженных 50, и локальная фильтрация честно не могла его найти. Пока
+   * ответа нет, показываем прежнее поведение (фильтр по загруженным), чтобы
+   * список не мигал пустотой на каждый символ.
+   */
+  useEffect(() => {
+    if (demoMode || !search.trim()) {
+      setServerHits(null);
+      setServerSearchError(null);
+      setSearchPending(false);
+      return undefined;
+    }
+    const controller = new AbortController();
+    setSearchPending(true);
+    const timer = window.setTimeout(() => {
+      mailApi.search(search.trim(), 100, controller.signal)
+        .then((results) => {
+          if (controller.signal.aborted) return;
+          const mapped = results.map((hit) => {
+            const folderKey = realFolders.find((f) => f.id === hit.folderId)?.specialUse
+              ?? realFolders.find((f) => f.id === hit.folderId)?.id
+              ?? folders[0]?.id ?? 'INBOX';
+            const timestamp = hit.internalDate ? Date.parse(hit.internalDate) : 0;
+            return {
+              id: hit.messageId,
+              uid: hit.uid,
+              folder: folderKey,
+              from: hit.sender,
+              subject: hit.subject,
+              snippet: hit.snippet,
+              body: hit.snippet,
+              date: hit.internalDate ? formatDateTime(locale, hit.internalDate) : '',
+              timestamp: Number.isFinite(timestamp) ? timestamp : 0,
+              seen: seenDesiredRef.current.get(hit.messageId) ?? true,
+              flagged: flagDesiredRef.current.get(hit.messageId) ?? false,
+              hasAttachments: false,
+            } satisfies DemoMail;
+          });
+          setServerHits(mapped);
+          setServerSearchError(null);
+        })
+        .catch((error) => {
+          if (controller.signal.aborted) return;
+          setServerHits(null);
+          // 503 — индекс недоступен. Это не «ничего не найдено», и человек
+          // должен видеть разницу.
+          setServerSearchError(error instanceof ApiError && error.status === 503
+            ? t('Поиск временно недоступен: индекс ещё не готов. Пока показываем совпадения среди загруженных писем.')
+            : errorMessage(error));
+        })
+        .finally(() => { if (!controller.signal.aborted) setSearchPending(false); });
+    }, 350);
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [search, demoMode, realFolders, folders, locale, t]);
+
+  // Группы «Сегодня / Вчера / …» — только при сортировке по дате.
+  /**
+   * Цепочки (P2-1). Группировка идёт по `visible`, то есть по тому, что человек
+   * уже видит: поиск, фильтры и папка применены. Выключить можно в настройках —
+   * тогда остаётся прежний плоский список.
+   */
+  const conversationsEnabled = preferences.conversations;
+  const [expandedThreads, setExpandedThreads] = useState<Set<string>>(() => new Set());
+  const threads = useMemo(
+    () => (conversationsEnabled ? groupIntoConversations(visible) : []),
+    [conversationsEnabled, visible],
+  );
+  /** Что рисуется в списке: цепочка-строка или, в плоском режиме, само письмо. */
+  const listRows = useMemo<DemoMail[]>(
+    () => (conversationsEnabled
+      ? threads.map((thread) => thread.latest)
+      : visible),
+    [conversationsEnabled, threads, visible],
+  );
+  const threadByLatestId = useMemo(
+    () => new Map(threads.map((thread) => [thread.latest.id, thread])),
+    [threads],
+  );
+  const mailGroups = useMemo(
+    () => groupMailByDate(listRows, sortOrder),
+    [listRows, sortOrder],
+  );
+  const toggleThread = (key: string) => {
+    setExpandedThreads((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+  /** Смещение каждой группы в общем списке — для Shift-стрелок. */
+  const mailGroupStarts = useMemo(() => {
+    let offset = 0;
+    return mailGroups.map(({ mails: groupMails }) => {
+      const start = offset;
+      offset += groupMails.length;
+      return start;
+    });
+  }, [mailGroups]);
+  const dateGroupLabel = (group: MailDateGroup) => ({
+    today: 'Сегодня',
+    yesterday: 'Вчера',
+    week: 'На этой неделе',
+    month: 'В этом месяце',
+    older: 'Ранее',
+  } as const)[group];
 
   const filtersActive = hasActiveMailFilters({
     readFilter: filter,
@@ -405,6 +556,7 @@ export default function MailPage() {
       if (!sortPanelRef.current?.contains(target) && !filtersPanelRef.current?.contains(target)) {
         setOpenListPanel(null);
       }
+      if (!morePanelRef.current?.contains(target)) setMoreMenuOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setOpenListPanel(null);
@@ -423,11 +575,53 @@ export default function MailPage() {
     setOnlyAttachments(false);
   };
 
+  /**
+   * Единственная точка открытия композера.
+   *
+   * Раньше второй вызов молча перезаписывал первый: человек писал письмо,
+   * нажимал «Ответить» в списке — и текст исчезал вместе с вложениями.
+   * Теперь при непустом черновике сначала спрашиваем; отказ оставляет как было.
+   */
   const openDraft = (draft: ComposeDraft, kind: 'new' | 'reply' | 'forward') => {
+    const busy = composeDraft && (
+      composeDraft.to || composeDraft.cc || composeDraft.bcc || composeDraft.subject
+      || composeDraft.body || composeFiles.length > 0
+    );
+    if (busy && !window.confirm(t('В другом письме уже есть текст. Открыть новое, сохранив текущее в черновиках?'))) {
+      return;
+    }
     setComposeSession((session) => session + 1);
     setComposeFiles([]);
     setResumeDraft(null);
     setComposeDraft({ ...draft, body: bodyWithSignature(draft.body, preferences, kind) });
+  };
+
+  /**
+   * Ответ на открытое письмо: цитата и связь с оригиналом.
+   * `inReplyToMessageId` уходит на сервер — он ставит In-Reply-To/References,
+   * поэтому переписка собирается в цепочку у получателя.
+   */
+  const replyToActive = (all: boolean) => {
+    if (!active) return;
+    const body = buildReplyBody(
+      {
+        id: active.id,
+        from: active.from,
+        subject: active.subject,
+        date: active.date,
+        body: activeBody,
+        to: activeRecipientData?.to,
+        cc: activeRecipientData?.cc,
+      },
+      { senderLabel: t('От'), wroteLabel: t('писал(а)') },
+    );
+    openDraft({
+      to: emailFromHeader(active.from),
+      cc: all ? replyCc || undefined : undefined,
+      subject: replySubject(active.subject),
+      body,
+      inReplyToMessageId: active.id,
+    }, 'reply');
   };
 
   /** Открыть серверный черновик: он продолжается с той же ревизией и вложениями. */
@@ -444,13 +638,38 @@ export default function MailPage() {
         body: saved.payload.bodyText,
         bodyHtml: saved.payload.bodyHtml || undefined,
         externalAccountId: saved.payload.externalAccountId,
+        // Без этих двух полей черновик ответа терял ветку, а отложенное
+        // письмо — запланированное время.
+        inReplyToMessageId: saved.payload.inReplyToMessageId ?? null,
+        sendAt: saved.payload.sendAt ?? null,
       });
     } catch (error) {
       setLoadError(`${t('Не удалось открыть черновик.')} ${errorMessage(error)}`);
     }
   };
 
-  const active = mails.find((m) => m.id === activeId && m.folder === folder) ?? visible[0] ?? null;
+  // Явное «назад к списку» не должно снова открывать письмо само.
+  const [readingClosed, setReadingClosed] = useState(false);
+  useEffect(() => { setReadingClosed(false); }, [activeId, folder]);
+
+  /**
+   * `?mailId=…` — ссылка на письмо извне (уведомление, календарь, закладка).
+   * Свой выбор письма в адрес не пишем: каждый шаг `j`/`k` менял бы URL и
+   * перезапускал эффекты выше, которые сравнивают `searchParams` по ссылке.
+   * Кнопка «назад» в браузере от этого не страдает — почта остаётся открытой.
+   */
+  // `u` убирает параметр, чтобы адрес и экран не расходились.
+  const closeReading = () => {
+    setMobileReading(false);
+    setReadingClosed(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('mailId');
+    setSearchParams(next, { replace: true });
+    document.querySelector<HTMLElement>('[data-mail-list]')?.focus();
+  };
+  const active = readingClosed && !mobileReading
+    ? null
+    : mails.find((m) => m.id === activeId && m.folder === folder) ?? visible[0] ?? null;
   const currentViewRef = useRef<{ folder: string; activeId: string | null }>({ folder, activeId: active?.id ?? null });
   useLayoutEffect(() => {
     currentViewRef.current = { folder, activeId: active?.id ?? null };
@@ -481,9 +700,13 @@ export default function MailPage() {
     setEventModalDraft(draft);
   };
 
-  const downloadAttachment = async (messageId: string, attachment: MailAttachmentView) => {
+  const downloadAttachment = async (
+    messageId: string,
+    attachment: MailAttachmentView,
+    options: { force?: boolean } = {},
+  ) => {
     const key = `${messageId}:${attachment.partIndex}`;
-    if (downloadBusy) return;
+    if (downloadBusy && !options.force) return;
     setDownloadBusy(key);
     let url = '';
     try {
@@ -500,6 +723,103 @@ export default function MailPage() {
     } finally {
       if (url) window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       setDownloadBusy(null);
+    }
+  };
+
+  /**
+   * «Скачать все»: по одному файлу подряд.
+   *
+   * ZIP сервер не отдаёт, а браузер (кроме Chrome) блокирует несколько
+   * одновременных скачиваний. Поэтому файлы идут очередью, и каждый — с
+   * задержкой, чтобы браузер не принял пачку за автоматическую загрузку.
+   */
+  const downloadAllAttachments = async () => {
+    if (!active || downloadAllBusy) return;
+    if (demoMode) {
+      notify({ message: t('Вложение недоступно в демонстрационном режиме'), tone: 'info' });
+      return;
+    }
+    const list = loadedAttachments[active.id] ?? [];
+    if (list.length === 0) return;
+    setDownloadAllBusy(true);
+    try {
+      for (const attachment of list) {
+        // Файлы, заблокированные антивирусом, сервер всё равно не отдаст:
+        // не тратим на них запрос и сразу говорим, что пропущено.
+        if (attachment.avStatus === 'INFECTED') continue;
+        await downloadAttachment(active.id, attachment, { force: true });
+        await new Promise((resolve) => window.setTimeout(resolve, 250));
+      }
+      notify({ message: t('Скачивание вложений завершено.'), tone: 'success' });
+    } finally {
+      setDownloadAllBusy(false);
+    }
+  };
+
+  /**
+   * Отправитель письма → контакт. Кнопка в шапке письма: после первого
+   * ответа человеку обычно и нужен этот адрес в книге, а искать его в
+   * отдельном окне контактов — лишний шаг.
+   */
+  /**
+   * «Отложить до…»: письмо исчезает из списка папки до срока, но остаётся на
+   * сервере. Возврат — через обновление папки или вручную из списка «Отложенные»,
+   * поэтому отменять snooze можно и раньше, повторным запросом.
+   */
+  const snoozeActiveMail = async (hours: number) => {
+    if (!active) return;
+    const snoozedId = active.id;
+    if (demoMode) {
+      notify({ message: t('Отложить письмо можно при подключении к серверу.'), tone: 'info' });
+      return;
+    }
+    const wakeAt = new Date(Date.now() + hours * 3600_000);
+    try {
+      await mailApi.snooze(active.id, wakeAt.toISOString());
+      setMails((prev) => prev.filter((mail) => mail.id !== active.id));
+      setActiveId('');
+      notify({
+        message: t('Письмо вернётся {time}.', { time: wakeAt.toLocaleString() }),
+        tone: 'success',
+        action: { label: t('Вернуть сейчас'), onSelect: () => void unsnoozeMail(snoozedId) },
+      });
+    } catch (error) {
+      notify({ message: `${t('Не удалось отложить письмо.')} ${errorMessage(error)}`, tone: 'error' });
+    }
+  };
+
+  const unsnoozeMail = async (messageId: string) => {
+    try {
+      await mailApi.wake(messageId);
+      notify({ message: t('Письмо возвращено в список.'), tone: 'success' });
+      reloadRef.current?.();
+    } catch (error) {
+      notify({ message: `${t('Не удалось вернуть письмо.')} ${errorMessage(error)}`, tone: 'error' });
+    }
+  };
+
+  const addSenderToContacts = async () => {
+    if (!active) return;
+    const email = emailFromHeader(active.from);
+    if (!email) {
+      notify({ message: t('У письма нет адреса отправителя.'), tone: 'error' });
+      return;
+    }
+    if (contactEmails.some((item) => item.toLowerCase() === email.toLowerCase())) {
+      setLoadError(t('Этот адрес уже есть в адресной книге.'));
+      return;
+    }
+    if (demoMode) {
+      setContactEmails((prev) => [...prev, email]);
+      notify({ message: t('Адрес добавлен в контакты: {email}', { email }), tone: 'success' });
+      return;
+    }
+    try {
+      await contactsApi.create({ displayName: cleanPersonName(active.from) || email, email });
+      setContactEmails((prev) => [...prev, email]);
+      notify({ message: t('Адрес добавлен в контакты: {email}', { email }), tone: 'success' });
+    } catch (error) {
+      notify({ message: `${t('Не удалось добавить адрес в контакты.')} ${errorMessage(error)}`, tone: 'error' });
     }
   };
 
@@ -741,12 +1061,17 @@ export default function MailPage() {
   }, [selectedRealFolderId, demoMode]);
 
   useEffect(() => {
-    if (demoMode || !selectedRealFolderId || movingMailIds.size > 0) return;
+    if (demoMode || !selectedRealFolderId || movingMailIds.size > 0) {
+      setListLoading(false);
+      return undefined;
+    }
     let cancelled = false;
     const load = () => {
       const seenRevision = seenRevisionRef.current;
       const mailRevision = mailRevisionRef.current;
       const sequence = beginMessageSnapshot(selectedRealFolderId);
+      // Пустая папка и незавершённая загрузка не должны выглядеть одинаково.
+      if (mails.length === 0) setListLoading(true);
       void mailApi.messages(selectedRealFolderId).then((items) => {
         if (cancelled || sequence !== messageSnapshotRef.current.get(selectedRealFolderId)) return;
         // Retry a snapshot invalidated by a completed local mutation. A move
@@ -760,16 +1085,37 @@ export default function MailPage() {
         const linked = linkedMailRef.current;
         if (linked?.folder === folder && !mapped.some((mail) => mail.id === linked.id)) mapped.unshift(linked);
         setMails((prev) => replaceFolderMessages(prev, folder, mapped));
+        // Снимок для чтения без сети: только то, что владелец уже видел.
+        if (sessionUser?.id) {
+          saveOfflineSnapshot(sessionUser.id, `folder:${folder}`, mapped, Date.now());
+        }
+        setOfflineSavedAt(null);
         setPaging({
           cursorUid: nextPageCursor(mapped),
           hasMore: hasMorePages(items.length, MAIL_PAGE_SIZE),
           loading: false,
         });
         setActiveId((current) => linked?.folder === folder ? linked.id : mapped.some((mail) => mail.id === current) ? current : mapped[0]?.id ?? '');
+        setListLoading(false);
       }).catch((error) => {
-        if (!cancelled && sequence === messageSnapshotRef.current.get(selectedRealFolderId)) setLoadError(errorMessage(error));
+        if (cancelled || sequence !== messageSnapshotRef.current.get(selectedRealFolderId)) return;
+        setListLoading(false);
+        const ownerId = sessionUser?.id;
+        const cached = ownerId ? loadOfflineSnapshot<DemoMail[]>(ownerId, `folder:${folder}`) : null;
+        if (cached?.length && ownerId) {
+          // Показать последний снимок честнее, чем пустой экран с ошибкой:
+          // подпись говорит, что это копия и когда она сделана.
+          setMails((prev) => replaceFolderMessages(prev, folder, cached));
+          const age = offlineSnapshotAge(ownerId, `folder:${folder}`);
+          setOfflineSavedAt(age == null ? Date.now() : Date.now() - age);
+          setLoadError(null);
+          return;
+        }
+        setLoadError(errorMessage(error));
       });
     };
+    // Кнопка «Повторить» в сообщении об ошибке вызывает именно этот загрузчик.
+    reloadRef.current = load;
     load();
     return () => {
       cancelled = true;
@@ -833,6 +1179,7 @@ export default function MailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demoMode, folder, selectedRealFolderId, locale, movingMailIds.size]);
 
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
   /** Следующая страница папки по курсору UID: сервер отдаёт письма старше курсора. */
   const loadMoreMessages = async () => {
     const folderId = selectedRealFolderId;
@@ -857,6 +1204,32 @@ export default function MailPage() {
       setPaging((prev) => ({ ...prev, loading: false }));
     }
   };
+
+  // Бесконечная прокрутка. Наблюдатель пересоздаётся при изменении состояния
+  // подгрузки: после успешной страницы нужно снова «поймать» нижнюю границу.
+  useEffect(() => {
+    const sentinel = loadMoreSentinelRef.current;
+    if (!sentinel || demoMode || !paging.hasMore || paging.loading) return undefined;
+    if (typeof IntersectionObserver === 'undefined') return undefined;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) void loadMoreMessages();
+    }, { rootMargin: '300px 0px' });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demoMode, paging.hasMore, paging.loading, paging.cursorUid, folder]);
+
+  // Сеть вернулась — убираем подпись «показана копия» и даём эффекту загрузки
+  // перезапросить папку.
+  useEffect(() => {
+    const update = () => setOffline(typeof navigator !== 'undefined' && navigator.onLine === false);
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => {
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+    };
+  }, []);
 
   const activeRealId = !demoMode && active ? active.id : null;
   useEffect(() => {
@@ -925,12 +1298,15 @@ export default function MailPage() {
     const openCompose = searchParams.get('compose') === '1';
     const openExternalAccounts = searchParams.get('externalAccounts') === '1';
     const openSettings = searchParams.get('settings') === '1';
-    if (openCompose) openDraft({ to: '', subject: '', body: '' }, 'new');
+    // `?to=` приходит из адресной книги и из ⌘K: письмо уже начато
+    // получателю, его не нужно искать в списке контактов заново.
+    if (openCompose) openDraft({ to: (searchParams.get('to') ?? '').slice(0, 320), subject: '', body: '' }, 'new');
     if (openExternalAccounts && canAdminExternalAccounts) setExternalOpen(true);
     if (openSettings) setSettingsOpen(true);
     if (openCompose || openExternalAccounts || openSettings) {
       const next = new URLSearchParams(searchParams);
       next.delete('compose');
+      next.delete('to');
       next.delete('externalAccounts');
       next.delete('settings');
       setSearchParams(next, { replace: true });
@@ -1075,6 +1451,44 @@ export default function MailPage() {
     void writeSeen(mail, nextSeen);
   };
 
+  // Активное письмо всегда видно: при j/k длинный список раньше прокручивался
+  // вручную, и курсор уходил за пределы экрана.
+  useEffect(() => {
+    if (!activeId) return;
+    const row = document.getElementById(`mail-row-${activeId}`);
+    // В jsdom (тесты) и в старых браузерах метода может не быть.
+    if (typeof row?.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' });
+  }, [activeId]);
+
+  /**
+   * Свайп по строке на телефоне: вправо — в архив, влево — в корзину.
+   *
+   * Порог 64 px и требование горизонтального движения: без этого обычная
+   * прокрутка списка пальцем превращалась бы в случайный архив. Свайп срабатывает
+   * только на тач-событиях — мышь и клавиатура идут прежним путём.
+   */
+  const swipeStartRef = useRef<{ id: string; x: number; y: number; fired: boolean } | null>(null);
+  const swipeHandlers = (mail: DemoMail) => ({
+    onTouchStart: (event: React.TouchEvent<HTMLDivElement>) => {
+      const touch = event.touches[0];
+      if (!touch || event.touches.length > 1) { swipeStartRef.current = null; return; }
+      swipeStartRef.current = { id: mail.id, x: touch.clientX, y: touch.clientY, fired: false };
+    },
+    onTouchEnd: (event: React.TouchEvent<HTMLDivElement>) => {
+      const start = swipeStartRef.current;
+      swipeStartRef.current = null;
+      if (!start || start.id !== mail.id || start.fired) return;
+      const touch = event.changedTouches[0];
+      if (!touch) return;
+      const dx = touch.clientX - start.x;
+      const dy = touch.clientY - start.y;
+      if (Math.abs(dx) < 64 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      if (movingMailIdsRef.current.has(mail.id)) return;
+      swipeStartRef.current = { ...start, fired: true };
+      moveActiveById(mail.id, dx > 0 ? 'ARCHIVE' : 'TRASH');
+    },
+  });
+
   const open = (m: DemoMail, fromKeyboard = false) => {
     if (linkedMailRef.current?.id !== m.id) linkedMailRef.current = null;
     if (active?.id !== m.id) suppressAutoReadRef.current = null;
@@ -1129,9 +1543,32 @@ export default function MailPage() {
     setLoadError(null);
   };
 
+  /**
+   * Перемещение одного письма с возможностью отмены.
+   *
+   * Исходная папка известна в момент вызова, поэтому «Отменить» — это обычный
+   * обратный move. Раньше архив и корзина срабатывали мгновенно и необратимо.
+   */
   const moveActive = (targetFolder: string) => {
     if (!active || active.folder === targetFolder || movingMailIdsRef.current.has(active.id)) return;
     const next = visible[activeIndex + 1] ?? visible[activeIndex - 1];
+    const sourceFolder = active.folder;
+    const targetName = folders.find((f) => f.id === targetFolder)?.name ?? targetFolder;
+    const offerUndo = (movedId: string, movedBackFrom: string) => {
+      notify({
+        key: `move-${movedId}`,
+        message: t('Письмо перемещено в «{folder}».', { folder: targetName }),
+        durationMs: 8000,
+        action: {
+          label: t('Отменить'),
+          onSelect: () => {
+            // Тот же путь, что и обычное перемещение: локальное состояние, затем
+            // сервер. Ошибка возвращается уведомлением, а не молчаливым расхождением.
+            moveActiveById(movedId, movedBackFrom);
+          },
+        },
+      });
+    };
     if (!demoMode) {
       const target = realFolders.find((f) => (f.specialUse ?? f.id) === targetFolder);
       if (!target) return;
@@ -1159,8 +1596,12 @@ export default function MailPage() {
             setActiveId((current) => current === source.id ? next?.id ?? '' : current);
             setMobileReading(false);
           }
+          offerUndo(source.id, source.folder);
         })
-        .catch((error) => setLoadError(errorMessage(error)))
+        .catch((error) => {
+          setLoadError(errorMessage(error));
+          notify({ message: t('Не удалось переместить письмо.'), tone: 'error', durationMs: 8000 });
+        })
         .finally(() => {
           mailRevisionRef.current += 1;
           movingMailIdsRef.current.delete(source.id);
@@ -1172,6 +1613,56 @@ export default function MailPage() {
     setMails((prev) => prev.map((m) => (m.id === active.id ? { ...m, folder: targetFolder } : m)));
     if (next && next.id !== active.id) setActiveId(next.id);
     setMobileReading(false);
+    offerUndo(active.id, sourceFolder);
+  };
+
+  /** Перемещение по id: нужно отмене, когда открытое письмо уже сменилось. */
+  const moveActiveById = (mailId: string, targetFolderKey: string) => {
+    const mail = mails.find((item) => item.id === mailId)
+      ?? visible.find((item) => item.id === mailId);
+    if (!mail) return;
+    if (demoMode) {
+      setMails((prev) => prev.map((item) => item.id === mailId ? { ...item, folder: targetFolderKey } : item));
+      return;
+    }
+    const target = realFolders.find((f) => (f.specialUse ?? f.id) === targetFolderKey);
+    if (!target) return;
+    movingMailIdsRef.current.add(mailId);
+    setMovingMailIds(new Set(movingMailIdsRef.current));
+    mailRevisionRef.current += 1;
+    void enqueueMessageMutation(mailId, () => mailApi.move(mailId, target.id))
+      .then((item) => {
+        setMails((prev) => {
+          const existing = prev.find((candidate) => candidate.id === mailId);
+          if (!existing) return prev;
+          return prev.map((candidate) => candidate.id === mailId
+            ? { ...toMailView(item, targetFolderKey), body: loadedBodies[mailId] ?? existing.body }
+            : candidate);
+        });
+      })
+      .catch((error) => {
+        setLoadError(errorMessage(error));
+        notify({ message: t('Не удалось отменить перемещение.'), tone: 'error', durationMs: 8000 });
+      })
+      .finally(() => {
+        mailRevisionRef.current += 1;
+        movingMailIdsRef.current.delete(mailId);
+        setMovingMailIds(new Set(movingMailIdsRef.current));
+      });
+  };
+
+  /** «Не спам»: письмо возвращается во «Входящие». Обратного действия к «В спам» не было. */
+  const markNotSpam = () => {
+    if (!active) return;
+    moveActive(active.folder === 'SPAM' ? 'INBOX' : 'SPAM');
+  };
+
+  /** «Прочитать всё»: весь список показанных писем одним действием. */
+  const markAllVisibleSeen = () => {
+    const unread = visible.filter((mail) => !mail.seen);
+    if (unread.length === 0) return;
+    for (const mail of unread) markSeen(mail);
+    notify({ message: t('Отмечено прочитанными: {count}', { count: unread.length }), tone: 'success', durationMs: 4000 });
   };
 
   const toggleBulkMail = (mail: DemoMail) => {
@@ -1184,7 +1675,13 @@ export default function MailPage() {
       : visible.map((mail) => mail.id));
   };
 
-  /** Групповое перемещение идёт строго по снимку выбора и останавливается на первой ошибке. */
+  /**
+   * Групповое перемещение: снимок выбора, продолжение после явного отказа
+   * и кнопка «Повторить» для тех писем, которые сервер отклонил.
+   *
+   * Нативное `window.confirm` убрано: подтверждение здесь ничего не защищает
+   * (действие отменяемо), а блокировало вкладку и не поддавалось стилизации.
+   */
   const moveSelected = async (targetFolder: string) => {
     if (bulkBusyRef.current || bulkSelection.length === 0 || targetFolder === folder) return;
     const target = realFolders.find((item) => (item.specialUse ?? item.id) === targetFolder);
@@ -1194,9 +1691,13 @@ export default function MailPage() {
       return;
     }
     const snapshot = [...bulkSelection];
-    if (!window.confirm(t('Переместить выбранные письма: {count} в папку «{folder}»?',
-      { count: snapshot.length, folder: targetName }))) return;
+    await runBulkMove(snapshot, targetFolder, targetName);
+  };
 
+  const runBulkMove = async (snapshot: string[], targetFolder: string, targetName: string) => {
+    if (bulkBusyRef.current || snapshot.length === 0) return;
+    const target = realFolders.find((item) => (item.specialUse ?? item.id) === targetFolder);
+    if (!demoMode && !target) return;
     bulkBusyRef.current = true;
     setBulkBusy(true);
     setBulkNotice('');
@@ -1216,7 +1717,7 @@ export default function MailPage() {
         movingMailIdsRef.current.delete(id);
         setMovingMailIds(new Set(movingMailIdsRef.current));
       }
-    });
+    }, (error) => error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 408);
 
     if (result.succeeded.length > 0) {
       const moved = new Set(result.succeeded);
@@ -1226,13 +1727,28 @@ export default function MailPage() {
         setMobileReading(false);
       }
     }
-    setBulkSelection(result.notAttempted);
-    if (result.uncertain) {
-      setBulkNotice(t('Перенесено: {done}. Результат одного письма неизвестен или операция отклонена; не обработано: {remaining}. Проверьте папки перед повтором.',
-        { done: result.succeeded.length, remaining: result.notAttempted.length }));
-    } else {
-      setBulkNotice(t('Перенесено писем: {count}', { count: result.succeeded.length }));
-    }
+    const failed = [...result.rejected, ...result.uncertain];
+    setBulkSelection([...failed, ...result.notAttempted]);
+    const summary = result.uncertain.length > 0
+      ? t('Перенесено: {done}. Результат одного письма неизвестен; не обработано: {remaining}. Проверьте папки перед повтором.',
+        { done: result.succeeded.length, remaining: result.uncertain.length + result.notAttempted.length })
+      : result.rejected.length > 0
+        ? t('Перенесено: {done}, не удалось: {failed}. Остальные не тронуты.', {
+          done: result.succeeded.length, failed: result.rejected.length,
+        })
+        : t('Перенесено писем: {count}', { count: result.succeeded.length });
+    setBulkNotice(summary);
+    notify({
+      key: 'bulk-move',
+      message: result.uncertain.length > 0 || result.rejected.length > 0
+        ? summary
+        : t('Писем перенесено в «{folder}»: {count}', { folder: targetName, count: result.succeeded.length }),
+      tone: result.uncertain.length > 0 || result.rejected.length > 0 ? 'error' : 'success',
+      durationMs: 8000,
+      action: result.rejected.length > 0
+        ? { label: t('Повторить'), onSelect: () => { void runBulkMove(result.rejected, targetFolder, targetName); } }
+        : undefined,
+    });
     bulkBusyRef.current = false;
     setBulkBusy(false);
   };
@@ -1357,6 +1873,11 @@ export default function MailPage() {
   const step = (delta: number) => {
     if (visible.length === 0) return;
     const nextIndex = activeIndex < 0 ? 0 : Math.min(visible.length - 1, Math.max(0, activeIndex + delta));
+    // Дошли до последней загруженной строки — подгружаем следующую страницу,
+    // чтобы `j` не упирался в границу окна из 50 писем.
+    if (delta > 0 && nextIndex >= visible.length - 1 && !demoMode && paging.hasMore && !paging.loading) {
+      void loadMoreMessages();
+    }
     open(visible[nextIndex], true);
   };
 
@@ -1368,9 +1889,23 @@ export default function MailPage() {
         || target?.tagName === 'TEXTAREA'
         || target?.tagName === 'SELECT'
         || target?.isContentEditable;
+      // Пока открыта справка, Escape её закрывает, а остальные сочетания не
+      // срабатывают: иначе `e` под ней архивировала бы письмо.
+      if (shortcutsHelpOpen) {
+        if (e.key === 'Escape') setShortcutsHelpOpen(false);
+        return;
+      }
       if (externalOpen || eventModalDraft || settingsOpen || createFolderOpen || draftsOpen) return;
       if (e.key === 'Escape' && composeDraft) {
-        setComposeDraft(null);
+        // Не обнуляем состояние напрямую: иначе Escape закрывал письмо без
+        // подтверждения и без последнего автосохранения, пока «×» спрашивал.
+        // Композер сам решает, спросить или закрыть пустой черновик.
+        const panel = document.querySelector<HTMLElement>('[data-compose-panel]');
+        panel?.dispatchEvent(new CustomEvent('corvex:close-compose', { bubbles: false }));
+        return;
+      }
+      if (e.key === 'Escape' && bulkSelection.length > 0) {
+        setBulkSelection([]);
         return;
       }
       // Ctrl/Cmd+P на открытом письме печатает письмо, а не интерфейс страницы.
@@ -1382,6 +1917,8 @@ export default function MailPage() {
       }
       if (typing || composeDraft || e.ctrlKey || e.metaKey || e.altKey) return;
       const key = e.key.toLowerCase();
+      // Набор как в Gmail: навигация, открыть, назад к списку, архив, корзина,
+      // ответить, важное, поиск, справка. Кириллица продублирована для раскладки.
       if (key === '/') {
         e.preventDefault();
         searchRef.current?.focus();
@@ -1391,6 +1928,36 @@ export default function MailPage() {
       } else if (key === 'k' || key === 'л' || e.key === 'ArrowUp') {
         e.preventDefault();
         step(-1);
+      } else if (key === 'o' || key === 'щ' || e.key === 'Enter') {
+        if (!active) return;
+        e.preventDefault();
+        setMobileReading(true);
+      } else if (key === 'u' || key === 'г') {
+        e.preventDefault();
+        closeReading();
+      } else if (key === 'e' || key === 'у') {
+        if (!active) return;
+        e.preventDefault();
+        moveActive('ARCHIVE');
+      } else if (e.key === '#' || key === 'delete' || key === 'backspace') {
+        if (!active) return;
+        e.preventDefault();
+        moveActive('TRASH');
+      } else if (key === 'r' || key === 'к') {
+        if (!active) return;
+        e.preventDefault();
+        replyToActive(false);
+      } else if (key === 'a' || key === 'ф') {
+        if (!active) return;
+        e.preventDefault();
+        replyToActive(true);
+      } else if (key === 's' || key === 'ы') {
+        if (!active) return;
+        e.preventDefault();
+        toggleFlag(active);
+      } else if (key === '?') {
+        e.preventDefault();
+        setShortcutsHelpOpen(true);
       } else if (key === 'c' || key === 'с') {
         e.preventDefault();
         openDraft({ to: '', subject: '', body: '' }, 'new');
@@ -1400,8 +1967,63 @@ export default function MailPage() {
     return () => window.removeEventListener('keydown', onKeyDown);
   });
 
+  /**
+   * Настройки с сервера. Сервер — источник истины для подписи и внешнего вида:
+   * иначе на новом устройстве человек видел бы другие настройки, чем на
+   * первом. localStorage остаётся быстрым кэшем на случай недоступности API.
+   */
+  useEffect(() => {
+    if (demoMode || !sessionUser?.id) return undefined;
+    let cancelled = false;
+    mailApi.settings()
+      .then((remote) => {
+        if (cancelled) return;
+        const value = preferencesFromServer(remote);
+        setPreferenceState({ key: mailPreferencesKey(sessionUser.id, false), value });
+        setSortOrder(value.defaultSort);
+        saveMailPreferences(mailPreferencesKey(sessionUser.id, false), value);
+      })
+      .catch(() => {
+        // Сервер недоступен — работаем на локальной копии, ничего не теряя.
+      });
+    return () => { cancelled = true; };
+  }, [demoMode, sessionUser?.id]);
+
+  // Отложенные письма подтягиваются один раз на раздел: отменять их нужно и
+  // после перезагрузки страницы, иначе очередь становится невидимой.
+  useEffect(() => {
+    if (demoMode) { setScheduledSends([]); return undefined; }
+    let cancelled = false;
+    mailApi.scheduledSends()
+      .then((items) => { if (!cancelled) setScheduledSends(items); })
+      .catch(() => { if (!cancelled) setScheduledSends([]); });
+    return () => { cancelled = true; };
+  }, [demoMode]);
+
+  const cancelScheduledSend = async (id: string) => {
+    try {
+      await mailApi.cancelScheduledSend(id);
+      setScheduledSends((prev) => prev.filter((item) => item.id !== id));
+      notify({ message: t('Отложенная отправка отменена.'), tone: 'success' });
+    } catch (error) {
+      // 409 — письмо уже уходит. Это не сбой, а факт, который нужно назвать.
+      notify({
+        message: error instanceof ApiError && error.status === 409
+          ? t('Письмо уже отправляется — отменить нельзя.')
+          : `${t('Не удалось отменить отложенную отправку.')} ${errorMessage(error)}`,
+        tone: 'error',
+      });
+    }
+  };
+
   const addSentMail = async (draft: ComposeDraft, files: File[]) => {
     if (demoMode) {
+      if (draft.sendAt) {
+        // Демо-режим ничего не отправляет и не хранит очередь: обещать
+        // «отправим позже» здесь было бы обманом.
+        notify({ message: t('Отложенная отправка доступна при подключении к серверу.'), tone: 'info' });
+        return true;
+      }
       setMails((prev) => [
         {
           id: `sent-${Date.now()}`,
@@ -1425,12 +2047,32 @@ export default function MailPage() {
     const sendResult = await mailApi.send({
       to: splitAddresses(draft.to),
       cc: splitAddresses(draft.cc),
+      bcc: splitAddresses(draft.bcc ?? ''),
       subject: draft.subject,
       bodyText: draft.body,
       attachments,
       saveToSent: true,
       externalAccountId: draft.externalAccountId ?? null,
+      // Без этого ответ уходил как новое письмо: у получателя он не попадал в тред.
+      inReplyToMessageId: draft.inReplyToMessageId ?? null,
+      sendAt: draft.sendAt ?? null,
     });
+
+    if (sendResult.scheduledSendAt) {
+      // Письмо ещё не ушло: это не «отправлено», и отменить его можно из
+      // «Отправленных» до указанного времени.
+      notify({
+        message: t('Отправка запланирована на {time}.', {
+          time: new Date(sendResult.scheduledSendAt).toLocaleString(),
+        }),
+        tone: 'info',
+        durationMs: 6000,
+      });
+      setScheduledSends((prev) => [
+        { id: sendResult.scheduledSendId ?? `s-${Date.now()}`, sendAt: sendResult.scheduledSendAt!, status: 'SCHEDULED' },
+        ...prev,
+      ]);
+    }
 
     // Sending has succeeded. Never turn a later refresh failure into a send
     // failure: a retry would risk delivering the same message twice.
@@ -1498,7 +2140,41 @@ export default function MailPage() {
                       type="button"
                       onClick={() => selectFolder(f.id)}
                       aria-current={isCurrent ? 'page' : undefined}
-                      className={`sidebar-subitem w-full ${isCurrent ? 'sidebar-subitem-active' : ''}`}
+                      // Перетаскивание письма в папку: быстрее, чем меню «Переместить».
+                      onDragOver={(event) => {
+                        if (!event.dataTransfer.types.includes(CORVEX_MAIL_DND_MIME)) return;
+                        if (f.id === folder) return;
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = 'move';
+                        setDropTarget(f.id);
+                      }}
+                      onDragLeave={() => setDropTarget((current) => current === f.id ? null : current)}
+                      onDrop={(event) => {
+                        const raw = event.dataTransfer.getData(CORVEX_MAIL_DND_MIME);
+                        setDropTarget(null);
+                        if (!raw) return;
+                        event.preventDefault();
+                        try {
+                          const payload = JSON.parse(raw) as { id?: string };
+                          if (!payload.id || f.id === folder) return;
+                          const mail = mails.find((item) => item.id === payload.id);
+                          if (!mail) return;
+                          // Используем тот же путь, что и кнопка: отмена и уведомление
+                          // появляются и при перетаскивании.
+                          moveActiveById(payload.id, f.id);
+                          notify({
+                            key: `move-${payload.id}`,
+                            message: t('Письмо перемещено в «{folder}».', { folder: f.name }),
+                            durationMs: 8000,
+                            action: { label: t('Отменить'), onSelect: () => moveActiveById(payload.id!, mail.folder) },
+                          });
+                        } catch {
+                          // Чужой drag-n-drop (файл, ссылка) не должен ломать папку.
+                        }
+                      }}
+                      className={`sidebar-subitem w-full ${isCurrent ? 'sidebar-subitem-active' : ''} ${
+                        dropTarget === f.id ? 'ring-2 ring-inset ring-accent' : ''
+                      }`}
                     >
                       <Icon size={15} strokeWidth={1.85} className="shrink-0" />
                       <span className="min-w-0 flex-1 truncate text-left">{f.name}</span>
@@ -1554,22 +2230,42 @@ export default function MailPage() {
             <input
               ref={searchRef}
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t('Поиск по теме, отправителю, тексту')}
-              aria-label={t('Поиск по теме, отправителю, тексту')}
-              className="field h-9 bg-canvas pl-8 pr-12 text-[13px]"
+              onChange={(e) => { setSearch(e.target.value); setSearchLimit(SEARCH_INITIAL_LIMIT); }}
+              onKeyDown={(event) => {
+                // Esc в поле поиска возвращает полный список, как в Gmail.
+                if (event.key === 'Escape' && search) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setSearch('');
+                }
+              }}
+              placeholder={t('Поиск по загруженным письмам')}
+              aria-label={t('Поиск по загруженным письмам: теме, отправителю, тексту')}
+              type="search"
+              className="field h-9 bg-canvas pl-8 pr-16 text-[13px] [&::-webkit-search-cancel-button]:hidden"
             />
+            {search && (
+              <button
+                type="button"
+                onClick={() => { setSearch(''); searchRef.current?.focus(); }}
+                aria-label={t('Сбросить поиск')}
+                title={t('Сбросить поиск')}
+                className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted hover:bg-surface hover:text-ink"
+              >
+                <X size={14} />
+              </button>
+            )}
             {onOpenCommandPalette ? (
               <button
                 type="button"
                 onClick={onOpenCommandPalette}
                 title={t('Быстрый переход')}
-                className="absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-line-control bg-surface px-1.5 py-0.5 font-mono text-[10px] text-faint hover:text-ink sm:inline-flex"
+                className={`absolute top-1/2 hidden -translate-y-1/2 rounded border border-line-control bg-surface px-1.5 py-0.5 font-mono text-[10px] text-faint hover:text-ink sm:inline-flex ${search ? 'right-9' : 'right-2'}`}
               >
                 ⌘K
               </button>
             ) : (
-              <span className="kbd absolute right-2.5 top-1/2 hidden -translate-y-1/2 sm:inline-flex">/</span>
+              <span className={`kbd absolute top-1/2 hidden -translate-y-1/2 sm:inline-flex ${search ? 'right-9' : 'right-2.5'}`}>/</span>
             )}
           </div>
 
@@ -1600,6 +2296,7 @@ export default function MailPage() {
                   { value: 'date-asc', label: t('Сначала старые') },
                   { value: 'sender-asc', label: t('По отправителю А–Я') },
                   { value: 'subject-asc', label: t('По теме А–Я') },
+                  { value: 'unread-first', label: t('Сначала непрочитанные') },
                 ] as const).map((option) => (
                   <button
                     key={option.value}
@@ -1718,12 +2415,23 @@ export default function MailPage() {
                 {paging.hasMore ? `${visible.length} / ${selectedRealFolder?.total ?? visible.length}` : visible.length}
               </span>
             </div>
-            <SelectVisibleMessages
-              visibleCount={visible.length}
-              selectedCount={bulkSelection.length}
-              disabled={bulkBusy}
-              onChange={toggleAllVisible}
-            />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={markAllVisibleSeen}
+                disabled={!visible.some((mail) => !mail.seen)}
+                className="rounded-md px-1.5 py-1 text-[11.5px] font-medium text-muted hover:bg-surface hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                title={t('Отметить прочитанными все письма в списке')}
+              >
+                {t('Прочитать все')}
+              </button>
+              <SelectVisibleMessages
+                visibleCount={visible.length}
+                selectedCount={bulkSelection.length}
+                disabled={bulkBusy}
+                onChange={toggleAllVisible}
+              />
+            </div>
           </div>
           <div className="mt-2 flex flex-wrap items-center rounded-lg border border-corvex-line bg-surface p-0.5" role="tablist" aria-label={t('Фильтр писем')}>
             {READ_FILTERS.map((value, index) => (
@@ -1799,10 +2507,34 @@ export default function MailPage() {
         )}
 
         {/* Message List */}
-        <div id={`${filterId}-panel`} role="tabpanel" aria-labelledby={`${filterId}-${filter}`} className="mail-list-scroll scroll-area min-h-0 flex-1">
+        <div
+          id={`${filterId}-panel`}
+          role="tabpanel"
+          aria-labelledby={`${filterId}-${filter}`}
+          data-mail-list
+          tabIndex={-1}
+          className="mail-list-scroll scroll-area min-h-0 flex-1 outline-none"
+        >
+          <div role="listbox" aria-label={t('Список писем')} aria-activedescendant={active ? `mail-row-${active.id}` : undefined}>
           {loadError && (
             <div className="m-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
-              {loadError}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="min-w-0 flex-1">{loadError}</span>
+                <button
+                  type="button"
+                  onClick={() => { setLoadError(null); reloadRef.current?.(); }}
+                  className="shrink-0 rounded-md border border-red-300 bg-white px-2.5 py-1 text-xs font-semibold text-red-800 hover:bg-red-100"
+                >
+                  {t('Повторить')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLoadError(null)}
+                  className="shrink-0 rounded-md px-2 py-1 text-xs text-red-700 hover:bg-red-100"
+                >
+                  {t('Закрыть')}
+                </button>
+              </div>
             </div>
           )}
           {oauthNotice && (
@@ -1811,129 +2543,284 @@ export default function MailPage() {
             </div>
           )}
 
-          {visible.map((m) => {
-            const selected = active?.id === m.id;
-            return (
-              <div
-                key={m.id}
-                draggable
-                aria-busy={movingMailIds.has(m.id)}
-                onDragStart={(e) => {
-                  e.dataTransfer.effectAllowed = 'copy';
-                  e.dataTransfer.setData(
-                    CORVEX_MAIL_DND_MIME,
-                    JSON.stringify({
-                      id: m.id,
-                      subject: m.subject,
-                      from: m.from,
-                      body: loadedBodies[m.id] ?? m.body ?? m.snippet,
-                      flagged: m.flagged,
-                    }),
-                  );
-                  // Opening a fixed overlay synchronously inside dragstart can cancel
-                  // the browser's native drag before it has initialized.
-                  if (onOpenCalendarWidget) {
-                    if (calendarDragTimerRef.current !== null) window.clearTimeout(calendarDragTimerRef.current);
-                    calendarDragTimerRef.current = window.setTimeout(() => {
-                      calendarDragTimerRef.current = null;
-                      onOpenCalendarWidget();
-                    }, 100);
-                  }
-                }}
-                onDragEnd={() => {
-                  if (calendarDragTimerRef.current !== null) window.clearTimeout(calendarDragTimerRef.current);
-                  calendarDragTimerRef.current = null;
-                }}
-                onClick={() => open(m)}
-                className={`group relative flex cursor-pointer border-b border-line-subtle px-4 transition duration-150 ${
-                  preferences.density === 'compact' ? 'gap-2 py-1.5' : 'gap-3 py-3'
-                } ${selected ? 'bg-accent-soft' : 'bg-surface hover:bg-canvas'}`}
+          {(offline || offlineSavedAt != null) && (
+            <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-[11.5px] leading-5 text-amber-900" role="status">
+              {offlineBannerText(offlineSavedAt ?? Date.now(), locale)}
+              {' '}
+              <button
+                type="button"
+                onClick={() => { setOfflineSavedAt(null); setLoadError(null); reloadRef.current?.(); }}
+                className="font-semibold underline underline-offset-2"
               >
-                {selected && <span className="absolute inset-y-0 left-0 w-[3px] bg-accent" />}
-                {movingMailIds.has(m.id) && <span className="sr-only" role="status">{t('Перемещение письма…')}</span>}
-                <div className="flex shrink-0 items-center" onClick={(event) => event.stopPropagation()}>
-                  <SelectMessage
-                    subject={m.subject}
-                    checked={bulkSelection.includes(m.id)}
-                    disabled={bulkBusy}
-                    onChange={() => toggleBulkMail(m)}
-                  />
-                </div>
-                <Avatar name={m.from} size={preferences.density === 'compact' ? 30 : 36} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    {!m.seen && (
-                      <span
-                        className="h-2 w-2 shrink-0 rounded-full bg-[#2563EB]"
-                        aria-label={t('Непрочитано')}
-                      />
-                    )}
-                    <span
-                      className={`min-w-0 flex-1 truncate text-[13.5px] ${
-                        m.seen ? 'font-medium text-ink-soft' : 'font-semibold text-ink'
-                      }`}
-                    >
-                      {cleanPersonName(m.from)}
-                    </span>
-                    <span className="shrink-0 text-[11.5px] text-faint tabular-nums">{m.date}</span>
-                  </div>
+                {t('Обновить')}
+              </button>
+            </div>
+          )}
 
-                  <div className="mt-0.5 flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        open(m);
-                      }}
-                      className={`min-w-0 flex-1 truncate rounded text-left text-[13px] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
-                        m.seen ? 'text-ink-soft' : 'font-semibold text-ink'
-                      }`}
-                    >
-                      {m.subject}
-                    </button>
+          {search && (searchPending || serverSearchError) && (
+            <div className="flex items-start gap-2 border-b border-line-subtle bg-canvas px-4 py-2 text-[11.5px] leading-5 text-muted" role="status">
+              {searchPending ? t('Ищем по всем письмам…') : serverSearchError}
+            </div>
+          )}
+          {search && !searchPending && serverHits && (
+            <div className="border-b border-line-subtle bg-canvas px-4 py-1.5 text-[11.5px] text-muted">
+              {t('Найдено писем: {count}', { count: serverHits.length })}
+            </div>
+          )}
 
-                    {m.hasAttachments && <Paperclip size={13} className="shrink-0 text-faint" />}
-
-                    <button
-                      type="button"
-                      title={t('Запланировать событие в календаре')}
-                      aria-label={`${t('В календарь')}: ${m.subject}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        scheduleFromMail(m);
-                      }}
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-faint transition hover:bg-surface hover:text-accent md:opacity-0 md:group-hover:opacity-100"
-                    >
-                      <CalendarPlus size={13.5} />
-                    </button>
-
-                    <button
-                      type="button"
-                      title={m.flagged ? t('Убрать из важных') : t('Отметить важным')}
-                      aria-label={m.flagged ? t('Убрать из важных') : t('Отметить важным')}
-                      disabled={movingMailIds.has(m.id)}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleFlag(m);
-                      }}
-                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                        m.flagged
-                          ? 'text-amber-500'
-                          : 'text-faint hover:bg-surface hover:text-ink md:opacity-0 md:group-hover:opacity-100'
-                      }`}
-                    >
-                      <Star size={14} fill={m.flagged ? 'currentColor' : 'none'} />
-                    </button>
-                  </div>
-
-                  {preferences.showPreview && <p className="mt-0.5 truncate text-xs text-faint">{m.snippet}</p>}
-                </div>
+          {/* Отложенные отправки видны в папке «Отправленные»: письмо уже
+              сохранено как копия, но до срока его можно отменить. */}
+          {!demoMode && currentFolder?.id === 'SENT' && scheduledSends.length > 0 && (
+            <div className="border-b border-line-subtle bg-canvas px-4 py-2" role="status">
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.04em] text-faint">
+                {t('Отправятся позже')}
               </div>
+              <ul className="space-y-1">
+                {scheduledSends.map((item) => (
+                  <li key={item.id} className="flex items-center gap-2 text-[12px] text-ink-soft">
+                    <Clock size={12} className="shrink-0 text-faint" />
+                    <span className="min-w-0 flex-1 truncate">
+                      {new Date(item.sendAt).toLocaleString()}
+                      {item.status === 'FAILED' ? ` · ${t('не удалось поставить в очередь')}` : ''}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void cancelScheduledSend(item.id)}
+                      disabled={item.status !== 'SCHEDULED'}
+                      className="shrink-0 rounded-md border border-line-control px-1.5 py-0.5 text-[11px] font-medium text-muted transition hover:bg-surface hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {t('Отменить отправку')}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {mailGroups.map(({ group, mails: groupMails }, groupIndex) => (
+            <div key={group} role="group" aria-label={t(dateGroupLabel(group))}>
+              {/* Заголовок группы: без него список из 50 писем — сплошная стена дат. */}
+              {sortOrder === 'date-desc' && (
+                <div className="sticky top-0 z-10 border-b border-line-subtle bg-canvas/95 px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.04em] text-faint backdrop-blur">
+                  {t(dateGroupLabel(group))}
+                </div>
+              )}
+              {groupMails.map((m, mailIndex) => {
+                const selected = active?.id === m.id;
+                // Тот же порядок, что и в видимом списке: Shift-стрелки идут по visible.
+                const visibleIndex = (mailGroupStarts[groupIndex] ?? 0) + mailIndex;
+                const rowThread = threadByLatestId.get(m.id);
+                const threadExpanded = rowThread ? expandedThreads.has(rowThread.key) : false;
+                return (
+        <div
+          key={m.id}
+          draggable
+          aria-busy={movingMailIds.has(m.id)}
+          onDragStart={(e) => {
+            e.dataTransfer.effectAllowed = 'copy';
+            e.dataTransfer.setData(
+              CORVEX_MAIL_DND_MIME,
+              JSON.stringify({
+                id: m.id,
+                subject: m.subject,
+                from: m.from,
+                body: loadedBodies[m.id] ?? m.body ?? m.snippet,
+                flagged: m.flagged,
+              }),
             );
-          })}
+            // Opening a fixed overlay synchronously inside dragstart can cancel
+            // the browser's native drag before it has initialized.
+            if (onOpenCalendarWidget) {
+              if (calendarDragTimerRef.current !== null) window.clearTimeout(calendarDragTimerRef.current);
+              calendarDragTimerRef.current = window.setTimeout(() => {
+                calendarDragTimerRef.current = null;
+                onOpenCalendarWidget();
+              }, 100);
+            }
+          }}
+          onDragEnd={() => {
+            if (calendarDragTimerRef.current !== null) window.clearTimeout(calendarDragTimerRef.current);
+            calendarDragTimerRef.current = null;
+          }}
+          id={`mail-row-${m.id}`}
+          role="option"
+          aria-selected={selected}
+          tabIndex={selected ? 0 : -1}
+          data-mail-id={m.id}
+          onKeyDown={(event) => {
+            // Enter/Space открывают письмо, не полагаясь на глобальный обработчик:
+            // он не срабатывает, когда фокус на самой строке.
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              open(m);
+            }
+          }}
+          onClick={() => open(m)}
+          {...swipeHandlers(m)}
+          className={`group relative flex cursor-pointer border-b border-line-subtle px-4 transition duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 ${
+            preferences.density === 'compact' ? 'gap-2 py-1.5' : 'gap-3 py-3'
+          } ${selected ? 'bg-accent-soft' : 'bg-surface hover:bg-canvas'}`}
+        >
+          {selected && <span className="absolute inset-y-0 left-0 w-[3px] bg-accent" />}
+          {movingMailIds.has(m.id) && <span className="sr-only" role="status">{t('Перемещение письма…')}</span>}
+          <div className="flex shrink-0 items-center" onClick={(event) => event.stopPropagation()}>
+            <SelectMessage
+              subject={m.subject}
+              checked={bulkSelection.includes(m.id)}
+              disabled={bulkBusy}
+              onChange={() => toggleBulkMail(m)}
+            />
+          </div>
+          <Avatar name={m.from} size={preferences.density === 'compact' ? 30 : 36} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              {!m.seen && (
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full bg-[#2563EB]"
+                  aria-label={t('Непрочитано')}
+                />
+              )}
+              <span
+                className={`min-w-0 flex-1 truncate text-[13.5px] ${
+                  m.seen ? 'font-medium text-ink-soft' : 'font-semibold text-ink'
+                }`}
+              >
+                {cleanPersonName(m.from)}
+              </span>
+              <span className="shrink-0 text-[11.5px] text-faint tabular-nums">{m.date}</span>
+            </div>
+
+            <div className="mt-0.5 flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  open(m);
+                }}
+                className={`min-w-0 flex-1 truncate rounded text-left text-[13px] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
+                  m.seen ? 'text-ink-soft' : 'font-semibold text-ink'
+                }`}
+              >
+                {rowThread ? rowThread.subject : m.subject}
+              </button>
+
+              {/* Счётчик цепочки: видно, что за строкой несколько писем, и
+                  сколько из них ещё не прочитано. */}
+              {rowThread && rowThread.mails.length > 1 && (
+                <button
+                  type="button"
+                  aria-expanded={threadExpanded}
+                  title={threadExpanded ? t('Свернуть цепочку') : t('Развернуть цепочку')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleThread(rowThread.key);
+                  }}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-full border border-line-control bg-surface px-1.5 py-0.5 text-[10.5px] font-medium text-muted transition hover:bg-canvas hover:text-ink"
+                >
+                  {conversationCountLabel(rowThread.mails.length, locale)}
+                  {rowThread.unread > 0 && (
+                    <span className="rounded-full bg-accent px-1 text-[10px] font-semibold text-white tabular-nums">
+                      {rowThread.unread}
+                    </span>
+                  )}
+                  <ChevronDown size={11} className={threadExpanded ? 'rotate-180 transition' : 'transition'} />
+                </button>
+              )}
+
+              {m.hasAttachments && <Paperclip size={13} className="shrink-0 text-faint" />}
+
+              <button
+                type="button"
+                title={t('Запланировать событие в календаре')}
+                aria-label={`${t('В календарь')}: ${m.subject}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  scheduleFromMail(m);
+                }}
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-faint transition hover:bg-surface hover:text-accent md:opacity-0 md:group-hover:opacity-100"
+              >
+                <CalendarPlus size={13.5} />
+              </button>
+
+              <button
+                type="button"
+                title={m.flagged ? t('Убрать из важных') : t('Отметить важным')}
+                aria-label={m.flagged ? t('Убрать из важных') : t('Отметить важным')}
+                disabled={movingMailIds.has(m.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleFlag(m);
+                }}
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  m.flagged
+                    ? 'text-amber-500'
+                    : 'text-faint hover:bg-surface hover:text-ink md:opacity-0 md:group-hover:opacity-100'
+                }`}
+              >
+                <Star size={14} fill={m.flagged ? 'currentColor' : 'none'} />
+              </button>
+            </div>
+
+            {preferences.showPreview && <p className="mt-0.5 truncate text-xs text-faint">{m.snippet}</p>}
+          </div>
+        </div>
+      
+                );
+              })}
+              {/* Развёрнутая цепочка: письма старые сверху, чтобы читались как
+                  переписка. Строка со свёрнутой цепочкой остаётся на месте, так
+                  что выбор письма не сдвигает список. */}
+              {conversationsEnabled && mailGroups[groupIndex].mails
+                .map((rowMail) => threadByLatestId.get(rowMail.id))
+                .filter((thread) => thread !== undefined
+                  && thread.mails.length > 1 && expandedThreads.has(thread.key))
+                .map((thread) => thread!)
+                .map((thread) => (
+                  <div key={`thread-${thread.key}`} className="border-b border-line-subtle bg-canvas/60 px-4 py-1">
+                    {thread.mails.map((threadMail) => (
+                      <button
+                        key={threadMail.id}
+                        type="button"
+                        data-thread-mail-id={threadMail.id}
+                        onClick={() => open(threadMail)}
+                        className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] transition hover:bg-surface ${
+                          active?.id === threadMail.id ? 'bg-accent-soft text-accent-dark' : 'text-ink-soft'
+                        }`}
+                      >
+                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${threadMail.seen ? 'bg-transparent' : 'bg-[#2563EB]'}`} />
+                        <span className="w-[132px] shrink-0 truncate text-[11.5px] text-muted">{cleanPersonName(threadMail.from)}</span>
+                        <span className={`min-w-0 flex-1 truncate ${threadMail.seen ? '' : 'font-semibold text-ink'}`}>
+                          {threadMail.snippet || threadMail.subject}
+                        </span>
+                        <span className="shrink-0 text-[10.5px] text-faint tabular-nums">{threadMail.date}</span>
+                      </button>
+                    ))}
+                  </div>
+                ))}
+            </div>
+          ))}
+          </div>
+
+          {search && searchSource.length > searchLimit && (
+            <div className="flex items-center justify-center gap-2 border-b border-line-subtle bg-canvas px-4 py-2 text-[11.5px] text-muted">
+              <span>{t('Показаны первые {shown} из {found}', { shown: searchLimit, found: searchSource.length })}</span>
+              <button
+                type="button"
+                onClick={() => setSearchLimit((limit) => limit + SEARCH_INITIAL_LIMIT)}
+                className="font-semibold text-accent-dark underline-offset-2 hover:underline"
+              >
+                {t('Показать ещё')}
+              </button>
+            </div>
+          )}
 
           {!demoMode && paging.hasMore && (
-            <div className="flex flex-col items-center gap-1 px-4 py-5">
+            <div ref={loadMoreSentinelRef} className="flex flex-col items-center gap-1 px-4 py-5">
+              {/*
+                Автоподгрузка: кнопка остаётся для тех, у кого нет
+                IntersectionObserver (и как ручной повтор после ошибки), но
+                в обычном сценарии до конца списка доезжают колесом.
+              */}
               <button
                 type="button"
                 onClick={() => void loadMoreMessages()}
@@ -1950,7 +2837,24 @@ export default function MailPage() {
             </div>
           )}
 
-          {visible.length === 0 && (
+          {listLoading && visible.length === 0 && (
+            // Скелетон вместо «Здесь пока тихо»: пустая папка и незавершённая
+            // загрузка выглядели одинаково, и на медленной сети человек решал,
+            // что писем нет.
+            <div className="space-y-3 px-4 py-5" aria-busy="true" aria-label={t('Загружаем письма…')}>
+              {[0, 1, 2, 3, 4].map((row) => (
+                <div key={row} className="flex items-start gap-3">
+                  <span className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-canvas" />
+                  <span className="min-w-0 flex-1 space-y-2">
+                    <span className="block h-3 w-1/3 animate-pulse rounded bg-canvas" />
+                    <span className="block h-3 w-4/5 animate-pulse rounded bg-canvas" />
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!listLoading && visible.length === 0 && (
             <EmptyState
               icon={MailOpen}
               title={t('Здесь пока тихо')}
@@ -1959,6 +2863,11 @@ export default function MailPage() {
                   ? t('По этому запросу писем не нашлось. Попробуйте другое слово или сбросьте фильтр.')
                   : t('В этой папке нет писем для выбранного фильтра.')
               }
+              action={search ? (
+                <button type="button" className="btn-secondary h-9 text-xs" onClick={() => { setSearch(''); searchRef.current?.focus(); }}>
+                  {t('Сбросить поиск')}
+                </button>
+              ) : undefined}
             />
           )}
         </div>
@@ -1980,7 +2889,7 @@ export default function MailPage() {
             <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
               <button
                 type="button"
-                onClick={() => setMobileReading(false)}
+                onClick={closeReading}
                 className="btn-ghost px-2 lg:hidden"
               >
                 <ArrowLeft size={16} /> {t('К списку')}
@@ -1990,34 +2899,19 @@ export default function MailPage() {
                 icon={Reply}
                 label={t('Ответить')}
                 size={17}
-                onClick={() =>
-                  openDraft({
-                    to: emailFromHeader(active.from),
-                    subject: `Re: ${active.subject}`,
-                    body: '',
-                  }, 'reply')
-                }
+                onClick={() => replyToActive(false)}
               />
               <IconButton
                 icon={ReplyAll}
                 label={t('Ответить всем')}
                 size={17}
-                className="hidden 2xl:inline-flex"
                 disabled={!replyAllReady}
-                onClick={() =>
-                  openDraft({
-                    to: emailFromHeader(active.from),
-                    cc: replyCc || undefined,
-                    subject: `Re: ${active.subject}`,
-                    body: '',
-                  }, 'reply')
-                }
+                onClick={() => replyToActive(true)}
               />
               <IconButton
                 icon={Forward}
                 label={t('Переслать')}
                 size={17}
-                className="hidden 2xl:inline-flex"
                 disabled={bulkBusy}
                 onClick={() => void forwardMessages([active.id])}
               />
@@ -2030,8 +2924,7 @@ export default function MailPage() {
 
               <span className="mx-1 h-4 w-px bg-line" aria-hidden="true" />
               <MoveToFolder folders={folders} current={folder} onMove={moveActive} disabled={movingMailIds.has(active.id)} />
-              <IconButton icon={Archive} label={t('В архив')} size={16.5} className="hidden 2xl:inline-flex" onClick={() => moveActive('ARCHIVE')} disabled={movingMailIds.has(active.id)} />
-              <IconButton icon={OctagonAlert} label={t('В спам')} size={16.5} className="hidden 2xl:inline-flex" onClick={() => moveActive('SPAM')} disabled={movingMailIds.has(active.id)} />
+              <IconButton icon={Archive} label={t('В архив')} size={16.5} onClick={() => moveActive('ARCHIVE')} disabled={movingMailIds.has(active.id)} />
               <IconButton
                 icon={Trash2}
                 label={t('Удалить')}
@@ -2047,6 +2940,60 @@ export default function MailPage() {
                 disabled={movingMailIds.has(active.id)}
                 onClick={() => toggleSeen(active)}
               />
+              {/* «Не спам» и остальные редкие действия — в меню «…»: до 1536 px
+                  кнопки «В спам», «Ответить всем» и «Переслать» просто исчезали. */}
+              <div ref={morePanelRef} className="relative">
+                <IconButton
+                  icon={Ellipsis}
+                  label={t('Ещё действия')}
+                  size={17}
+                  aria-expanded={moreMenuOpen}
+                  aria-haspopup="menu"
+                  onClick={() => setMoreMenuOpen((open) => !open)}
+                />
+                {moreMenuOpen && (
+                  <div role="menu" aria-label={t('Ещё действия')} className="absolute right-0 top-9 z-40 w-60 rounded-xl border border-line-control bg-surface p-1.5 shadow-pop">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={movingMailIds.has(active.id)}
+                      onClick={() => { setMoreMenuOpen(false); moveActive('SPAM'); }}
+                      className="nav-row w-full disabled:opacity-50"
+                    >
+                      <OctagonAlert size={15} /> <span className="min-w-0 flex-1 truncate text-left">{t('В спам')}</span>
+                    </button>
+                    {folder === 'SPAM' && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={movingMailIds.has(active.id)}
+                        onClick={() => { setMoreMenuOpen(false); markNotSpam(); }}
+                        className="nav-row w-full disabled:opacity-50"
+                      >
+                        <Inbox size={15} /> <span className="min-w-0 flex-1 truncate text-left">{t('Не спам')}</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={bulkBusy}
+                      onClick={() => { setMoreMenuOpen(false); void forwardMessages([active.id]); }}
+                      className="nav-row w-full disabled:opacity-50"
+                    >
+                      <Forward size={15} /> <span className="min-w-0 flex-1 truncate text-left">{t('Переслать')}</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => { setMoreMenuOpen(false); setShortcutsHelpOpen(true); }}
+                      className="nav-row w-full"
+                    >
+                      <span className="w-4 shrink-0 text-center text-[11px] font-semibold text-muted">?</span>
+                      <span className="min-w-0 flex-1 truncate text-left">{t('Горячие клавиши')}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
 
               <span className="mx-1 h-4 w-px bg-line" aria-hidden="true" />
 
@@ -2154,15 +3101,34 @@ export default function MailPage() {
                     {ccText ? ` · ${t('Копия')}: ${ccText}` : ''}
                   </div>
                 </div>
-                <time className="shrink-0 text-xs text-faint tabular-nums">{active.date}</time>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void snoozeActiveMail(24)}
+                    title={t('Отложить до завтра')}
+                    className="inline-flex items-center gap-1 rounded-md border border-line-control px-1.5 py-1 text-[11px] font-medium text-muted transition hover:bg-canvas hover:text-ink"
+                  >
+                    <Clock size={12} /> <span className="hidden sm:inline">{t('Отложить')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void addSenderToContacts()}
+                    title={t('Добавить отправителя в контакты')}
+                    className="inline-flex items-center gap-1 rounded-md border border-line-control px-1.5 py-1 text-[11px] font-medium text-muted transition hover:bg-canvas hover:text-ink"
+                  >
+                    <UserPlus size={12} /> <span className="hidden sm:inline">{t('В контакты')}</span>
+                  </button>
+                  <time className="text-xs text-faint tabular-nums">{active.date}</time>
+                </div>
               </div>
 
               {active.hasAttachments && (
                 <MailAttachments
                   demoMode={demoMode}
                   attachments={loadedAttachments[active.id]}
-                  busy={downloadBusy !== null}
+                  busy={downloadBusy !== null || downloadAllBusy}
                   onDownload={(attachment) => void downloadAttachment(active.id, attachment)}
+                  onDownloadAll={downloadAllBusy ? undefined : () => void downloadAllAttachments()}
                   onPreview={(attachment) =>
                     openAttachmentPreview(active.id, loadedAttachments[active.id] ?? [attachment], attachment)
                   }
@@ -2213,13 +3179,7 @@ export default function MailPage() {
                 <button
                   type="button"
                   className="btn-primary"
-                  onClick={() =>
-                    openDraft({
-                      to: emailFromHeader(active.from),
-                      subject: `Re: ${active.subject}`,
-                      body: '',
-                    }, 'reply')
-                  }
+                  onClick={() => replyToActive(false)}
                 >
                   <Reply size={15} /> {t('Ответить')}
                 </button>
@@ -2227,14 +3187,7 @@ export default function MailPage() {
                   type="button"
                   className="btn-secondary"
                   disabled={!replyAllReady}
-                  onClick={() =>
-                    openDraft({
-                      to: emailFromHeader(active.from),
-                      cc: replyCc || undefined,
-                      subject: `Re: ${active.subject}`,
-                      body: '',
-                    }, 'reply')
-                  }
+                  onClick={() => replyToActive(true)}
                 >
                   <ReplyAll size={15} /> {t('Ответить всем')}
                 </button>
@@ -2279,6 +3232,8 @@ export default function MailPage() {
         )}
       </section>
 
+      {shortcutsHelpOpen && <ShortcutsHelp onClose={() => setShortcutsHelpOpen(false)} />}
+
       {createFolderOpen && <CreateFolderModal demoMode={demoMode} onClose={() => setCreateFolderOpen(false)} onCreate={createFolder} />}
       {settingsOpen && <MailSettingsModal
         initial={preferences}
@@ -2288,7 +3243,17 @@ export default function MailPage() {
         onSave={(value: MailPreferences) => {
           setPreferenceState({ key: preferenceKey, value });
           setSortOrder(value.defaultSort);
-          return saveMailPreferences(preferenceKey, value);
+          // Сначала локально: закрытие окна не должно ждать сети. Затем на
+          // сервер — чтобы настройки переехали на другое устройство и
+          // подпись попала в письма из Thunderbird. Ошибка сети не отменяет
+          // сохранение: строка ниже честно говорит, что оно пока местное.
+          const savedLocally = saveMailPreferences(preferenceKey, value);
+          if (!demoMode) {
+            void mailApi.saveSettings(preferencesToServer(value))
+              .then(() => setSettingsSynced('saved'))
+              .catch(() => setSettingsSynced('error'));
+          }
+          return savedLocally;
         }}
         onOpenSecurity={onOpenSecurity ? () => { setSettingsOpen(false); onOpenSecurity(); } : undefined}
         onOpenExternal={canAdminExternalAccounts ? () => { setSettingsOpen(false); setExternalOpen(true); } : undefined}

@@ -43,7 +43,15 @@ public class MessageSearchDocument {
     @Field(type = FieldType.Boolean)
     private boolean hasAttachments;
 
+    /** Флаг «прочитано» на момент индексации: нужен фильтру `is:unread`. */
+    @Field(type = FieldType.Boolean)
+    private boolean seen;
+
     public MessageSearchDocument() {
+    }
+
+    public boolean isSeen() {
+        return seen;
     }
 
     public MessageSearchDocument(String id, String ownerId, String folderId, long uid, String sender,
@@ -60,4 +68,20 @@ public class MessageSearchDocument {
         this.internalDate = internalDate;
         this.hasAttachments = hasAttachments;
     }
+
+    public MessageSearchDocument withSeen(boolean seen) {
+        this.seen = seen;
+        return this;
+    }
+
+    public String getId() { return id; }
+    public String getOwnerId() { return ownerId; }
+    public String getFolderId() { return folderId; }
+    public long getUid() { return uid; }
+    public String getSender() { return sender; }
+    public java.util.List<String> getRecipients() { return recipients; }
+    public String getSubject() { return subject; }
+    public String getBody() { return body; }
+    public java.time.Instant getInternalDate() { return internalDate; }
+    public boolean isHasAttachments() { return hasAttachments; }
 }
