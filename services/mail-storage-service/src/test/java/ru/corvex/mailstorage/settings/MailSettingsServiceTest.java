@@ -30,7 +30,7 @@ class MailSettingsServiceTest {
         service = new MailSettingsService(jdbc, new ObjectMapper());
     }
 
-    // TEMP diag disabled
+    @Test
     void returnsDefaultsForANewUserWithoutWritingAnything() {
         when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class))).thenReturn(List.of());
 
@@ -42,7 +42,7 @@ class MailSettingsServiceTest {
         assertTrue(settings.conversations());
     }
 
-    // TEMP diag disabled
+    @Test
     void rejectsGarbageInsteadOfStoringIt() {
         MailSettings normalized = MailSettingsService.normalize(new MailSettings(
                 "огромная", true, true, "sometimes", "по-алфавиту", "я".repeat(9000), true, false, false, false));
@@ -54,7 +54,7 @@ class MailSettingsServiceTest {
         assertEquals(MailSettings.MAX_SIGNATURE, normalized.signature().length());
     }
 
-    // TEMP diag disabled
+    @Test
     void saveKeepsTheValuesTheInterfaceSends() {
         MailSettings saved = service.save(ownerId, new MailSettings("compact", false, false, "manual",
                 "unread-first", "Пётр", true, true, false, true));
