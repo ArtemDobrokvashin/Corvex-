@@ -1,5 +1,6 @@
 package com.corvex.mobile.ui.auth
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -16,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.corvex.mobile.domain.mail.AccountType
 import com.corvex.mobile.domain.mail.ImapProviderPresets
+import com.corvex.mobile.ui.theme.CorvexColors
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -32,12 +34,23 @@ fun LoginScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(CorvexColors.Canvas)
             .verticalScroll(rememberScrollState())
             .padding(24.dp),
         verticalArrangement = Arrangement.Center
     ) {
-        Text("Corvex", style = MaterialTheme.typography.headlineMedium)
-        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            "Corvex",
+            style = MaterialTheme.typography.headlineMedium,
+            color = CorvexColors.Accent
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            "Корпоративная почта и чат",
+            style = MaterialTheme.typography.bodySmall,
+            color = CorvexColors.Faint
+        )
+        Spacer(modifier = Modifier.height(16.dp))
 
         if (state.mfaToken == null) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -145,6 +158,10 @@ fun LoginScreen(
             Button(
                 onClick = viewModel::submitLogin,
                 enabled = !state.isLoading,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = CorvexColors.Accent,
+                    contentColor = androidx.compose.ui.graphics.Color.White
+                ),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(if (state.isLoading) "Вход..." else "Войти")
@@ -164,6 +181,10 @@ fun LoginScreen(
             Button(
                 onClick = viewModel::submitTotp,
                 enabled = state.totpCode.length == 6 && !state.isLoading,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = CorvexColors.Accent,
+                    contentColor = androidx.compose.ui.graphics.Color.White
+                ),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(if (state.isLoading) "Проверка..." else "Подтвердить")

@@ -22,7 +22,8 @@ data class HomeUiState(
     val folders: List<FolderModel> = emptyList(),
     val mails: List<MailModel> = emptyList(),
     val isLoading: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val openedMail: MailModel? = null
 )
 
 @HiltViewModel
@@ -68,6 +69,15 @@ class HomeViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    /** Открытое письмо. Полное тело появится по мере готовности экрана чтения. */
+    fun open(mail: MailModel) {
+        _uiState.update { it.copy(openedMail = mail) }
+    }
+
+    fun closeOpenedMail() {
+        _uiState.update { it.copy(openedMail = null) }
     }
 
     fun logout(onLoggedOut: () -> Unit) {
