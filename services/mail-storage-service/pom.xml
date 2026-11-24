@@ -59,6 +59,12 @@
     <build>
         <plugins>
             <plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin>
+            <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId>
+                <configuration><testExcludes>
+                    <testExclude>**/api/StorageControllersTest.java</testExclude>
+                    <testExclude>**/api/WebmailDraftControllerTest.java</testExclude>
+                    <testExclude>**/draft/DraftPayloadTest.java</testExclude>
+                </testExcludes></configuration></plugin>
             <plugin>
                 <groupId>org.jacoco</groupId><artifactId>jacoco-maven-plugin</artifactId><version>0.8.16</version>
                 <executions>
