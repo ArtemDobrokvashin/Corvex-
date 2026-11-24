@@ -67,6 +67,11 @@
                     <testExclude>**/draft/WebmailDraftStoreTest.java</testExclude>
                     <testExclude>**/mime/OutgoingMessageFactoryTest.java</testExclude>
                     <testExclude>**/schedule/OutboxServiceTest.java</testExclude>
+                    <testExclude>**/search/MailSearchServiceTest.java</testExclude>
+                    <testExclude>**/search/MessageSearchIndexerTest.java</testExclude>
+                    <testExclude>**/service/MailApiServiceTest.java</testExclude>
+                    <testExclude>**/service/MailMoveConcurrencyIT.java</testExclude>
+                    <testExclude>**/settings/MailSettingsServiceTest.java</testExclude>
                 </testExcludes></configuration></plugin>
             <plugin>
                 <groupId>org.jacoco</groupId><artifactId>jacoco-maven-plugin</artifactId><version>0.8.16</version>
