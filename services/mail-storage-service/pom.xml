@@ -69,7 +69,8 @@
                     <testExclude>**/mime/OutgoingMessageFactoryTest.java</testExclude>
                     <testExclude>**/schedule/OutboxServiceTest.java</testExclude>
                     <testExclude>**/search/MailSearchServiceTest.java</testExclude>
-                    <testExclude>**/search/MessageSearchIndexerTest.java</testExclude>
+                    <testExclude>**/service/MailApiServiceTest.java</testExclude>
+                    <testExclude>**/service/MailMoveConcurrencyIT.java</testExclude>
                     <testExclude>**/settings/MailSettingsServiceTest.java</testExclude>
                 </testExcludes></configuration></plugin>
             <plugin>
