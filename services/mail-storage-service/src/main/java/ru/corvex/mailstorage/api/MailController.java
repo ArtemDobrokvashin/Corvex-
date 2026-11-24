@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import ru.corvex.mailstorage.api.dto.MailDtos;
 import ru.corvex.mailstorage.api.dto.ProtocolDtos;
+import ru.corvex.mailstorage.search.MailSearchService;
 import ru.corvex.mailstorage.service.MailApiService;
 import ru.corvex.mailstorage.service.MailSendService;
 import ru.corvex.mailstorage.service.ProtocolMailService;
@@ -43,11 +44,14 @@ public class MailController {
     private final MailApiService mail;
     private final MailSendService sender;
     private final ProtocolMailService protocol;
+    private final MailSearchService search;
 
-    public MailController(MailApiService mail, MailSendService sender, ProtocolMailService protocol) {
+    public MailController(MailApiService mail, MailSendService sender, ProtocolMailService protocol,
+                          MailSearchService search) {
         this.mail = mail;
         this.sender = sender;
         this.protocol = protocol;
+        this.search = search;
     }
 
     @GetMapping("/quota")
@@ -87,6 +91,28 @@ public class MailController {
                                             @RequestParam(required = false) Long cursorUid,
                                             @RequestParam(defaultValue = "50") int limit) {
         return mail.listMessages(userId(jwt), folderId, cursorUid, limit);
+    }
+
+    /**
+     * Полнотекстовый поиск по всем письмам владельца, а не по загруженной странице.
+     * Elasticsearch — производные данные: при недоступности возвращаем 503, чтобы
+     * клиент сказал «поиск временно недоступен», а не «писем не найдено».
+     */
+    @GetMapping("/search")
+    @PreAuthorize("hasAuthority('MAIL_READ_OWN')")
+    List<MailDtos.SearchResultView> search(@AuthenticationPrincipal Jwt jwt,
+                                           @RequestParam(name = "q") String query,
+                                           @RequestParam(defaultValue = "50") int limit) {
+        try {
+            return search.search(userId(jwt), query, limit).stream()
+                    .map(hit -> new MailDtos.SearchResultView(
+                            hit.messageId(), hit.folderId(), hit.uid(),
+                            hit.sender(), hit.subject(), hit.snippet(), hit.internalDate()))
+                    .toList();
+        } catch (RuntimeException e) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Поиск временно недоступен. Попробуйте позже.", e);
+        }
     }
 
     @GetMapping("/messages/{id}")

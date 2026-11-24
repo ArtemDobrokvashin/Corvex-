@@ -11,6 +11,7 @@ import ru.corvex.mailstorage.api.dto.MailDtos;
 import ru.corvex.mailstorage.av.ClamAvClient;
 import ru.corvex.mailstorage.domain.MailFolder;
 import ru.corvex.mailstorage.domain.MessageMetadata;
+import ru.corvex.mailstorage.search.MessageSearchIndexer;
 import ru.corvex.mailstorage.mime.MimeMailParser;
 import ru.corvex.mailstorage.mime.InlineImageExtractor;
 import java.io.ByteArrayInputStream;
@@ -46,13 +47,15 @@ public class MailApiService {
     private final MimeMailParser parser;
     private final JdbcTemplate jdbc;
     private final ClamAvClient clam;
+    private final MessageSearchIndexer searchIndex;
 
     public MailApiService(MailFolderRepository folders,
                           MessageMetadataRepository messages,
                           MailDeliveryService delivery,
                           MaildirStorage maildir,
                           MimeMailParser parser,
-                          JdbcTemplate jdbc, ClamAvClient clam) {
+                          JdbcTemplate jdbc, ClamAvClient clam,
+                          MessageSearchIndexer searchIndex) {
         this.folders = folders;
         this.messages = messages;
         this.delivery = delivery;
@@ -60,6 +63,7 @@ public class MailApiService {
         this.parser = parser;
         this.jdbc = jdbc;
         this.clam = clam;
+        this.searchIndex = searchIndex;
     }
 
     @Transactional
@@ -142,6 +146,11 @@ public class MailApiService {
             m.setModseq(modseq);
         }
         m = messages.save(m);
+        // Индекс — производные данные: ошибка Elasticsearch не должна отменять
+        // подтверждённое изменение флага в PostgreSQL.
+        if (beforeSeen != m.isSeen()) {
+            searchIndex.markSeen(m.getId().toString(), m.isSeen());
+        }
         return toListItem(m, hasAttachments(m.getId()));
     }
 

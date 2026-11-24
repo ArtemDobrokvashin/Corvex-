@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+import { clearOfflineSnapshots } from '../lib/offlineCache';
+
 const DEMO_SESSION_STORAGE_KEY = 'corvex.demo';
 export const DEMO_READ_STATE_STORAGE_KEY = 'corvex.demo-read-state';
 
@@ -219,6 +221,9 @@ export const useSession = create<SessionState>((set, get) => ({
       demoSentChatMessages: [],
     });
     clearDemoReadState();
+    // Кэш писем для чтения без сети привязан к владельцу: после выхода он
+    // не должен оставаться на устройстве.
+    clearOfflineSnapshots();
   },
   setBootstrapped: () => set({ bootstrapped: true }),
   markDemoMailRead: (id) => {

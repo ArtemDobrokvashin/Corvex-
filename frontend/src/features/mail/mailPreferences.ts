@@ -1,9 +1,15 @@
 import type { MailSortOrder } from './mailListControls';
 
-/** Browser-only preferences; server-wide signatures and autoresponders are not implemented. */
+/**
+ * Browser-only preferences. Серверного хранения пока нет: подпись, плотность
+ * и уведомления живут в `localStorage` этого браузера и на другое устройство
+ * не переезжают. Это ограничение честно написано в окне настроек.
+ */
 export interface MailPreferences {
   density: 'comfortable' | 'compact';
   showPreview: boolean;
+  /** Цепочки писем в списке. Выключено — плоский список, как было до P2-1. */
+  conversations: boolean;
   markRead: 'automatic' | 'manual';
   defaultSort: MailSortOrder;
   signature: string;
@@ -15,6 +21,7 @@ export interface MailPreferences {
 export const DEFAULT_MAIL_PREFERENCES: MailPreferences = {
   density: 'comfortable',
   showPreview: true,
+  conversations: true,
   markRead: 'automatic',
   defaultSort: 'date-desc',
   signature: '',
@@ -29,10 +36,15 @@ export function mailPreferencesKey(userId: string | null | undefined, demo: bool
 
 export function normalizeMailPreferences(value: unknown): MailPreferences {
   const v = value && typeof value === 'object' ? value as Partial<MailPreferences> : {};
-  const sortOrders: MailSortOrder[] = ['date-desc', 'date-asc', 'sender-asc', 'subject-asc'];
+  // `unread-first` появился позже: старые сохранённые настройки без него
+  // продолжают читаться, а новый порядок не сбрасывается в «сначала новые».
+  const sortOrders: MailSortOrder[] = ['date-desc', 'date-asc', 'sender-asc', 'subject-asc', 'unread-first'];
   return {
     density: v.density === 'compact' ? 'compact' : 'comfortable',
     showPreview: typeof v.showPreview === 'boolean' ? v.showPreview : true,
+    // По умолчанию включено: у Gmail и Outlook переписка собрана, и человек
+    // ждёт того же. Кому нужен плоский список — снимает галочку в настройках.
+    conversations: typeof v.conversations === 'boolean' ? v.conversations : true,
     markRead: v.markRead === 'manual' ? 'manual' : 'automatic',
     defaultSort: sortOrders.includes(v.defaultSort as MailSortOrder) ? v.defaultSort as MailSortOrder : 'date-desc',
     signature: typeof v.signature === 'string' ? v.signature.slice(0, 5000) : '',

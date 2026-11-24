@@ -107,6 +107,9 @@ export default function MailSettingsModal({
                   </select>
                 </label>
                 <label className="flex cursor-pointer items-start gap-3 text-[13px] text-ink-soft"><input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#1D63ED]" checked={draft.showPreview} onChange={(event) => setDraft({ ...draft, showPreview: event.target.checked })} /><span>{t('Показывать текст предпросмотра в списке')}</span></label>
+                <label className="flex cursor-pointer items-start gap-3 text-[13px] text-ink-soft"><input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#1D63ED]" checked={draft.conversations} onChange={(event) => setDraft({ ...draft, conversations: event.target.checked })} /><span>{t('Собирать письма в цепочки')}</span>
+                  <span className="block text-xs text-muted">{t('Ответы на одно письмо будут свёрнуты в одну строку. Группировка идёт по теме и отправителю.')}</span>
+                </label>
               </div>
             </section>
 

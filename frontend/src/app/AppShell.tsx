@@ -42,6 +42,9 @@ import {
   useCalendarStore,
 } from '../store/calendarStore';
 import { demoMailIsSeen, useSession } from '../store/sessionStore';
+import { applyUnreadToTitle, fetchInboxStatus } from '../features/mail/mailNotifications';
+import { ToastProvider, useToast } from '../components/ToastProvider';
+import { loadMailPreferences, mailPreferencesKey } from '../features/mail/mailPreferences';
 import PersonalSettings, {
   readWorkspaceBackground,
   saveWorkspaceBackground,
@@ -51,6 +54,14 @@ import PersonalSettings, {
 const SIDEBAR_COLLAPSED_KEY = 'corvex.sidebar.collapsed';
 
 export default function AppShell() {
+  return (
+    <ToastProvider>
+      <AppShellInner />
+    </ToastProvider>
+  );
+}
+
+function AppShellInner() {
   const { locale, t } = useI18n();
   const {
     user,
@@ -85,6 +96,10 @@ export default function AppShell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [background, setBackground] = useState<WorkspaceBackground>(readWorkspaceBackground);
   const [dueReminderEvent, setDueReminderEvent] = useState<CalendarEvent | null>(null);
+  // Непрочитанные во «Входящих» нужны всегда, а не только на экране почты:
+  // без этого бейдж в меню и заголовок вкладки молчали, пока раздел не открыт.
+  const [unreadInbox, setUnreadInbox] = useState(0);
+  const { notify } = useToast();
 
   // Фон рабочей области — локальная настройка пользователя, как тема и плотность.
   useEffect(() => {
@@ -203,6 +218,84 @@ export default function AppShell() {
     };
   }, [profileMenuOpen]);
 
+  // Почта: счётчик непрочитанных и заголовок вкладки живут на уровне оболочки.
+  // Раньше бейдж у пункта «Почта» в реальном режиме всегда был нулём, а уведомления
+  // приходили только пока открыт раздел: уходишь в чат — и новых писем «нет».
+  const mailPreferences = useMemo(
+    () => loadMailPreferences(mailPreferencesKey(user?.id, demoMode)),
+    [user?.id, demoMode],
+  );
+  const notificationsEnabled = mailPreferences.notifications && !demoMode;
+  const newestUidRef = useRef(0);
+  const baselineReadyRef = useRef(false);
+  const pollTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (demoMode || !user?.id) {
+      setUnreadInbox(0);
+      return undefined;
+    }
+    let cancelled = false;
+    let running = false;
+    const poll = async () => {
+      // Скрытая вкладка не должна ни ходить в сеть, ни звенеть.
+      if (cancelled || running || document.visibilityState === 'hidden') return;
+      running = true;
+      try {
+        const status = await fetchInboxStatus();
+        if (cancelled) return;
+        setUnreadInbox(status.unread);
+        if (!status.id) return;
+        const { mailApi } = await import('../api/mailApi');
+        const items = await mailApi.messages(status.id);
+        if (cancelled) return;
+        const newest = Math.max(0, ...items.map((item) => item.uid));
+        const fresh = baselineReadyRef.current
+          ? items.filter((item) => item.uid > newestUidRef.current && !item.seen)
+          : [];
+        newestUidRef.current = Math.max(newestUidRef.current, newest);
+        baselineReadyRef.current = true;
+        if (fresh.length === 0) return;
+        if (notificationsEnabled && 'Notification' in window && Notification.permission === 'granted') {
+          const notice = new Notification(t('Новое письмо'), {
+            body: t('Новых входящих писем: {count}', { count: fresh.length }),
+            tag: 'corvex-new-mail',
+          });
+          notice.onclick = () => {
+            window.focus();
+            navigate(`/mail?mailId=${encodeURIComponent(fresh[0].id)}`);
+            notice.close();
+          };
+        }
+        notify({
+          key: 'new-mail',
+          message: t('Новых входящих писем: {count}', { count: fresh.length }),
+          tone: 'info',
+          durationMs: 8000,
+        });
+      } catch {
+        // Опрос вспомогательный: ошибку загрузки показывает сам раздел почты.
+      } finally {
+        running = false;
+      }
+    };
+    void poll();
+    pollTimerRef.current = window.setInterval(() => { void poll(); }, 15_000);
+    const onVisible = () => { if (document.visibilityState === 'visible') void poll(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelled = true;
+      if (pollTimerRef.current !== null) window.clearInterval(pollTimerRef.current);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [demoMode, user?.id, notificationsEnabled, notify, navigate, t]);
+
+  // Заголовок вкладки: «(3) Corvex — …». В демо считаем по учебным письмам.
+  useEffect(() => {
+    const base = t('Corvex — корпоративная почта и чат');
+    applyUnreadToTitle(unreadInbox, base);
+  }, [unreadInbox, locale, t]);
+
   // In-app reminders are checked while the workspace is open.
   useEffect(() => {
     const checkReminders = () => setDueReminderEvent(
@@ -238,7 +331,7 @@ export default function AppShell() {
 
   const unreadMail = demoMode
     ? DEMO_MAILS.filter((m) => !demoMailIsSeen(m, demoReadMailIds, demoUnreadMailIds)).length
-    : 0;
+    : unreadInbox;
   const unreadChat = demoMode
     ? DEMO_ROOMS.reduce((acc, r) => acc + (demoReadRoomIds.includes(r.id) ? 0 : r.unread), 0)
     : 0;

@@ -100,14 +100,16 @@ describe('mail forwarding and bulk moves', () => {
     expect(notice).toContain('not verified by antivirus');
   });
 
-  it('maps archive and custom folder moves to server folder IDs only after confirmation', async () => {
+  it('maps archive and custom folder moves to server folder IDs in one step', async () => {
     const archive: MailFolderView = { id: 'archive-id', name: 'Archive', specialUse: 'ARCHIVE', total: 0, unread: 0 };
     const project: MailFolderView = { id: 'project-id', name: 'Projects', specialUse: null, total: 0, unread: 0 };
     vi.mocked(mailApi.folders).mockResolvedValue([...folders, archive, project]);
     const move = vi.spyOn(mailApi, 'move').mockImplementation(async (id, targetFolderId) => ({
       ...(id === 'm1' ? first : second), folderId: targetFolderId,
     }));
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    // Нативное подтверждение убрано: операция отменяема через тост, а
+    // `window.confirm` блокировал вкладку и не давал показать итог.
+    const confirm = vi.spyOn(window, 'confirm');
     await act(async () => root.render(<MemoryRouter initialEntries={['/mail']}><MailPage /></MemoryRouter>));
     await flush();
 
@@ -115,12 +117,9 @@ describe('mail forwarding and bulk moves', () => {
     const group = container.querySelector('[role="group"][aria-label="Bulk actions"]')!;
     const archiveButton = [...group.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent?.trim() === 'Archive')!;
     await click(archiveButton);
-    expect(confirm).toHaveBeenCalledWith('Move 1 selected messages to “Archive”?');
-    expect(move).not.toHaveBeenCalled();
-    expect(container.textContent).toContain('Selected: 1');
-    confirm.mockReturnValue(true);
-    await click(archiveButton);
     await flush();
+    expect(confirm).not.toHaveBeenCalled();
+    // «ARCHIVE» превращается в серверный идентификатор папки, а не уходит как есть.
     expect(move).toHaveBeenCalledWith('m1', 'archive-id');
     expect(container.textContent).toContain('Messages moved: 1');
 
@@ -130,7 +129,6 @@ describe('mail forwarding and bulk moves', () => {
     expect(Array.from(select.options, (option) => option.value)).not.toContain('ARCHIVE');
     await act(async () => { select.value = 'project-id'; select.dispatchEvent(new Event('change', { bubbles: true })); });
     await flush();
-    expect(confirm).toHaveBeenLastCalledWith('Move 1 selected messages to “Projects”?');
     expect(move).toHaveBeenLastCalledWith('m2', 'project-id');
     expect(move).toHaveBeenCalledTimes(2);
   });

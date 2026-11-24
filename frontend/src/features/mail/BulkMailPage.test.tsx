@@ -4,18 +4,22 @@ import { createRoot } from 'react-dom/client';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { getDemoUser } from '../../api/demoData';
+import { ToastProvider } from '../../components/ToastProvider';
 import { useLocaleStore } from '../../i18n';
 import { useSession } from '../../store/sessionStore';
 import MailPage from './MailPage';
 
 describe('bulk mail selection', () => {
-  it('selects shown messages and moves them to archive only after confirmation', async () => {
+  it('moves the selected messages at once and offers an undo instead of a blocking confirm', async () => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    localStorage.clear();
     useLocaleStore.setState({ locale: 'en' });
     useSession.getState().setSession(getDemoUser('en'), true);
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    // Нативное подтверждение убрано: действие отменяемо, а блокирующий диалог
+    // нельзя ни стилизовать, ни прочитать скринридером вместе с итогом операции.
+    const confirm = vi.spyOn(window, 'confirm');
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
-    await act(async () => { root.render(<MemoryRouter><MailPage /></MemoryRouter>); });
+    await act(async () => { root.render(<ToastProvider><MemoryRouter><MailPage /></MemoryRouter></ToastProvider>); });
     const all = host.querySelector<HTMLInputElement>('[aria-label="Select all shown messages"]')!;
     expect(all).not.toBeNull();
     await act(async () => all.click());
@@ -23,23 +27,26 @@ describe('bulk mail selection', () => {
     const actions = host.querySelector('[role="group"][aria-label="Bulk actions"]')!;
     const archive = Array.from(actions.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent?.trim() === 'Archive')!;
     expect(archive).toBeTruthy();
-    await act(async () => archive.click());
-    expect(confirm).toHaveBeenCalledWith('Move 4 selected messages to “Archive”?');
-    expect(host.textContent).toContain('Selected: 4');
-    confirm.mockReturnValue(true);
     await act(async () => { archive.click(); await Promise.resolve(); });
+    expect(confirm).not.toHaveBeenCalled();
     expect(host.textContent).toContain('Messages moved: 4');
     expect(host.querySelectorAll('input[aria-label^="Select message:"]')).toHaveLength(0);
+    // Итог операции продублирован в уведомлении: с включённым ToastProvider
+    // (как в AppShell) там же появляется «Отменить».
+    expect(host.textContent).toContain('Messages moved to “Archive”: 4');
     await act(async () => root.unmount()); host.remove(); confirm.mockRestore();
     useSession.getState().clearSession(); useLocaleStore.setState({ locale: 'ru' });
   });
 
   it('keeps filters, visible selection and clearing usable with the keyboard', async () => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    localStorage.clear();
     useLocaleStore.setState({ locale: 'en' });
+    // Предыдущий тест отметил письма прочитанными в общем демо-состоянии.
+    useSession.getState().clearSession();
     useSession.getState().setSession(getDemoUser('en'), true);
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
-    await act(async () => { root.render(<MemoryRouter><MailPage /></MemoryRouter>); });
+    await act(async () => { root.render(<ToastProvider><MemoryRouter><MailPage /></MemoryRouter></ToastProvider>); });
     const all = host.querySelector<HTMLInputElement>('input[aria-label="Select all shown messages"]')!;
     const tabs = host.querySelector('[role="tablist"][aria-label="Mail filter"]')!;
     expect(tabs).toBeTruthy();
@@ -88,30 +95,26 @@ describe('bulk mail selection', () => {
     useSession.getState().clearSession(); useLocaleStore.setState({ locale: 'ru' });
   });
 
-  it('lets a cancelled folder move be selected again and still confirms the destination', async () => {
+  it('moves the selected messages to the chosen folder without asking for confirmation', async () => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    localStorage.clear();
     useLocaleStore.setState({ locale: 'en' });
     useSession.getState().setSession(getDemoUser('en'), true);
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const confirm = vi.spyOn(window, 'confirm');
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
-    await act(async () => { root.render(<MemoryRouter><MailPage /></MemoryRouter>); });
+    await act(async () => { root.render(<ToastProvider><MemoryRouter><MailPage /></MemoryRouter></ToastProvider>); });
     await act(async () => host.querySelector<HTMLInputElement>('input[aria-label="Select all shown messages"]')!.click());
     const select = host.querySelector<HTMLSelectElement>('select[aria-label="Move selected messages"]')!;
     expect(Array.from(select.options, (option) => option.value)).not.toContain('INBOX');
     expect(Array.from(select.options, (option) => option.value)).not.toContain('ARCHIVE');
     expect(Array.from(select.options, (option) => option.value)).not.toContain('TRASH');
-    const moveToSent = async () => act(async () => {
+    await act(async () => {
       select.value = 'SENT';
       select.dispatchEvent(new Event('change', { bubbles: true }));
       await Promise.resolve();
     });
-    await moveToSent();
-    expect(confirm).toHaveBeenCalledWith('Move 4 selected messages to “Sent”?');
+    expect(confirm).not.toHaveBeenCalled();
     expect(select.value).toBe('');
-    expect(host.textContent).toContain('Selected: 4');
-    confirm.mockReturnValue(true);
-    await moveToSent();
-    expect(confirm).toHaveBeenCalledTimes(2);
     expect(host.textContent).toContain('Messages moved: 4');
     expect(host.querySelectorAll('input[aria-label^="Select message:"]')).toHaveLength(0);
     await act(async () => root.unmount()); host.remove(); confirm.mockRestore();

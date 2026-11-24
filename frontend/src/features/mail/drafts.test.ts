@@ -1,6 +1,15 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { buildDraftPayload, DRAFT_LIMITS, draftSizeProblem, draftStatusKey, fileToAttachment } from './drafts';
+import {
+  buildDraftPayload,
+  DRAFT_LIMITS,
+  draftSizeProblem,
+  draftStatusKey,
+  fileToAttachment,
+  remainingAttachmentBytes,
+  sendSizeProblem,
+  SEND_LIMITS,
+} from './drafts';
 
 function fileOf(size: number, name = 'a.bin', type = 'application/octet-stream') {
   return new File([new Uint8Array(size)], name, { type });
@@ -40,5 +49,29 @@ describe('draft payloads', () => {
     expect(draftStatusKey('saved')).toBe('Черновик сохранён');
     expect(draftStatusKey('error')).toContain('не сохранён');
     expect(draftStatusKey('idle')).toBeNull();
+  });
+});
+
+describe('send size limits', () => {
+  it('counts base64 overhead, not just raw bytes', () => {
+    // 20 МиБ «как есть» после base64 занимают ~26.7 МиБ и не пройдут nginx,
+    // поэтому бюджет считается по закодированному размеру.
+    const big = fileOf(15 * 1024 * 1024, 'big.bin');
+    expect(sendSizeProblem([big])).toBeNull();
+    const tooBig = fileOf(20 * 1024 * 1024, 'too-big.bin');
+    expect(sendSizeProblem([tooBig])).toBe('total');
+  });
+
+  it('rejects more files than the server accepts', () => {
+    const files = Array.from({ length: SEND_LIMITS.maxFiles + 1 }, (_, i) => fileOf(1, `${i}.bin`));
+    expect(sendSizeProblem(files)).toBe('count');
+    expect(remainingAttachmentBytes(files)).toBeGreaterThan(0);
+  });
+
+  it('reports remaining budget so the composer can show it', () => {
+    expect(remainingAttachmentBytes([])).toBe(SEND_LIMITS.requestBudgetBytes);
+    // base64 от 3 МиБ — это 4 МиБ.
+    expect(remainingAttachmentBytes([fileOf(3 * 1024 * 1024, 'a.bin')]))
+      .toBe(SEND_LIMITS.requestBudgetBytes - 4 * 1024 * 1024);
   });
 });

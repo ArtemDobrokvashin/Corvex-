@@ -1,20 +1,29 @@
-import { FormEvent, useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useToast } from '../../components/ToastProvider';
 import { CheckCircle2, Maximize2, Minimize2, Paperclip, Send, Trash2, X } from 'lucide-react';
 import type { ExternalMailAccount } from '../../api/externalMailApi';
 import { ApiError } from '../../api/httpClient';
 import { mailApi, type SavedDraft } from '../../api/mailApi';
 import { IconButton } from '../../components/ui';
+import { useModalFocus } from '../../components/useModalFocus';
 import { useI18n } from '../../i18n';
 import ComposeEditor, { type ComposeEditorHandle } from './ComposeEditor';
-import { attachmentToFile, buildDraftPayload, draftSizeProblem, draftStatusKey } from './drafts';
+import { attachmentToFile, buildDraftPayload, draftSizeProblem, draftStatusKey, remainingAttachmentBytes, sendSizeProblem } from './drafts';
 
 export interface ComposeDraft {
   to: string;
   cc?: string;
+  /** Скрытая копия: сервер её принимает и раньше умел, а форма не показывала. */
+  bcc?: string;
   subject: string;
   body: string;
   bodyHtml?: string;
   externalAccountId?: string | null;
+  /**
+   * Письмо, на которое отвечаем. По нему сервер проставляет In-Reply-To и
+   * References, чтобы переписка собиралась в цепочку у получателя.
+   */
+  inReplyToMessageId?: string | null;
 }
 
 function errorMessage(error: unknown): string {
@@ -40,6 +49,9 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
   const suggestionsId = useId();
   const [draft, setDraft] = useState(initial);
   const [showCc, setShowCc] = useState(Boolean(initial.cc));
+  const [showBcc, setShowBcc] = useState(Boolean(initial.bcc));
+  // Подтверждение «отправить без темы / без вложения» не должно спрашиваться дважды.
+  const [confirmPending, setConfirmPending] = useState<'subject' | 'attachment' | null>(null);
   const [files, setFiles] = useState<File[]>(() =>
     initialFiles?.length ? initialFiles
       : (initialDraft?.payload.attachments ?? []).map((attachment) => attachmentToFile(attachment)));
@@ -58,6 +70,12 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
   const sendingRef = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<ComposeEditorHandle>(null);
+  const dialogRef = useRef<HTMLElement>(null);
+  const toRef = useRef<HTMLInputElement>(null);
+  const { notify } = useToast();
+  // Тот же механизм, что у остальных модальных окон: фокус не уходит за пределы
+  // письма, а после закрытия возвращается туда, откуда его открыли.
+  useModalFocus(dialogRef, toRef);
   const sendAsAccounts = externalAccounts.filter((account) => account.enabled && account.sendEnabled && account.smtpEnabled);
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -125,17 +143,48 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
     }
   };
 
+  const hasContent = Boolean(draft.to || draft.cc || draft.bcc || draft.subject || draft.body || files.length);
+
   const closeComposer = () => {
     if (sending) return;
-    if (!sent && (draft.to || draft.cc || draft.subject || draft.body || files.length) &&
+    if (!sent && hasContent &&
         !window.confirm(t('Закрыть письмо? Несохранённый текст и вложения будут потеряны.'))) return;
     onClose();
   };
 
-  const submit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  /**
+   * Отправка. Единственная точка входа: и кнопка, и Ctrl/⌘+Enter идут сюда,
+   * поэтому двойное нажатие не может отправить письмо дважды.
+   *
+   * Проверки перед отправкой — только те, которые человек может исправить:
+   * пустое тело, забытое вложение, пустая тема. Отсутствие вложения не блокирует,
+   * а предупреждает: подтверждаем повторным нажатием.
+   */
+  const submit = (e?: FormEvent<HTMLFormElement>) => {
+    e?.preventDefault();
     if (sendingRef.current) return;
     if (!draft.body.trim()) { setSendError(t('Введите текст письма.')); return; }
+    // Размер проверяется до запроса: иначе сервер отвечает 413, а браузер
+    // показывает пустое «ошибка сервера» без подсказки, что делать.
+    const sizeProblem = sendSizeProblem(files);
+    if (sizeProblem) {
+      setSendError(sizeProblem === 'count'
+        ? t('Слишком много вложений: максимум 20 файлов.')
+        : t('Вложения слишком большие: суммарно до 20 МБ (вместе с кодированием).'));
+      return;
+    }
+    const mentionsAttachment = /вложени|прикреп|attach/i.test(`${draft.subject} ${draft.body}`);
+    if (mentionsAttachment && files.length === 0 && confirmPending !== 'attachment') {
+      setConfirmPending('attachment');
+      setSendError(t('В письме упомянуто вложение, но файлов нет. Нажмите «Отправить» ещё раз, чтобы отправить без вложений.'));
+      return;
+    }
+    if (!draft.subject.trim() && confirmPending !== 'subject') {
+      setConfirmPending('subject');
+      setSendError(t('Тема не заполнена. Нажмите «Отправить» ещё раз, чтобы отправить без темы.'));
+      return;
+    }
+    setConfirmPending(null);
     sendingRef.current = true;
     void (async () => {
       setSending(true);
@@ -145,11 +194,18 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
         setSentCopySaved(copySaved !== false);
         await dropSavedDraft();
         setSent(true);
+        notify({ message: t('Письмо отправлено.'), tone: 'success', durationMs: 4000 });
         window.setTimeout(onClose, 900);
       } catch (error) {
         // Сервер мог поставить письмо в очередь до ошибки. Повторять отправку
         // вслепую нельзя, поэтому обещаем только то, что знаем наверняка.
         const rejected = error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 408;
+        // 413 — размер письма. Сервер уже сказал предел; повторять тот же
+        // запрос бессмысленно, поэтому объясняем, что именно уменьшить.
+        if (error instanceof ApiError && error.status === 413) {
+          setSendError(t('Письмо слишком большое для сервера. Уберите часть вложений или отправьте их отдельно.'));
+          return;
+        }
         setSendError(rejected
           ? errorMessage(error)
           : `${t('Не удалось подтвердить отправку. Письмо могло попасть в очередь; перед повтором уточните статус у администратора или получателей.')} ${errorMessage(error)}`);
@@ -160,10 +216,41 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
     })();
   };
 
+  // Escape из MailPage приходит событием: композер сам решает, спросить про
+  // несохранённый текст или закрыть пустое окно. Прямое обнуление состояния
+  // в обход этого пути теряло последние правки.
+  useEffect(() => {
+    const section = dialogRef.current;
+    if (!section) return undefined;
+    const onRequestClose = () => closeComposer();
+    section.addEventListener('corvex:close-compose', onRequestClose);
+    return () => section.removeEventListener('corvex:close-compose', onRequestClose);
+  });
+
+  // Ctrl/⌘+Enter отправляет из любого поля, включая редактор тела: раньше
+  // такого сочетания не было вовсе, и отправить можно было только мышью.
+  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      submit();
+    }
+  };
+
   return (
-    <section className={`fixed z-50 flex animate-rise-in flex-col overflow-hidden border border-line bg-surface shadow-composer ${expanded ? 'inset-0 sm:inset-4 sm:rounded-2xl' : 'inset-x-0 bottom-0 max-h-[94dvh] sm:inset-x-auto sm:bottom-4 sm:right-4 sm:h-[min(640px,92dvh)] sm:w-[min(590px,calc(100vw-2rem))] sm:rounded-2xl'}`} aria-label={t('Новое письмо')}>
+    <section
+      ref={dialogRef}
+      data-compose-panel
+      tabIndex={-1}
+      role="dialog"
+      // `aria-label` — стабильное имя окна (по нему его находят тесты и
+      // пользователь скринридера); видимый заголовок остаётся в `aria-labelledby`.
+      aria-label={t('Новое письмо')}
+      aria-modal="true"
+      aria-labelledby="compose-title"
+      onKeyDown={onKeyDown}
+      className={`fixed z-50 flex animate-rise-in flex-col overflow-hidden border border-line bg-surface shadow-composer ${expanded ? 'inset-0 sm:inset-4 sm:rounded-2xl' : 'inset-x-0 bottom-0 max-h-[94dvh] sm:inset-x-auto sm:bottom-4 sm:right-4 sm:h-[min(640px,92dvh)] sm:w-[min(590px,calc(100vw-2rem))] sm:rounded-2xl'}`}>
       <header className="flex h-11 shrink-0 items-center bg-ink px-4 text-white">
-        <h3 className="flex-1 text-sm font-medium">{initial.subject ? t('Ответ / пересылка') : t('Новое письмо')}</h3>
+        <h3 id="compose-title" className="flex-1 text-sm font-medium">{initial.subject ? t('Ответ / пересылка') : t('Новое письмо')}</h3>
         <button type="button" onClick={() => setExpanded((value) => !value)} aria-pressed={expanded} className="flex h-8 w-8 items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white" aria-label={expanded ? t('Уменьшить окно письма') : t('Развернуть окно письма')}>{expanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
         <button type="button" onClick={closeComposer} disabled={sending} className="flex h-8 w-8 items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-50" aria-label={t('Закрыть черновик')}><X size={16} /></button>
       </header>
@@ -209,11 +296,12 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
           )}
           <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
             <label htmlFor="compose-to" className="w-12 shrink-0 text-[13px] text-faint">{t('Кому')}</label>
-            <input id="compose-to" required type="text" inputMode="email" list={suggestionsId} value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} placeholder="user@company.local" className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-faint focus:ring-0" />
+            <input ref={toRef} id="compose-to" required type="text" inputMode="email" list={suggestionsId} value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} placeholder="user@company.local" className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-faint focus:ring-0" />
             <datalist id={suggestionsId}>
               {contactSuggestions.map((email) => <option key={email} value={email} />)}
             </datalist>
             {!showCc && <button type="button" onClick={() => setShowCc(true)} className="shrink-0 text-xs font-medium text-muted hover:text-ink">{t('Копия')}</button>}
+            {!showBcc && <button type="button" onClick={() => setShowBcc(true)} className="shrink-0 text-xs font-medium text-muted hover:text-ink">{t('Скрытая')}</button>}
           </div>
           {showCc && (
             <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
@@ -221,14 +309,26 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
               <input id="compose-cc" type="text" inputMode="email" list={suggestionsId} value={draft.cc ?? ''} onChange={(e) => setDraft({ ...draft, cc: e.target.value })} placeholder="user@company.local" className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-faint focus:ring-0" />
             </div>
           )}
+          {showBcc && (
+            <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
+              <label htmlFor="compose-bcc" className="w-12 shrink-0 text-[13px] text-faint">{t('Скрытая')}</label>
+              <input id="compose-bcc" type="text" inputMode="email" list={suggestionsId} value={draft.bcc ?? ''} onChange={(e) => setDraft({ ...draft, bcc: e.target.value })} placeholder="user@company.local" className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-faint focus:ring-0" />
+            </div>
+          )}
           <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4">
             <label htmlFor="compose-subject" className="w-12 shrink-0 text-[13px] text-faint">{t('Тема')}</label>
-            <input id="compose-subject" required value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder={t('О чём письмо?')} className="min-w-0 flex-1 border-0 bg-transparent text-sm font-medium outline-none placeholder:font-normal placeholder:text-faint focus:ring-0" />
+            {/* Тема больше не `required`: письмо без темы — нормальный выбор,
+                но о нём предупреждает подтверждение перед отправкой. */}
+            <input id="compose-subject" value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder={t('О чём письмо?')} className="min-w-0 flex-1 border-0 bg-transparent text-sm font-medium outline-none placeholder:font-normal placeholder:text-faint focus:ring-0" />
           </div>
           <ComposeEditor ref={bodyRef} initialText={initial.body} initialHtml={initial.bodyHtml} onChange={(body, bodyHtml) => setDraft((current) => ({ ...current, body, bodyHtml }))} />
           {files.length > 0 && (
             <div className="flex shrink-0 flex-wrap gap-2 px-4 pb-3">
               {files.map((file, index) => <span key={`${file.name}-${index}`} className="chip"><Paperclip size={12} />{file.name}<button type="button" className="ml-1 rounded p-0.5 hover:text-danger" aria-label={`${t('Удалить вложение')}: ${file.name}`} onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}><X size={13} /></button></span>)}
+              {/* Остаток бюджета виден сразу: человек не узнаёт о лимите из «413». */}
+              <span className="self-center text-[11px] text-faint">
+                {t('Можно приложить ещё {size}', { size: `${Math.floor(remainingAttachmentBytes(files) / (1024 * 1024))} МБ` })}
+              </span>
             </div>
           )}
           {sendError && (

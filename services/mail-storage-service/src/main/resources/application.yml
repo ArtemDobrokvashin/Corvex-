@@ -14,9 +14,12 @@ spring:
     name: mail-storage-service
   servlet:
     multipart:
-      # Импорт адресной книги: vCard/CSV до 5 МиБ плюс запас на multipart-обёртку.
-      max-file-size: 6MB
-      max-request-size: 8MB
+      # Один предел на весь путь: nginx (infra/nginx/nginx.conf, client_max_body_size
+      # 26m) → сервер (26MB запрос) → вложения письма (20 МиБ суммарно, base64
+      # добавляет ~33 %). Раньше было 8MB, и письмо с вложением 4 МиБ получало
+      # ответ «413» без объяснения, хотя клиент считал его допустимым.
+      max-file-size: 20MB
+      max-request-size: 26MB
   datasource:
     url: jdbc:postgresql://${POSTGRES_HOST:postgres}:5432/mail_db
     username: ${POSTGRES_USER:corvex}

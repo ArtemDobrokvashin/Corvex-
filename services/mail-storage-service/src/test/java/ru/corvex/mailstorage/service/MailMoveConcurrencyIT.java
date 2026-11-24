@@ -152,11 +152,11 @@ class MailMoveConcurrencyIT {
                     }
                 });
         MailApiService flagService = new MailApiService(folders, flagsRepo, mock(MailDeliveryService.class),
-                storage, new MimeMailParser(storage), jdbc, mock(ClamAvClient.class));
+                storage, new MimeMailParser(storage), jdbc, mock(ClamAvClient.class), mock(MessageSearchIndexer.class));
         ProtocolMailService protocolService = new ProtocolMailService(folders, flagsRepo, mock(MailDeliveryService.class),
                 storage, mock(RawMessageSpool.class), new MimeMailParser(storage), mock(AuthUserClient.class));
         MailApiService moveService = new MailApiService(folders, moveRepo, mock(MailDeliveryService.class),
-                storage, new MimeMailParser(storage), jdbc, mock(ClamAvClient.class));
+                storage, new MimeMailParser(storage), jdbc, mock(ClamAvClient.class), mock(MessageSearchIndexer.class));
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
             // Pause the selected real flag handler after its repository read/lock.
@@ -377,7 +377,7 @@ class MailMoveConcurrencyIT {
         });
         assertNotNull(ids);
         MailApiService service = new MailApiService(folders, messages, mock(MailDeliveryService.class),
-                storage, new MimeMailParser(storage), jdbc, mock(ClamAvClient.class));
+                storage, new MimeMailParser(storage), jdbc, mock(ClamAvClient.class), mock(MessageSearchIndexer.class));
         tx.executeWithoutResult(status -> {
             try {
                 service.moveMessage(owner, ids[2], ids[1], ids[0], 1L);

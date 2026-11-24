@@ -69,7 +69,20 @@ public final class MailDtos {
             String bodyHtml,
             List<SendAttachment> attachments,
             Boolean saveToSent,
-            UUID externalAccountId) {
+            UUID externalAccountId,
+            /** Письмо, на которое отвечаем: из него берутся In-Reply-To и References. */
+            UUID inReplyToMessageId) {
+    }
+
+    /** Результат полнотекстового поиска: идентификатор письма и короткое превью. */
+    public record SearchResultView(
+            UUID messageId,
+            UUID folderId,
+            long uid,
+            String sender,
+            String subject,
+            String snippet,
+            String internalDate) {
     }
 
     public record SendMessageResult(

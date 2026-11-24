@@ -220,6 +220,7 @@ paths:
                       contentBase64: { type: string, format: byte, nullable: true }
                 saveToSent: { type: boolean, nullable: true, default: true }
                 externalAccountId: { type: string, format: uuid, nullable: true, description: "Подключённый внешний ящик для send-as через SMTP провайдера; null — адрес Corvex" }
+                inReplyToMessageId: { type: string, format: uuid, nullable: true, description: "Идентификатор письма, на которое отвечаем. Сервер берёт его Message-ID и References для заголовков In-Reply-To/References. Чужое письмо молча игнорируется." }
       responses:
         '200':
           description: Письмо поставлено в очередь; sentMessageId может быть null, если копия в Sent не сохранена (например, из-за квоты)
@@ -360,14 +361,25 @@ paths:
         '503': { description: Проверка недоступна }
         '404': { description: Письмо или вложение не найдено либо принадлежит другому пользователю }
   /mail/search:
-    x-corvex-status: planned
     get:
-      summary: Полнотекстовый поиск (Elasticsearch — тема, отправитель, получатель, тело, имена/текст вложений)
+      summary: Полнотекстовый поиск по всем письмам владельца (Elasticsearch — тема, отправитель, получатель, тело)
+      description: |
+        Понимает фильтры в стиле Gmail: `from:`, `subject:`, `to:`, `is:unread`,
+        `is:read`, `has:attachment`, `before:YYYY-MM-DD`, `after:YYYY-MM-DD`.
+        Остальные слова ищутся как текст. Владелец берётся из JWT: чужих писем
+        выдача не содержит. `limit` ограничен сверху значением 100.
       parameters:
         - { name: q, in: query, required: true, schema: { type: string }, example: 'from:buhgalteria счёт has:attachment after:2026-01-01' }
-        - { name: limit, in: query, schema: { type: integer, default: 50 } }
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 100 } }
       responses:
-        '200': { description: Результаты с подсветкой, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/MessageSummary' } }, tookMs: { type: integer } } } } } }
+        '200':
+          description: Результаты с коротким превью (до 180 символов)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/MailSearchResult' }
+        '503': { description: Индекс поиска недоступен; это не пустой результат }
   /mail/external-accounts/presets:
     get:
       summary: Пресеты Mail.ru, Яндекс, Gmail и Outlook для формы подключения внешнего ящика
@@ -886,6 +898,18 @@ paths:
                     note: { type: string }
 components:
   schemas:
+    MailSearchResult:
+      type: object
+      required: [messageId]
+      properties:
+        messageId: { type: string, format: uuid }
+        folderId: { type: string, format: uuid, nullable: true }
+        uid: { type: integer, format: int64 }
+        sender: { type: string }
+        subject: { type: string }
+        snippet: { type: string, description: 'Короткое превью тела (до 180 символов)' }
+        internalDate: { type: string, format: date-time, nullable: true }
+
     DraftPayload:
       type: object
       description: |

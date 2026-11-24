@@ -408,6 +408,13 @@ const EN: Record<string, string> = {
   'Синхронизация запущена: письма начнут появляться в течение минуты.': 'Sync started: messages will appear within a minute.',
   'Используйте пароль приложения провайдера, а не обычный пароль от веб-почты.': 'Use the provider app password, not the regular webmail password.',
   'Обновить': 'Refresh',
+  'Собирать письма в цепочки': 'Group messages into conversations',
+  'Ответы на одно письмо будут свёрнуты в одну строку. Группировка идёт по теме и отправителю.':
+    'Replies to one message are collapsed into a single row. Grouping uses the subject and the sender.',
+  'Развернуть цепочку': 'Expand conversation',
+  'Свернуть цепочку': 'Collapse conversation',
+  'Поиск по письмам временно недоступен.': 'Mail search is temporarily unavailable.',
+  'Не удалось выполнить поиск по письмам.': 'Could not search your mail.',
   'Папок найдено': 'Folders found',
   'Доставлено в Corvex': 'Delivered to Corvex',
   'В очереди проверки': 'Queued for checks',
@@ -1537,6 +1544,70 @@ const EN: Record<string, string> = {
   'Ожидает проверки': 'Scan pending',
   'Ошибка проверки': 'Scan error',
   'Не проверено': 'Not scanned',
+  // UX-долг из docs/UX-BACKLOG.md: строки, появившиеся вместе с тостами,
+  // справкой по клавишам и подтверждениями композера.
+  'В другом письме уже есть текст. Открыть новое, сохранив текущее в черновиках?':
+    'Another message already has text. Open a new one and keep the current one in Drafts?',
+  'В письме упомянуто вложение, но файлов нет. Нажмите «Отправить» ещё раз, чтобы отправить без вложений.':
+    'The message mentions an attachment but none is attached. Press “Send” again to send it without attachments.',
+  'Тема не заполнена. Нажмите «Отправить» ещё раз, чтобы отправить без темы.':
+    'The subject is empty. Press “Send” again to send without a subject.',
+  'Письмо отправлено.': 'Message sent.',
+  'Горячие клавиши': 'Keyboard shortcuts',
+  'Понятно': 'Got it',
+  'Работают, когда курсор не в поле ввода. Кириллица поддерживается: J = О, K = Л.':
+    'They work while the cursor is outside an input. Cyrillic layouts work too: J = О, K = Л.',
+  'Загружаем письма…': 'Loading messages…',
+  'Закрыть уведомление': 'Dismiss notification',
+  'Не спам': 'Not spam',
+  'Не удалось отменить перемещение.': 'Could not undo the move.',
+  'Не удалось переместить письмо.': 'Could not move the message.',
+  'Отметить прочитанными все письма в списке': 'Mark every message in the list as read',
+  'Отмечено прочитанными: {count}': 'Marked as read: {count}',
+  'Перенесено: {done}, не удалось: {failed}. Остальные не тронуты.':
+    'Moved: {done}, failed: {failed}. The rest were left untouched.',
+  'Перенесено: {done}. Результат одного письма неизвестен; не обработано: {remaining}. Проверьте папки перед повтором.':
+    'Moved: {done}. The outcome for one message is unknown; not processed: {remaining}. Check the folders before retrying.',
+  'Писем перенесено в «{folder}»: {count}': 'Messages moved to “{folder}”: {count}',
+  'Письмо перемещено в «{folder}».': 'Message moved to “{folder}”.',
+  'Поиск по загруженным письмам': 'Search loaded messages',
+  'Поиск по загруженным письмам: теме, отправителю, тексту':
+    'Search loaded messages: subject, sender, text',
+  'Показаны первые {shown} из {found}': 'Showing the first {shown} of {found}',
+  'Показать ещё': 'Show more',
+  'Прочитать все': 'Mark all read',
+  'Сбросить поиск': 'Clear search',
+  'Скрытая': 'Bcc',
+  'писал(а)': 'wrote',
+  'Сначала непрочитанные': 'Unread first',
+  'На этой неделе': 'This week',
+  'В этом месяце': 'This month',
+  'Ранее': 'Earlier',
+  'Эта справка': 'This help',
+  'Corvex — корпоративная почта и чат': 'Corvex — corporate mail and chat',
+  'Скачать все': 'Download all',
+  'Вложений: {count}': 'Attachments: {count}',
+  'Скачивание вложений завершено.': 'Attachments downloaded.',
+  'В контакты': 'Add contact',
+  'Добавить отправителя в контакты': 'Add the sender to contacts',
+  'Этот адрес уже есть в адресной книге.': 'This address is already in the address book.',
+  'У письма нет адреса отправителя.': 'The message has no sender address.',
+  'Адрес добавлен в контакты: {email}': 'Added to contacts: {email}',
+  'Не удалось добавить адрес в контакты.': 'Could not add the address to contacts.',
+  'Ищем по всем письмам…': 'Searching all messages…',
+  'Слишком много вложений: максимум 20 файлов.': 'Too many attachments: 20 files at most.',
+  'Вложения слишком большие: суммарно до 20 МБ (вместе с кодированием).':
+    'Attachments are too large: 20 MB in total including encoding.',
+  'Можно приложить ещё {size}': 'You can attach {size} more',
+  'Письмо слишком большое для сервера. Уберите часть вложений или отправьте их отдельно.':
+    'The message is too large for the server. Remove some attachments or send them separately.',
+  'Найдено писем: {count}': 'Messages found: {count}',
+  'Поиск временно недоступен: индекс ещё не готов. Пока показываем совпадения среди загруженных писем.':
+    'Search is temporarily unavailable: the index is not ready. Showing matches among loaded messages for now.',
+  'Вернуться к списку': 'Back to the list',
+  'Навигация': 'Navigation',
+  'В письме': 'While composing',
+  'Закрыть письмо или снять выделение': 'Close the message or clear the selection',
 };
 
 const API_PATTERNS: Array<{ pattern: RegExp; en: string; ru?: string }> = [

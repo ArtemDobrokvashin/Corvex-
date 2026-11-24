@@ -28,8 +28,61 @@ public class OutgoingMessageFactory {
     public record ComposedMessage(byte[] eml, String messageIdHeader) {
     }
 
+    /**
+     * Заголовки связи с исходным письмом: `In-Reply-To` — непосредственный
+     * родитель, `References` — вся цепочка. Без них ответ получателя не
+     * склеивается в переписку ни в нём, ни у нас: Gmail, Outlook и Thunderbird
+     * собирают тред именно по этим заголовкам, а не по теме «Re: …».
+     *
+     * `parentMessageId` — заголовок `Message-ID` родителя (не наш UUID).
+     * `existingReferences` — уже накопленная цепочка (может быть пустой).
+     * Значение приходит из БД, но всё равно санируется: заголовок с переводом
+     * строки — это инъекция в MIME.
+     */
+    public static String sanitizeMessageId(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) return null;
+        // Заголовки ограничены ASCII и не содержат управляющих символов.
+        if (!trimmed.matches("[\\x20-\\x7E]{1,998}")) return null;
+        return trimmed;
+    }
+
+    /**
+     * Собирает значение `References`: существующая цепочка + родитель, без
+     * дублей и без превышения разумной длины (998 символов на заголовок).
+     */
+    public static String buildReferences(String existingReferences, String parentMessageId) {
+        java.util.LinkedHashSet<String> ids = new java.util.LinkedHashSet<>();
+        if (existingReferences != null) {
+            for (String part : existingReferences.trim().split("\\s+")) {
+                String clean = sanitizeMessageId(part);
+                if (clean != null) ids.add(clean);
+            }
+        }
+        String parent = sanitizeMessageId(parentMessageId);
+        if (parent != null) ids.add(parent);
+        if (ids.isEmpty()) return null;
+        StringBuilder value = new StringBuilder();
+        for (String id : ids) {
+            // Если очередной идентификатор не влезает, цепочку обрываем: лучше
+            // короткая корректная, чем заголовок, который почтовик отвергнет.
+            if (value.length() + id.length() + 1 > 990) break;
+            if (value.length() > 0) value.append(' ');
+            value.append(id);
+        }
+        return value.length() == 0 ? null : value.toString();
+    }
+
     public ComposedMessage compose(String senderEmail, String senderName, String messageIdHeader,
                                    List<String> to, List<String> cc, MailDtos.SendMessageRequest req)
+            throws MessagingException, IOException {
+        return compose(senderEmail, senderName, messageIdHeader, to, cc, req, null, null);
+    }
+
+    public ComposedMessage compose(String senderEmail, String senderName, String messageIdHeader,
+                                   List<String> to, List<String> cc, MailDtos.SendMessageRequest req,
+                                   String inReplyTo, String references)
             throws MessagingException, IOException {
         Properties props = new Properties();
         props.put("mail.mime.charset", StandardCharsets.UTF_8.name());
@@ -45,6 +98,14 @@ public class OutgoingMessageFactory {
         message.setSentDate(new Date());
         message.setHeader("Message-ID", messageIdHeader);
         message.setHeader("X-Mailer", "Corvex");
+        String safeInReplyTo = sanitizeMessageId(inReplyTo);
+        if (safeInReplyTo != null) {
+            message.setHeader("In-Reply-To", safeInReplyTo);
+        }
+        String safeReferences = buildReferences(references, safeInReplyTo);
+        if (safeReferences != null) {
+            message.setHeader("References", safeReferences);
+        }
 
         MimeBodyPart bodyPart = new MimeBodyPart();
         String text = req.bodyText() == null ? "" : req.bodyText();

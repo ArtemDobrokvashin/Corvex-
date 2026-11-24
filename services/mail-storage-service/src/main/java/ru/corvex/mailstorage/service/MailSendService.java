@@ -9,11 +9,13 @@ import org.springframework.web.server.ResponseStatusException;
 import ru.corvex.mailstorage.api.dto.MailDtos;
 import ru.corvex.mailstorage.client.AuthUserClient;
 import ru.corvex.mailstorage.domain.ExternalMailAccount;
+import ru.corvex.mailstorage.domain.MessageMetadata;
 import ru.corvex.mailstorage.external.ExternalMailAccountService;
 import ru.corvex.mailstorage.maildomain.AcceptedDomains;
 import ru.corvex.mailstorage.mime.OutgoingMessageFactory;
 import ru.corvex.mailstorage.pipeline.MailEventPublisher;
 import ru.corvex.mailstorage.pipeline.MailPipelineEvents;
+import ru.corvex.mailstorage.repository.MessageMetadataRepository;
 import ru.corvex.mailstorage.search.MessageSearchIndexer;
 import ru.corvex.mailstorage.storage.RawMessageSpool;
 
@@ -39,6 +41,14 @@ public class MailSendService {
 
     private static final int MAX_RECIPIENTS = 100;
     private static final int BULK_THRESHOLD = 25;
+    /**
+     * Пределы вложений при отправке. Совпадают с тем, что обещает интерфейс
+     * (frontend/src/features/mail/drafts.ts) и с nginx `client_max_body_size`.
+     * Сервер проверяет размер сам: клиентскую проверку легко обойти, а base64
+     * в теле запроса занимает больше места, чем сам файл.
+     */
+    static final long MAX_ATTACHMENT_BYTES = 20L * 1024 * 1024;
+    static final int MAX_ATTACHMENTS = 20;
 
     private final AuthUserClient auth;
     private final OutgoingMessageFactory factory;
@@ -48,6 +58,7 @@ public class MailSendService {
     private final MessageSearchIndexer indexer;
     private final ExternalMailAccountService externalAccounts;
     private final AcceptedDomains acceptedDomains;
+    private final MessageMetadataRepository messages;
 
     public MailSendService(AuthUserClient auth,
                            OutgoingMessageFactory factory,
@@ -56,7 +67,8 @@ public class MailSendService {
                            MailEventPublisher events,
                            MessageSearchIndexer indexer,
                            ExternalMailAccountService externalAccounts,
-                           AcceptedDomains acceptedDomains) {
+                           AcceptedDomains acceptedDomains,
+                           MessageMetadataRepository messages) {
         this.auth = auth;
         this.factory = factory;
         this.spool = spool;
@@ -65,6 +77,7 @@ public class MailSendService {
         this.indexer = indexer;
         this.externalAccounts = externalAccounts;
         this.acceptedDomains = acceptedDomains;
+        this.messages = messages;
     }
 
     public MailDtos.SendMessageResult send(UUID senderId, Set<String> permissions, MailDtos.SendMessageRequest req)
@@ -97,6 +110,7 @@ public class MailSendService {
         if (all.size() > BULK_THRESHOLD && !permissions.contains("MAIL_BULK_SEND")) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Для массовой рассылки нужно право MAIL_BULK_SEND");
         }
+        validateAttachments(req.attachments());
 
         ExternalMailAccount externalAccount = null;
         String fromAddress = sender.email();
@@ -118,9 +132,24 @@ public class MailSendService {
 
         String senderDomain = domainOf(fromAddress);
         String messageId = "<" + UUID.randomUUID() + "@" + senderDomain + ">";
+        // Ответ должен ссылаться на исходное письмо. Исходник ищется только
+        // среди писем того же владельца: чужой `Message-ID` в References —
+        // это утечка и подделка треда.
+        String inReplyTo = null;
+        String references = null;
+        UUID replyToId = req.inReplyToMessageId();
+        if (replyToId != null) {
+            MessageMetadata parent = messages.findByIdAndOwnerId(replyToId, senderId).orElse(null);
+            if (parent != null) {
+                inReplyTo = parent.getMessageIdHeader();
+                references = readReferences(parent);
+            }
+            // Исходное письмо не найдено — ответ всё равно уходит: потерянное
+            // ветвление хуже, чем отсутствие заголовка.
+        }
         OutgoingMessageFactory.ComposedMessage composed;
         try {
-            composed = factory.compose(fromAddress, fromName, messageId, to, cc, req);
+            composed = factory.compose(fromAddress, fromName, messageId, to, cc, req, inReplyTo, references);
         } catch (AddressException e) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Некорректный адрес получателя");
         } catch (IllegalArgumentException e) {
@@ -231,6 +260,61 @@ public class MailSendService {
             case UNKNOWN -> throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "Не удалось подтвердить домен получателя: список почтовых доменов недоступен");
         };
+    }
+
+    /**
+     * `References` родителя лежат в сыром MIME, а не в метаданных. Читаем их
+     * повтором из spool; если файла нет — цепочка начинается с самого родителя.
+     */
+    /**
+     * Понятная ошибка вместо голого 413: человек должен знать, что делать.
+     * Размер считается по декодированным байтам, а не по длине base64.
+     */
+    private static void validateAttachments(List<MailDtos.SendAttachment> attachments) {
+        if (attachments == null || attachments.isEmpty()) {
+            return;
+        }
+        if (attachments.size() > MAX_ATTACHMENTS) {
+            throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE,
+                    "Слишком много вложений: максимум " + MAX_ATTACHMENTS);
+        }
+        long total = 0;
+        for (MailDtos.SendAttachment attachment : attachments) {
+            String base64 = attachment == null ? null : attachment.contentBase64();
+            if (base64 == null) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Вложение без содержимого");
+            }
+            // base64: 4 символа на 3 байта; точный размер проверяем после декодирования ниже.
+            long estimated = (base64.length() / 4L) * 3L;
+            if (estimated > MAX_ATTACHMENT_BYTES) {
+                throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE,
+                        "Вложения больше " + (MAX_ATTACHMENT_BYTES / (1024 * 1024)) + " МБ не отправляются");
+            }
+            total += estimated;
+            if (total > MAX_ATTACHMENT_BYTES) {
+                throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE,
+                        "Вложения больше " + (MAX_ATTACHMENT_BYTES / (1024 * 1024)) + " МБ не отправляются");
+            }
+        }
+    }
+
+    private String readReferences(MessageMetadata parent) {
+        String rawRef = parent.getRawRef();
+        if (rawRef == null || rawRef.isBlank()) return null;
+        try (var in = spool.open(rawRef)) {
+            var props = new java.util.Properties();
+            var message = new jakarta.mail.internet.MimeMessage(
+                    jakarta.mail.Session.getInstance(props), in);
+            String[] header = message.getHeader("References");
+            if (header == null || header.length == 0) {
+                return null;
+            }
+            return String.join(" ", header);
+        } catch (IOException | MessagingException e) {
+            // Spool-файл мог быть удалён ретенцией: ответ всё равно отправится,
+            // просто тред начнётся с родителя.
+            return null;
+        }
     }
 
     private static String domainOf(String email) {

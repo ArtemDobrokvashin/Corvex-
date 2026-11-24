@@ -13,26 +13,57 @@ export function toggleVisibleSelection(selected: readonly string[], visible: rea
 
 export type BulkMoveResult = {
   succeeded: string[];
-  /** The request might have reached the server even when its response was lost. */
-  uncertain: string | null;
+  /**
+   * Письма, по которым исход неизвестен: запрос ушёл, ответа нет. Повторять
+   * вслепую нельзя, но и считать отказом нельзя — сервер мог всё сделать.
+   */
+  uncertain: string[];
+  /** Письма, до которых очередь не дошла: после неизвестного исхода дальше не идём. */
   notAttempted: string[];
+  /** Явный отказ сервера (4xx): письмо не перенесено, остальные можно продолжать. */
+  rejected: string[];
+  /** Первая ошибка — по ней решается, предлагать ли «Повторить». */
   error: unknown | null;
 };
 
-/** Never retry or continue after an error: a network failure may have occurred after a move. */
+/**
+ * Одно письмо за раз, но явный отказ на одном не отменяет остальные.
+ *
+ * Раньше операция останавливалась на первой ошибке: из 40 выбранных писем
+ * человек получал 17 перенесённых и совет «проверьте папки перед повтором».
+ * Теперь 4xx (сервер ответил и точно ничего не сделал) пропускает письмо и
+ * работа продолжается, а неизвестный исход (сеть, 5xx) останавливает очередь:
+ * продолжать после него — значит терять след того, что уже произошло.
+ */
 export async function moveSequentially(
   ids: readonly string[],
   moveOne: (id: string) => Promise<void>,
+  /** Явный отказ сервера: операция точно не выполнена. */
+  isRejected: (error: unknown) => boolean = () => false,
 ): Promise<BulkMoveResult> {
   const unique = [...new Set(ids)];
   const succeeded: string[] = [];
+  const rejected: string[] = [];
+  let firstError: unknown | null = null;
   for (let index = 0; index < unique.length; index += 1) {
+    const id = unique[index];
     try {
-      await moveOne(unique[index]);
-      succeeded.push(unique[index]);
+      await moveOne(id);
+      succeeded.push(id);
     } catch (error) {
-      return { succeeded, uncertain: unique[index], notAttempted: unique.slice(index + 1), error };
+      firstError ??= error;
+      if (isRejected(error)) {
+        rejected.push(id);
+        continue;
+      }
+      return {
+        succeeded,
+        uncertain: [id],
+        notAttempted: unique.slice(index + 1),
+        rejected,
+        error: firstError,
+      };
     }
   }
-  return { succeeded, uncertain: null, notAttempted: [], error: null };
+  return { succeeded, uncertain: [], notAttempted: [], rejected, error: firstError };
 }

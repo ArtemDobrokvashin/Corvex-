@@ -14,6 +14,8 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { mailApi } from '../api/mailApi';
+import { contactsApi } from '../api/contactsApi';
 import { useI18n } from '../i18n';
 import { useCalendarStore } from '../store/calendarStore';
 
@@ -48,6 +50,11 @@ export default function CommandPalette({
   const setSelectedDate = useCalendarStore((s) => s.setSelectedDate);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
+  // Результаты поиска по письмам и адресной книге. Поиск по письмам идёт на
+  // сервер: в загруженном списке письма из прошлого года просто нет.
+  const [mailHits, setMailHits] = useState<CommandAction[]>([]);
+  const [contactHits, setContactHits] = useState<CommandAction[]>([]);
+  const [mailSearchNote, setMailSearchNote] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -140,9 +147,12 @@ export default function CommandPalette({
 
     const q = query.trim().toLowerCase();
     if (!q) return base.slice(0, 9);
-    return base.filter(
+    const commands = base.filter(
       (item) => item.label.toLowerCase().includes(q) || (item.hint && item.hint.toLowerCase().includes(q)),
     );
+    // Команды остаются первыми: человек, набравший «почта», ждёт переход,
+    // а не пять писем с этим словом.
+    return [...commands, ...mailHits, ...contactHits];
   }, [
     canSeeAdmin,
     demoMode,
@@ -154,7 +164,62 @@ export default function CommandPalette({
     query,
     setSelectedDate,
     t,
+    mailHits,
+    contactHits,
   ]);
+
+  // Почта и контакты ищутся той же строкой, что и команды: `⌘K` в Gmail ведёт
+  // себя так же. Запросы разнесены по времени, чтобы не дёргать сервер на
+  // каждый символ.
+  useEffect(() => {
+    if (!open) return undefined;
+    const q = query.trim();
+    if (q.length < 2 || demoMode) {
+      setMailHits([]);
+      setContactHits([]);
+      setMailSearchNote(null);
+      return undefined;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      mailApi.search(q, 5, controller.signal)
+        .then((hits) => {
+          if (controller.signal.aborted) return;
+          setMailHits(hits.map((hit) => ({
+            id: `mail-${hit.messageId}`,
+            label: hit.subject || t('(без темы)'),
+            hint: hit.sender,
+            icon: Mail,
+            onSelect: () => navigate(`/mail?mailId=${encodeURIComponent(hit.messageId)}`),
+          })));
+          setMailSearchNote(null);
+        })
+        .catch((error: unknown) => {
+          if (controller.signal.aborted) return;
+          setMailHits([]);
+          // 503 — индекс недоступен; пустой список без пояснения читался бы
+          // как «писем нет».
+          setMailSearchNote(
+            error && typeof error === 'object' && 'status' in error && (error as { status?: number }).status === 503
+              ? t('Поиск по письмам временно недоступен.')
+              : t('Не удалось выполнить поиск по письмам.'),
+          );
+        });
+      contactsApi.list(q, 5)
+        .then((items) => {
+          if (controller.signal.aborted) return;
+          setContactHits(items.map((item) => ({
+            id: `contact-${item.id}`,
+            label: item.displayName || item.email,
+            hint: item.email,
+            icon: Mail,
+            onSelect: () => navigate(`/mail?compose=1&to=${encodeURIComponent(item.email)}`),
+          })));
+        })
+        .catch(() => { if (!controller.signal.aborted) setContactHits([]); });
+    }, 300);
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [demoMode, navigate, open, query, t]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -211,6 +276,11 @@ export default function CommandPalette({
           </kbd>
         </div>
 
+        {mailSearchNote && (
+          <p className="border-b border-line-subtle bg-canvas px-4 py-2 text-[11.5px] text-muted" role="status">
+            {mailSearchNote}
+          </p>
+        )}
         <div className="max-h-[340px] overflow-y-auto p-2">
           {actions.length === 0 ? (
             <div className="py-8 text-center text-xs text-muted">{t('Ничего не найдено')}</div>

@@ -41,6 +41,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import ru.corvex.mailstorage.search.MessageSearchIndexer;
+
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -70,7 +72,7 @@ class MailApiServiceTest {
         maildir = new MaildirStorage(tmp.resolve("mail"), tmp.resolve("attachments"));
         jdbc = mock(JdbcTemplate.class);
         clam = mock(ClamAvClient.class);
-        service = new MailApiService(folders, messages, delivery, maildir, new MimeMailParser(maildir), jdbc, clam);
+        service = new MailApiService(folders, messages, delivery, maildir, new MimeMailParser(maildir), jdbc, clam, mock(MessageSearchIndexer.class));
         when(folders.save(any(MailFolder.class))).thenAnswer(inv -> inv.getArgument(0));
         when(messages.save(any(MessageMetadata.class))).thenAnswer(inv -> inv.getArgument(0));
     }
@@ -262,7 +264,7 @@ class MailApiServiceTest {
         when(messages.findByIdAndOwnerId(message.getId(), ownerId)).thenReturn(Optional.of(message));
         MimeMailParser parser = mock(MimeMailParser.class);
         when(parser.parse(any(InputStream.class), eq(false))).thenThrow(new MessagingException("broken mime"));
-        MailApiService local = new MailApiService(folders, messages, delivery, maildir, parser, jdbc, clam);
+        MailApiService local = new MailApiService(folders, messages, delivery, maildir, parser, jdbc, clam, mock(MessageSearchIndexer.class));
 
         IOException error = assertThrows(IOException.class, () -> local.getMessage(ownerId, message.getId()));
         assertTrue(error.getCause() instanceof MessagingException);

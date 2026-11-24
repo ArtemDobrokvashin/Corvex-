@@ -66,6 +66,11 @@ export interface SendMessageRequest {
   attachments?: SendAttachment[];
   saveToSent?: boolean;
   externalAccountId?: string | null;
+  /**
+   * Письмо, на которое отвечаем. Сервер берёт из него `Message-ID` и `References`
+   * и ставит заголовки `In-Reply-To`/`References` — по ним почтовики собирают тред.
+   */
+  inReplyToMessageId?: string | null;
 }
 
 export interface SendMessageResult {
@@ -105,6 +110,17 @@ export interface DraftSummary {
   updatedAt: string;
 }
 
+/** Результат серверного поиска: письмо и короткое превью. */
+export interface MailSearchResult {
+  messageId: string;
+  folderId: string | null;
+  uid: number;
+  sender: string;
+  subject: string;
+  snippet: string;
+  internalDate: string | null;
+}
+
 export const mailApi = {
   quota: () => apiFetch<MailboxQuota>('/api/v1/mail/quota'),
   folders: () => apiFetch<MailFolderView[]>('/api/v1/mail/folders'),
@@ -118,6 +134,16 @@ export const mailApi = {
     const params = new URLSearchParams({ limit: String(limit) });
     if (cursorUid != null) params.set('cursorUid', String(cursorUid));
     return apiFetch<MailMessageListItem[]>(`/api/v1/mail/folders/${folderId}/messages?${params.toString()}`);
+  },
+  /**
+   * Полнотекстовый поиск по всему ящику. `q` понимает Gmail-подобные фильтры
+   * (`from:`, `subject:`, `is:unread`, `has:attachment`, `before:`, `after:`).
+   * 503 означает «индекс недоступен»: это не пустой результат.
+   */
+  search: (query: string, limit = 50, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ q: query, limit: String(limit) });
+    const path = `/api/v1/mail/search?${params.toString()}`;
+    return signal ? apiFetch<MailSearchResult[]>(path, { signal }) : apiFetch<MailSearchResult[]>(path);
   },
   message: (id: string) => apiFetch<MailMessageDetail>(`/api/v1/mail/messages/${id}`),
   downloadAttachment: (id: string, partIndex: number, signal?: AbortSignal) => {
