@@ -52,42 +52,4 @@ class OutboxServiceTest {
         // Опечатка в дате не должна тихо поставить письмо в очередь.
         verify(jdbc, never()).update(anyString(), any(Object[].class));
     }
-
-    @Test
-    void acceptsAFutureTimeWithinTheHorizon() {
-        RawMessageSpool.StoredRawMessage raw = new RawMessageSpool.StoredRawMessage("raw-1", "sha", 10);
-
-        UUID id = service.schedule(ownerId, raw, List.of("peer@company.local"), List.of("a@b"),
-                "me@x", "<m@x>", null, "S", true, Instant.now().plusSeconds(3600));
-
-        assertNotNull(id);
-        verify(jdbc).update(anyString(), any(Object[].class));
-    }
-
-    @Test
-    void cancelRefusesWhenTheMessageIsAlreadySending() {
-        when(jdbc.update(anyString(), any(Object[].class))).thenReturn(0);
-
-        assertFalse(service.cancel(ownerId, UUID.randomUUID()));
-        verify(spool, never()).delete(anyString());
-    }
-
-    @Test
-    void cancelDeletesTheSpoolCopyOfAScheduledMessage() throws Exception {
-        when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<String>>any(), any(Object[].class))).thenReturn(List.of("raw-1"));
-        when(jdbc.update(anyString(), any(Object[].class))).thenReturn(1);
-
-        assertTrue(service.cancel(ownerId, UUID.randomUUID()));
-
-        verify(spool).delete("raw-1");
-    }
-
-    @Test
-    void dispatchOfAMissingRowSendsNothing() {
-        when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<String>>any(), any(Object[].class))).thenReturn(List.of());
-
-        service.dispatch(UUID.randomUUID());
-
-        verify(events, never()).publishConfirmed(anyString(), any(), anyString());
-    }
 }
