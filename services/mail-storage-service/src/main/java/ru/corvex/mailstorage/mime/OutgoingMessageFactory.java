@@ -29,17 +29,6 @@ public class OutgoingMessageFactory {
     }
 
     /**
-     * Заголовки связи с исходным письмом: `In-Reply-To` — непосредственный
-     * родитель, `References` — вся цепочка. Без них ответ получателя не
-     * склеивается в переписку ни в нём, ни у нас: Gmail, Outlook и Thunderbird
-     * собирают тред именно по этим заголовкам, а не по теме «Re: …».
-     *
-     * `parentMessageId` — заголовок `Message-ID` родителя (не наш UUID).
-     * `existingReferences` — уже накопленная цепочка (может быть пустой).
-     * Значение приходит из БД, но всё равно санируется: заголовок с переводом
-     * строки — это инъекция в MIME.
-     */
-    /**
      * Добавляет серверную подпись к обычному тексту письма.
      *
      * <p>Нужна письмам, отправленным не из webmail (SMTP submission): там текст
@@ -97,6 +86,12 @@ public class OutgoingMessageFactory {
         return compose(senderEmail, senderName, messageIdHeader, to, cc, req, null, null);
     }
 
+    /**
+     * Собирает письмо с заголовками ветки. `inReplyTo` — `Message-ID`
+     * непосредственного родителя, `references` — уже накопленная цепочка;
+     * оба значения санируются, потому что перевод строки в заголовке — это
+     * инъекция в MIME.
+     */
     public ComposedMessage compose(String senderEmail, String senderName, String messageIdHeader,
                                    List<String> to, List<String> cc, MailDtos.SendMessageRequest req,
                                    String inReplyTo, String references)

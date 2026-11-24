@@ -317,10 +317,6 @@ public class MailSendService {
     }
 
     /**
-     * `References` родителя лежат в сыром MIME, а не в метаданных. Читаем их
-     * повтором из spool; если файла нет — цепочка начинается с самого родителя.
-     */
-    /**
      * Понятная ошибка вместо голого 413: человек должен знать, что делать.
      * Размер считается по декодированным байтам, а не по длине base64.
      */
@@ -352,6 +348,10 @@ public class MailSendService {
         }
     }
 
+    /**
+     * `References` родителя лежат в сыром MIME, а не в метаданных. Читаем их
+     * повтором из spool; если файла нет — цепочка начинается с самого родителя.
+     */
     private String readReferences(MessageMetadata parent) {
         String rawRef = parent.getRawRef();
         if (rawRef == null || rawRef.isBlank()) return null;

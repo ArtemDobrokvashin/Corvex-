@@ -70,9 +70,9 @@ public final class MailDtos {
             List<SendAttachment> attachments,
             Boolean saveToSent,
             UUID externalAccountId,
-            /** Письмо, на которое отвечаем: из него берутся In-Reply-To и References. */
+            // Письмо, на которое отвечаем: из него берутся In-Reply-To и References.
             UUID inReplyToMessageId,
-            /** «Отправить позже»: null — отправить сразу, иначе время отправки. */
+            // «Отправить позже»: null — отправить сразу, иначе время отправки.
             Instant sendAt) {
     }
 
@@ -109,9 +109,9 @@ public final class MailDtos {
             List<String> externalRecipients,
             String fromAddress,
             UUID externalAccountId,
-            /** Заполнен только для отложенного письма: по нему отправку отменяют. */
+            // Заполнен только для отложенного письма: по нему отправку отменяют.
             UUID scheduledSendId,
-            /** Время запланированной отправки; null — письмо ушло сразу. */
+            // Время запланированной отправки; null — письмо ушло сразу.
             Instant scheduledSendAt) {
     }
 }

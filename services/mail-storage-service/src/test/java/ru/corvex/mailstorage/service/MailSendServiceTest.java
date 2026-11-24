@@ -193,18 +193,18 @@ class MailSendServiceTest {
     void mapsFactoryFailuresToStableHttpErrors() throws Exception {
         MailDtos.SendMessageRequest req = request(
                 List.of("a@company.local"), List.of(), List.of(), false, null);
-        when(factory.compose(anyString(), anyString(), anyString(), any(), any(), any()))
+        when(factory.compose(anyString(), anyString(), anyString(), any(), any(), any(), any(), any()))
                 .thenThrow(new AddressException("bad"));
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, assertThrows(ResponseStatusException.class,
                 () -> service.send(senderId, ALL, req)).getStatusCode());
 
         doThrow(new IllegalArgumentException("bad base64"))
-                .when(factory).compose(anyString(), anyString(), anyString(), any(), any(), any());
+                .when(factory).compose(anyString(), anyString(), anyString(), any(), any(), any(), any(), any());
         assertEquals(HttpStatus.BAD_REQUEST, assertThrows(ResponseStatusException.class,
                 () -> service.send(senderId, ALL, req)).getStatusCode());
 
         doThrow(new MessagingException("mime"))
-                .when(factory).compose(anyString(), anyString(), anyString(), any(), any(), any());
+                .when(factory).compose(anyString(), anyString(), anyString(), any(), any(), any(), any(), any());
         assertThrows(IllegalStateException.class, () -> service.send(senderId, ALL, req));
     }
 
@@ -321,8 +321,9 @@ class MailSendServiceTest {
         parent.setId(parentId);
         parent.setMessageIdHeader("<parent@company.local>");
         parent.setRawRef("raw-parent");
-        java.nio.file.Files.writeString(tmp.resolve("spool").resolve("raw-parent"),
-                "References: <root@company.local>\n\nbody");
+        // Сырое письмо лежит под именем <rawRef>.eml: без него References не прочитать.
+        java.nio.file.Files.writeString(tmp.resolve("spool").resolve("raw-parent.eml"),
+                "References: <root@company.local>\r\nSubject: Re: Subject\r\n\r\nbody");
         when(messages.findByIdAndOwnerId(parentId, senderId)).thenReturn(Optional.of(parent));
 
         MailDtos.SendMessageRequest req = new MailDtos.SendMessageRequest(

@@ -16,6 +16,8 @@ import ru.corvex.mailstorage.domain.ExternalMailSyncRun;
 import ru.corvex.mailstorage.external.ExternalMailAccountService;
 import ru.corvex.mailstorage.external.ExternalMailSyncService;
 import ru.corvex.mailstorage.security.InternalTokenGuard;
+import ru.corvex.mailstorage.schedule.OutboxService;
+import ru.corvex.mailstorage.search.MailSearchService;
 import ru.corvex.mailstorage.service.MailApiService;
 import ru.corvex.mailstorage.service.MailSendService;
 import ru.corvex.mailstorage.service.ProtocolMailService;

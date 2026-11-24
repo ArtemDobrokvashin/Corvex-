@@ -34,6 +34,7 @@ import ru.corvex.mailstorage.mime.MimeMailParser;
 import ru.corvex.mailstorage.repository.MailFolderRepository;
 import ru.corvex.mailstorage.repository.MessageMetadataRepository;
 import ru.corvex.mailstorage.repository.SnoozedMessageRepository;
+import ru.corvex.mailstorage.search.MessageSearchIndexer;
 import ru.corvex.mailstorage.storage.MaildirStorage;
 import ru.corvex.mailstorage.storage.RawMessageSpool;
 
