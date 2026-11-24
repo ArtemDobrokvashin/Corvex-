@@ -91,7 +91,7 @@ class MailSendServiceTest {
                         "raw-eml".getBytes(StandardCharsets.UTF_8), inv.getArgument(2)));
     }
 
-    // TEMP diag off
+    @Test
     void rejectsMissingOrInactiveSender() {
         when(auth.findById(senderId)).thenReturn(Optional.empty());
         assertEquals(HttpStatus.FORBIDDEN, assertThrows(ResponseStatusException.class,
@@ -105,7 +105,7 @@ class MailSendServiceTest {
                 .getStatusCode());
     }
 
-    // TEMP diag off
+    @Test
     void validatesRecipientsAndRecipientCount() {
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, assertThrows(ResponseStatusException.class,
                 () -> service.send(senderId, ALL, request(List.of(" "), null, null, null, null))).getStatusCode());
@@ -119,7 +119,7 @@ class MailSendServiceTest {
                 () -> service.send(senderId, ALL, request(many, List.of(), List.of(), null, null))).getStatusCode());
     }
 
-    // TEMP diag off
+    @Test
     void enforcesInternalExternalAndBulkPermissionsSeparately() {
         assertEquals(HttpStatus.FORBIDDEN, assertThrows(ResponseStatusException.class,
                 () -> service.send(senderId, Set.of("MAIL_SEND_EXTERNAL"),
@@ -135,7 +135,7 @@ class MailSendServiceTest {
                         request(bulk, List.of(), List.of(), null, null))).getStatusCode());
     }
 
-    // TEMP diag off
+    @Test
     void sendsLocalAndExternalCopiesAndSavesSent() throws Exception {
         MailDeliveryService.DeliveryResult saved = deliveryResult(UUID.randomUUID());
         when(delivery.storeSentCopy(eq(sender), anyString(), anyLong())).thenReturn(Optional.of(saved));
@@ -162,7 +162,7 @@ class MailSendServiceTest {
         verify(indexer).index(saved);
     }
 
-    // TEMP diag off
+    @Test
     void canSkipSentCopyAndToleratesDeliveryReturningEmpty() throws Exception {
         MailDtos.SendMessageRequest noSent = request(
                 List.of("a@company.local"), List.of(), List.of(), false, null);
@@ -176,7 +176,7 @@ class MailSendServiceTest {
         verify(indexer, never()).index(any());
     }
 
-    // TEMP diag off
+    @Test
     void publishFailureDeletesQueuedRawCopy() throws Exception {
         AtomicReference<String> rawRef = new AtomicReference<>();
         doAnswer(inv -> {
@@ -189,7 +189,7 @@ class MailSendServiceTest {
         verify(delivery, never()).storeSentCopy(any(), anyString(), anyLong());
     }
 
-    // TEMP diag off
+    @Test
     void mapsFactoryFailuresToStableHttpErrors() throws Exception {
         MailDtos.SendMessageRequest req = request(
                 List.of("a@company.local"), List.of(), List.of(), false, null);
@@ -208,7 +208,7 @@ class MailSendServiceTest {
         assertThrows(IllegalStateException.class, () -> service.send(senderId, ALL, req));
     }
 
-    // TEMP diag off
+    @Test
     void oversizeComposedMessageBecomesPayloadTooLarge() {
         MailSendService small = service(new RawMessageSpool(tmp.resolve("small-spool"), 3));
         ResponseStatusException error = assertThrows(ResponseStatusException.class,
@@ -217,7 +217,7 @@ class MailSendServiceTest {
         assertEquals(HttpStatus.PAYLOAD_TOO_LARGE, error.getStatusCode());
     }
 
-    // TEMP diag off
+    @Test
     void externalAccountMustBelongToSenderAndBeEnabledForSending() throws Exception {
         UUID accountId = UUID.randomUUID();
         ExternalMailAccount foreign = externalAccount(UUID.randomUUID());
@@ -236,7 +236,7 @@ class MailSendServiceTest {
                 () -> service.send(senderId, ALL, req)).getStatusCode());
     }
 
-    // TEMP diag off
+    @Test
     void externalSendAsUsesProviderQueueAndAudits() throws Exception {
         UUID accountId = UUID.randomUUID();
         ExternalMailAccount own = externalAccount(senderId);
@@ -261,7 +261,7 @@ class MailSendServiceTest {
         verify(factory).compose(eq("external@mail.test"), eq("Sender Name"), anyString(), any(), any(), any(), any(), any());
     }
 
-    // TEMP diag off
+    @Test
     void externalAccountLocalRecipientsStillUseInboundQueue() throws Exception {
         UUID accountId = UUID.randomUUID();
         ExternalMailAccount own = externalAccount(senderId);
@@ -278,7 +278,7 @@ class MailSendServiceTest {
         verify(factory).compose(eq("external@mail.test"), eq("External Name"), anyString(), any(), any(), any(), any(), any());
     }
 
-    // TEMP diag off
+    @Test
     void domainConfirmedInRegistryIsDeliveredLocallyWithoutRestart() throws Exception {
         var store = mock(ru.corvex.mailstorage.maildomain.MailDomainStore.class);
         when(store.deliveryDomains()).thenReturn(List.of("new.example"));
@@ -297,7 +297,7 @@ class MailSendServiceTest {
         verify(events).publishConfirmed(eq("mail.inbound.received"), any(), anyString());
     }
 
-    // TEMP diag off
+    @Test
     void unknownDomainDuringRegistryOutageStopsInsteadOfRelayingExternally() throws Exception {
         var store = mock(ru.corvex.mailstorage.maildomain.MailDomainStore.class);
         when(store.deliveryDomains()).thenThrow(new IllegalStateException("db down"));
@@ -320,10 +320,11 @@ class MailSendServiceTest {
         UUID parentId = UUID.randomUUID();
         parent.setId(parentId);
         parent.setMessageIdHeader("<parent@company.local>");
-        parent.setRawRef("raw-parent");
-        // Сырое письмо лежит под именем <rawRef>.eml: без него References не прочитать.
-        java.nio.file.Files.writeString(tmp.resolve("spool").resolve("raw-parent.eml"),
-                "References: <root@company.local>\r\nSubject: Re: Subject\r\n\r\nbody");
+        // rawRef выдаёт сам спул: он принимает только UUID, а имя файла — <rawRef>.eml.
+        var parentRaw = spool.store(new java.io.ByteArrayInputStream(
+                "References: <root@company.local>\r\nSubject: Re: Subject\r\n\r\nbody"
+                        .getBytes(StandardCharsets.UTF_8)));
+        parent.setRawRef(parentRaw.rawRef());
         when(messages.findByIdAndOwnerId(parentId, senderId)).thenReturn(Optional.of(parent));
 
         MailDtos.SendMessageRequest req = new MailDtos.SendMessageRequest(
@@ -335,7 +336,7 @@ class MailSendServiceTest {
                 eq("<parent@company.local>"), eq("<root@company.local>"));
     }
 
-    // TEMP diag off
+    @Test
     void replyToAMessageOfAnotherOwnerIsNotThreaded() throws Exception {
         // Чужое письмо: репозиторий ищет строго по (id, owner) и ничего не находит.
         var req = new MailDtos.SendMessageRequest(
