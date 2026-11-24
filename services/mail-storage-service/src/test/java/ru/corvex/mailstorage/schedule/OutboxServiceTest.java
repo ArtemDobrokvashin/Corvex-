@@ -19,6 +19,7 @@ import org.mockito.ArgumentMatchers;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -66,6 +67,10 @@ class OutboxServiceTest {
 
     @Test
     void cancelRefusesWhenTheMessageIsAlreadySending() {
+        // Отменять нечего: строка не в SCHEDULED. Возврат false — это ответ
+        // «уже поздно», а не ошибка, и спул трогать нельзя.
+        doReturn(List.of()).when(jdbc)
+                .query(anyString(), ArgumentMatchers.<RowMapper<String>>any(), any(Object[].class));
         when(jdbc.update(anyString(), any(Object[].class))).thenReturn(0);
 
         assertFalse(service.cancel(ownerId, UUID.randomUUID()));
@@ -74,7 +79,8 @@ class OutboxServiceTest {
 
     @Test
     void cancelDeletesTheSpoolCopyOfAScheduledMessage() throws Exception {
-        when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<String>>any(), any(Object[].class))).thenReturn(List.of("raw-1"));
+        doReturn(List.of("raw-1")).when(jdbc)
+                .query(anyString(), ArgumentMatchers.<RowMapper<String>>any(), any(Object[].class));
         when(jdbc.update(anyString(), any(Object[].class))).thenReturn(1);
 
         assertTrue(service.cancel(ownerId, UUID.randomUUID()));
@@ -84,7 +90,12 @@ class OutboxServiceTest {
 
     @Test
     void dispatchOfAMissingRowSendsNothing() {
-        when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<String>>any(), any(Object[].class))).thenReturn(List.of());
+        // dispatch читает строку своим RowMapper<ScheduledRow>: общий мок на
+        // RowMapper<String> сюда не подходит, поэтому отвечаем на любой RowMapper.
+        // doReturn, а не when: у query() четыре перегруза, и типизированный when
+        // заставляет компилятор угадывать, какой из них имелся в виду.
+        doReturn(List.of()).when(jdbc)
+                .query(anyString(), ArgumentMatchers.<RowMapper<?>>any(), any(Object[].class));
 
         service.dispatch(UUID.randomUUID());
 
