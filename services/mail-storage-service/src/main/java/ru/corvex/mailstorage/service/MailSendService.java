@@ -17,6 +17,7 @@ import ru.corvex.mailstorage.pipeline.MailEventPublisher;
 import ru.corvex.mailstorage.pipeline.MailPipelineEvents;
 import ru.corvex.mailstorage.repository.MessageMetadataRepository;
 import ru.corvex.mailstorage.search.MessageSearchIndexer;
+import ru.corvex.mailstorage.schedule.OutboxService;
 import ru.corvex.mailstorage.storage.RawMessageSpool;
 
 import java.io.ByteArrayInputStream;
@@ -59,6 +60,7 @@ public class MailSendService {
     private final ExternalMailAccountService externalAccounts;
     private final AcceptedDomains acceptedDomains;
     private final MessageMetadataRepository messages;
+    private final OutboxService outbox;
 
     public MailSendService(AuthUserClient auth,
                            OutgoingMessageFactory factory,
@@ -68,7 +70,8 @@ public class MailSendService {
                            MessageSearchIndexer indexer,
                            ExternalMailAccountService externalAccounts,
                            AcceptedDomains acceptedDomains,
-                           MessageMetadataRepository messages) {
+                           MessageMetadataRepository messages,
+                           OutboxService outbox) {
         this.auth = auth;
         this.factory = factory;
         this.spool = spool;
@@ -78,6 +81,7 @@ public class MailSendService {
         this.externalAccounts = externalAccounts;
         this.acceptedDomains = acceptedDomains;
         this.messages = messages;
+        this.outbox = outbox;
     }
 
     public MailDtos.SendMessageResult send(UUID senderId, Set<String> permissions, MailDtos.SendMessageRequest req)
@@ -158,6 +162,33 @@ public class MailSendService {
             throw new IllegalStateException("Не удалось собрать MIME-письмо", e);
         }
 
+        // «Отправить позже»: письмо собирается сейчас (права и получатели уже
+        // проверены), но в SMTP уходит по расписанию. Копия в «Отправленные»
+        // ставится сразу — человек видит, что письмо действительно отложено.
+        if (req.sendAt() != null) {
+            UUID scheduledId = scheduleSend(sender, req, composed, local, external, fromAddress,
+                    messageId, externalAccount);
+            UUID sentCopyId = null;
+            if (!Boolean.FALSE.equals(req.saveToSent())) {
+                RawMessageSpool.StoredRawMessage raw = store(composed.eml());
+                try {
+                    var saved = delivery.storeSentCopy(sender, raw.rawRef(), raw.sizeBytes());
+                    if (saved.isPresent()) {
+                        sentCopyId = saved.get().messageId();
+                        indexer.index(saved.get());
+                    }
+                } finally {
+                    deleteQuietly(raw.rawRef());
+                }
+            }
+            if (externalAccount != null) {
+                externalAccounts.audit(senderId, externalAccount, "EXTERNAL_SEND_AS_SCHEDULED",
+                        "messageId=" + messageId + ", recipients=" + all.size());
+            }
+            return new MailDtos.SendMessageResult(messageId, sentCopyId, local, external, fromAddress,
+                    externalAccount == null ? null : externalAccount.getId(), scheduledId, req.sendAt());
+        }
+
         Instant now = Instant.now();
         if (!local.isEmpty()) {
             RawMessageSpool.StoredRawMessage raw = store(composed.eml());
@@ -205,7 +236,30 @@ public class MailSendService {
                     "messageId=" + messageId + ", recipients=" + all.size());
         }
         return new MailDtos.SendMessageResult(messageId, sentMessageId, local, external, fromAddress,
-                externalAccount == null ? null : externalAccount.getId());
+                externalAccount == null ? null : externalAccount.getId(), null, null);
+    }
+
+    /**
+     * Кладёт уже собранное письмо в очередь отложенной отправки. Ошибки даты
+     * превращаются в 422: это ответ на данные запроса, а не сбой сервера.
+     */
+    private UUID scheduleSend(AuthUserClient.MailboxOwner sender, MailDtos.SendMessageRequest req,
+                              OutgoingMessageFactory.ComposedMessage composed, List<String> local,
+                              List<String> external, String fromAddress, String messageId,
+                              ExternalMailAccount externalAccount) {
+        RawMessageSpool.StoredRawMessage raw = store(composed.eml());
+        try {
+            return outbox.schedule(sender.id(), raw, local, external, fromAddress, messageId,
+                    externalAccount == null ? null : externalAccount.getId(),
+                    req.subject() == null ? "" : req.subject(),
+                    !Boolean.FALSE.equals(req.saveToSent()), req.sendAt());
+        } catch (IllegalArgumentException e) {
+            deleteQuietly(raw.rawRef());
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, e.getMessage());
+        } catch (RuntimeException e) {
+            deleteQuietly(raw.rawRef());
+            throw e;
+        }
     }
 
     private RawMessageSpool.StoredRawMessage store(byte[] eml) throws IOException {

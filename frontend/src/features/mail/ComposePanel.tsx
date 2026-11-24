@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useToast } from '../../components/ToastProvider';
-import { CheckCircle2, Maximize2, Minimize2, Paperclip, Send, Trash2, X } from 'lucide-react';
+import { CheckCircle2, Clock, Maximize2, Minimize2, Paperclip, Send, Trash2, X } from 'lucide-react';
 import type { ExternalMailAccount } from '../../api/externalMailApi';
 import { ApiError } from '../../api/httpClient';
 import { mailApi, type SavedDraft } from '../../api/mailApi';
@@ -24,6 +24,45 @@ export interface ComposeDraft {
    * References, чтобы переписка собиралась в цепочку у получателя.
    */
   inReplyToMessageId?: string | null;
+  /** «Отправить позже»: время в ISO. Пусто — отправить сразу. */
+  sendAt?: string | null;
+}
+
+/**
+ * Ближайшие удобные моменты для «Отправить позже». Не «через час», а
+ * «завтра в 8:00»: человек думает о времени суток, а не о дельте.
+ */
+export function scheduledSendOptions(now: Date): { id: string; at: Date; labelKey: string }[] {
+  const at = (dayOffset: number, hour: number) => {
+    const date = new Date(now);
+    date.setDate(date.getDate() + dayOffset);
+    date.setHours(hour, 0, 0, 0);
+    return date;
+  };
+  // Если сейчас раннее утро, «сегодня в 8:00» ещё впереди; иначе это прошлое.
+  const morning = now.getHours() < 8 ? at(0, 8) : at(1, 8);
+  const evening = now.getHours() < 18 ? at(0, 18) : at(1, 18);
+  return [
+    { id: 'morning', at: morning, labelKey: 'Завтра утром' },
+    { id: 'evening', at: evening, labelKey: 'Сегодня вечером' },
+    { id: 'tomorrow', at: at(1, 9), labelKey: 'Завтра в 9:00' },
+    { id: 'monday', at: nextWeekday(now, 1), labelKey: 'В понедельник в 9:00' },
+  ];
+}
+
+/** Ближайший заданный день недели (1 = понедельник) в 9:00. */
+function nextWeekday(now: Date, weekday: number): Date {
+  const date = new Date(now);
+  const delta = (weekday - date.getDay() + 7) % 7 || 7;
+  date.setDate(date.getDate() + delta);
+  date.setHours(9, 0, 0, 0);
+  return date;
+}
+
+/** Локальное время в формате `datetime-local`, без секунд и зоны. */
+export function toLocalInputValue(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function errorMessage(error: unknown): string {
@@ -59,8 +98,13 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
   const [expanded, setExpanded] = useState(false);
   const [sent, setSent] = useState(false);
   const [sentCopySaved, setSentCopySaved] = useState(true);
+  // Время фактически запланированной отправки: экран успеха должен говорить
+  // «отправится позже», а не «отправлено», иначе человек не станет отменять.
+  const [scheduledAt, setScheduledAt] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  // «Отправить позже»: null — обычная отправка, иначе локальное время.
+  const [sendAtLocal, setSendAtLocal] = useState<string | null>(initial.sendAt ?? null);
   const [savedId, setSavedId] = useState<string | null>(initialDraft?.id ?? null);
   const savedRevision = useRef<number>(initialDraft?.revision ?? 0);
   const [draftStatus, setDraftStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -184,17 +228,33 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
       setSendError(t('Тема не заполнена. Нажмите «Отправить» ещё раз, чтобы отправить без темы.'));
       return;
     }
+    if (sendAtLocal) {
+      const when = new Date(sendAtLocal);
+      if (Number.isNaN(when.getTime()) || when.getTime() <= Date.now()) {
+        setSendError(t('Время отложенной отправки уже прошло. Выберите другое.'));
+        return;
+      }
+    }
     setConfirmPending(null);
     sendingRef.current = true;
     void (async () => {
       setSending(true);
       setSendError(null);
       try {
-        const copySaved = await onSend(draft, files);
+        const copySaved = await onSend(
+          sendAtLocal ? { ...draft, sendAt: new Date(sendAtLocal).toISOString() } : draft,
+          files,
+        );
         setSentCopySaved(copySaved !== false);
+        const planned = sendAtLocal ? new Date(sendAtLocal).toISOString() : null;
+        setScheduledAt(planned);
         await dropSavedDraft();
         setSent(true);
-        notify({ message: t('Письмо отправлено.'), tone: 'success', durationMs: 4000 });
+        notify({
+          message: planned ? t('Отправка запланирована.') : t('Письмо отправлено.'),
+          tone: 'success',
+          durationMs: 4000,
+        });
         window.setTimeout(onClose, 900);
       } catch (error) {
         // Сервер мог поставить письмо в очередь до ошибки. Повторять отправку
@@ -258,11 +318,13 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
       {sent ? (
         <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
           <span className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600"><CheckCircle2 size={27} /></span>
-          <h4 className="mt-4 text-lg font-semibold">{t('Письмо отправлено')}</h4>
+          <h4 className="mt-4 text-lg font-semibold">{scheduledAt ? t('Письмо отправится позже') : t('Письмо отправлено')}</h4>
           <p className={`mt-1 text-sm ${sentCopySaved ? 'text-muted' : 'text-danger'}`} role={sentCopySaved ? undefined : 'alert'}>
-            {sentCopySaved
-              ? t('Копия сохранена в папке «Отправленные».')
-              : t('Копию не удалось сохранить в папке «Отправленные». Повторно отправлять письмо не нужно.')}
+            {scheduledAt
+              ? t('Отправка запланирована на {time}. Копия уже лежит в «Отправленных», отправку можно отменить до этого момента.', { time: new Date(scheduledAt).toLocaleString() })
+              : sentCopySaved
+                ? t('Копия сохранена в папке «Отправленные».')
+                : t('Копию не удалось сохранить в папке «Отправленные». Повторно отправлять письмо не нужно.')}
           </p>
         </div>
       ) : (
@@ -335,7 +397,30 @@ export function ComposePanel({ initial, currentEmail, externalAccounts, onClose,
             <div className="mx-4 mb-3 shrink-0 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">{sendError}</div>
           )}
           <footer className="flex shrink-0 items-center gap-2 border-t border-line px-3 py-3">
-            <button className="btn-accent" disabled={sending}><Send size={15} /> {t('Отправить')}</button>
+            <button className="btn-accent" disabled={sending}>
+              <Send size={15} /> {sendAtLocal ? t('Запланировать отправку') : t('Отправить')}
+            </button>
+            {/* Отложенная отправка: время выбирается здесь, а не в отдельном
+                окне — иначе письмо пришлось бы собирать заново. */}
+            <div className="flex items-center gap-1">
+              <label htmlFor="compose-send-at" className="sr-only">{t('Отправить позже')}</label>
+              <IconButton icon={Clock} label={t('Отправить позже')} onClick={() => setSendAtLocal(sendAtLocal ? null : toLocalInputValue(scheduledSendOptions(new Date())[0].at))} />
+              {sendAtLocal && (
+                <>
+                  <input
+                    id="compose-send-at"
+                    type="datetime-local"
+                    value={sendAtLocal}
+                    min={toLocalInputValue(new Date(Date.now() + 60_000))}
+                    onChange={(event) => setSendAtLocal(event.target.value || null)}
+                    className="field h-8 w-[190px] text-xs"
+                  />
+                  <button type="button" className="text-[11px] text-muted underline" onClick={() => setSendAtLocal(null)}>
+                    {t('Отменить')}
+                  </button>
+                </>
+              )}
+            </div>
             <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => { const picked = Array.from(e.target.files ?? []); setFiles((previous) => [...previous, ...picked]); e.target.value = ''; }} />
             <IconButton icon={Paperclip} label={t('Прикрепить файлы')} onClick={() => fileRef.current?.click()} />
             <span className="ml-1 hidden text-[11px] text-faint sm:inline">{t('Подпись добавится автоматически')}</span>

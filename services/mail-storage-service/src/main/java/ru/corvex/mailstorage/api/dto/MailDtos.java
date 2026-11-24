@@ -71,7 +71,24 @@ public final class MailDtos {
             Boolean saveToSent,
             UUID externalAccountId,
             /** Письмо, на которое отвечаем: из него берутся In-Reply-To и References. */
-            UUID inReplyToMessageId) {
+            UUID inReplyToMessageId,
+            /** «Отправить позже»: null — отправить сразу, иначе время отправки. */
+            Instant sendAt) {
+    }
+
+    /** «Отложить до…»: время возврата в UTC. */
+    public record SnoozeRequest(Instant wakeAt) {
+    }
+
+    /** Письмо, которое сейчас скрыто из списка до указанного момента. */
+    public record SnoozedView(UUID messageId, String subject, String sender, UUID folderId, Instant wakeAt) {
+    }
+
+    /** Отложенная отправка: письмо уже собрано, но ещё не ушло. */
+    public record ScheduleSendRequest(Instant sendAt) {
+    }
+
+    public record ScheduledSendView(UUID id, Instant sendAt, String status) {
     }
 
     /** Результат полнотекстового поиска: идентификатор письма и короткое превью. */
@@ -91,6 +108,10 @@ public final class MailDtos {
             List<String> localRecipients,
             List<String> externalRecipients,
             String fromAddress,
-            UUID externalAccountId) {
+            UUID externalAccountId,
+            /** Заполнен только для отложенного письма: по нему отправку отменяют. */
+            UUID scheduledSendId,
+            /** Время запланированной отправки; null — письмо ушло сразу. */
+            Instant scheduledSendAt) {
     }
 }

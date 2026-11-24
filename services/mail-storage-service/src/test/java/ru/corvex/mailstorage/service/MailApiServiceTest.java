@@ -17,9 +17,11 @@ import ru.corvex.mailstorage.api.dto.MailDtos;
 import ru.corvex.mailstorage.av.ClamAvClient;
 import ru.corvex.mailstorage.domain.MailFolder;
 import ru.corvex.mailstorage.domain.MessageMetadata;
+import ru.corvex.mailstorage.domain.SnoozedMessage;
 import ru.corvex.mailstorage.mime.MimeMailParser;
 import ru.corvex.mailstorage.repository.MailFolderRepository;
 import ru.corvex.mailstorage.repository.MessageMetadataRepository;
+import ru.corvex.mailstorage.repository.SnoozedMessageRepository;
 import ru.corvex.mailstorage.storage.MaildirStorage;
 
 import java.io.ByteArrayInputStream;
@@ -63,6 +65,7 @@ class MailApiServiceTest {
     private JdbcTemplate jdbc;
     private ClamAvClient clam;
     private MailApiService service;
+    private SnoozedMessageRepository snoozed;
 
     @BeforeEach
     void setUp() {
@@ -72,7 +75,9 @@ class MailApiServiceTest {
         maildir = new MaildirStorage(tmp.resolve("mail"), tmp.resolve("attachments"));
         jdbc = mock(JdbcTemplate.class);
         clam = mock(ClamAvClient.class);
-        service = new MailApiService(folders, messages, delivery, maildir, new MimeMailParser(maildir), jdbc, clam, mock(MessageSearchIndexer.class));
+        snoozed = mock(SnoozedMessageRepository.class);
+        service = new MailApiService(folders, messages, delivery, maildir, new MimeMailParser(maildir), jdbc, clam,
+                mock(MessageSearchIndexer.class), snoozed);
         when(folders.save(any(MailFolder.class))).thenAnswer(inv -> inv.getArgument(0));
         when(messages.save(any(MessageMetadata.class))).thenAnswer(inv -> inv.getArgument(0));
     }
@@ -114,6 +119,64 @@ class MailApiServiceTest {
         ArgumentCaptor<Pageable> page = ArgumentCaptor.forClass(Pageable.class);
         verify(messages).listFolderBeforeUid(eq(inbox.getId()), eq(ownerId), eq(50L), page.capture());
         assertEquals(100, page.getValue().getPageSize());
+    }
+
+    @Test
+    void snoozedMessagesDisappearFromTheFolderListUntilTheyWake() {
+        MailFolder inbox = folder("INBOX", "INBOX");
+        MessageMetadata visible = message(inbox, 9);
+        MessageMetadata sleeping = message(inbox, 8);
+        when(folders.findByIdAndOwnerId(inbox.getId(), ownerId)).thenReturn(Optional.of(inbox));
+        when(messages.listFolderBeforeUid(eq(inbox.getId()), eq(ownerId), eq(50L), any(Pageable.class)))
+                .thenReturn(List.of(visible, sleeping));
+        when(snoozed.findActiveMessageIds(eq(ownerId), any(Instant.class)))
+                .thenReturn(List.of(sleeping.getId()));
+        when(jdbc.queryForList(anyString(), eq(UUID.class), any(Object[].class))).thenReturn(List.of());
+
+        List<MailDtos.MessageListItem> result = service.listMessages(ownerId, inbox.getId(), 50L, 50);
+
+        // Письмо не удалено и не перемещено: оно просто не показывается до срока.
+        assertEquals(1, result.size());
+        assertEquals(visible.getId(), result.get(0).id());
+    }
+
+    @Test
+    void snoozeRejectsPastAndTooDistantTimes() {
+        MailFolder inbox = folder("INBOX", "INBOX");
+        MessageMetadata message = message(inbox, 5);
+        when(messages.findByIdAndOwnerId(message.getId(), ownerId)).thenReturn(Optional.of(message));
+
+        ResponseStatusException past = assertThrows(ResponseStatusException.class,
+                () -> service.snoozeMessage(ownerId, message.getId(), Instant.now().minusSeconds(60)));
+        assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, past.getStatusCode());
+
+        ResponseStatusException far = assertThrows(ResponseStatusException.class,
+                () -> service.snoozeMessage(ownerId, message.getId(), Instant.now().plusSeconds(400L * 24 * 3600)));
+        assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, far.getStatusCode());
+
+        // Опечатка в дате не должна молча спрятать письмо.
+        verify(snoozed, never()).save(any());
+    }
+
+    @Test
+    void snoozeStoresTheWakeTimeAndWakeIsIdempotent() {
+        MailFolder inbox = folder("INBOX", "INBOX");
+        MessageMetadata message = message(inbox, 5);
+        when(messages.findByIdAndOwnerId(message.getId(), ownerId)).thenReturn(Optional.of(message));
+        Instant wakeAt = Instant.now().plusSeconds(3600);
+
+        service.snoozeMessage(ownerId, message.getId(), wakeAt);
+
+        ArgumentCaptor<SnoozedMessage> saved = ArgumentCaptor.forClass(SnoozedMessage.class);
+        verify(snoozed).save(saved.capture());
+        assertEquals(message.getId(), saved.getValue().getMessageId());
+        assertEquals(inbox.getId(), saved.getValue().getFolderId());
+        assertEquals(wakeAt, saved.getValue().getWakeAt());
+
+        service.wakeMessage(ownerId, message.getId());
+        // Второй вызов не должен падать: интерфейс может прислать его дважды.
+        service.wakeMessage(ownerId, message.getId());
+        verify(snoozed, times(2)).deleteOwned(message.getId(), ownerId);
     }
 
     @Test
@@ -264,7 +327,7 @@ class MailApiServiceTest {
         when(messages.findByIdAndOwnerId(message.getId(), ownerId)).thenReturn(Optional.of(message));
         MimeMailParser parser = mock(MimeMailParser.class);
         when(parser.parse(any(InputStream.class), eq(false))).thenThrow(new MessagingException("broken mime"));
-        MailApiService local = new MailApiService(folders, messages, delivery, maildir, parser, jdbc, clam, mock(MessageSearchIndexer.class));
+        MailApiService local = new MailApiService(folders, messages, delivery, maildir, parser, jdbc, clam, mock(MessageSearchIndexer.class), mock(SnoozedMessageRepository.class));
 
         IOException error = assertThrows(IOException.class, () -> local.getMessage(ownerId, message.getId()));
         assertTrue(error.getCause() instanceof MessagingException);

@@ -71,6 +71,24 @@ export interface SendMessageRequest {
    * и ставит заголовки `In-Reply-To`/`References` — по ним почтовики собирают тред.
    */
   inReplyToMessageId?: string | null;
+  /** «Отправить позже»: время в ISO. null/undefined — отправить сразу. */
+  sendAt?: string | null;
+}
+
+/** Письмо, скрытое из списка до указанного момента. */
+export interface SnoozedMessage {
+  messageId: string;
+  subject: string;
+  sender: string;
+  folderId: string;
+  wakeAt: string;
+}
+
+/** Отложенная отправка: ещё не ушедшее письмо. */
+export interface ScheduledSend {
+  id: string;
+  sendAt: string;
+  status: 'SCHEDULED' | 'SENDING' | 'FAILED' | string;
 }
 
 export interface SendMessageResult {
@@ -80,6 +98,9 @@ export interface SendMessageResult {
   externalRecipients: string[];
   fromAddress?: string;
   externalAccountId?: string | null;
+  /** Заполнено, если письмо отложено: по этому id отправку отменяют. */
+  scheduledSendId?: string | null;
+  scheduledSendAt?: string | null;
 }
 
 /** Черновики: owner-scope на сервере, ревизия защищает от перезаписи из другой вкладки. */
@@ -170,6 +191,20 @@ export const mailApi = {
       method: 'POST',
       body: JSON.stringify(request),
     }),
+  /** «Отложить до…»: письмо скрыто из списка папки, но не перемещено. */
+  snooze: (id: string, wakeAt: string) =>
+    apiFetch<MailMessageListItem>(`/api/v1/mail/messages/${encodeURIComponent(id)}/snooze`, {
+      method: 'POST',
+      body: JSON.stringify({ wakeAt }),
+    }),
+  wake: (id: string) =>
+    apiFetch<MailMessageListItem>(`/api/v1/mail/messages/${encodeURIComponent(id)}/snooze`, {
+      method: 'DELETE',
+    }),
+  snoozed: () => apiFetch<SnoozedMessage[]>('/api/v1/mail/snoozed'),
+  scheduledSends: () => apiFetch<ScheduledSend[]>('/api/v1/mail/scheduled-sends'),
+  cancelScheduledSend: (id: string) =>
+    apiFetch<void>(`/api/v1/mail/scheduled-sends/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   drafts: (limit = 50) => apiFetch<DraftSummary[]>(`/api/v1/mail/drafts?limit=${limit}`),
   draft: (id: string) => apiFetch<SavedDraft>(`/api/v1/mail/drafts/${encodeURIComponent(id)}`),
   createDraft: (payload: WebmailDraftPayload) =>

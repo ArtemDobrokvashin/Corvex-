@@ -17,6 +17,7 @@ import ru.corvex.mailstorage.mime.OutgoingMessageFactory;
 import ru.corvex.mailstorage.pipeline.MailEventPublisher;
 import ru.corvex.mailstorage.pipeline.MailPipelineEvents;
 import ru.corvex.mailstorage.repository.MessageMetadataRepository;
+import ru.corvex.mailstorage.schedule.OutboxService;
 import ru.corvex.mailstorage.search.MessageSearchIndexer;
 import ru.corvex.mailstorage.storage.RawMessageSpool;
 
@@ -66,6 +67,7 @@ class MailSendServiceTest {
     private MessageSearchIndexer indexer;
     private ExternalMailAccountService externalAccounts;
     private MessageMetadataRepository messages;
+    private OutboxService outbox;
     private MailSendService service;
 
     @BeforeEach
@@ -80,6 +82,7 @@ class MailSendServiceTest {
         indexer = mock(MessageSearchIndexer.class);
         externalAccounts = mock(ExternalMailAccountService.class);
         messages = mock(MessageMetadataRepository.class);
+        outbox = mock(OutboxService.class);
         service = service(spool);
         when(auth.findById(senderId)).thenReturn(Optional.of(sender));
         when(factory.compose(anyString(), anyString(), anyString(), any(), any(), any(),
@@ -283,7 +286,7 @@ class MailSendServiceTest {
                 Set.of("company.local"), store, java.time.Duration.ofSeconds(30),
                 java.time.Duration.ofMinutes(5), java.time.Clock.systemUTC());
         MailSendService withRegistry = new MailSendService(auth, factory, spool, delivery, events, indexer,
-                externalAccounts, accepted, messages);
+                externalAccounts, accepted, messages, outbox);
         when(delivery.storeSentCopy(eq(sender), anyString(), anyLong())).thenReturn(Optional.empty());
 
         var result = withRegistry.send(senderId, ALL, request(
@@ -302,7 +305,7 @@ class MailSendServiceTest {
                 Set.of("company.local"), store, java.time.Duration.ofSeconds(30),
                 java.time.Duration.ofMinutes(5), java.time.Clock.systemUTC());
         MailSendService withRegistry = new MailSendService(auth, factory, spool, delivery, events, indexer,
-                externalAccounts, accepted, messages);
+                externalAccounts, accepted, messages, outbox);
 
         var error = assertThrows(ResponseStatusException.class, () -> withRegistry.send(senderId, ALL,
                 request(List.of("a@new.example"), List.of(), List.of(), false, null)));
@@ -324,7 +327,7 @@ class MailSendServiceTest {
 
         MailDtos.SendMessageRequest req = new MailDtos.SendMessageRequest(
                 List.of("peer@company.local"), null, null, "Re: Subject", "Body", null, List.of(),
-                false, null, parentId);
+                false, null, parentId, null);
         service.send(senderId, ALL, req);
 
         verify(factory).compose(anyString(), anyString(), anyString(), any(), any(), eq(req),
@@ -336,7 +339,7 @@ class MailSendServiceTest {
         // Чужое письмо: репозиторий ищет строго по (id, owner) и ничего не находит.
         var req = new MailDtos.SendMessageRequest(
                 List.of("peer@company.local"), null, null, "Re: Subject", "Body", null, List.of(),
-                false, null, UUID.randomUUID());
+                false, null, UUID.randomUUID(), null);
         service.send(senderId, ALL, req);
 
         verify(factory).compose(anyString(), anyString(), anyString(), any(), any(), eq(req),
@@ -346,7 +349,7 @@ class MailSendServiceTest {
     private MailSendService service(RawMessageSpool spoolToUse) {
         return new MailSendService(auth, factory, spoolToUse, delivery, events, indexer, externalAccounts,
                 ru.corvex.mailstorage.maildomain.AcceptedDomains.staticOnly(" Company.Local, Example.Internal "),
-                messages);
+                messages, outbox);
     }
 
     private MailDeliveryService.DeliveryResult deliveryResult(UUID id) {
@@ -370,6 +373,6 @@ class MailSendServiceTest {
     private static MailDtos.SendMessageRequest request(
             List<String> to, List<String> cc, List<String> bcc, Boolean saveToSent, UUID externalAccountId) {
         return new MailDtos.SendMessageRequest(to, cc, bcc, "Subject", "Body", null, List.of(), saveToSent,
-                externalAccountId, null);
+                externalAccountId, null, null);
     }
 }

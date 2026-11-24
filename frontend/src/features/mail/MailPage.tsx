@@ -10,6 +10,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  Clock,
   FilePenLine,
   Folder,
   FolderInput,
@@ -51,6 +52,7 @@ import {
   MailMessageListItem,
   MailAttachmentView,
   SendAttachment,
+  type ScheduledSend,
 } from '../../api/mailApi';
 import { CORVEX_MAIL_DND_MIME } from '../../components/CalendarSidebarWidget';
 import SidebarSlot, { useSidebarSlotContext } from '../../components/SidebarSlot';
@@ -334,6 +336,11 @@ export default function MailPage() {
   const [loadedAttachments, setLoadedAttachments] = useState<Record<string, MailAttachmentView[]>>({});
   const [downloadBusy, setDownloadBusy] = useState<string | null>(null);
   const [downloadAllBusy, setDownloadAllBusy] = useState(false);
+  /**
+   * Отложенные отправки (P2-6). Список нужен, чтобы человек мог отменить
+   * письмо до его ухода: без этого «Отправить позже» — ловушка без выхода.
+   */
+  const [scheduledSends, setScheduledSends] = useState<ScheduledSend[]>([]);
   const { openPreview } = usePreview();
   const [loadedRecipients, setLoadedRecipients] = useState<Record<string, { to: string[]; cc: string[] }>>({});
   // Пока идёт первая загрузка папки, список не должен показывать «пусто».
@@ -748,6 +755,43 @@ export default function MailPage() {
    * ответа человеку обычно и нужен этот адрес в книге, а искать его в
    * отдельном окне контактов — лишний шаг.
    */
+  /**
+   * «Отложить до…»: письмо исчезает из списка папки до срока, но остаётся на
+   * сервере. Возврат — через обновление папки или вручную из списка «Отложенные»,
+   * поэтому отменять snooze можно и раньше, повторным запросом.
+   */
+  const snoozeActiveMail = async (hours: number) => {
+    if (!active) return;
+    const snoozedId = active.id;
+    if (demoMode) {
+      notify({ message: t('Отложить письмо можно при подключении к серверу.'), tone: 'info' });
+      return;
+    }
+    const wakeAt = new Date(Date.now() + hours * 3600_000);
+    try {
+      await mailApi.snooze(active.id, wakeAt.toISOString());
+      setMails((prev) => prev.filter((mail) => mail.id !== active.id));
+      setActiveId('');
+      notify({
+        message: t('Письмо вернётся {time}.', { time: wakeAt.toLocaleString() }),
+        tone: 'success',
+        action: { label: t('Вернуть сейчас'), onSelect: () => void unsnoozeMail(snoozedId) },
+      });
+    } catch (error) {
+      notify({ message: `${t('Не удалось отложить письмо.')} ${errorMessage(error)}`, tone: 'error' });
+    }
+  };
+
+  const unsnoozeMail = async (messageId: string) => {
+    try {
+      await mailApi.wake(messageId);
+      notify({ message: t('Письмо возвращено в список.'), tone: 'success' });
+      reloadRef.current?.();
+    } catch (error) {
+      notify({ message: `${t('Не удалось вернуть письмо.')} ${errorMessage(error)}`, tone: 'error' });
+    }
+  };
+
   const addSenderToContacts = async () => {
     if (!active) return;
     const email = emailFromHeader(active.from);
@@ -1917,8 +1961,41 @@ export default function MailPage() {
     return () => window.removeEventListener('keydown', onKeyDown);
   });
 
+  // Отложенные письма подтягиваются один раз на раздел: отменять их нужно и
+  // после перезагрузки страницы, иначе очередь становится невидимой.
+  useEffect(() => {
+    if (demoMode) { setScheduledSends([]); return undefined; }
+    let cancelled = false;
+    mailApi.scheduledSends()
+      .then((items) => { if (!cancelled) setScheduledSends(items); })
+      .catch(() => { if (!cancelled) setScheduledSends([]); });
+    return () => { cancelled = true; };
+  }, [demoMode]);
+
+  const cancelScheduledSend = async (id: string) => {
+    try {
+      await mailApi.cancelScheduledSend(id);
+      setScheduledSends((prev) => prev.filter((item) => item.id !== id));
+      notify({ message: t('Отложенная отправка отменена.'), tone: 'success' });
+    } catch (error) {
+      // 409 — письмо уже уходит. Это не сбой, а факт, который нужно назвать.
+      notify({
+        message: error instanceof ApiError && error.status === 409
+          ? t('Письмо уже отправляется — отменить нельзя.')
+          : `${t('Не удалось отменить отложенную отправку.')} ${errorMessage(error)}`,
+        tone: 'error',
+      });
+    }
+  };
+
   const addSentMail = async (draft: ComposeDraft, files: File[]) => {
     if (demoMode) {
+      if (draft.sendAt) {
+        // Демо-режим ничего не отправляет и не хранит очередь: обещать
+        // «отправим позже» здесь было бы обманом.
+        notify({ message: t('Отложенная отправка доступна при подключении к серверу.'), tone: 'info' });
+        return true;
+      }
       setMails((prev) => [
         {
           id: `sent-${Date.now()}`,
@@ -1950,7 +2027,24 @@ export default function MailPage() {
       externalAccountId: draft.externalAccountId ?? null,
       // Без этого ответ уходил как новое письмо: у получателя он не попадал в тред.
       inReplyToMessageId: draft.inReplyToMessageId ?? null,
+      sendAt: draft.sendAt ?? null,
     });
+
+    if (sendResult.scheduledSendAt) {
+      // Письмо ещё не ушло: это не «отправлено», и отменить его можно из
+      // «Отправленных» до указанного времени.
+      notify({
+        message: t('Отправка запланирована на {time}.', {
+          time: new Date(sendResult.scheduledSendAt).toLocaleString(),
+        }),
+        tone: 'info',
+        durationMs: 6000,
+      });
+      setScheduledSends((prev) => [
+        { id: sendResult.scheduledSendId ?? `s-${Date.now()}`, sendAt: sendResult.scheduledSendAt!, status: 'SCHEDULED' },
+        ...prev,
+      ]);
+    }
 
     // Sending has succeeded. Never turn a later refresh failure into a send
     // failure: a retry would risk delivering the same message twice.
@@ -2443,6 +2537,35 @@ export default function MailPage() {
           {search && !searchPending && serverHits && (
             <div className="border-b border-line-subtle bg-canvas px-4 py-1.5 text-[11.5px] text-muted">
               {t('Найдено писем: {count}', { count: serverHits.length })}
+            </div>
+          )}
+
+          {/* Отложенные отправки видны в папке «Отправленные»: письмо уже
+              сохранено как копия, но до срока его можно отменить. */}
+          {!demoMode && currentFolder?.id === 'SENT' && scheduledSends.length > 0 && (
+            <div className="border-b border-line-subtle bg-canvas px-4 py-2" role="status">
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.04em] text-faint">
+                {t('Отправятся позже')}
+              </div>
+              <ul className="space-y-1">
+                {scheduledSends.map((item) => (
+                  <li key={item.id} className="flex items-center gap-2 text-[12px] text-ink-soft">
+                    <Clock size={12} className="shrink-0 text-faint" />
+                    <span className="min-w-0 flex-1 truncate">
+                      {new Date(item.sendAt).toLocaleString()}
+                      {item.status === 'FAILED' ? ` · ${t('не удалось поставить в очередь')}` : ''}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void cancelScheduledSend(item.id)}
+                      disabled={item.status !== 'SCHEDULED'}
+                      className="shrink-0 rounded-md border border-line-control px-1.5 py-0.5 text-[11px] font-medium text-muted transition hover:bg-surface hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {t('Отменить отправку')}
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
@@ -2951,6 +3074,14 @@ export default function MailPage() {
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void snoozeActiveMail(24)}
+                    title={t('Отложить до завтра')}
+                    className="inline-flex items-center gap-1 rounded-md border border-line-control px-1.5 py-1 text-[11px] font-medium text-muted transition hover:bg-canvas hover:text-ink"
+                  >
+                    <Clock size={12} /> <span className="hidden sm:inline">{t('Отложить')}</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => void addSenderToContacts()}

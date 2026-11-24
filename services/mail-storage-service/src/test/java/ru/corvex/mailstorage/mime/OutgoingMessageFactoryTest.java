@@ -163,7 +163,7 @@ class OutgoingMessageFactoryTest {
             String text,
             String html,
             List<MailDtos.SendAttachment> attachments) {
-        return new MailDtos.SendMessageRequest(to, cc, List.of(), subject, text, html, attachments, true, null, null);
+        return new MailDtos.SendMessageRequest(to, cc, List.of(), subject, text, html, attachments, true, null, null, null);
     }
 
     private static MimeMessage parse(byte[] eml) throws Exception {

@@ -22,12 +22,14 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import ru.corvex.mailstorage.api.dto.MailDtos;
 import ru.corvex.mailstorage.api.dto.ProtocolDtos;
+import ru.corvex.mailstorage.schedule.OutboxService;
 import ru.corvex.mailstorage.search.MailSearchService;
 import ru.corvex.mailstorage.service.MailApiService;
 import ru.corvex.mailstorage.service.MailSendService;
 import ru.corvex.mailstorage.service.ProtocolMailService;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -45,13 +47,15 @@ public class MailController {
     private final MailSendService sender;
     private final ProtocolMailService protocol;
     private final MailSearchService search;
+    private final OutboxService outbox;
 
     public MailController(MailApiService mail, MailSendService sender, ProtocolMailService protocol,
-                          MailSearchService search) {
+                          MailSearchService search, OutboxService outbox) {
         this.mail = mail;
         this.sender = sender;
         this.protocol = protocol;
         this.search = search;
+        this.outbox = outbox;
     }
 
     @GetMapping("/quota")
@@ -115,6 +119,27 @@ public class MailController {
         }
     }
 
+    /** «Отложить до…»: письмо скрыто из списка папки, но остаётся на месте. */
+    @PostMapping("/messages/{id}/snooze")
+    @PreAuthorize("hasAuthority('MAIL_READ_OWN')")
+    MailDtos.MessageListItem snooze(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+                                    @RequestBody MailDtos.SnoozeRequest req) {
+        return mail.snoozeMessage(userId(jwt), id, req == null ? null : req.wakeAt());
+    }
+
+    /** Вернуть письмо в список раньше срока; повторный вызов ничего не ломает. */
+    @DeleteMapping("/messages/{id}/snooze")
+    @PreAuthorize("hasAuthority('MAIL_READ_OWN')")
+    MailDtos.MessageListItem wake(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
+        return mail.wakeMessage(userId(jwt), id);
+    }
+
+    @GetMapping("/snoozed")
+    @PreAuthorize("hasAuthority('MAIL_READ_OWN')")
+    List<MailDtos.SnoozedView> snoozedMessages(@AuthenticationPrincipal Jwt jwt) {
+        return mail.listSnoozed(userId(jwt));
+    }
+
     @GetMapping("/messages/{id}")
     @PreAuthorize("hasAuthority('MAIL_READ_OWN')")
     MailDtos.MessageDetail message(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) throws IOException {
@@ -161,6 +186,29 @@ public class MailController {
                                   @PathVariable UUID id,
                                   @RequestBody MailDtos.MoveMessageRequest req) throws IOException {
         return mail.moveMessage(userId(jwt), id, req.targetFolderId(), req.expectedFolderId(), req.expectedUid());
+    }
+
+    /** Письма, которые уйдут позже: видны и отменяются до фактической отправки. */
+    @GetMapping("/scheduled-sends")
+    @PreAuthorize("hasAuthority('MAIL_READ_OWN')")
+    List<MailDtos.ScheduledSendView> scheduledSends(@AuthenticationPrincipal Jwt jwt) {
+        return outbox.list(userId(jwt)).stream()
+                .map(item -> new MailDtos.ScheduledSendView(item.id(), item.sendAt(), item.status()))
+                .toList();
+    }
+
+    /**
+     * Отмена отложенной отправки. 409, если письмо уже уходит или ушло:
+     * «отменено» на ушедшем письме было бы ложью.
+     */
+    @DeleteMapping("/scheduled-sends/{id}")
+    @PreAuthorize("hasAnyAuthority('MAIL_SEND_INTERNAL','MAIL_SEND_EXTERNAL')")
+    ResponseEntity<Void> cancelScheduledSend(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
+        if (!outbox.cancel(userId(jwt), id)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Письмо уже отправляется или отправлено — отменить нельзя");
+        }
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/messages/send")

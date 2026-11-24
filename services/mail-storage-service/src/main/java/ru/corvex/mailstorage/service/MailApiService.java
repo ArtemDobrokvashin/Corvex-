@@ -11,17 +11,20 @@ import ru.corvex.mailstorage.api.dto.MailDtos;
 import ru.corvex.mailstorage.av.ClamAvClient;
 import ru.corvex.mailstorage.domain.MailFolder;
 import ru.corvex.mailstorage.domain.MessageMetadata;
+import ru.corvex.mailstorage.domain.SnoozedMessage;
 import ru.corvex.mailstorage.search.MessageSearchIndexer;
 import ru.corvex.mailstorage.mime.MimeMailParser;
 import ru.corvex.mailstorage.mime.InlineImageExtractor;
 import java.io.ByteArrayInputStream;
 import ru.corvex.mailstorage.repository.MailFolderRepository;
 import ru.corvex.mailstorage.repository.MessageMetadataRepository;
+import ru.corvex.mailstorage.repository.SnoozedMessageRepository;
 import ru.corvex.mailstorage.storage.MaildirStorage;
 import ru.corvex.mailstorage.storage.TransactionalMailMove;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -48,6 +51,7 @@ public class MailApiService {
     private final JdbcTemplate jdbc;
     private final ClamAvClient clam;
     private final MessageSearchIndexer searchIndex;
+    private final SnoozedMessageRepository snoozed;
 
     public MailApiService(MailFolderRepository folders,
                           MessageMetadataRepository messages,
@@ -55,7 +59,8 @@ public class MailApiService {
                           MaildirStorage maildir,
                           MimeMailParser parser,
                           JdbcTemplate jdbc, ClamAvClient clam,
-                          MessageSearchIndexer searchIndex) {
+                          MessageSearchIndexer searchIndex,
+                          SnoozedMessageRepository snoozed) {
         this.folders = folders;
         this.messages = messages;
         this.delivery = delivery;
@@ -64,6 +69,7 @@ public class MailApiService {
         this.jdbc = jdbc;
         this.clam = clam;
         this.searchIndex = searchIndex;
+        this.snoozed = snoozed;
     }
 
     @Transactional
@@ -84,8 +90,16 @@ public class MailApiService {
         int safeLimit = Math.min(100, Math.max(1, limit));
         long cursor = cursorUid == null ? Long.MAX_VALUE : cursorUid;
         List<MessageMetadata> rows = messages.listFolderBeforeUid(folder.getId(), ownerId, cursor, PageRequest.of(0, safeLimit));
+        // «Спящие» письма остаются в папке (UID и IMAP-нумерация не меняются),
+        // но до срока в списке не показываются.
+        Set<UUID> hidden = Set.copyOf(snoozed.findActiveMessageIds(ownerId, Instant.now()));
+        if (!hidden.isEmpty()) {
+            rows = rows.stream().filter(m -> !hidden.contains(m.getId())).toList();
+        }
         Set<UUID> withAttachments = attachmentMessageIds(rows);
-        return rows.stream().map(m -> toListItem(m, withAttachments.contains(m.getId()))).toList();
+        return rows.stream()
+                .map(m -> toListItem(m, withAttachments.contains(m.getId())))
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -114,6 +128,47 @@ public class MailApiService {
                 parsed.bodyText(),
                 parsed.bodyHtml(),
                 attachments);
+    }
+
+    /**
+     * «Отложить до…». Срок не может быть в прошлом и дальше года: иначе
+     * опечатка в дате делает письмо невидимым навсегда.
+     */
+    @Transactional
+    public MailDtos.MessageListItem snoozeMessage(UUID ownerId, UUID messageId, Instant wakeAt) {
+        if (wakeAt == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Не указано время возврата письма");
+        }
+        Instant now = Instant.now();
+        if (!wakeAt.isAfter(now)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Время возврата уже прошло");
+        }
+        if (wakeAt.isAfter(now.plus(java.time.Duration.ofDays(366)))) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Отложить можно не дальше чем на год");
+        }
+        MessageMetadata m = loadOwned(ownerId, messageId);
+        snoozed.save(new SnoozedMessage(m.getId(), ownerId, m.getFolder().getId(), wakeAt));
+        return toListItem(m, hasAttachments(m.getId()));
+    }
+
+    /** Вернуть письмо в список раньше срока. Повторный вызов идемпотентен. */
+    @Transactional
+    public MailDtos.MessageListItem wakeMessage(UUID ownerId, UUID messageId) {
+        MessageMetadata m = loadOwned(ownerId, messageId);
+        snoozed.deleteOwned(messageId, ownerId);
+        return toListItem(m, hasAttachments(m.getId()));
+    }
+
+    @Transactional(readOnly = true)
+    public List<MailDtos.SnoozedView> listSnoozed(UUID ownerId) {
+        Instant now = Instant.now();
+        Set<UUID> ids = Set.copyOf(snoozed.findActiveMessageIds(ownerId, now));
+        return ids.isEmpty() ? List.of() : messages.findAllById(ids).stream()
+                .filter(m -> ownerId.equals(m.getOwnerId()))
+                .map(m -> new MailDtos.SnoozedView(m.getId(), m.getSubject(), m.getSender(),
+                        m.getFolder().getId(), snoozed.findByMessageIdAndOwnerId(m.getId(), ownerId)
+                                .map(SnoozedMessage::getWakeAt).orElse(now)))
+                .toList();
     }
 
     @Transactional
