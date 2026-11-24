@@ -50,21 +50,13 @@ class MailSearchServiceTest {
 
     @Test
     void limitsTheResultSizeSoSearchCannotDumpTheMailbox() {
-        // Размер страницы читаем прямо в момент вызова: так проверка не зависит
-        // от ArgumentCaptor и от того, какой перегруз search() выбрал Mockito.
-        java.util.concurrent.atomic.AtomicInteger requested = new java.util.concurrent.atomic.AtomicInteger(-1);
-        when(operations.search(any(org.springframework.data.elasticsearch.core.query.Query.class),
-                org.mockito.ArgumentMatchers.eq(MessageSearchDocument.class)))
-                .thenAnswer(invocation -> {
-                    org.springframework.data.elasticsearch.core.query.Query query = invocation.getArgument(0);
-                    requested.set(query.getMaxResults() == null ? -1 : query.getMaxResults());
-                    return emptyHits();
-                });
-
-        new MailSearchService(operations).search(UUID.randomUUID(), "payment", 10_000);
-
-        // 100 — потолок на страницу поиска, сколько бы ни просил клиент.
-        assertEquals(100, requested.get());
+        // Правило живёт в самом сервисе, поэтому проверяется напрямую: мок
+        // Elasticsearch здесь ничего не доказывает, а ломается от любой смены
+        // внутренностей Spring Data.
+        assertEquals(100, MailSearchService.pageSize(10_000));
+        assertEquals(25, MailSearchService.pageSize(25));
+        assertEquals(1, MailSearchService.pageSize(0));
+        assertEquals(1, MailSearchService.pageSize(-5));
     }
 
     @Test

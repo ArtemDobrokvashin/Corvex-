@@ -86,9 +86,18 @@ public class MailSearchService {
         return new SearchQuery(rest.toString().trim(), from, subject, unread, hasAttachment, before, after);
     }
 
+    /**
+     * Размер страницы поиска: клиент может попросить сколько угодно, но больше
+     * {@link #MAX_LIMIT} за один запрос не уходит. Отдельный метод, потому что
+     * именно это правило и надо проверять тестом — без моков Elasticsearch.
+     */
+    static int pageSize(int requested) {
+        return Math.max(1, Math.min(requested, MAX_LIMIT));
+    }
+
     public List<SearchHit> search(UUID ownerId, String rawQuery, int limit) {
         SearchQuery query = parse(rawQuery);
-        int size = Math.max(1, Math.min(limit, MAX_LIMIT));
+        int size = pageSize(limit);
 
         List<Query> filters = new java.util.ArrayList<>();
         filters.add(Query.of(q -> q.term(t -> t.field("ownerId").value(ownerId.toString()))));
