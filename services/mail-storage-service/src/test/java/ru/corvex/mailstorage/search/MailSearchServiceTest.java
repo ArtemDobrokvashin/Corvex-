@@ -26,7 +26,7 @@ class MailSearchServiceTest {
 
     private final ElasticsearchOperations operations = mock(ElasticsearchOperations.class);
 
-    // TEMP diag off
+    @Test
     void parsesGmailStyleFiltersAndKeepsUnknownTokensAsText() {
         var query = MailSearchService.parse("договор from:anna is:unread has:attachment after:2026-01-01 before:2026-02-01 to:oleg");
 
@@ -39,7 +39,7 @@ class MailSearchServiceTest {
         assertNull(query.subject());
     }
 
-    // TEMP diag off
+    @Test
     void readsFilterWithoutValueAsPlainText() {
         // `from:` без значения — не фильтр: лучше искать это как текст,
         // чем потерять часть запроса.
@@ -48,22 +48,23 @@ class MailSearchServiceTest {
         assertNull(query.from());
     }
 
-    // TEMP diag off
+    @Test
     void limitsTheResultSizeSoSearchCannotDumpTheMailbox() {
+        // Размер страницы читаем прямо в момент вызова: так проверка не зависит
+        // от ArgumentCaptor и от того, какой перегруз search() выбрал Mockito.
+        java.util.concurrent.atomic.AtomicInteger requested = new java.util.concurrent.atomic.AtomicInteger(-1);
         when(operations.search(any(org.springframework.data.elasticsearch.core.query.Query.class),
                 org.mockito.ArgumentMatchers.eq(MessageSearchDocument.class)))
-                .thenReturn(emptyHits());
+                .thenAnswer(invocation -> {
+                    org.springframework.data.elasticsearch.core.query.Query query = invocation.getArgument(0);
+                    requested.set(query.getMaxResults() == null ? -1 : query.getMaxResults());
+                    return emptyHits();
+                });
 
         new MailSearchService(operations).search(UUID.randomUUID(), "payment", 10_000);
 
-        var captor = org.mockito.ArgumentCaptor.forClass(
-                org.springframework.data.elasticsearch.core.query.Query.class);
-        verify(operations).search(captor.capture(),
-                org.mockito.ArgumentMatchers.eq(MessageSearchDocument.class));
-        // 100 — потолок на страницу поиска. Сравнение через Integer: у
-        // assertEquals(int, Integer) два подходящих перегруза (assertEquals(int,int)
-        // и assertEquals(Object,Object)), и компилятор выбирает… ни один из них.
-        assertEquals(Integer.valueOf(100), captor.getValue().getMaxResults());
+        // 100 — потолок на страницу поиска, сколько бы ни просил клиент.
+        assertEquals(100, requested.get());
     }
 
     @Test
@@ -92,7 +93,7 @@ class MailSearchServiceTest {
         assertTrue(results.get(0).snippet().length() <= 181);
     }
 
-    // TEMP diag off
+    @Test
     void snippetCollapsesWhitespaceAndKeepsShortBodiesWhole() {
         assertEquals("Короткое письмо без переносов",
                 MailSearchService.snippet("Короткое\n\n письмо\tбез переносов"));
