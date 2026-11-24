@@ -31,6 +31,7 @@ CREATE TABLE webmail_outbox (
     message_id_header VARCHAR(998) NOT NULL,
     external_account_id UUID REFERENCES external_mail_accounts(id) ON DELETE SET NULL,
     subject         VARCHAR(998) NOT NULL DEFAULT '',
+    size_bytes      BIGINT NOT NULL DEFAULT 0,
     save_to_sent    BOOLEAN NOT NULL DEFAULT TRUE,
     send_at         TIMESTAMPTZ NOT NULL,
     status          VARCHAR(16) NOT NULL DEFAULT 'SCHEDULED'

@@ -27,7 +27,7 @@ import java.util.UUID;
 public class SnoozedMessage {
 
     @Id
-    @Column(name = "message_id")
+    @Column(name = "message_id", nullable = false)
     private UUID messageId;
 
     @Column(name = "owner_id", nullable = false)

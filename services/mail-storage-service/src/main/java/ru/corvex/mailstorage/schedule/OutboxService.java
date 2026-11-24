@@ -56,6 +56,8 @@ public class OutboxService {
     public UUID schedule(UUID ownerId, RawMessageSpool.StoredRawMessage raw, List<String> local,
                          List<String> external, String fromAddress, String messageIdHeader,
                          UUID externalAccountId, String subject, boolean saveToSent, Instant sendAt) {
+        // Размер фиксируется при планировании: пересчитывать его позже — значит
+        // читать файл в момент отправки и зависеть от состояния спула.
         Instant now = Instant.now();
         if (sendAt == null || !sendAt.isAfter(now)) {
             throw new IllegalArgumentException("Время отправки уже прошло");
@@ -67,11 +69,11 @@ public class OutboxService {
         jdbc.update("""
                 insert into webmail_outbox (id, owner_id, raw_ref, local_recipients, external_recipients,
                                             from_address, message_id_header, external_account_id,
-                                            subject, save_to_sent, send_at)
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                            subject, save_to_sent, send_at, size_bytes)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 id, ownerId, raw.rawRef(), join(local), join(external), fromAddress, messageIdHeader,
-                externalAccountId, subject, saveToSent, Timestamp.from(sendAt));
+                externalAccountId, subject, saveToSent, Timestamp.from(sendAt), raw.sizeBytes());
         return id;
     }
 
@@ -125,13 +127,14 @@ public class OutboxService {
     public void dispatch(UUID id) {
         List<ScheduledRow> rows = jdbc.query("""
                 select id, owner_id, raw_ref, local_recipients, external_recipients, from_address,
-                       message_id_header, external_account_id, attempts, subject, save_to_sent
+                       message_id_header, external_account_id, attempts, subject, save_to_sent, size_bytes
                 from webmail_outbox where id = ? and status in ('SCHEDULED','FAILED')
                 """,
                 (rs, row) -> new ScheduledRow(
                         rs.getObject(1, UUID.class), rs.getObject(2, UUID.class), rs.getString(3),
                         split(rs.getString(4)), split(rs.getString(5)), rs.getString(6), rs.getString(7),
-                        rs.getObject(8, UUID.class), rs.getInt(9), rs.getString(10), rs.getBoolean(11)),
+                        rs.getObject(8, UUID.class), rs.getInt(9), rs.getString(10), rs.getBoolean(11),
+                        rs.getLong(12)),
                 id);
         if (rows.isEmpty()) {
             return;
@@ -151,7 +154,7 @@ public class OutboxService {
             for (String recipient : row.local()) {
                 events.publishConfirmed("mail.inbound.received", new MailPipelineEvents.InboundReceivedEvent(
                         row.rawRef(), row.fromAddress(), List.of(recipient), "webmail",
-                        sizeOrZero(row.rawRef()), null, now), row.rawRef());
+                        row.sizeBytes(), null, now), row.rawRef());
             }
             if (!row.external().isEmpty()) {
                 if (row.externalAccountId() != null) {
@@ -189,16 +192,6 @@ public class OutboxService {
                 """, (rs, row) -> rs.getObject(1, UUID.class), Timestamp.from(now), limit);
     }
 
-    private long sizeOrZero(String rawRef) {
-        try {
-            return spool.size(rawRef);
-        } catch (java.io.IOException e) {
-            // Размер нужен только для учёта квоты получателя: само письмо уже
-            // проверено на существование, и отправка важнее точной цифры.
-            return 0;
-        }
-    }
-
     private static String truncate(String value) {
         if (value == null) return null;
         return value.length() <= 1024 ? value : value.substring(0, 1024);
@@ -218,6 +211,7 @@ public class OutboxService {
 
     private record ScheduledRow(UUID id, UUID ownerId, String rawRef, List<String> local,
                                 List<String> external, String fromAddress, String messageIdHeader,
-                                UUID externalAccountId, int attempts, String subject, boolean saveToSent) {
+                                UUID externalAccountId, int attempts, String subject, boolean saveToSent,
+                                long sizeBytes) {
     }
 }
