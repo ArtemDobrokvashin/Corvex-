@@ -57,7 +57,7 @@ class MailSettingsServiceTest {
     @Test
     void saveKeepsTheValuesTheInterfaceSends() {
         MailSettings saved = service.save(ownerId, new MailSettings("compact", false, false, "manual",
-                "unread-first", "Пётр", true, true, false, true));
+                "unread-first", "Пётр", true, true, false, false, true));
 
         verify(jdbc).update(anyString(), any(Object[].class));
         assertEquals("compact", saved.density());
