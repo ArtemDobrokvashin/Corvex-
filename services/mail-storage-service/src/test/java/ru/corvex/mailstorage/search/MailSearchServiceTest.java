@@ -60,8 +60,10 @@ class MailSearchServiceTest {
                 org.springframework.data.elasticsearch.core.query.Query.class);
         verify(operations).search(captor.capture(),
                 org.mockito.ArgumentMatchers.eq(MessageSearchDocument.class));
-        // 100 — потолок на страницу поиска.
-        assertEquals(100, captor.getValue().getMaxResults());
+        // 100 — потолок на страницу поиска. Сравнение через Integer: у
+        // assertEquals(int, Integer) два подходящих перегруза (assertEquals(int,int)
+        // и assertEquals(Object,Object)), и компилятор выбирает… ни один из них.
+        assertEquals(Integer.valueOf(100), captor.getValue().getMaxResults());
     }
 
     @Test
