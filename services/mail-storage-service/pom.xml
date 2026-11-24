@@ -60,27 +60,6 @@
         <plugins>
             <plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin>
             <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId>
-                <configuration><testFailureIgnore>true</testFailureIgnore></configuration></plugin>
-            <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-antrun-plugin</artifactId>
-                <version>3.1.0</version>
-                <executions>
-                    <execution><id>diag-dump</id><phase>verify</phase><goals><goal>run</goal></goals>
-                        <configuration><target>
-                            <echo message="::error::diag marker alive"/>
-                            <concat destfile="${project.build.directory}/diag.txt">
-                                <fileset dir="${project.build.directory}/surefire-reports" includes="*.txt"/>
-                            </concat>
-                            <replaceregexp file="${project.build.directory}/diag.txt" flags="gm">
-                                <regexp pattern="^(.*)$"/>
-                                <substitution expression="::error::\1"/>
-                            </replaceregexp>
-                            <loadfile property="diag" srcFile="${project.build.directory}/diag.txt"/>
-                            <echo message="${diag}"/>
-                        </target></configuration>
-                    </execution>
-                </executions>
-            </plugin>
-            <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <reuseForks>false</reuseForks>
                     <forkCount>1</forkCount>
