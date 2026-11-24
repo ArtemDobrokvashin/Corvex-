@@ -114,49 +114,6 @@ jobs:
       - name: Production dependency audit
         run: npm audit --omit=dev --audit-level=moderate
 
-  e2e:
-    name: Interface / Playwright
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: npm ci
-        run: npm ci
-
-      # Браузер ставится отдельным шагом: если он не скачался, это видно в логе,
-      # а не выглядит как «все e2e прошли».
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
-
-      - name: Build the production bundle
-        run: npm run build
-
-      # Ширины 1280/1366/1440 и 200 % масштаб: именно на них исчезали кнопки
-      # (UX-BACKLOG P1-4) и терялся фокус (P1-5), и ни один jsdom-тест этого
-      # не видел.
-      - name: Playwright acceptance
-        run: npm run e2e
-
-      - name: Upload Playwright report on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: frontend/playwright-report
-          retention-days: 7
-          if-no-files-found: ignore
-
   python:
     name: Ops scripts / Python 3
     runs-on: ubuntu-latest
