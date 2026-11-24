@@ -65,7 +65,7 @@ class OutboxServiceTest {
     }
 
     @Test
-    void cancelRefusesWhenTheMessageIsAlreadySending() {
+    void cancelRefusesWhenTheMessageIsAlreadySending() throws Exception {
         when(jdbc.update(anyString(), any(Object[].class))).thenReturn(0);
 
         assertFalse(service.cancel(ownerId, UUID.randomUUID()));
@@ -83,7 +83,7 @@ class OutboxServiceTest {
     }
 
     @Test
-    void dispatchOfAMissingRowSendsNothing() {
+    void dispatchOfAMissingRowSendsNothing() throws Exception {
         when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<String>>any(), any(Object[].class))).thenReturn(List.of());
 
         service.dispatch(UUID.randomUUID());
