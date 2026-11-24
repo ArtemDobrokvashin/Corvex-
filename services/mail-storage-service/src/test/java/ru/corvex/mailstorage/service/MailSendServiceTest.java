@@ -314,7 +314,7 @@ class MailSendServiceTest {
         verify(events, never()).publishConfirmed(eq("mail.outbound.queued"), any(), anyString());
     }
 
-    // TEMP diag off
+    @Test
     void replyCarriesParentMessageIdAndItsReferences() throws Exception {
         var parent = new ru.corvex.mailstorage.domain.MessageMetadata();
         UUID parentId = UUID.randomUUID();
@@ -335,7 +335,7 @@ class MailSendServiceTest {
                 eq("<parent@company.local>"), eq("<root@company.local>"));
     }
 
-    // TEMP diag off
+    @Test
     void replyToAMessageOfAnotherOwnerIsNotThreaded() throws Exception {
         // Чужое письмо: репозиторий ищет строго по (id, owner) и ничего не находит.
         var req = new MailDtos.SendMessageRequest(
