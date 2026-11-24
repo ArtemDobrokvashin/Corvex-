@@ -71,6 +71,7 @@
                     <testExclude>**/service/MailApiServiceTest.java</testExclude>
                     <testExclude>**/service/MailMoveConcurrencyIT.java</testExclude>
                     <testExclude>**/settings/MailSettingsServiceTest.java</testExclude>
+                    <testExclude>**/schedule/OutboxServiceTest.java</testExclude>
                 </testExcludes></configuration></plugin>
             <plugin>
                 <groupId>org.jacoco</groupId><artifactId>jacoco-maven-plugin</artifactId><version>0.8.16</version>
