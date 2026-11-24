@@ -408,6 +408,13 @@ const EN: Record<string, string> = {
   'Синхронизация запущена: письма начнут появляться в течение минуты.': 'Sync started: messages will appear within a minute.',
   'Используйте пароль приложения провайдера, а не обычный пароль от веб-почты.': 'Use the provider app password, not the regular webmail password.',
   'Обновить': 'Refresh',
+  'В демо-режиме настройки сохраняются только в этом браузере.': 'In demo mode settings are stored in this browser only.',
+  'Добавлять подпись и в письма из Thunderbird и Outlook': 'Also add the signature to mail sent from Thunderbird and Outlook',
+  'Настройки и подпись хранятся на сервере за вашим адресом: они доступны на всех устройствах, где вы входите в Corvex.':
+    'Settings and the signature are stored on the server for your address, so they follow you to every device where you sign in.',
+  'Подпись применяется к письмам, созданным в этом веб-клиенте.': 'The signature applies to messages written in this web client.',
+  'Подпись применяется к письмам, созданным в этом веб-клиенте. Для писем из других клиентов включите отдельную галочку — без неё их текст не меняется.':
+    'The signature applies to messages written in this web client. For messages from other clients, tick the separate box — without it their text is left untouched.',
   'Вернуть сейчас': 'Bring back now',
   'Время отложенной отправки уже прошло. Выберите другое.': 'The scheduled time is already in the past. Pick another one.',
   'Запланировать отправку': 'Schedule sending',

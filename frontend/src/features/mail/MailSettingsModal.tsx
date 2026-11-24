@@ -90,7 +90,9 @@ export default function MailSettingsModal({
         <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
           <div className="scroll-area min-h-0 flex-1 px-5 py-5 sm:px-6">
             <div className="rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] px-3.5 py-3 text-xs leading-relaxed text-[#1E40AF]">
-              {t('Настройки и подпись сохраняются только в этом браузере для текущего пользователя, не синхронизируются и остаются после выхода.')}
+              {demoMode
+                ? t('В демо-режиме настройки сохраняются только в этом браузере.')
+                : t('Настройки и подпись хранятся на сервере за вашим адресом: они доступны на всех устройствах, где вы входите в Corvex.')}
             </div>
 
             <section className="border-b border-line py-6">
@@ -130,7 +132,12 @@ export default function MailSettingsModal({
                 <label className="flex cursor-pointer items-start gap-3 text-[13px] text-ink-soft"><input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#1D63ED]" checked={draft.signatureForNew} onChange={(event) => setDraft({ ...draft, signatureForNew: event.target.checked })} /><span>{t('Добавлять в новые письма')}</span></label>
                 <label className="flex cursor-pointer items-start gap-3 text-[13px] text-ink-soft"><input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#1D63ED]" checked={draft.signatureForReplies} onChange={(event) => setDraft({ ...draft, signatureForReplies: event.target.checked })} /><span>{t('Добавлять в ответы и пересылки')}</span></label>
               </div>
-              <p className="mt-3 text-xs leading-relaxed text-muted">{t('Подпись применяется к письмам, созданным в этом веб-клиенте, для всех доступных адресов отправителя.')}</p>
+              <label className="mt-3 flex cursor-pointer items-start gap-3 text-[13px] text-ink-soft"><input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#1D63ED]" checked={draft.signatureForSubmission} disabled={demoMode} onChange={(event) => setDraft({ ...draft, signatureForSubmission: event.target.checked })} /><span>{t('Добавлять подпись и в письма из Thunderbird и Outlook')}</span></label>
+              <p className="mt-3 text-xs leading-relaxed text-muted">
+                {demoMode
+                  ? t('Подпись применяется к письмам, созданным в этом веб-клиенте.')
+                  : t('Подпись применяется к письмам, созданным в этом веб-клиенте. Для писем из других клиентов включите отдельную галочку — без неё их текст не меняется.')}
+              </p>
             </section>
 
             <section className="border-b border-line py-6">

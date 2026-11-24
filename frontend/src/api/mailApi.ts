@@ -75,6 +75,21 @@ export interface SendMessageRequest {
   sendAt?: string | null;
 }
 
+/** Серверный вид настроек почты (совпадает с полями интерфейса). */
+export interface ServerMailSettings {
+  density: 'comfortable' | 'compact';
+  showPreview: boolean;
+  conversations: boolean;
+  markRead: 'automatic' | 'manual';
+  defaultSort: 'date-desc' | 'date-asc' | 'sender-asc' | 'subject-asc' | 'unread-first';
+  signature: string;
+  signatureForNew: boolean;
+  signatureForReplies: boolean;
+  notifications: boolean;
+  /** Подпись в письмах из Thunderbird/Outlook; по умолчанию выключено. */
+  signatureForSubmission: boolean;
+}
+
 /** Письмо, скрытое из списка до указанного момента. */
 export interface SnoozedMessage {
   messageId: string;
@@ -190,6 +205,13 @@ export const mailApi = {
     apiFetch<SendMessageResult>('/api/v1/mail/messages/send', {
       method: 'POST',
       body: JSON.stringify(request),
+    }),
+  /** Настройки почты на сервере: одни и те же на всех устройствах пользователя. */
+  settings: () => apiFetch<ServerMailSettings>('/api/v1/mail/settings'),
+  saveSettings: (settings: ServerMailSettings) =>
+    apiFetch<ServerMailSettings>('/api/v1/mail/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
     }),
   /** «Отложить до…»: письмо скрыто из списка папки, но не перемещено. */
   snooze: (id: string, wakeAt: string) =>

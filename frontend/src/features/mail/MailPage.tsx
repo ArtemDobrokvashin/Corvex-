@@ -73,7 +73,7 @@ import ContactsModal from './ContactsModal';
 import MigrationWizard from './MigrationWizard';
 import CreateFolderModal from './CreateFolderModal';
 import MailSettingsModal from './MailSettingsModal';
-import { bodyWithSignature, loadMailPreferences, mailPreferencesKey, saveMailPreferences, type MailPreferences } from './mailPreferences';
+import { bodyWithSignature, loadMailPreferences, preferencesFromServer, mailPreferencesKey, preferencesToServer, saveMailPreferences, type MailPreferences } from './mailPreferences';
 import { canAdministerExternalMail, canUseExternalMail } from './externalMailAccess';
 import MailAttachments from './MailAttachments';
 import { usePreview } from '../preview/PreviewProvider';
@@ -341,6 +341,8 @@ export default function MailPage() {
    * письмо до его ухода: без этого «Отправить позже» — ловушка без выхода.
    */
   const [scheduledSends, setScheduledSends] = useState<ScheduledSend[]>([]);
+  /** Синхронизация настроек с сервером: молчать о её сбое нельзя. */
+  const [settingsSynced, setSettingsSynced] = useState<'idle' | 'saved' | 'error'>('idle');
   const { openPreview } = usePreview();
   const [loadedRecipients, setLoadedRecipients] = useState<Record<string, { to: string[]; cc: string[] }>>({});
   // Пока идёт первая загрузка папки, список не должен показывать «пусто».
@@ -1961,6 +1963,28 @@ export default function MailPage() {
     return () => window.removeEventListener('keydown', onKeyDown);
   });
 
+  /**
+   * Настройки с сервера. Сервер — источник истины для подписи и внешнего вида:
+   * иначе на новом устройстве человек видел бы другие настройки, чем на
+   * первом. localStorage остаётся быстрым кэшем на случай недоступности API.
+   */
+  useEffect(() => {
+    if (demoMode || !sessionUser?.id) return undefined;
+    let cancelled = false;
+    mailApi.settings()
+      .then((remote) => {
+        if (cancelled) return;
+        const value = preferencesFromServer(remote);
+        setPreferenceState({ key: mailPreferencesKey(sessionUser.id, false), value });
+        setSortOrder(value.defaultSort);
+        saveMailPreferences(mailPreferencesKey(sessionUser.id, false), value);
+      })
+      .catch(() => {
+        // Сервер недоступен — работаем на локальной копии, ничего не теряя.
+      });
+    return () => { cancelled = true; };
+  }, [demoMode, sessionUser?.id]);
+
   // Отложенные письма подтягиваются один раз на раздел: отменять их нужно и
   // после перезагрузки страницы, иначе очередь становится невидимой.
   useEffect(() => {
@@ -3215,7 +3239,17 @@ export default function MailPage() {
         onSave={(value: MailPreferences) => {
           setPreferenceState({ key: preferenceKey, value });
           setSortOrder(value.defaultSort);
-          return saveMailPreferences(preferenceKey, value);
+          // Сначала локально: закрытие окна не должно ждать сети. Затем на
+          // сервер — чтобы настройки переехали на другое устройство и
+          // подпись попала в письма из Thunderbird. Ошибка сети не отменяет
+          // сохранение: строка ниже честно говорит, что оно пока местное.
+          const savedLocally = saveMailPreferences(preferenceKey, value);
+          if (!demoMode) {
+            void mailApi.saveSettings(preferencesToServer(value))
+              .then(() => setSettingsSynced('saved'))
+              .catch(() => setSettingsSynced('error'));
+          }
+          return savedLocally;
         }}
         onOpenSecurity={onOpenSecurity ? () => { setSettingsOpen(false); onOpenSecurity(); } : undefined}
         onOpenExternal={canAdminExternalAccounts ? () => { setSettingsOpen(false); setExternalOpen(true); } : undefined}

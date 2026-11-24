@@ -39,6 +39,23 @@ public class OutgoingMessageFactory {
      * Значение приходит из БД, но всё равно санируется: заголовок с переводом
      * строки — это инъекция в MIME.
      */
+    /**
+     * Добавляет серверную подпись к обычному тексту письма.
+     *
+     * <p>Нужна письмам, отправленным не из webmail (SMTP submission): там текст
+     * собирает чужой клиент, и подписи из настроек Corvex в нём нет. Правила
+     * простые и предсказуемые: пустая подпись ничего не меняет, уже
+     * присутствующая подпись не дублируется, а разделитель — одна пустая
+     * строка (RFC 3676 предлагает `-- `, но чужие клиенты на него не смотрят).
+     */
+    public static String withSignature(String body, String signature) {
+        if (body == null) body = "";
+        if (signature == null || signature.isBlank()) return body;
+        String trimmed = signature.strip();
+        if (body.contains(trimmed)) return body;
+        return body.isBlank() ? trimmed : body.stripTrailing() + "\n\n" + trimmed;
+    }
+
     public static String sanitizeMessageId(String value) {
         if (value == null) return null;
         String trimmed = value.trim();

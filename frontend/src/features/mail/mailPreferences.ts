@@ -16,6 +16,11 @@ export interface MailPreferences {
   signatureForNew: boolean;
   signatureForReplies: boolean;
   notifications: boolean;
+  /**
+   * Подпись в письмах, отправленных не из webmail (Thunderbird, Outlook).
+   * По умолчанию выключено: дописывать текст в чужое письмо без спроса нельзя.
+   */
+  signatureForSubmission: boolean;
 }
 
 export const DEFAULT_MAIL_PREFERENCES: MailPreferences = {
@@ -28,6 +33,7 @@ export const DEFAULT_MAIL_PREFERENCES: MailPreferences = {
   signatureForNew: true,
   signatureForReplies: false,
   notifications: false,
+  signatureForSubmission: false,
 };
 
 export function mailPreferencesKey(userId: string | null | undefined, demo: boolean): string | null {
@@ -51,6 +57,7 @@ export function normalizeMailPreferences(value: unknown): MailPreferences {
     signatureForNew: typeof v.signatureForNew === 'boolean' ? v.signatureForNew : true,
     signatureForReplies: typeof v.signatureForReplies === 'boolean' ? v.signatureForReplies : false,
     notifications: typeof v.notifications === 'boolean' ? v.notifications : false,
+    signatureForSubmission: typeof v.signatureForSubmission === 'boolean' ? v.signatureForSubmission : false,
   };
 }
 
@@ -84,4 +91,17 @@ export function bodyWithSignature(body: string, preferences: MailPreferences, ki
   if (!include || !signature) return body;
   if (kind === 'forward') return `\n\n${signature}${body}`;
   return body ? `${body}\n\n${signature}` : `\n\n${signature}`;
+}
+
+/**
+ * Настройки из ответа сервера. Неизвестные значения не роняют окно: сервер уже
+ * нормализовал их, но старая версия сервера могла не знать о новом поле.
+ */
+export function preferencesFromServer(value: unknown): MailPreferences {
+  return normalizeMailPreferences(value);
+}
+
+/** Настройки для отправки на сервер. Ровно те поля, что он хранит. */
+export function preferencesToServer(value: MailPreferences): MailPreferences {
+  return normalizeMailPreferences(value);
 }

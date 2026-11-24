@@ -33,7 +33,7 @@ class WebmailDraftControllerTest {
 
     private static DraftPayload payload(String subject, String base64) {
         return new DraftPayload("user@company.local", "", subject, "body", "",
-                null, List.of(new DraftPayload.Attachment("report.pdf", "application/pdf", base64)));
+                null, List.of(new DraftPayload.Attachment("report.pdf", "application/pdf", base64)), null, null);
     }
 
     @Test void ownerComesFromTheTokenAndNeverFromThePath() {
@@ -104,7 +104,7 @@ class WebmailDraftControllerTest {
         // "YWJj" is 3 decoded bytes; "YWJjZA==" is 4.
         DraftPayload body = new DraftPayload("to@x", "", "subject", "body", "", null,
                 List.of(new DraftPayload.Attachment("a.bin", "application/octet-stream", "YWJj"),
-                        new DraftPayload.Attachment("b.bin", "application/octet-stream", "YWJjZA==")));
+                        new DraftPayload.Attachment("b.bin", "application/octet-stream", "YWJjZA==")), null, null);
         when(store.list(owner, 50)).thenReturn(List.of(new WebmailDraftStore.Draft(UUID.randomUUID(), 2, body, Instant.now())));
         var controller = new WebmailDraftController(store);
         var list = controller.list(token(owner.toString()), 50);
