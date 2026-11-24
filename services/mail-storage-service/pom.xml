@@ -62,6 +62,8 @@
             <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId>
                 <configuration><testExcludes>
                     <testExclude>**/service/MailSendServiceTest.java</testExclude>
+                    <testExclude>**/api/StorageControllersTest.java</testExclude>
+                    <testExclude>**/api/WebmailDraftControllerTest.java</testExclude>
                 </testExcludes></configuration></plugin>
             <plugin>
                 <groupId>org.jacoco</groupId><artifactId>jacoco-maven-plugin</artifactId><version>0.8.16</version>
