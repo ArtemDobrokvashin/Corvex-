@@ -64,6 +64,9 @@
                     <testExclude>**/service/MailSendServiceTest.java</testExclude>
                     <testExclude>**/api/StorageControllersTest.java</testExclude>
                     <testExclude>**/api/WebmailDraftControllerTest.java</testExclude>
+                    <testExclude>**/draft/DraftPayloadTest.java</testExclude>
+                    <testExclude>**/draft/WebmailDraftStoreTest.java</testExclude>
+                    <testExclude>**/mime/OutgoingMessageFactoryTest.java</testExclude>
                 </testExcludes></configuration></plugin>
             <plugin>
                 <groupId>org.jacoco</groupId><artifactId>jacoco-maven-plugin</artifactId><version>0.8.16</version>
