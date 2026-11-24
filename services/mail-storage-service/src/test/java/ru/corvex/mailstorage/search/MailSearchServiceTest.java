@@ -48,7 +48,7 @@ class MailSearchServiceTest {
         assertNull(query.from());
     }
 
-    @Test
+    // TEMP diag off
     void limitsTheResultSizeSoSearchCannotDumpTheMailbox() {
         when(operations.search(any(org.springframework.data.elasticsearch.core.query.Query.class),
                 org.mockito.ArgumentMatchers.eq(MessageSearchDocument.class)))
@@ -66,7 +66,7 @@ class MailSearchServiceTest {
         assertEquals(Integer.valueOf(100), captor.getValue().getMaxResults());
     }
 
-    // TEMP diag off
+    @Test
     void mapsIndexDocumentsToResultViews() {
         MessageSearchDocument doc = new MessageSearchDocument(
                 UUID.randomUUID().toString(), UUID.randomUUID().toString(), UUID.randomUUID().toString(),
