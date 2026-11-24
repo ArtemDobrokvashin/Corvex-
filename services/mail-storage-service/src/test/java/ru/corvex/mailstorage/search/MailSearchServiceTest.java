@@ -39,7 +39,7 @@ class MailSearchServiceTest {
         assertNull(query.subject());
     }
 
-    // TEMP diag off
+    @Test
     void readsFilterWithoutValueAsPlainText() {
         // `from:` без значения — не фильтр: лучше искать это как текст,
         // чем потерять часть запроса.
@@ -48,7 +48,7 @@ class MailSearchServiceTest {
         assertNull(query.from());
     }
 
-    // TEMP diag off
+    @Test
     void limitsTheResultSizeSoSearchCannotDumpTheMailbox() {
         when(operations.search(any(org.springframework.data.elasticsearch.core.query.Query.class),
                 org.mockito.ArgumentMatchers.eq(MessageSearchDocument.class)))
@@ -66,7 +66,7 @@ class MailSearchServiceTest {
         assertEquals(Integer.valueOf(100), captor.getValue().getMaxResults());
     }
 
-    // TEMP diag off
+    @Test
     void mapsIndexDocumentsToResultViews() {
         MessageSearchDocument doc = new MessageSearchDocument(
                 UUID.randomUUID().toString(), UUID.randomUUID().toString(), UUID.randomUUID().toString(),
@@ -92,7 +92,7 @@ class MailSearchServiceTest {
         assertTrue(results.get(0).snippet().length() <= 181);
     }
 
-    // TEMP diag off
+    @Test
     void snippetCollapsesWhitespaceAndKeepsShortBodiesWhole() {
         assertEquals("Короткое письмо без переносов",
                 MailSearchService.snippet("Короткое\n\n письмо\tбез переносов"));
