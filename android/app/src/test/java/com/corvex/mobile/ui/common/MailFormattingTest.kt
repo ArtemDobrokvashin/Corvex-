@@ -58,6 +58,18 @@ class MailFormattingTest {
         assertEquals("", MailFormatting.initial("   "))
     }
 
+    /**
+     * Регрессия из первой настоящей сборки: `initial` переводила букву в верхний
+     * регистр, и адрес без имени показывал «A» вместо буквы из адреса. Падал
+     * `initialIsTheFirstLetterOfTheName` на строке про «anna@company.local».
+     */
+    @Test
+    fun initialKeepsTheLetterAsWritten() {
+        assertEquals("a", MailFormatting.initial("anna@company.local"))
+        // «Анна» уже с заглавной — регистр строки ни при чём: функция его не трогает.
+        assertEquals("А", MailFormatting.initial("Анна Петрова"))
+    }
+
     @Test
     fun snippetCollapsesWhitespaceAndFallsBackToSubject() {
         assertEquals("Привет мир", MailFormatting.snippet("Привет\n\n   мир", "Тема"))
