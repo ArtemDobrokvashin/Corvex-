@@ -10,6 +10,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.MarkEmailRead
+import androidx.compose.material.icons.outlined.MarkEmailUnread
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -39,7 +43,13 @@ fun HomeScreen(
 
     val opened = state.openedMail
     if (opened != null) {
-        MailDetailScreen(mail = opened, onBack = viewModel::closeOpenedMail)
+        MailDetailScreen(
+            mail = opened,
+            bodyText = state.openedBody,
+            bodyError = state.openedBodyError,
+            onBack = viewModel::closeOpenedMail,
+            onRefresh = { viewModel.open(opened) }
+        )
         return
     }
 
@@ -61,7 +71,9 @@ fun HomeScreen(
                         )
                         if (state.mails.isNotEmpty()) {
                             Text(
-                                text = MailFormatting.letters(state.mails.size),
+                                // Не «писем в ящике», а «загружено»: клиент тянет
+                                // последние 25, и цифра без пояснения обманывает.
+                                text = "Загружено: ${MailFormatting.letters(state.mails.size)}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = CorvexColors.Faint
                             )
@@ -69,8 +81,21 @@ fun HomeScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.refresh() }, enabled = !state.isLoading) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Обновить")
+                    IconButton(
+                        onClick = { viewModel.refresh() },
+                        enabled = !state.isLoading
+                    ) {
+                        // Пока идёт обновление, иконка крутится: иначе нажатие
+                        // выглядит как «ничего не произошло».
+                        if (state.isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = CorvexColors.Accent
+                            )
+                        } else {
+                            Icon(Icons.Filled.Refresh, contentDescription = "Обновить")
+                        }
                     }
                     Box {
                         IconButton(onClick = { menuOpen = true }) {
@@ -127,6 +152,8 @@ fun HomeScreen(
                 HorizontalDivider(color = CorvexColors.Line)
             }
 
+            // Тонкая полоса только когда показать нечего. При обновлении списка
+            // поверх уже загруженного она не нужна: список не исчезает.
             if (state.isLoading) {
                 LinearProgressIndicator(
                     modifier = Modifier.fillMaxWidth(),
@@ -158,7 +185,12 @@ fun HomeScreen(
 
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(state.mails, key = { it.id }) { mail ->
-                    MailRow(mail = mail, onClick = { viewModel.open(mail) })
+                    MailRow(
+                        mail = mail,
+                        onClick = { viewModel.open(mail) },
+                        onToggleStar = { viewModel.toggleStar(mail) },
+                        onToggleRead = { viewModel.toggleRead(mail) }
+                    )
                     HorizontalDivider(color = CorvexColors.LineSubtle, thickness = 1.dp)
                 }
             }
@@ -171,7 +203,12 @@ fun HomeScreen(
  * время справа. Плотность выше веб-таблицы, потому что палец толще курсора.
  */
 @Composable
-private fun MailRow(mail: MailModel, onClick: () -> Unit) {
+private fun MailRow(
+    mail: MailModel,
+    onClick: () -> Unit,
+    onToggleStar: () -> Unit,
+    onToggleRead: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -217,14 +254,33 @@ private fun MailRow(mail: MailModel, onClick: () -> Unit) {
                 overflow = TextOverflow.Ellipsis
             )
             val preview = MailFormatting.snippet(mail.snippet, null, limit = 90)
-            if (preview.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = preview,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = CorvexColors.Faint,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = preview.ifEmpty { "Без текста" },
+                style = MaterialTheme.typography.bodySmall,
+                color = CorvexColors.Faint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        // Действия строки — как в вебе: звёздочка и прочитано/непрочитано.
+        // Размер кнопок 32 dp: меньше — палец промахивается, больше — съедает тему.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onToggleStar, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    imageVector = if (mail.isStarred) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                    contentDescription = if (mail.isStarred) "Убрать звёздочку" else "Пометить звёздочкой",
+                    tint = if (mail.isStarred) CorvexColors.Warning else CorvexColors.LineControl,
+                    modifier = Modifier.size(17.dp)
+                )
+            }
+            IconButton(onClick = onToggleRead, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    imageVector = if (mail.isRead) Icons.Outlined.MarkEmailUnread else Icons.Outlined.MarkEmailRead,
+                    contentDescription = if (mail.isRead) "Отметить непрочитанным" else "Отметить прочитанным",
+                    tint = CorvexColors.Faint,
+                    modifier = Modifier.size(17.dp)
                 )
             }
         }

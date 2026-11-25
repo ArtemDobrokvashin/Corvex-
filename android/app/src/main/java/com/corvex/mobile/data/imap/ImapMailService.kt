@@ -2,12 +2,16 @@ package com.corvex.mobile.data.imap
 
 import com.corvex.mobile.data.security.TokenStore
 import com.corvex.mobile.domain.mail.FolderModel
+import com.corvex.mobile.domain.mail.Flag
 import com.corvex.mobile.domain.mail.MailModel
 import jakarta.mail.Flags
 import jakarta.mail.Folder
+import jakarta.mail.Message
+import jakarta.mail.Multipart
 import jakarta.mail.Session
 import jakarta.mail.Store
 import jakarta.mail.UIDFolder
+import jakarta.mail.internet.MimeUtility
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Properties
@@ -41,6 +45,155 @@ class ImapMailService @Inject constructor(
                 store.close()
             }
         }
+
+    /**
+     * Декодирует заголовок письма. `MimeUtility.decodeText` разбирает и
+     * `=?utf-8?B?...?=`, и «сырые» заголовки; исключение здесь ожидаемо на
+     * кривых письмах, и лучше показать исходную строку, чем уронить список.
+     */
+    private fun decodeText(value: String?): String? {
+        val raw = value?.trim().orEmpty()
+        if (raw.isEmpty()) return null
+        return runCatching { MimeUtility.decodeText(raw) }.getOrDefault(raw)
+    }
+
+    /**
+     * Превью для строки списка. Раньше `snippet` был пустой строкой, и в списке
+     * не было ничего, кроме темы. Берём до 120 символов текста без загрузки
+     * вложений: `getContent()` на multipart вернёт текст, картинки при этом
+     * не скачиваются целиком.
+     */
+    private fun previewOf(msg: Message, uidFolder: UIDFolder?): String {
+        return runCatching {
+            val text = when (val content = msg.content) {
+                is String -> content
+                is Multipart -> firstTextPart(content)
+                else -> null
+            }
+            val cleaned = text?.replace(Regex("\s+"), " ")?.trim().orEmpty()
+            if (cleaned.length <= 120) cleaned else cleaned.take(120).trimEnd() + "…"
+        }.getOrDefault("")
+    }
+
+    private fun firstTextPart(multipart: Multipart, depth: Int = 0): String? {
+        if (depth > 3) return null
+        for (i in 0 until multipart.count) {
+            val part = runCatching { multipart.getBodyPart(i) }.getOrNull() ?: continue
+            val fileName = runCatching { part.fileName }.getOrNull()
+            if (!fileName.isNullOrBlank()) continue
+            when {
+                part.isMimeType("text/plain") ->
+                    return runCatching { part.content as? String }.getOrNull()
+                part.isMimeType("multipart/*") ->
+                    (runCatching { part.content as? Multipart }.getOrNull())
+                        ?.let { nested -> firstTextPart(nested, depth + 1)?.let { return it } }
+            }
+        }
+        // HTML-письма без text/plain: грубо снимаем теги, чтобы список не был пустым.
+        for (i in 0 until multipart.count) {
+            val part = runCatching { multipart.getBodyPart(i) }.getOrNull() ?: continue
+            if (!part.isMimeType("text/html")) continue
+            val html = runCatching { part.content as? String }.getOrNull() ?: continue
+            return html.replace(Regex("<[^>]+>"), " ")
+        }
+        return null
+    }
+
+    /**
+     * Тело письма целиком — по требованию, при открытии. Список его не тянет:
+     * 25 писем с полными телами и вложениями — это секунды ожидания на каждом
+     * обновлении.
+     */
+    suspend fun fetchBody(folderName: String, uid: Long): Result<MailBody> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val host = tokenStore.imapHost ?: error("IMAP host not configured")
+                val port = tokenStore.imapPort
+                val email = tokenStore.imapEmail ?: error("IMAP email not configured")
+                val password = tokenStore.imapPassword ?: error("IMAP password not configured")
+
+                val session = createSession(host, port)
+                val store = session.getStore("imaps")
+                store.connect(host, port, email, password)
+                try {
+                    val folder = store.getFolder(folderName)
+                    if (!folder.exists()) error("Папка не найдена: $folderName")
+                    folder.open(Folder.READ_ONLY)
+                    try {
+                        val message = (folder as? UIDFolder)?.getMessageByUID(uid)
+                            ?: error("Письмо не найдено")
+                        val content = message.content
+                        val text = when (content) {
+                            is String -> if (message.isMimeType("text/html")) htmlToText(content) else content
+                            is Multipart -> firstTextPart(content)
+                            else -> null
+                        }
+                        MailBody(
+                            subject = decodeText(message.subject) ?: "(Без темы)",
+                            from = decodeText(message.from?.firstOrNull()?.toString()),
+                            bodyText = text?.trim().orEmpty()
+                        )
+                    } finally {
+                        folder.close(false)
+                    }
+                } finally {
+                    store.close()
+                }
+            }
+        }
+
+    /**
+     * Флаг на сервере: SEEN (прочитано) или FLAGGED (звёздочка). До этого
+     * клиент умел только читать: отметка оставалась локальной и пропадала
+     * при следующей загрузке.
+     */
+    suspend fun setFlag(folderName: String, uid: Long, flag: Flag, value: Boolean): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val host = tokenStore.imapHost ?: error("IMAP host not configured")
+                val port = tokenStore.imapPort
+                val email = tokenStore.imapEmail ?: error("IMAP email not configured")
+                val password = tokenStore.imapPassword ?: error("IMAP password not configured")
+
+                val session = createSession(host, port)
+                val store = session.getStore("imaps")
+                store.connect(host, port, email, password)
+                try {
+                    val folder = store.getFolder(folderName)
+                    // READ_WRITE обязателен: в READ_ONLY IMAP не принимает изменения флагов.
+                    folder.open(Folder.READ_WRITE)
+                    try {
+                        val message = (folder as? UIDFolder)?.getMessageByUID(uid)
+                            ?: error("Письмо не найдено")
+                        val jmapFlag = when (flag) {
+                            Flag.SEEN -> Flags.Flag.SEEN
+                            Flag.FLAGGED -> Flags.Flag.FLAGGED
+                        }
+                        message.setFlags(Flags(jmapFlag), value)
+                    } finally {
+                        folder.close(true)
+                    }
+                } finally {
+                    store.close()
+                }
+            }
+        }
+
+    private fun htmlToText(html: String): String =
+        // В регулярках здесь один бэкслэш: в Kotlin-строке `\s` — это литерал
+        // «обратный слэш + s», и регулярка его не поймёт как пробельный символ.
+        html.replace(Regex("(?is)<(script|style)[^>]*>.*?</\1>"), " ")
+            .replace(Regex("(?i)<br\s*/?>"), "\n")
+            .replace(Regex("(?i)</p>"), "\n\n")
+            .replace(Regex("<[^>]+>"), " ")
+            .replace("&nbsp;", " ")
+            .replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace(Regex("[ \t]+"), " ")
+            .replace(Regex("\n{3,}"), "\n\n")
+            .trim()
 
     suspend fun fetchFoldersAndInbox(folderName: String = "INBOX"): Result<Pair<List<FolderModel>, List<MailModel>>> =
         withContext(Dispatchers.IO) {
@@ -80,9 +233,11 @@ class ImapMailService @Inject constructor(
                                         id = "$folderName:$uid",
                                         folderId = folderName,
                                         uid = uid,
-                                        subject = msg.subject ?: "(Без темы)",
+                                        // Тема приходит в MIME-encoded-word («=?utf-8?B?...?=»),
+                                        // и без декодирования вместо темы видна эта абракадабра.
+                                        subject = decodeText(msg.subject) ?: "(Без темы)",
                                         sender = from,
-                                        snippet = "",
+                                        snippet = previewOf(msg, uidFolder),
                                         isRead = msg.flags.contains(Flags.Flag.SEEN),
                                         isStarred = msg.flags.contains(Flags.Flag.FLAGGED),
                                         receivedAt = msg.receivedDate?.time ?: 0L
