@@ -3,13 +3,13 @@ package com.corvex.mobile
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.material3.MaterialTheme
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.corvex.mobile.data.security.TokenStore
 import com.corvex.mobile.ui.auth.LoginScreen
 import com.corvex.mobile.ui.home.HomeScreen
+import com.corvex.mobile.ui.theme.CorvexTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -24,7 +24,7 @@ class MainActivity : ComponentActivity() {
         val startDestination = if (tokenStore.isLoggedIn()) "home" else "login"
 
         setContent {
-            MaterialTheme {
+            CorvexTheme {
                 val navController = rememberNavController()
                 NavHost(navController = navController, startDestination = startDestination) {
                     composable("login") {

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Имя приложения под иконкой на телефоне.  -->
+    <string name="app_name">Corvex</string>
+</resources>

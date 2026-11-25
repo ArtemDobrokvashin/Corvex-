@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Значения совпадают с frontend/tailwind.config.js и с ui/theme/Color.kt. -->
+    <color name="corvex_canvas">#F8FAFC</color>
+    <color name="corvex_chrome">#FFFFFF</color>
+    <color name="corvex_accent">#1D63ED</color>
+    <color name="corvex_ic_launcher_background">#1D63ED</color>
+</resources>
