@@ -137,35 +137,30 @@ git pull --ff-only
 Проверить, что дело было именно в этом, а не в коде: после смены JDK нажмите
 `Sync Project with Gradle Files`. Если синк прошёл — ошибка была настройкой.
 
-### 6.2 Чего в проекте действительно не хватает: wrapper
+### 6.2 Gradle wrapper уже в репозитории
 
-Пока в репозитории нет Gradle wrapper, Studio предложит «Gradle wrapper не найден».
-Один раз создай его в этой же папке:
+`android/gradlew`, `android/gradlew.bat` и `gradle/wrapper/gradle-wrapper.jar`
+лежат в git (Gradle 8.10.2), поэтому создавать wrapper руками больше не нужно.
+Первый клон и первая сборка:
 
 ```powershell
 cd C:\corvex-android
-git switch -c android/gradle-wrapper
+git pull --ff-only
 cd android
-gradle wrapper --gradle-version 8.10.2 --distribution-type bin
-cd ..
-git add android/gradlew android/gradlew.bat android/gradle/wrapper/gradle-wrapper.jar
-git commit -m "android: gradle wrapper 8.10.2"
-git push -u origin android/gradle-wrapper
+.\gradlew.bat testDebugUnitTest assembleDebug
 ```
 
-Дальше — PR в `main`, а не прямой `git push` в `main`.
+`gradlew.bat` скачает Gradle 8.10.2 при первом запуске (нужна сеть) и соберёт
+проект. APK появится в `android\app\build\outputs\apk\debug\`.
 
-Если `gradle` в PowerShell не находится, враппер можно создать из самой Studio:
-`File → Project Structure → Project → Gradle Version` либо действие
-`Gradle → Wrapper` в панели Gradle. Результат тот же: три файла в `android/`.
+Если Android Studio не видит wrapper: `File → Sync Project with Gradle Files`.
+Studio использует `gradlew` из проекта, а не установленный в системе Gradle —
+поэтому отдельно ставить Gradle не требуется, достаточно JDK 17 (§6.1).
 
-Следующая ошибка, которую вы увидите уже после враппера, — `SDK location not found`.
-Её лечит сама Studio: при открытии проекта она создаёт `android/local.properties`
-со строкой `sdk.dir=...`. Файл локальный; `android/local.properties`,
-`android/.gradle/` и `android/**/build/` теперь в `.gitignore`, в коммит они не попадут.
-
-После этого `.\gradlew.bat testDebugUnitTest assembleDebug` и кнопка Run в Studio
-начнут работать, а APK появится в `android\app\build\outputs\apk\debug\`.
+**Чего wrapper не решает.** Он не заменяет JDK и Android SDK: `SDK location not found`
+лечится установкой SDK через SDK Manager и файлом `android/local.properties`
+(Studio создаёт его сама). И он ничего не говорит о том, компилируется ли код:
+сборки в песочнице не было, первая настоящая проверка — команда выше.
 
 ## 7. Чего нельзя делать ни в одной папке
 

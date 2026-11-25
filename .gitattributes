@@ -1,3 +1,10 @@
 # Linux shells execute these files directly or through bind-mounted containers.
 # Force LF even when a Windows checkout uses core.autocrlf=true.
 *.sh text eol=lf
+
+# Gradle wrapper: у скриптов разный «правильный» перевод строки, и оба ломаются
+# от чужого. `gradlew` с CRLF даёт «bad interpreter» на Linux, `gradlew.bat` с LF
+# cmd.exe читает неправильно. Файлы должны лежать в git именно так.
+android/gradlew text eol=lf
+android/gradlew.bat text eol=crlf
+android/gradle/wrapper/gradle-wrapper.jar binary
