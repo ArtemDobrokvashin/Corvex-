@@ -157,10 +157,32 @@ cd android
 Studio использует `gradlew` из проекта, а не установленный в системе Gradle —
 поэтому отдельно ставить Gradle не требуется, достаточно JDK 17 (§6.1).
 
-**Чего wrapper не решает.** Он не заменяет JDK и Android SDK: `SDK location not found`
-лечится установкой SDK через SDK Manager и файлом `android/local.properties`
-(Studio создаёт его сама). И он ничего не говорит о том, компилируется ли код:
-сборки в песочнице не было, первая настоящая проверка — команда выше.
+**Чего wrapper не решает.** Он не заменяет JDK и Android SDK. Если запустить
+`gradlew.bat` из PowerShell до первого открытия проекта в Studio, будет
+`SDK location not found` — потому что `local.properties` создаёт Studio, а не Gradle.
+
+### 6.3 «SDK location not found» — один раз, перед первой сборкой
+
+Проверить, установлен ли вообще Android SDK:
+
+```powershell
+Test-Path "$env:LOCALAPPDATA\Android\Sdk\platforms"
+```
+
+- **`True`** — SDK есть. Создать `android\local.properties` с одной строкой
+  (второй слэш в `C:\\` обязателен: в `.properties` обратный слэш — спецсимвол):
+
+  ```powershell
+  Set-Content C:\corvex-android\android\local.properties "sdk.dir=C:\\Users\\$env:USERNAME\\AppData\\Local\\Android\\Sdk"
+  ```
+
+- **`False`** — SDK не установлен. Открыть `C:\corvex-android\android` в Android Studio
+  и пройти `Tools → SDK Manager`: Android SDK Platform 35 (проект: `compileSdk = 35`),
+  Android SDK Build-Tools, Android SDK Platform-Tools, эмулятор. Studio сама создаст
+  `local.properties` при синхронизации.
+
+`local.properties` — локальный файл, он в `.gitignore`. Коммитить его нельзя: путь
+`C:\Users\...` верен только на одной машине.
 
 ## 7. Чего нельзя делать ни в одной папке
 

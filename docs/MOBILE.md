@@ -88,8 +88,10 @@ API-вызовы и экраны, а не только цвета; делать 
    `gradle/wrapper/gradle-wrapper.jar` (Gradle 8.10.2) лежат в `android/`, переводы строк
    закреплены в `.gitattributes`, наличие и целостность проверяет
    `scripts/tests/test_android_gradle_wrapper.py`. Нужен только **JDK 17** (Embedded JDK
-   Android Studio — ровно 17) и Android SDK. Что wrapper не доказывает: что проект
-   **собирается** — первой команды `./gradlew assembleDebug` ещё не было.
+   Android Studio — ровно 17) и Android SDK. Пока Studio ни разу не открывали, Gradle
+   падает на `SDK location not found` — лечится установкой SDK и файлом
+   `android/local.properties` (см. `docs/WORKSPACES.md` §6.3). Что wrapper не доказывает:
+   что проект **собирается** — первой успешной команды `./gradlew assembleDebug` ещё не было.
 2. **CI для Android.** Ни одного задания. Пока его нет, «зелёный CI» не значит «собирается»,
    и каждый мобильный PR приезжает с сюрпризом: в #219 так и вышло — невыполненный
    `@OptIn(ExperimentalMaterial3Api::class)` на `FilterChip` ронял компиляцию, а три
