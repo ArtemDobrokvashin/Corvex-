@@ -56,9 +56,16 @@ object MailFormatting {
         return raw.substringAfter('<').substringBefore('>').ifBlank { raw }
     }
 
-    /** Первая буква имени для аватара; пустая строка, если имени нет. */
+    /**
+     * Первая буква имени для аватара; пустая строка, если имени нет.
+     *
+     * Регистр не меняется намеренно: адрес без имени («anna@company.local»)
+     * показывает «a», а не «A» — это и есть буква, которую человек видит
+     * в адресе. Аватаров с двумя буквами здесь нет: круг 34 dp, и в списке
+     * из 50 писем «АП» читается хуже, чем «А».
+     */
     fun initial(sender: String?): String =
-        displayName(sender).firstOrNull()?.uppercaseChar()?.toString().orEmpty()
+        displayName(sender).firstOrNull()?.toString().orEmpty()
 
     /** Превью письма в одну строку: переводы строк и повторные пробелы схлопываются. */
     fun snippet(text: String?, subject: String?, limit: Int = 110): String {
