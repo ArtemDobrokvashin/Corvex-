@@ -19,6 +19,17 @@ private val CorvexColorScheme = lightColorScheme(
     onPrimaryContainer = CorvexColors.AccentDark,
     secondary = CorvexColors.InkSoft,
     onSecondary = Color.White,
+    // Без этих двух строк выбранный FilterChip берёт фиолетовую пару Material
+    // по умолчанию: `onSecondary` от неё не помогает. На первой установке
+    // «Сервер Corvex» светился фиолетовым на белом экране — то есть тема не
+    // применялась, хотя весь остальной интерфейс был проектный.
+    secondaryContainer = CorvexColors.AccentSoft,
+    onSecondaryContainer = CorvexColors.AccentDark,
+    // Поле в фокусе и его рамка — тоже акцент, а не фиолетовый tertiary.
+    tertiary = CorvexColors.AccentDark,
+    onTertiary = Color.White,
+    tertiaryContainer = CorvexColors.AccentMuted,
+    onTertiaryContainer = CorvexColors.AccentDark,
     background = CorvexColors.Canvas,
     onBackground = CorvexColors.Ink,
     surface = CorvexColors.Surface,

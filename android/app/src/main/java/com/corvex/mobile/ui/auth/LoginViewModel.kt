@@ -17,10 +17,31 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * Адрес сервера в вид, который понимает OkHttp.
+ *
+ * Раньше поле показывало «https://» и ждало, что человек допишет хост. Практика
+ * первой установки другая: вводят «10.0.2.2:8080» — так адрес пишут везде, — а
+ * запрос падал с «Ошибка сети», потому что строка без схемы не разбирается.
+ * Схема по умолчанию — https; http оставлен для эмулятора и локального стенда,
+ * где TLS нет (`network_security_config.xml` разрешает его только для localhost
+ * и 10.0.2.2).
+ */
+internal fun normalizedServerUrl(raw: String): String {
+    val trimmed = raw.trim().trimEnd('/')
+    if (trimmed.isEmpty()) return ""
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed
+    val hostOnly = trimmed.substringBefore('/')
+    // «/» или «/mail» — не адрес: без хоста запрос снова упадёт в сети.
+    if (hostOnly.isEmpty()) return ""
+    val scheme = if (hostOnly.startsWith("localhost") || hostOnly.startsWith("10.0.2.2")) "http" else "https"
+    return "$scheme://$trimmed"
+}
+
 data class LoginUiState(
     val accountType: AccountType = AccountType.CORVEX,
     val selectedPreset: ImapPreset? = ImapProviderPresets.presets.firstOrNull(),
-    val serverUrl: String = "https://",
+    val serverUrl: String = "",
     val imapHost: String = ImapProviderPresets.presets.first().imapHost,
     val imapPort: String = ImapProviderPresets.presets.first().imapPort.toString(),
     val smtpHost: String = ImapProviderPresets.presets.first().smtpHost,
@@ -113,9 +134,19 @@ class LoginViewModel @Inject constructor(
             return
         }
 
+        val serverUrl = normalizedServerUrl(state.serverUrl)
+        if (serverUrl.isEmpty()) {
+            _uiState.update { it.copy(error = "Укажите адрес сервера: mail.company.ru или http://10.0.2.2:8080") }
+            return
+        }
+        if (state.email.isBlank() || state.password.isBlank()) {
+            _uiState.update { it.copy(error = "Заполните логин и пароль") }
+            return
+        }
+
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
-            when (val res = authRepository.login(state.serverUrl, state.email, state.password)) {
+            when (val res = authRepository.login(serverUrl, state.email, state.password)) {
                 is AuthResult.Authenticated -> _uiState.update { it.copy(isLoading = false, isAuthenticated = true) }
                 is AuthResult.MfaRequired -> _uiState.update { it.copy(isLoading = false, mfaToken = res.mfaTicket) }
                 is AuthResult.Error -> _uiState.update { it.copy(isLoading = false, error = res.message) }
