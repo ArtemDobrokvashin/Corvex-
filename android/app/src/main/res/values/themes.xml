@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Тема окна до первого кадра Compose. Цвет тот же, что canvas в вебе (#F8FAFC):
+      иначе при холодном старте мелькает белый или чёрный экран.
+      Стиль системный (не AppCompat/Material) — лишняя зависимость не нужна.
+    -->
+    <style name="Theme.Corvex" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/corvex_canvas</item>
+        <item name="android:statusBarColor">@color/corvex_chrome</item>
+        <item name="android:navigationBarColor">@color/corvex_chrome</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>
