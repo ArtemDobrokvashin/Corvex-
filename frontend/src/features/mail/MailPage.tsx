@@ -92,7 +92,7 @@ import {
   type MailReadFilter,
   type MailSortOrder,
 } from './mailListControls';
-import { conversationCountLabel, groupIntoConversations } from './conversations';
+import { conversationCountLabel, groupIntoConversations, type Conversation } from './conversations';
 import { formatMailRecipients, replyAllCc } from './mailRecipients';
 import {
   activeMailAfterRefresh,
@@ -205,6 +205,87 @@ export function menuPosition(anchor: DOMRect, width: number, height = 0) {
     ? Math.max(margin, anchor.top - height - 4)
     : below;
   return { left, top };
+}
+
+/**
+ * Строки списка вместе с развёрнутыми цепочками.
+ *
+ * Развёрнутая цепочка рисуется сразу под своей строкой. Раньше она рисовалась
+ * отдельным проходом после всей группы: у группы из одного письма это давало
+ * дубль строки, а счётчик цепочки выглядел как «нажал — ничего не произошло».
+ * Здесь порядок определяется один раз, и дублей быть не может.
+ */
+type ListEntry<M> =
+  | { kind: 'mail'; mail: M; position: number }
+  | { kind: 'thread'; key: string; mails: M[] };
+
+export function buildListEntries<M extends Pick<DemoMail, 'id' | 'subject' | 'from' | 'timestamp' | 'seen'>>(
+  rows: readonly M[],
+  threadByLatestId: ReadonlyMap<string, Conversation<M>>,
+  expanded: ReadonlySet<string>,
+): ListEntry<M>[] {
+  const entries: ListEntry<M>[] = [];
+  rows.forEach((mail, position) => {
+    entries.push({ kind: 'mail', mail, position });
+    const thread = threadByLatestId.get(mail.id);
+    if (thread && thread.mails.length > 1 && expanded.has(thread.key)) {
+      entries.push({ kind: 'thread', key: thread.key, mails: thread.mails });
+    }
+  });
+  return entries;
+}
+
+/**
+ * Развёрнутая цепочка под своей строкой: письма от старых к новым, как читается
+ * переписка. Заголовок с «Свернуть» стоит снизу — там, куда доходит взгляд
+ * после чтения, и он же перекрывает жест «нажал счётчик ещё раз».
+ *
+ * Полоса подчёркивания — намеренная: без неё в развёрнутом виде было не видно,
+ * где кончается цепочка и начинается следующая строка списка.
+ */
+function ThreadGroup({ threadKey, mails, activeId, onOpen, onCollapse, labels }: {
+  threadKey: string;
+  mails: DemoMail[];
+  activeId?: string;
+  onOpen: (mail: DemoMail) => void;
+  onCollapse: (key: string) => void;
+  labels: { expand: string; collapse: string };
+}) {
+  const { t } = useI18n();
+  return (
+    <div key={`thread-${threadKey}`} className="border-b-2 border-b-accent/30 bg-canvas/70 px-4 pb-1 pt-0.5">
+      <ul className="m-0 list-none p-0">
+        {mails.map((threadMail) => (
+          <li key={threadMail.id} className="m-0 p-0">
+            <button
+              type="button"
+              data-thread-mail-id={threadMail.id}
+              onClick={() => onOpen(threadMail)}
+              className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] transition hover:bg-surface ${
+                activeId === threadMail.id ? 'bg-accent-soft text-accent-dark' : 'text-ink-soft'
+              }`}
+            >
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${threadMail.seen ? 'bg-transparent' : 'bg-[#2563EB]'}`} />
+              <span className="w-[132px] shrink-0 truncate text-[11.5px] text-muted">{cleanPersonName(threadMail.from)}</span>
+              <span className={`min-w-0 flex-1 truncate ${threadMail.seen ? '' : 'font-semibold text-ink'}`}>
+                {threadMail.snippet || threadMail.subject}
+              </span>
+              <span className="shrink-0 text-[10.5px] text-faint tabular-nums">{threadMail.date}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        data-thread-collapse={threadKey}
+        onClick={() => onCollapse(threadKey)}
+        title={labels.collapse}
+        className="mt-1 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-muted transition hover:bg-surface hover:text-ink"
+      >
+        <ChevronUp size={12} /> {t('Свернуть')}
+      </button>
+    </div>
+  );
 }
 
 export default function MailPage() {
@@ -557,15 +638,6 @@ export default function MailPage() {
     () => groupMailByDate(listRows, sortOrder),
     [listRows, sortOrder],
   );
-  const toggleThread = (key: string) => {
-    setExpandedThreads((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-  /** Смещение каждой группы в общем списке — для Shift-стрелок. */
   const mailGroupStarts = useMemo(() => {
     let offset = 0;
     return mailGroups.map(({ mails: groupMails }) => {
@@ -574,6 +646,28 @@ export default function MailPage() {
       return start;
     });
   }, [mailGroups]);
+  /** Группы по датам, внутри — строки и развёрнутые цепочки в правильном порядке. */
+  const listEntries = useMemo(
+    () => mailGroups.map(({ group, mails: groupMails }, groupIndex) => ({
+      group,
+      // Смещения считаются по строкам, а не по письмам: развёрнутая цепочка
+      // не должна сдвигать клавиатурную навигацию.
+      entries: buildListEntries(groupMails, threadByLatestId, expandedThreads).map((entry) => (
+        entry.kind === 'mail'
+          ? { ...entry, position: entry.position + (mailGroupStarts[groupIndex] ?? 0) }
+          : entry
+      )),
+    })),
+    [mailGroups, threadByLatestId, expandedThreads, mailGroupStarts],
+  );
+  const toggleThread = (key: string) => {
+    setExpandedThreads((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
   const dateGroupLabel = (group: MailDateGroup) => ({
     today: 'Сегодня',
     yesterday: 'Вчера',
@@ -2597,7 +2691,9 @@ export default function MailPage() {
           tabIndex={-1}
           className="mail-list-scroll scroll-area min-h-0 flex-1 outline-none"
         >
-          <div role="listbox" aria-label={t('Список писем')} aria-activedescendant={active ? `mail-row-${active.id}` : undefined}>
+          {/* pb-16: последняя строка не должна упираться в край панели — под
+              развёрнутой цепочкой нужен воздух, иначе кажется, что список обрезан. */}
+          <div role="listbox" aria-label={t('Список писем')} className="pb-16" aria-activedescendant={active ? `mail-row-${active.id}` : undefined}>
           {loadError && (
             <div className="m-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2679,7 +2775,7 @@ export default function MailPage() {
             </div>
           )}
 
-          {mailGroups.map(({ group, mails: groupMails }, groupIndex) => (
+          {listEntries.map(({ group, entries }) => (
             <div key={group} role="group" aria-label={t(dateGroupLabel(group))}>
               {/* Заголовок группы: без него список из 50 писем — сплошная стена дат. */}
               {sortOrder === 'date-desc' && (
@@ -2687,10 +2783,26 @@ export default function MailPage() {
                   {t(dateGroupLabel(group))}
                 </div>
               )}
-              {groupMails.map((m, mailIndex) => {
+              {entries.map((entry) => {
+                if (entry.kind === 'thread') {
+                  return (
+                    <ThreadGroup
+                      key={`thread-${entry.key}`}
+                      threadKey={entry.key}
+                      mails={entry.mails}
+                      activeId={active?.id}
+                      onOpen={open}
+                      onCollapse={toggleThread}
+                      labels={{
+                        expand: t('Развернуть цепочку'),
+                        collapse: t('Свернуть цепочку'),
+                      }}
+                    />
+                  );
+                }
+                const m = entry.mail;
+                const visibleIndex = entry.position;
                 const selected = active?.id === m.id;
-                // Тот же порядок, что и в видимом списке: Shift-стрелки идут по visible.
-                const visibleIndex = (mailGroupStarts[groupIndex] ?? 0) + mailIndex;
                 const rowThread = threadByLatestId.get(m.id);
                 const threadExpanded = rowThread ? expandedThreads.has(rowThread.key) : false;
                 return (
@@ -2741,7 +2853,11 @@ export default function MailPage() {
           {...swipeHandlers(m)}
           className={`group relative flex cursor-pointer border-b border-line-subtle px-4 transition duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 ${
             preferences.density === 'compact' ? 'gap-2 py-1.5' : 'gap-3 py-3'
-          } ${selected ? 'bg-accent-soft' : 'bg-surface hover:bg-canvas'}`}
+          } ${
+            // Выделенная строка не перекрашивается при наведении: раньше hover
+            // перебивал accent-soft, и развёрнутая цепочка выглядела оторванной.
+            selected ? 'bg-accent-soft' : 'bg-surface hover:bg-canvas'
+          }`}
         >
           {selected && <span className="absolute inset-y-0 left-0 w-[3px] bg-accent" />}
           {movingMailIds.has(m.id) && <span className="sr-only" role="status">{t('Перемещение письма…')}</span>}
@@ -2849,36 +2965,6 @@ export default function MailPage() {
       
                 );
               })}
-              {/* Развёрнутая цепочка: письма старые сверху, чтобы читались как
-                  переписка. Строка со свёрнутой цепочкой остаётся на месте, так
-                  что выбор письма не сдвигает список. */}
-              {conversationsEnabled && mailGroups[groupIndex].mails
-                .map((rowMail) => threadByLatestId.get(rowMail.id))
-                .filter((thread) => thread !== undefined
-                  && thread.mails.length > 1 && expandedThreads.has(thread.key))
-                .map((thread) => thread!)
-                .map((thread) => (
-                  <div key={`thread-${thread.key}`} className="border-b border-line-subtle bg-canvas/60 px-4 py-1">
-                    {thread.mails.map((threadMail) => (
-                      <button
-                        key={threadMail.id}
-                        type="button"
-                        data-thread-mail-id={threadMail.id}
-                        onClick={() => open(threadMail)}
-                        className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] transition hover:bg-surface ${
-                          active?.id === threadMail.id ? 'bg-accent-soft text-accent-dark' : 'text-ink-soft'
-                        }`}
-                      >
-                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${threadMail.seen ? 'bg-transparent' : 'bg-[#2563EB]'}`} />
-                        <span className="w-[132px] shrink-0 truncate text-[11.5px] text-muted">{cleanPersonName(threadMail.from)}</span>
-                        <span className={`min-w-0 flex-1 truncate ${threadMail.seen ? '' : 'font-semibold text-ink'}`}>
-                          {threadMail.snippet || threadMail.subject}
-                        </span>
-                        <span className="shrink-0 text-[10.5px] text-faint tabular-nums">{threadMail.date}</span>
-                      </button>
-                    ))}
-                  </div>
-                ))}
             </div>
           ))}
           </div>

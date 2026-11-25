@@ -443,6 +443,7 @@ const EN: Record<string, string> = {
     'Replies to one message are collapsed into a single row. Grouping uses the subject and the sender.',
   'Развернуть цепочку': 'Expand conversation',
   'Свернуть цепочку': 'Collapse conversation',
+  'Свернуть': 'Collapse',
   'Поиск по письмам временно недоступен.': 'Mail search is temporarily unavailable.',
   'Не удалось выполнить поиск по письмам.': 'Could not search your mail.',
   'Папок найдено': 'Folders found',
