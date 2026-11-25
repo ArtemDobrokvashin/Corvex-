@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
@@ -23,12 +24,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.corvex.mobile.domain.mail.MailModel
 import com.corvex.mobile.ui.common.MailFormatting
+import com.corvex.mobile.ui.mail.ComposeScreen
 import com.corvex.mobile.ui.mail.MailDetailScreen
 import com.corvex.mobile.ui.theme.CorvexColors
 
@@ -41,6 +44,17 @@ fun HomeScreen(
     val state by viewModel.uiState.collectAsState()
     var menuOpen by remember { mutableStateOf(false) }
 
+    // Экран написания перекрывает всё: черновик не должен теряться за списком.
+    state.compose?.let { draft ->
+        ComposeScreen(
+            state = draft,
+            onChange = viewModel::updateCompose,
+            onSend = viewModel::sendCompose,
+            onClose = viewModel::closeCompose
+        )
+        return
+    }
+
     val opened = state.openedMail
     if (opened != null) {
         MailDetailScreen(
@@ -48,7 +62,12 @@ fun HomeScreen(
             bodyText = state.openedBody,
             bodyError = state.openedBodyError,
             onBack = viewModel::closeOpenedMail,
-            onRefresh = { viewModel.open(opened) }
+            onRefresh = { viewModel.open(opened) },
+            onReply = { viewModel.composeReply(opened, all = false) },
+            onReplyAll = { viewModel.composeReply(opened, all = true) },
+            onForward = { viewModel.composeForward(opened) },
+            onArchive = { viewModel.archive(opened) },
+            onDelete = { viewModel.delete(opened) }
         )
         return
     }
@@ -121,6 +140,15 @@ fun HomeScreen(
                 }
             )
         }
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = viewModel::composeNew,
+                containerColor = CorvexColors.Accent,
+                contentColor = Color.White
+            ) {
+                Icon(Icons.Filled.Edit, contentDescription = "Написать письмо")
+            }
+        }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -181,6 +209,25 @@ fun HomeScreen(
 
             if (state.mails.isEmpty() && !state.isLoading && state.error == null) {
                 EmptyState()
+            }
+
+            if (state.mails.isEmpty() && !state.isLoading) {
+                // Пусто — но кнопка «Написать» должна быть на месте: без неё
+                // из пустого ящика некуда деться.
+                Button(
+                    onClick = viewModel::composeNew,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = CorvexColors.Accent,
+                        contentColor = Color.White
+                    )
+                ) {
+                    Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.padding(horizontal = 3.dp))
+                    Text("Написать письмо")
+                }
             }
 
             LazyColumn(modifier = Modifier.fillMaxSize()) {

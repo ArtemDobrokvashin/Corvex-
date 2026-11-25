@@ -131,7 +131,8 @@ class ImapMailService @Inject constructor(
                         MailBody(
                             subject = decodeText(message.subject) ?: "(Без темы)",
                             from = decodeText(message.from?.firstOrNull()?.toString()),
-                            bodyText = text?.trim().orEmpty()
+                            bodyText = text?.trim().orEmpty(),
+                            messageId = runCatching { message.getHeader("Message-ID")?.firstOrNull() }.getOrNull()
                         )
                     } finally {
                         folder.close(false)
@@ -173,6 +174,52 @@ class ImapMailService @Inject constructor(
                     } finally {
                         folder.close(true)
                     }
+                } finally {
+                    store.close()
+                }
+            }
+        }
+
+    /**
+     * Перенести письмо в другую папку (архив, спам, корзина).
+     *
+     * IMAP не умеет «переместить» одним действием: копируем в целевую папку и
+     * ставим `DELETED` в исходной. Целевую папку ищем по имени: `Archive`
+     * у mail.ru, `[Gmail]/All Mail` у Gmail — точного имени заранее не знает
+     * никто, поэтому берём первое совпадение из списка кандидатов.
+     */
+    suspend fun moveTo(folderName: String, uid: Long, targetCandidates: List<String>): Result<String> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val host = tokenStore.imapHost ?: error("IMAP host not configured")
+                val port = tokenStore.imapPort
+                val email = tokenStore.imapEmail ?: error("IMAP email not configured")
+                val password = tokenStore.imapPassword ?: error("IMAP password not configured")
+
+                val session = createSession(host, port)
+                val store = session.getStore("imaps")
+                store.connect(host, port, email, password)
+                try {
+                    val targetName = targetCandidates.firstOrNull { name ->
+                        runCatching { store.getFolder(name).exists() }.getOrDefault(false)
+                    } ?: error("Папка не найдена: ${targetCandidates.joinToString()}")
+
+                    val source = store.getFolder(folderName)
+                    source.open(Folder.READ_WRITE)
+                    val target = store.getFolder(targetName)
+                    try {
+                        val message = (source as? UIDFolder)?.getMessageByUID(uid)
+                            ?: error("Письмо не найдено")
+                        // copyMessages копирует, но не удаляет: без второго шага
+                        // письмо останется в двух папках сразу.
+                        if (!target.exists()) target.create(Folder.HOLDS_MESSAGES)
+                        source.copyMessages(arrayOf(message), target)
+                        message.setFlag(Flags.Flag.DELETED, true)
+                    } finally {
+                        // expunge=true — иначе DELETED только помечен и письмо остаётся.
+                        source.close(true)
+                    }
+                    targetName
                 } finally {
                     store.close()
                 }

@@ -10,5 +10,7 @@ package com.corvex.mobile.data.imap
 data class MailBody(
     val subject: String,
     val from: String?,
-    val bodyText: String
+    val bodyText: String,
+    /** `Message-ID` — нужен для `In-Reply-To`/`References` в ответе и пересылке. */
+    val messageId: String? = null
 )
