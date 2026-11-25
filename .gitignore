@@ -30,3 +30,11 @@ LOCAL_SESSION_HISTORY.md
 # Playwright: отчёты и скриншоты падений генерируются на прогоне
 frontend/playwright-report/
 frontend/test-results/
+
+# Android: локальные файлы машины и результаты сборки — не часть репозитория.
+android/local.properties
+android/.gradle/
+android/.kotlin/
+android/build/
+android/app/build/
+*.apk
