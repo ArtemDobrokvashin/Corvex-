@@ -126,6 +126,23 @@ describe('mail folders', () => {
 });
 
 describe('mail settings', () => {
+  it('открывает справку по горячим клавишам из настроек', async () => {
+    demo();
+    await mount('/mail?settings=1');
+    const settings = container.querySelector('[aria-labelledby="mail-settings-title"]')!;
+    // Раньше справка висела пунктом в меню «…» рядом с «В спам»; место для неё — настройки.
+    const openShortcuts = buttonWithText('Show keyboard shortcuts', settings);
+    expect(openShortcuts).toBeTruthy();
+
+    await click(openShortcuts);
+
+    // Окно настроек закрывается, справка открывается: два модальных окна
+    // одновременно перекрывали бы друг друга.
+    expect(container.querySelector('[aria-labelledby="mail-settings-title"]')).toBeNull();
+    expect(container.querySelector('#shortcuts-title')).toBeTruthy();
+  });
+
+
   it('saves browser preferences, updates the list and inserts a signature into new mail and replies', async () => {
     demo();
     await mount('/mail?settings=1');

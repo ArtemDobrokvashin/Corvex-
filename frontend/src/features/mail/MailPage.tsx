@@ -30,12 +30,14 @@ import {
   Search,
   Send,
   Settings2,
+  ShieldCheck,
   MailPlus,
   SlidersHorizontal,
   Users,
   Sparkles,
   Star,
   Trash2,
+  UserCheck,
   UserPlus,
   X,
 } from 'lucide-react';
@@ -420,16 +422,12 @@ export default function MailPage() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkNotice, setBulkNotice] = useState('');
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
+  // «В контакты» становится «В контактах»: без смены вида кнопка молчит,
+  // и человек нажимает её второй раз, не понимая, сработало ли. Храним адреса,
+  // а не id письма: перешли к другому письму того же отправителя — состояние
+  // должно остаться верным.
+  const [addedContactEmails, setAddedContactEmails] = useState<string[]>([]);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
-  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
-  const [moreMenuAnchor, setMoreMenuAnchor] = useState<DOMRect | null>(null);
-  // Меню живёт в портале: закрываем его вместе с якорем, иначе якорь остаётся
-  // от предыдущего открытия и следующее меню появится не там.
-  const closeMoreMenu = useCallback(() => {
-    setMoreMenuOpen(false);
-    setMoreMenuAnchor(null);
-  }, []);
-  const morePanelRef = useRef<HTMLDivElement>(null);
   const bulkBusyRef = useRef(false);
   // Внешние изображения в письме не загружаются, пока пользователь не разрешил.
   const [showRemoteImages, setShowRemoteImages] = useState(false);
@@ -683,30 +681,21 @@ export default function MailPage() {
   });
   const sortActive = sortOrder !== 'date-desc';
 
-  // Закрытие по клику мимо. Раньше обработчики висели только при открытой панели
-  // списка (`openListPanel`) — из-за этого меню «Ещё действия» не закрывалось
-  // ни по клику мимо, ни по Escape. Теперь подписка зависит от того, что открыто.
+  // Закрытие панелей «Сортировка»/«Фильтры» по клику мимо и по Escape.
+  // Обе живут в порталах, поэтому `contains` по ref-обёрткам их не видит —
+  // проверяем ещё и по роли диалога.
   useEffect(() => {
-    if (!openListPanel && !moreMenuOpen) return undefined;
+    if (!openListPanel) return undefined;
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
-      // Панели «Сортировка» и «Фильтры» тоже в порталах: клик внутри них
-      // не должен закрывать панель (`contains` по ref-обёрткам его не видит).
       const insideSort = (sortPanelRef.current?.contains(target) ?? false)
         || (target instanceof Element && target.closest('[role="dialog"][aria-label="Сортировка"]') !== null);
       const insideFilters = (filtersPanelRef.current?.contains(target) ?? false)
         || (target instanceof Element && target.closest('[role="dialog"][aria-label="Фильтры"]') !== null);
-      const insideMoreButton = morePanelRef.current?.contains(target) ?? false;
-      // Меню живёт в портале, поэтому проверяем его отдельно, а не через contains().
-      const insideMoreMenu = target instanceof Element && target.closest('[role="menu"]') !== null;
-
-      if (openListPanel && !insideSort && !insideFilters) setOpenListPanel(null);
-      if (moreMenuOpen && !insideMoreButton && !insideMoreMenu) closeMoreMenu();
+      if (!insideSort && !insideFilters) setOpenListPanel(null);
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      if (openListPanel) setOpenListPanel(null);
-      if (moreMenuOpen) closeMoreMenu();
+      if (event.key === 'Escape') setOpenListPanel(null);
     };
     window.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('keydown', onKeyDown);
@@ -714,26 +703,7 @@ export default function MailPage() {
       window.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [openListPanel, moreMenuOpen, closeMoreMenu]);
-
-  // Меню «Ещё действия» живёт в портале: при прокрутке тулбара или изменении
-  // размера окна якорь уезжает, и меню осталось бы висеть на месте.
-  useEffect(() => {
-    if (!moreMenuOpen) return undefined;
-    const close = closeMoreMenu;
-    const anchorOf = morePanelRef.current?.getBoundingClientRect();
-    const onScroll = () => {
-      const button = morePanelRef.current?.querySelector('button')?.getBoundingClientRect();
-      if (!button || !anchorOf) return;
-      setMoreMenuAnchor(button);
-    };
-    window.addEventListener('resize', close);
-    window.addEventListener('scroll', onScroll, true);
-    return () => {
-      window.removeEventListener('resize', close);
-      window.removeEventListener('scroll', onScroll, true);
-    };
-  }, [moreMenuOpen]);
+  }, [openListPanel]);
 
   const resetMailFilters = () => {
     setFilter('all');
@@ -847,6 +817,15 @@ export default function MailPage() {
   useEffect(() => {
     setShowPlainText(false);
   }, [active?.id]);
+
+  // Адрес, который сейчас открыт: «В контакты» относится именно к нему.
+  const activeSenderEmail = active ? emailFromHeader(active.from) : '';
+  // Уже в книге — или добавлен в этой сессии. Оба случая дают «В контактах»:
+  // иначе человек, добавивший адрес вчера, снова видит кнопку «В контакты».
+  const senderInContacts = activeSenderEmail !== '' && (
+    addedContactEmails.some((item) => item.toLowerCase() === activeSenderEmail.toLowerCase())
+    || contactEmails.some((item) => item.toLowerCase() === activeSenderEmail.toLowerCase())
+  );
 
   // Calendar events linked to active email
   const linkedCalendarEvents = useMemo(
@@ -977,12 +956,14 @@ export default function MailPage() {
     }
     if (demoMode) {
       setContactEmails((prev) => [...prev, email]);
+      setAddedContactEmails((prev) => [...prev, email]);
       notify({ message: t('Адрес добавлен в контакты: {email}', { email }), tone: 'success' });
       return;
     }
     try {
       await contactsApi.create({ displayName: cleanPersonName(active.from) || email, email });
       setContactEmails((prev) => [...prev, email]);
+      setAddedContactEmails((prev) => [...prev, email]);
       notify({ message: t('Адрес добавлен в контакты: {email}', { email }), tone: 'success' });
     } catch (error) {
       notify({ message: `${t('Не удалось добавить адрес в контакты.')} ${errorMessage(error)}`, tone: 'error' });
@@ -3108,71 +3089,26 @@ export default function MailPage() {
                 disabled={movingMailIds.has(active.id)}
                 onClick={() => toggleSeen(active)}
               />
-              {/* «Не спам» и остальные редкие действия — в меню «…»: до 1536 px
-                  кнопки «В спам», «Ответить всем» и «Переслать» просто исчезали. */}
-              <div ref={morePanelRef} className="relative">
+              {/* «В спам» — отдельной кнопкой, без меню «…»: в меню из-за неё
+                  пряталось действие, которое ищут в тулбаре. «Горячие клавиши»
+                  переехали в «Настройки почты» — там их и ищут. */}
+              {folder === 'SPAM' ? (
                 <IconButton
-                  icon={Ellipsis}
-                  label={t('Ещё действия')}
-                  size={17}
-                  aria-expanded={moreMenuOpen}
-                  aria-haspopup="menu"
-                  onClick={(event) => {
-                    // Прямоугольник кнопки запоминаем до открытия: меню живёт в портале
-                    // и само по себе не знает, где его якорь.
-                    setMoreMenuAnchor(event.currentTarget.getBoundingClientRect());
-                    setMoreMenuOpen((open) => !open);
-                  }}
+                  icon={ShieldCheck}
+                  label={t('Не спам')}
+                  size={16.5}
+                  disabled={movingMailIds.has(active.id)}
+                  onClick={markNotSpam}
                 />
-                {moreMenuOpen && moreMenuAnchor && createPortal(
-                  <div
-                    role="menu"
-                    aria-label={t('Ещё действия')}
-                    style={menuPosition(moreMenuAnchor, 240)}
-                    className="fixed z-[60] w-60 rounded-xl border border-line-control bg-surface p-1.5 shadow-pop"
-                  >
-                    <button
-                      type="button"
-                      role="menuitem"
-                      disabled={movingMailIds.has(active.id)}
-                      onClick={() => { closeMoreMenu(); moveActive('SPAM'); }}
-                      className="nav-row w-full disabled:opacity-50"
-                    >
-                      <OctagonAlert size={15} /> <span className="min-w-0 flex-1 truncate text-left">{t('В спам')}</span>
-                    </button>
-                    {folder === 'SPAM' && (
-                      <button
-                        type="button"
-                        role="menuitem"
-                        disabled={movingMailIds.has(active.id)}
-                        onClick={() => { closeMoreMenu(); markNotSpam(); }}
-                        className="nav-row w-full disabled:opacity-50"
-                      >
-                        <Inbox size={15} /> <span className="min-w-0 flex-1 truncate text-left">{t('Не спам')}</span>
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      role="menuitem"
-                      disabled={bulkBusy}
-                      onClick={() => { closeMoreMenu(); void forwardMessages([active.id]); }}
-                      className="nav-row w-full disabled:opacity-50"
-                    >
-                      <Forward size={15} /> <span className="min-w-0 flex-1 truncate text-left">{t('Переслать')}</span>
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => { closeMoreMenu(); setShortcutsHelpOpen(true); }}
-                      className="nav-row w-full"
-                    >
-                      <span className="w-4 shrink-0 text-center text-[11px] font-semibold text-muted">?</span>
-                      <span className="min-w-0 flex-1 truncate text-left">{t('Горячие клавиши')}</span>
-                    </button>
-                  </div>,
-                  document.body
-                )}
-              </div>
+              ) : (
+                <IconButton
+                  icon={OctagonAlert}
+                  label={t('В спам')}
+                  size={16.5}
+                  disabled={movingMailIds.has(active.id)}
+                  onClick={() => moveActive('SPAM')}
+                />
+              )}
 
               <span className="mx-1 h-4 w-px bg-line" aria-hidden="true" />
 
@@ -3289,14 +3225,27 @@ export default function MailPage() {
                   >
                     <Clock size={12} /> <span className="hidden sm:inline">{t('Отложить')}</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => void addSenderToContacts()}
-                    title={t('Добавить отправителя в контакты')}
-                    className="inline-flex items-center gap-1 rounded-md border border-line-control px-1.5 py-1 text-[11px] font-medium text-muted transition hover:bg-canvas hover:text-ink"
-                  >
-                    <UserPlus size={12} /> <span className="hidden sm:inline">{t('В контакты')}</span>
-                  </button>
+                  {/* После добавления кнопка меняет вид и перестаёт быть нажимаемой:
+                      иначе казалось, что нажатие не сработало. */}
+                  {senderInContacts ? (
+                    <span
+                      data-contact-state="saved"
+                      title={t('Отправитель уже в адресной книге')}
+                      className="inline-flex items-center gap-1 rounded-md border border-accent/30 bg-accent-soft px-1.5 py-1 text-[11px] font-medium text-accent-dark"
+                    >
+                      <UserCheck size={12} /> <span className="hidden sm:inline">{t('В контактах')}</span>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      data-contact-state="idle"
+                      onClick={() => void addSenderToContacts()}
+                      title={t('Добавить отправителя в контакты')}
+                      className="inline-flex items-center gap-1 rounded-md border border-line-control px-1.5 py-1 text-[11px] font-medium text-muted transition hover:bg-canvas hover:text-ink"
+                    >
+                      <UserPlus size={12} /> <span className="hidden sm:inline">{t('В контакты')}</span>
+                    </button>
+                  )}
                   <time className="text-xs text-faint tabular-nums">{active.date}</time>
                 </div>
               </div>
@@ -3436,6 +3385,7 @@ export default function MailPage() {
         }}
         onOpenSecurity={onOpenSecurity ? () => { setSettingsOpen(false); onOpenSecurity(); } : undefined}
         onOpenExternal={canAdminExternalAccounts ? () => { setSettingsOpen(false); setExternalOpen(true); } : undefined}
+        onOpenShortcuts={() => { setSettingsOpen(false); setShortcutsHelpOpen(true); }}
       />}
 
       {externalOpen && canAdminExternalAccounts && (
