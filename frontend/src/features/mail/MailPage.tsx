@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Archive,
@@ -175,6 +176,37 @@ function MoveToFolder({ folders, current, onMove, disabled = false }: { folders:
   );
 }
 
+/**
+ * Положение выпадающего меню в координатах окна.
+ *
+ * Меню рендерится в портале (`document.body`), а не внутри тулбара: тулбар
+ * прокручивается по горизонтали (`overflow-x-auto`), и `absolute`-меню внутри
+ * него обрезалось по правому краю — вместо списка действий появлялась полоса
+ * прокрутки. Портал не зависит от предков, поэтому позиция считается от
+ * прямоугольника кнопки и зажимается в видимую область.
+ */
+/**
+ * Меню панели фильтров: то же самое. Панель открывалась в `absolute` внутри
+ * шапки с `overflow`-предками и обрезалась — вплоть до невидимости на узкой
+ * колонке списка.
+ */
+export function panelPosition(anchor: DOMRect, width: number, height: number) {
+  return menuPosition(anchor, width, height);
+}
+
+export function menuPosition(anchor: DOMRect, width: number, height = 0) {
+  const margin = 8;
+  const viewportWidth = typeof window === 'undefined' ? width + 2 * margin : window.innerWidth;
+  const viewportHeight = typeof window === 'undefined' ? height + 2 * margin : window.innerHeight;
+  const left = Math.max(margin, Math.min(anchor.right - width, viewportWidth - width - margin));
+  const below = anchor.bottom + 4;
+  // Если под кнопкой места меньше, чем нужно меню, открываем его вверх.
+  const top = height > 0 && below + height > viewportHeight - margin
+    ? Math.max(margin, anchor.top - height - 4)
+    : below;
+  return { left, top };
+}
+
 export default function MailPage() {
   const { locale, t } = useI18n();
   const filterId = useId();
@@ -223,6 +255,7 @@ export default function MailPage() {
   const [onlyAttachments, setOnlyAttachments] = useState(false);
   const [sortOrder, setSortOrder] = useState<MailSortOrder>(() => preferences.defaultSort);
   const [openListPanel, setOpenListPanel] = useState<'sort' | 'filters' | null>(null);
+  const [listPanelAnchor, setListPanelAnchor] = useState<DOMRect | null>(null);
   const [mails, setMails] = useState<DemoMail[]>(() =>
     demoMode
       ? demoMails(locale).map((mail) => ({ ...mail, seen: demoMailIsSeen(mail, demoReadMailIds, demoUnreadMailIds) }))
@@ -308,6 +341,13 @@ export default function MailPage() {
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [moreMenuAnchor, setMoreMenuAnchor] = useState<DOMRect | null>(null);
+  // Меню живёт в портале: закрываем его вместе с якорем, иначе якорь остаётся
+  // от предыдущего открытия и следующее меню появится не там.
+  const closeMoreMenu = useCallback(() => {
+    setMoreMenuOpen(false);
+    setMoreMenuAnchor(null);
+  }, []);
   const morePanelRef = useRef<HTMLDivElement>(null);
   const bulkBusyRef = useRef(false);
   // Внешние изображения в письме не загружаются, пока пользователь не разрешил.
@@ -549,17 +589,30 @@ export default function MailPage() {
   });
   const sortActive = sortOrder !== 'date-desc';
 
+  // Закрытие по клику мимо. Раньше обработчики висели только при открытой панели
+  // списка (`openListPanel`) — из-за этого меню «Ещё действия» не закрывалось
+  // ни по клику мимо, ни по Escape. Теперь подписка зависит от того, что открыто.
   useEffect(() => {
-    if (!openListPanel) return undefined;
+    if (!openListPanel && !moreMenuOpen) return undefined;
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
-      if (!sortPanelRef.current?.contains(target) && !filtersPanelRef.current?.contains(target)) {
-        setOpenListPanel(null);
-      }
-      if (!morePanelRef.current?.contains(target)) setMoreMenuOpen(false);
+      // Панели «Сортировка» и «Фильтры» тоже в порталах: клик внутри них
+      // не должен закрывать панель (`contains` по ref-обёрткам его не видит).
+      const insideSort = (sortPanelRef.current?.contains(target) ?? false)
+        || (target instanceof Element && target.closest('[role="dialog"][aria-label="Сортировка"]') !== null);
+      const insideFilters = (filtersPanelRef.current?.contains(target) ?? false)
+        || (target instanceof Element && target.closest('[role="dialog"][aria-label="Фильтры"]') !== null);
+      const insideMoreButton = morePanelRef.current?.contains(target) ?? false;
+      // Меню живёт в портале, поэтому проверяем его отдельно, а не через contains().
+      const insideMoreMenu = target instanceof Element && target.closest('[role="menu"]') !== null;
+
+      if (openListPanel && !insideSort && !insideFilters) setOpenListPanel(null);
+      if (moreMenuOpen && !insideMoreButton && !insideMoreMenu) closeMoreMenu();
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpenListPanel(null);
+      if (event.key !== 'Escape') return;
+      if (openListPanel) setOpenListPanel(null);
+      if (moreMenuOpen) closeMoreMenu();
     };
     window.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('keydown', onKeyDown);
@@ -567,7 +620,26 @@ export default function MailPage() {
       window.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [openListPanel]);
+  }, [openListPanel, moreMenuOpen, closeMoreMenu]);
+
+  // Меню «Ещё действия» живёт в портале: при прокрутке тулбара или изменении
+  // размера окна якорь уезжает, и меню осталось бы висеть на месте.
+  useEffect(() => {
+    if (!moreMenuOpen) return undefined;
+    const close = closeMoreMenu;
+    const anchorOf = morePanelRef.current?.getBoundingClientRect();
+    const onScroll = () => {
+      const button = morePanelRef.current?.querySelector('button')?.getBoundingClientRect();
+      if (!button || !anchorOf) return;
+      setMoreMenuAnchor(button);
+    };
+    window.addEventListener('resize', close);
+    window.addEventListener('scroll', onScroll, true);
+    return () => {
+      window.removeEventListener('resize', close);
+      window.removeEventListener('scroll', onScroll, true);
+    };
+  }, [moreMenuOpen]);
 
   const resetMailFilters = () => {
     setFilter('all');
@@ -2275,7 +2347,10 @@ export default function MailPage() {
               label={t('Сортировка')}
               className={`h-8 w-8 ${sortActive || openListPanel === 'sort' ? 'bg-accent-soft text-accent-dark' : ''}`}
               size={16}
-              onClick={() => setOpenListPanel((panel) => (panel === 'sort' ? null : 'sort'))}
+              onClick={(event) => {
+                setListPanelAnchor(event.currentTarget.getBoundingClientRect());
+                setOpenListPanel((panel) => (panel === 'sort' ? null : 'sort'));
+              }}
               aria-expanded={openListPanel === 'sort'}
               aria-haspopup="dialog"
             />
@@ -2285,11 +2360,12 @@ export default function MailPage() {
                 aria-hidden="true"
               />
             )}
-            {openListPanel === 'sort' && (
+            {openListPanel === 'sort' && listPanelAnchor && createPortal(
               <div
                 role="dialog"
                 aria-label={t('Сортировка')}
-                className="absolute right-0 top-10 z-30 w-56 max-w-[calc(100vw-32px)] rounded-xl border border-line-control bg-surface p-1.5 shadow-pop"
+                style={menuPosition(listPanelAnchor, 224, 260)}
+                className="fixed z-[60] w-56 max-w-[calc(100vw-32px)] rounded-xl border border-line-control bg-surface p-1.5 shadow-pop"
               >
                 {([
                   { value: 'date-desc', label: t('Сначала новые') },
@@ -2312,7 +2388,8 @@ export default function MailPage() {
                     {sortOrder === option.value && <Check size={15} />}
                   </button>
                 ))}
-              </div>
+              </div>,
+              document.body
             )}
           </div>
 
@@ -2332,7 +2409,10 @@ export default function MailPage() {
               label={t('Фильтры')}
               className={`h-8 w-8 ${filtersActive || openListPanel === 'filters' ? 'bg-accent-soft text-accent-dark' : ''}`}
               size={16}
-              onClick={() => setOpenListPanel((panel) => (panel === 'filters' ? null : 'filters'))}
+              onClick={(event) => {
+                setListPanelAnchor(event.currentTarget.getBoundingClientRect());
+                setOpenListPanel((panel) => (panel === 'filters' ? null : 'filters'));
+              }}
               aria-expanded={openListPanel === 'filters'}
               aria-haspopup="dialog"
             />
@@ -2342,11 +2422,12 @@ export default function MailPage() {
                 aria-hidden="true"
               />
             )}
-            {openListPanel === 'filters' && (
+            {openListPanel === 'filters' && listPanelAnchor && createPortal(
               <div
                 role="dialog"
                 aria-label={t('Фильтры')}
-                className="absolute right-0 top-10 z-30 w-72 max-w-[calc(100vw-32px)] rounded-xl border border-line-control bg-surface p-3 shadow-pop"
+                style={menuPosition(listPanelAnchor, 288, 320)}
+                className="fixed z-[60] w-72 max-w-[calc(100vw-32px)] rounded-xl border border-line-control bg-surface p-3 shadow-pop"
               >
                 <p className="section-label">{t('Состояние')}</p>
                 <div className="mt-2 space-y-1" role="group" aria-label={t('Фильтр писем')}>
@@ -2395,7 +2476,8 @@ export default function MailPage() {
                 >
                   {t('Сбросить фильтры')}
                 </button>
-              </div>
+              </div>,
+              document.body
             )}
           </div>
           <IconButton icon={Settings2} label={t('Настройки почты')} size={16} className="h-8 w-8 shrink-0" onClick={() => setSettingsOpen(true)} />
@@ -2949,15 +3031,25 @@ export default function MailPage() {
                   size={17}
                   aria-expanded={moreMenuOpen}
                   aria-haspopup="menu"
-                  onClick={() => setMoreMenuOpen((open) => !open)}
+                  onClick={(event) => {
+                    // Прямоугольник кнопки запоминаем до открытия: меню живёт в портале
+                    // и само по себе не знает, где его якорь.
+                    setMoreMenuAnchor(event.currentTarget.getBoundingClientRect());
+                    setMoreMenuOpen((open) => !open);
+                  }}
                 />
-                {moreMenuOpen && (
-                  <div role="menu" aria-label={t('Ещё действия')} className="absolute right-0 top-9 z-40 w-60 rounded-xl border border-line-control bg-surface p-1.5 shadow-pop">
+                {moreMenuOpen && moreMenuAnchor && createPortal(
+                  <div
+                    role="menu"
+                    aria-label={t('Ещё действия')}
+                    style={menuPosition(moreMenuAnchor, 240)}
+                    className="fixed z-[60] w-60 rounded-xl border border-line-control bg-surface p-1.5 shadow-pop"
+                  >
                     <button
                       type="button"
                       role="menuitem"
                       disabled={movingMailIds.has(active.id)}
-                      onClick={() => { setMoreMenuOpen(false); moveActive('SPAM'); }}
+                      onClick={() => { closeMoreMenu(); moveActive('SPAM'); }}
                       className="nav-row w-full disabled:opacity-50"
                     >
                       <OctagonAlert size={15} /> <span className="min-w-0 flex-1 truncate text-left">{t('В спам')}</span>
@@ -2967,7 +3059,7 @@ export default function MailPage() {
                         type="button"
                         role="menuitem"
                         disabled={movingMailIds.has(active.id)}
-                        onClick={() => { setMoreMenuOpen(false); markNotSpam(); }}
+                        onClick={() => { closeMoreMenu(); markNotSpam(); }}
                         className="nav-row w-full disabled:opacity-50"
                       >
                         <Inbox size={15} /> <span className="min-w-0 flex-1 truncate text-left">{t('Не спам')}</span>
@@ -2977,7 +3069,7 @@ export default function MailPage() {
                       type="button"
                       role="menuitem"
                       disabled={bulkBusy}
-                      onClick={() => { setMoreMenuOpen(false); void forwardMessages([active.id]); }}
+                      onClick={() => { closeMoreMenu(); void forwardMessages([active.id]); }}
                       className="nav-row w-full disabled:opacity-50"
                     >
                       <Forward size={15} /> <span className="min-w-0 flex-1 truncate text-left">{t('Переслать')}</span>
@@ -2985,13 +3077,14 @@ export default function MailPage() {
                     <button
                       type="button"
                       role="menuitem"
-                      onClick={() => { setMoreMenuOpen(false); setShortcutsHelpOpen(true); }}
+                      onClick={() => { closeMoreMenu(); setShortcutsHelpOpen(true); }}
                       className="nav-row w-full"
                     >
                       <span className="w-4 shrink-0 text-center text-[11px] font-semibold text-muted">?</span>
                       <span className="min-w-0 flex-1 truncate text-left">{t('Горячие клавиши')}</span>
                     </button>
-                  </div>
+                  </div>,
+                  document.body
                 )}
               </div>
 
