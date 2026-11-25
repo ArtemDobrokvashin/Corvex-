@@ -47,9 +47,9 @@
 все `com.corvex.mobile.*` импорты разрешаются в существующие файлы (0 висячих),
 баланс скобок и отсутствие ссылок на неимпортированные символы в изменённых
 файлах. Добавлен юнит-тест `MailFormattingTest` (9 проверок, чистые функции, без
-эмулятора). **Не проверено:** компиляция — в репозитории нет `gradlew` и
-`gradle-wrapper.jar`, поэтому `assembleDebug` запустить нечем; значит тест
-`MailFormattingTest` тоже ни разу не исполнялся.
+эмулятора). **Не проверено:** компиляция — `gradlew` в репозитории появился (PR #367), но
+`assembleDebug` в песочнице так и не запускался; значит тест `MailFormattingTest`
+тоже ни разу не исполнялся.
 
 Что сознательно **не** переносилось из веба, чтобы не обещать лишнего:
 отложенная отправка, цепочки, настройки, палитра команд и чат. Для них нужны
@@ -84,12 +84,12 @@ API-вызовы и экраны, а не только цвета; делать 
 
 ## 2. Чего нет (и без чего MVP не начинается)
 
-1. **Gradle wrapper — наполовину.** Нужен **JDK 17** (как в `compileOptions`/`jvmTarget`;
-   Embedded JDK Android Studio — это ровно 17, отдельная установка JDK не нужна).
-   `gradle-wrapper.properties` есть (Gradle 8.10.2), а
-   `gradlew`, `gradlew.bat` и `gradle/wrapper/gradle-wrapper.jar` — нет. Без них собирать
-   можно только локальным Gradle нужной версии: воспроизводимости нет, и CI-задание тоже
-   не запустится. Это первое, что нужно положить в репозиторий.
+1. ~~**Gradle wrapper — наполовину.**~~ **Готово:** `gradlew`, `gradlew.bat` и
+   `gradle/wrapper/gradle-wrapper.jar` (Gradle 8.10.2) лежат в `android/`, переводы строк
+   закреплены в `.gitattributes`, наличие и целостность проверяет
+   `scripts/tests/test_android_gradle_wrapper.py`. Нужен только **JDK 17** (Embedded JDK
+   Android Studio — ровно 17) и Android SDK. Что wrapper не доказывает: что проект
+   **собирается** — первой команды `./gradlew assembleDebug` ещё не было.
 2. **CI для Android.** Ни одного задания. Пока его нет, «зелёный CI» не значит «собирается»,
    и каждый мобильный PR приезжает с сюрпризом: в #219 так и вышло — невыполненный
    `@OptIn(ExperimentalMaterial3Api::class)` на `FilterChip` ронял компиляцию, а три
@@ -116,9 +116,10 @@ API-вызовы и экраны, а не только цвета; делать 
 ### P0. Приложение не соберётся
 
 Часть причин закрыта: `android.useAndroidX=true`, `org.gradle.jvmargs` и `kotlin.code.style`
-в `android/gradle.properties` есть, `proguard-rules.pro` на месте. Осталась одна, и она
-блокирующая: **нет `gradlew` и `gradle-wrapper.jar`**. Первый шаг до MVP — не экраны, а
-**собирающийся проект**, и начинается он с wrapper'а.
+в `android/gradle.properties` есть, `proguard-rules.pro` на месте, wrapper
+(`gradlew`, `gradlew.bat`, `gradle-wrapper.jar`) лежит в git. Блокирующих причин,
+известных чтением, больше нет — но **сборка не запускалась ни разу**, поэтому
+«собирается» остаётся гипотезой до первой команды `./gradlew assembleDebug`.
 
 Дополнительно: сборка не проверялась ни разу, поэтому «собирается» — это пока гипотеза, а не
 факт. В #217 не хватало провайдеров `AuthApi`/`MailApi` в Hilt-графе, в #220 — opt-in на
@@ -239,11 +240,11 @@ Bearer) теперь не только описано, но и закрепле�
 
 Первый пункт не двигается: без него остальное не проверить.
 
-1. **Собирается.** Только wrapper: `gradlew`, `gradlew.bat`, `gradle-wrapper.jar`
-   (готовый шаблон джобы — `docs/ci/android-job.yml`, положить в `ci.yml` руками)
-   (`gradle.properties` и `proguard-rules.pro` уже есть). Затем `assembleDebug` на чистой
-   машине и отдельное задание CI: `./gradlew test assembleDebug`. Пункт не двигается: без него
-   остальное не проверить, а без CI каждый мобильный PR приезжает с сюрпризом.
+1. **Собирается.** Wrapper уже в репозитории (PR #367), осталось `assembleDebug` на
+   чистой машине и отдельное задание CI: `./gradlew test assembleDebug`
+   (готовый шаблон джобы — `docs/ci/android-job.yml`, положить в `ci.yml` руками).
+   Пункт не двигается: без него остальное не проверить, а без CI каждый мобильный PR
+   приезжает с сюрпризом.
 2. ~~**Честный тест перехватчика.**~~ **Готово в #205** — `AuthInterceptorTest` создаёт
    настоящий перехватчик и проверяет Bearer, `/auth/login`, один refresh при `401`, очистку
    при провале и поведение двух параллельных `401`.
@@ -290,7 +291,7 @@ JDK, `gradlew` и Android SDK.
 
 | Утверждение | Чем проверено |
 |---|---|
-| `gradlew` и `gradle-wrapper.jar` отсутствуют | `git ls-tree` по `android/`: только `gradle-wrapper.properties` |
+| Wrapper на месте и цел | `test_android_gradle_wrapper`: файлы есть, в jar лежит `GradleWrapperMain`, переводы строк LF/CRLF |
 | `gradle.properties` и `proguard-rules.pro` на месте | файлы есть, `android.useAndroidX=true` внутри |
 | `AuthInterceptorTest` создаёт настоящий перехватчик | в тесте `FakeTokenStore` + `OkHttpClient` с интерцептором, 4 сценария |
 | Cookie ограничены auth-путём | `AuthCookieJar.loadForRequest` сверяет `encodedPath` и `expiresAtMs` |
@@ -302,9 +303,9 @@ JDK, `gradlew` и Android SDK.
 | Хост IMAP берётся из пресета | `ImapMailService` строит `imaps://<host>:993`, `checkserveridentity` включён |
 | Экран почты читает папки и письма | `HomeViewModel.load`, `defaultFolder.list("*")`, последние 25 писем |
 | Сервис в ViewModel поставляется Hilt | `@Inject constructor` у `ImapMailService` + `test_android_hilt_wiring` |
-| Android не собирался | нет JDK, `gradlew`, Android SDK; CI собирает только `services/` |
+| Android не собирался | нет JDK и Android SDK; CI собирает только `services/` |
 
 **Чего по-прежнему нет:** ни одной команды сборки, ни одного запуска на устройстве, ни
-одного скриншота, ни одного живого входа против бэкенда. Первые две команды, когда появится
-окружение: положить wrapper и запустить `./gradlew assembleDebug` — до этого всё
-перечисленное остаётся чтением кода.
+одного скриншота, ни одного живого входа против бэкенда. Первая команда, когда появится
+JDK и Android SDK: `cd android && ./gradlew assembleDebug` (wrapper теперь в репозитории) —
+до этого всё перечисленное остаётся чтением кода.
