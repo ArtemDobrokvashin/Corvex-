@@ -7,6 +7,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -32,7 +33,10 @@ private val fullDateFormatter =
 @Composable
 fun MailDetailScreen(
     mail: MailModel,
-    onBack: () -> Unit
+    bodyText: String?,
+    bodyError: String?,
+    onBack: () -> Unit,
+    onRefresh: () -> Unit
 ) {
     Scaffold(
         containerColor = CorvexColors.Surface,
@@ -47,7 +51,12 @@ fun MailDetailScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
                     }
                 },
-                title = { Text("Письмо", style = MaterialTheme.typography.titleMedium) }
+                title = { Text("Письмо", style = MaterialTheme.typography.titleMedium) },
+                actions = {
+                    IconButton(onClick = onRefresh) {
+                        Icon(Icons.Filled.Refresh, contentDescription = "Обновить письмо")
+                    }
+                }
             )
         }
     ) { padding ->
@@ -91,12 +100,38 @@ fun MailDetailScreen(
 
             HorizontalDivider(color = CorvexColors.Line, modifier = Modifier.padding(vertical = 14.dp))
 
-            val body = mail.bodyText?.takeIf { it.isNotBlank() } ?: mail.snippet
-            Text(
-                text = body.ifBlank { "(пустое письмо)" },
-                style = MaterialTheme.typography.bodyMedium,
-                color = CorvexColors.InkSoft
-            )
+            // Тело приходит асинхронно: сначала то, что было в списке (snippet),
+            // затем полный текст. Ошибка загрузки — не «пустое письмо»: пустое
+            // письмо и неудачная загрузка выглядят по-разному.
+            when {
+                bodyError != null -> {
+                    Text(
+                        text = bodyError,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = CorvexColors.Danger
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedButton(onClick = onRefresh) { Text("Повторить") }
+                }
+                bodyText == null -> {
+                    Text(
+                        text = mail.snippet.ifBlank { "Загрузка письма…" },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = CorvexColors.Faint
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = CorvexColors.Accent,
+                        trackColor = CorvexColors.AccentSoft
+                    )
+                }
+                else -> Text(
+                    text = bodyText.ifBlank { mail.snippet }.ifBlank { "(пустое письмо)" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = CorvexColors.InkSoft
+                )
+            }
         }
     }
 }
