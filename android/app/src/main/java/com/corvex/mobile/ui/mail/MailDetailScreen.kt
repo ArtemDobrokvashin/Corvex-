@@ -7,11 +7,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Forward
+import androidx.compose.material.icons.automirrored.filled.Reply
+import androidx.compose.material.icons.automirrored.filled.ReplyAll
+import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.corvex.mobile.domain.mail.MailModel
@@ -36,7 +42,12 @@ fun MailDetailScreen(
     bodyText: String?,
     bodyError: String?,
     onBack: () -> Unit,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    onReply: () -> Unit,
+    onReplyAll: () -> Unit,
+    onForward: () -> Unit,
+    onArchive: () -> Unit,
+    onDelete: () -> Unit
 ) {
     Scaffold(
         containerColor = CorvexColors.Surface,
@@ -53,6 +64,12 @@ fun MailDetailScreen(
                 },
                 title = { Text("Письмо", style = MaterialTheme.typography.titleMedium) },
                 actions = {
+                    IconButton(onClick = onArchive) {
+                        Icon(Icons.Filled.Archive, contentDescription = "В архив")
+                    }
+                    IconButton(onClick = onDelete) {
+                        Icon(Icons.Filled.Delete, contentDescription = "Удалить")
+                    }
                     IconButton(onClick = onRefresh) {
                         Icon(Icons.Filled.Refresh, contentDescription = "Обновить письмо")
                     }
@@ -131,6 +148,35 @@ fun MailDetailScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = CorvexColors.InkSoft
                 )
+            }
+
+            // Действия под письмом: так же, как в вебе, палец идёт туда же,
+            // куда смотрит взгляд — после прочитанного текста.
+            Spacer(modifier = Modifier.height(22.dp))
+            HorizontalDivider(color = CorvexColors.Line)
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = onReply,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = CorvexColors.Accent,
+                        contentColor = Color.White
+                    )
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.Reply, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.padding(horizontal = 3.dp))
+                    Text("Ответить")
+                }
+                OutlinedButton(onClick = onReplyAll) {
+                    Icon(Icons.AutoMirrored.Filled.ReplyAll, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.padding(horizontal = 3.dp))
+                    Text("Всем")
+                }
+                OutlinedButton(onClick = onForward) {
+                    Icon(Icons.AutoMirrored.Filled.Forward, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.padding(horizontal = 3.dp))
+                    Text("Переслать")
+                }
             }
         }
     }
