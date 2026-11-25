@@ -71,7 +71,9 @@ fun LoginScreen(
                 OutlinedTextField(
                     value = state.serverUrl,
                     onValueChange = viewModel::onServerUrlChange,
-                    label = { Text("Адрес сервера (https://mail.company.ru)") },
+                    // Подсказка, а не содержимое: раньше в поле стояло «https://»,
+                    // и человек либо дописывал хост к готовой схеме, либо стирал её.
+                    label = { Text("Адрес сервера (mail.company.ru)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
