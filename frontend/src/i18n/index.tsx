@@ -1585,6 +1585,10 @@ const EN: Record<string, string> = {
     'The subject is empty. Press “Send” again to send without a subject.',
   'Письмо отправлено.': 'Message sent.',
   'Горячие клавиши': 'Keyboard shortcuts',
+  'Показать горячие клавиши': 'Show keyboard shortcuts',
+  'Полный список сочетаний. Справка также открывается клавишей «?».': 'The full list of shortcuts. This help also opens with the “?” key.',
+  'В контактах': 'In contacts',
+  'Отправитель уже в адресной книге': 'The sender is already in the address book',
   'Понятно': 'Got it',
   'Работают, когда курсор не в поле ввода. Кириллица поддерживается: J = О, K = Л.':
     'They work while the cursor is outside an input. Cyrillic layouts work too: J = О, K = Л.',

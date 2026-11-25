@@ -9,13 +9,13 @@ import { useSession } from '../../store/sessionStore';
 import MailPage from './MailPage';
 
 /**
- * Меню «Ещё действия» должно открываться поверх тулбара, а не внутри него.
- * Тулбар прокручивается по горизонтали (`overflow-x-auto`), поэтому `absolute`
- * внутри него обрезался: вместо меню появлялась полоса прокрутки.
+ * Меню «Ещё действия» убрано: «В спам» — отдельная кнопка в тулбаре,
+ * «Горячие клавиши» — в «Настройках почты».
  *
- * Держим два свойства, которые ломались:
- *   1. меню рендерится в `document.body`, а не внутри тулбара;
- *   2. оно не растягивает прокрутку тулбара (то есть не является его потомком).
+ * Тест держит то, из-за чего меню и появилось: `absolute` внутри тулбара
+ * обрезался его горизонтальной прокруткой, и вместо пунктов появлялась полоса
+ * прокрутки. Пока в тулбаре снова не появилось меню, проверять нечего —
+ * но и молча вернуть «…» обратно не получится: эти утверждения упадут.
  */
 
 const folders: MailFolderView[] = [
@@ -62,7 +62,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-async function openMailAndMenu() {
+async function openFirstMail() {
   await act(async () => root.render(<MemoryRouter initialEntries={['/mail']}><MailPage /></MemoryRouter>));
   await flush();
 
@@ -70,44 +70,36 @@ async function openMailAndMenu() {
   expect(row).toBeTruthy();
   await act(async () => { row!.click(); await Promise.resolve(); });
   await flush();
-
-  const more = [...container.querySelectorAll('button')]
-    .find((button) => button.getAttribute('aria-label') === 'Ещё действия') as HTMLElement | undefined;
-  expect(more).toBeTruthy();
-  await act(async () => { more!.click(); await Promise.resolve(); });
-  await flush();
-
-  return more!;
 }
 
-describe('«Ещё действия»', () => {
-  it('renders the menu into document.body, not into the scrollable toolbar', async () => {
-    const more = await openMailAndMenu();
+function toolbarButton(label: string) {
+  return [...container.querySelectorAll('button')]
+    .find((button) => button.getAttribute('aria-label') === label) as HTMLElement | undefined;
+}
 
-    const menu = document.body.querySelector('[role="menu"][aria-label="Ещё действия"]');
-    expect(menu).toBeTruthy();
+describe('тулбар чтения письма', () => {
+  it('ставит «В спам» отдельной кнопкой, без меню «…»', async () => {
+    await openFirstMail();
 
-    // Меню не должно быть потомком тулбара: иначе оно снова начнёт его растягивать.
-    const toolbar = more.closest('header');
-    expect(toolbar).toBeTruthy();
-    expect(toolbar!.contains(menu!)).toBe(false);
-    expect(menu!.closest('header')).toBeNull();
+    expect(toolbarButton('В спам')).toBeTruthy();
+    expect(toolbarButton('Ещё действия')).toBeUndefined();
+    expect(document.body.querySelector('[role="menu"]')).toBeNull();
   });
 
-  it('shows the actions and closes on Escape', async () => {
-    await openMailAndMenu();
+  it('не дублирует «Переслать»: действие остаётся одно', async () => {
+    await openFirstMail();
 
-    const menu = document.body.querySelector('[role="menu"][aria-label="Ещё действия"]')!;
-    const items = [...menu.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent ?? '');
-    expect(items.join(' ')).toContain('В спам');
-    expect(items.join(' ')).toContain('Горячие клавиши');
+    const forwards = [...container.querySelectorAll('button')]
+      .filter((button) => button.getAttribute('aria-label') === 'Переслать');
+    // Ровно одна кнопка в тулбаре чтения. Вторая копия жила в меню «…».
+    expect(forwards).toHaveLength(1);
+  });
 
-    await act(async () => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-      await Promise.resolve();
-    });
-    await flush();
+  it('не держит «Горячие клавиши» в тулбаре', async () => {
+    await openFirstMail();
 
-    expect(document.body.querySelector('[role="menu"][aria-label="Ещё действия"]')).toBeNull();
+    const shortcut = [...container.querySelectorAll('button')]
+      .find((button) => (button.textContent ?? '').includes('Горячие клавиши'));
+    expect(shortcut).toBeUndefined();
   });
 });

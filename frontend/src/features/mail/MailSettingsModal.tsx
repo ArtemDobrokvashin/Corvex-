@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Bell, Check, LayoutList, Mail, PenLine, Settings2, ShieldCheck, X } from 'lucide-react';
+import { Bell, Check, Keyboard, LayoutList, Mail, PenLine, Settings2, ShieldCheck, X } from 'lucide-react';
 import { useModalFocus } from '../../components/useModalFocus';
 import { useI18n } from '../../i18n';
 import type { MailPreferences } from './mailPreferences';
 
 export default function MailSettingsModal({
-  initial, email, demoMode, onClose, onSave, onOpenSecurity, onOpenExternal,
+  initial, email, demoMode, onClose, onSave, onOpenSecurity, onOpenExternal, onOpenShortcuts,
 }: {
   initial: MailPreferences;
   email: string;
@@ -14,6 +14,7 @@ export default function MailSettingsModal({
   onSave: (preferences: MailPreferences) => boolean;
   onOpenSecurity?: () => void;
   onOpenExternal?: () => void;
+  onOpenShortcuts?: () => void;
 }) {
   const { t } = useI18n();
   const notificationsAvailable = typeof window !== 'undefined' && 'Notification' in window;
@@ -148,6 +149,15 @@ export default function MailSettingsModal({
               {requesting && <p className="mt-2 text-xs text-muted" role="status">{t('Ожидается разрешение браузера…')}</p>}
               {notificationError && <p className="mt-2 text-xs text-red-700" role="alert">{notificationError}</p>}
             </section>
+
+            {/* Справка по клавишам раньше висела пунктом в меню «…» рядом с
+                «В спам»: место для неё — настройки, а не ежедневный тулбар. */}
+            {onOpenShortcuts && <section className="border-b border-line py-6">
+              {sectionHeading(Keyboard, t('Горячие клавиши'), t('Полный список сочетаний. Справка также открывается клавишей «?».'))}
+              <button type="button" className="btn-secondary w-full justify-start" onClick={onOpenShortcuts}>
+                <Keyboard size={15} />{t('Показать горячие клавиши')}
+              </button>
+            </section>}
 
             {(onOpenSecurity || onOpenExternal) && <section className="py-6">
               {sectionHeading(ShieldCheck, t('Учётная запись'), t('Безопасность и подключённые адреса настраиваются отдельно.'))}
