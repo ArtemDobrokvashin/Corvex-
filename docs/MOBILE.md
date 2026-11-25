@@ -84,7 +84,9 @@ API-вызовы и экраны, а не только цвета; делать 
 
 ## 2. Чего нет (и без чего MVP не начинается)
 
-1. **Gradle wrapper — наполовину.** `gradle-wrapper.properties` есть (Gradle 8.10.2), а
+1. **Gradle wrapper — наполовину.** Нужен **JDK 17** (как в `compileOptions`/`jvmTarget`;
+   Embedded JDK Android Studio — это ровно 17, отдельная установка JDK не нужна).
+   `gradle-wrapper.properties` есть (Gradle 8.10.2), а
    `gradlew`, `gradlew.bat` и `gradle/wrapper/gradle-wrapper.jar` — нет. Без них собирать
    можно только локальным Gradle нужной версии: воспроизводимости нет, и CI-задание тоже
    не запустится. Это первое, что нужно положить в репозиторий.

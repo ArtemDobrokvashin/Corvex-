@@ -109,16 +109,60 @@ git pull --ff-only
 
 `.idea/`, `local.properties`, `build/` — локальные, в репозиторий не попадают.
 
-**Важно:** пока в репозитории нет Gradle wrapper, Studio предложит «Gradle
-wrapper не найден». Один раз создай его в этой же папке:
+### 6.1 «Invalid Gradle JDK configuration found» — это настройка Studio, а не проект
+
+Ошибка появляется до сборки и коду отношения не имеет: в `~/.gradle/gradle.properties`
+(или в настройках проекта) записан путь к JDK, которого на этой машине нет —
+обычно остаток от другой версии Studio или от распакованного JDK во временной папке.
+Проект требует **JDK 17** (`compileOptions` и `jvmTarget = "17"` в
+`app/build.gradle.kts`), и Embedded JDK самой Studio — это ровно JDK 17, так что
+безопасный ответ — первая кнопка в диалоге: **Use Embedded JDK**.
+
+Если хочется явно, а не через диалог:
+
+1. `File → Settings → Build, Execution, Deployment → Build Tools → Gradle`.
+2. **Gradle JDK** → выбрать `jbr-17` из списка (путь вида
+   `C:\Program Files\Android\Android Studio\jbr`). Если в списке его нет —
+   `Add JDK…` и указать эту папку.
+3. Проверить, что старый битый путь не остался в `%USERPROFILE%\.gradle\gradle.properties`
+   в строке `org.gradle.java.home` — её лучше просто удалить, тогда Studio
+   перестанет спорить с собой.
+4. `File → Invalidate Caches… → Invalidate and Restart`, если диалог возвращается.
+
+Ту же строку `org.gradle.java.home` в `android/gradle.properties` писать **не надо**:
+файл лежит в git, и жёсткий путь `C:\Program Files\...` сломает сборку на CI и на
+любой другой машине. JDK — локальная настройка, её место в `local.properties` или
+в настройках Studio.
+
+Проверить, что дело было именно в этом, а не в коде: после смены JDK нажмите
+`Sync Project with Gradle Files`. Если синк прошёл — ошибка была настройкой.
+
+### 6.2 Чего в проекте действительно не хватает: wrapper
+
+Пока в репозитории нет Gradle wrapper, Studio предложит «Gradle wrapper не найден».
+Один раз создай его в этой же папке:
 
 ```powershell
-cd C:\corvex-android\android
+cd C:\corvex-android
+git switch -c android/gradle-wrapper
+cd android
 gradle wrapper --gradle-version 8.10.2 --distribution-type bin
-git add gradlew gradlew.bat gradle/wrapper/gradle-wrapper.jar
-git commit -m "android: gradle wrapper"
-git push
+cd ..
+git add android/gradlew android/gradlew.bat android/gradle/wrapper/gradle-wrapper.jar
+git commit -m "android: gradle wrapper 8.10.2"
+git push -u origin android/gradle-wrapper
 ```
+
+Дальше — PR в `main`, а не прямой `git push` в `main`.
+
+Если `gradle` в PowerShell не находится, враппер можно создать из самой Studio:
+`File → Project Structure → Project → Gradle Version` либо действие
+`Gradle → Wrapper` в панели Gradle. Результат тот же: три файла в `android/`.
+
+Следующая ошибка, которую вы увидите уже после враппера, — `SDK location not found`.
+Её лечит сама Studio: при открытии проекта она создаёт `android/local.properties`
+со строкой `sdk.dir=...`. Файл локальный; `android/local.properties`,
+`android/.gradle/` и `android/**/build/` теперь в `.gitignore`, в коммит они не попадут.
 
 После этого `.\gradlew.bat testDebugUnitTest assembleDebug` и кнопка Run в Studio
 начнут работать, а APK появится в `android\app\build\outputs\apk\debug\`.
