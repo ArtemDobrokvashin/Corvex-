@@ -139,7 +139,7 @@ fun HomeScreen(
                     }
                 }
             )
-        }
+        },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = viewModel::composeNew,
