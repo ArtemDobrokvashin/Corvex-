@@ -12,6 +12,7 @@ import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.ReplyAll
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -49,6 +50,7 @@ fun MailDetailScreen(
     onReplyAll: () -> Unit,
     onForward: () -> Unit,
     onArchive: () -> Unit,
+    onMove: () -> Unit,
     onDelete: () -> Unit,
     attachments: List<MailAttachment> = emptyList(),
     downloadingAttachment: String? = null,
@@ -69,6 +71,9 @@ fun MailDetailScreen(
                 },
                 title = { Text("Письмо", style = MaterialTheme.typography.titleMedium) },
                 actions = {
+                    IconButton(onClick = onMove) {
+                        Icon(Icons.Filled.DriveFileMove, contentDescription = "Перенести в папку")
+                    }
                     IconButton(onClick = onArchive) {
                         Icon(Icons.Filled.Archive, contentDescription = "В архив")
                     }

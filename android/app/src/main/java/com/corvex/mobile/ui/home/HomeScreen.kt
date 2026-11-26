@@ -6,10 +6,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.MoreVert
@@ -38,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.corvex.mobile.domain.mail.FolderModel
 import com.corvex.mobile.domain.mail.MailModel
 import com.corvex.mobile.ui.common.MailFormatting
 import com.corvex.mobile.ui.mail.ComposeScreen
@@ -79,6 +83,11 @@ fun HomeScreen(
             Toast.makeText(context, notice, Toast.LENGTH_LONG).show()
             viewModel.clearAttachmentNotice()
         }
+        LaunchedEffect(state.notice) {
+            val notice = state.notice ?: return@LaunchedEffect
+            Toast.makeText(context, notice, Toast.LENGTH_SHORT).show()
+            viewModel.clearNotice()
+        }
         MailDetailScreen(
             mail = opened,
             bodyText = state.openedBody,
@@ -90,11 +99,19 @@ fun HomeScreen(
             onReplyAll = { viewModel.composeReply(opened, all = true) },
             onForward = { viewModel.composeForward(opened) },
             onArchive = { viewModel.archive(opened) },
+            onMove = { viewModel.startMove(opened) },
             onDelete = { viewModel.delete(opened) },
             attachments = state.openedAttachments,
             downloadingAttachment = state.downloadingAttachment,
             onDownloadAttachment = viewModel::downloadAttachment
         )
+        state.movingMail?.let { mail ->
+            MoveToFolderDialog(
+                folders = viewModel.moveTargets(),
+                onPick = { folder -> viewModel.moveTo(mail, folder.id, folder.name) },
+                onDismiss = viewModel::cancelMove
+            )
+        }
         return
     }
 
@@ -497,4 +514,63 @@ private fun EmptyState() {
             color = CorvexColors.Faint
         )
     }
+}
+
+/**
+ * Выбор папки для переноса.
+ *
+ * Список папок приходит с сервера, поэтому ничего не зашито: у mail.ru это
+ * «Отправленные», «Спам», «Черновики», у Gmail — `[Gmail]/Sent Mail` и так
+ * далее. Раньше перенос был только в архив и корзину, потому что имя папки
+ * приходилось угадывать; теперь его выбирает человек.
+ */
+@Composable
+private fun MoveToFolderDialog(
+    folders: List<FolderModel>,
+    onPick: (FolderModel) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Перенести в папку") },
+        text = {
+            if (folders.isEmpty()) {
+                Text(
+                    text = "Список папок ещё не загружен. Откройте список писем и обновите его.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = CorvexColors.Faint
+                )
+            } else {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    folders.forEach { folder ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onPick(folder) }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Filled.Folder,
+                                contentDescription = null,
+                                tint = CorvexColors.Faint,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = folder.name,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = CorvexColors.Ink,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Отмена") }
+        }
+    )
 }
