@@ -8,9 +8,11 @@ import jakarta.mail.Flags
 import jakarta.mail.Folder
 import jakarta.mail.Message
 import jakarta.mail.Multipart
+import jakarta.mail.Part
 import jakarta.mail.Session
 import jakarta.mail.Store
 import jakarta.mail.UIDFolder
+import jakarta.mail.internet.InternetAddress
 import jakarta.mail.internet.MimeUtility
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -47,6 +49,29 @@ class ImapMailService @Inject constructor(
         }
 
     /**
+     * Отправитель в виде «Имя <a@b.ru>».
+     *
+     * `InternetAddress.toString()` склеивает закодированное имя и адрес:
+     * `"=?utf-8?B?0Klt0JHQ...?=" <inform@emails.tinkoff.ru>`. `decodeText`
+     * на такой склейке не срабатывает — имя остаётся крякозяброй, что и было
+     * видно в списке и в шапке письма. Поэтому имя декодируем отдельно,
+     * а адрес берём из `address`, а не выковыриваем из строки.
+     */
+    private fun senderOf(msg: Message): String {
+        val address = runCatching { msg.from?.firstOrNull() }.getOrNull()
+            ?: return "Неизвестный отправитель"
+        val email = runCatching { (address as? InternetAddress)?.address ?: address.toString() }
+            .getOrNull().orEmpty()
+        val name = decodeText(runCatching { (address as? InternetAddress)?.personal }.getOrNull())
+            ?: decodeText(runCatching { (address as? InternetAddress)?.toString() }.getOrNull())
+        return when {
+            !name.isNullOrBlank() && email.isNotBlank() && !name.contains('@') -> "$name <$email>"
+            email.isNotBlank() -> email
+            else -> "Неизвестный отправитель"
+        }
+    }
+
+    /**
      * Декодирует заголовок письма. `MimeUtility.decodeText` разбирает и
      * `=?utf-8?B?...?=`, и «сырые» заголовки; исключение здесь ожидаемо на
      * кривых письмах, и лучше показать исходную строку, чем уронить список.
@@ -65,36 +90,36 @@ class ImapMailService @Inject constructor(
      */
     private fun previewOf(msg: Message, uidFolder: UIDFolder?): String {
         return runCatching {
-            val text = when (val content = msg.content) {
-                is String -> content
-                is Multipart -> firstTextPart(content)
-                else -> null
-            }
+            val plain = findPart(msg, "text/plain")
+            val text = plain ?: findPart(msg, "text/html")?.let { htmlToText(it) }
             val cleaned = text?.replace(Regex("""\s+"""), " ")?.trim().orEmpty()
             if (cleaned.length <= 120) cleaned else cleaned.take(120).trimEnd() + "…"
         }.getOrDefault("")
     }
 
-    private fun firstTextPart(multipart: Multipart, depth: Int = 0): String? {
-        if (depth > 3) return null
-        for (i in 0 until multipart.count) {
-            val part = runCatching { multipart.getBodyPart(i) }.getOrNull() ?: continue
-            val fileName = runCatching { part.fileName }.getOrNull()
-            if (!fileName.isNullOrBlank()) continue
-            when {
-                part.isMimeType("text/plain") ->
-                    return runCatching { part.content as? String }.getOrNull()
-                part.isMimeType("multipart/*") ->
-                    (runCatching { part.content as? Multipart }.getOrNull())
-                        ?.let { nested -> firstTextPart(nested, depth + 1)?.let { return it } }
-            }
+    /**
+     * Найти часть письма нужного типа на любой глубине вложения.
+     *
+     * Вложения (`fileName != null`) пропускаются: приложенный файл тоже может
+     * быть `text/html`, но это не тело письма, и показывать его вместо письма
+     * — ошибка. Обычный порядок в письмах с вёрсткой:
+     * `multipart/alternative` → `text/plain` + `text/html`.
+     */
+    private fun findPart(part: Part, mimeType: String, depth: Int = 0): String? {
+        if (depth > 4) return null
+        if (!runCatching { part.fileName }.getOrNull().isNullOrBlank()) return null
+
+        if (runCatching { part.isMimeType(mimeType) }.getOrDefault(false)) {
+            return runCatching { part.content as? String }.getOrNull()
         }
-        // HTML-письма без text/plain: грубо снимаем теги, чтобы список не был пустым.
+        if (!runCatching { part.isMimeType("multipart/*") }.getOrDefault(false)) return null
+
+        val multipart = runCatching { part.content as? Multipart }.getOrNull() ?: return null
         for (i in 0 until multipart.count) {
-            val part = runCatching { multipart.getBodyPart(i) }.getOrNull() ?: continue
-            if (!part.isMimeType("text/html")) continue
-            val html = runCatching { part.content as? String }.getOrNull() ?: continue
-            return html.replace(Regex("<[^>]+>"), " ")
+            val child = runCatching { multipart.getBodyPart(i) }.getOrNull() ?: continue
+            // part.content у Multipart отдаёт Multipart; для части — её тело.
+            val found = findPart(child, mimeType, depth + 1)
+            if (found != null) return found
         }
         return null
     }
@@ -122,17 +147,17 @@ class ImapMailService @Inject constructor(
                     try {
                         val message = (folder as? UIDFolder)?.getMessageByUID(uid)
                             ?: error("Письмо не найдено")
-                        val content = message.content
-                        val text = when (content) {
-                            is String -> if (message.isMimeType("text/html")) htmlToText(content) else content
-                            is Multipart -> firstTextPart(content)
-                            else -> null
-                        }
+                        val plain = findPart(message, "text/plain")
+                        val html = findPart(message, "text/html")
+                        // Текст для ответа и для цитаты: plain, а если его нет —
+                        // выжимка из HTML. Ссылки при этом не теряются.
+                        val text = plain ?: html?.let { htmlToText(it) }
                         MailBody(
                             subject = decodeText(message.subject) ?: "(Без темы)",
-                            from = decodeText(message.from?.firstOrNull()?.toString()),
+                            from = senderOf(message),
                             bodyText = text?.trim().orEmpty(),
-                            messageId = runCatching { message.getHeader("Message-ID")?.firstOrNull() }.getOrNull()
+                            messageId = runCatching { message.getHeader("Message-ID")?.firstOrNull() }.getOrNull(),
+                            bodyHtml = html?.takeIf { it.isNotBlank() }
                         )
                     } finally {
                         folder.close(false)
@@ -234,6 +259,9 @@ class ImapMailService @Inject constructor(
         // остаётся одним — ровно то, что ждёт регулярка. Сборка на этом уже
         // падала: бэкслэши правились «на глаз» и стали одиночными.
         html.replace(Regex("""(?is)<(script|style)[^>]*>.*?</\1>"""), " ")
+            // Ссылку не выбрасываем: в письмах банков и рассылок весь смысл —
+            // в адресе, а он живёт в href, а не в тексте ссылки.
+            .replace(Regex("""(?is)<a\s[^>]*href=["']([^"']+)["'][^>]*>(.*?)</a>"""), "$2 ($1)")
             .replace(Regex("""(?i)<br\s*/?>"""), "\n")
             .replace(Regex("(?i)</p>"), "\n\n")
             .replace(Regex("<[^>]+>"), " ")
@@ -279,7 +307,7 @@ class ImapMailService @Inject constructor(
                                 val uidFolder = target as? UIDFolder
                                 msgs.reversed().mapIndexed { idx, msg ->
                                     val uid = uidFolder?.getUID(msg) ?: (total - idx).toLong()
-                                    val from = msg.from?.firstOrNull()?.toString() ?: "Неизвестный отправитель"
+                                    val from = senderOf(msg)
                                     MailModel(
                                         id = "$folderName:$uid",
                                         folderId = folderName,

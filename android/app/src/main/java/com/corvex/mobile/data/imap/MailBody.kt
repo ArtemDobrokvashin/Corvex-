@@ -6,11 +6,18 @@ package com.corvex.mobile.data.imap
  * Отдельно от `MailModel`: список не носит с собой тела писем, иначе каждое
  * обновление тянуло бы мегабайты. Загружается при открытии письма — и только
  * тогда.
+ *
+ * `bodyHtml` — исходная разметка, если письмо HTML. Раньше здесь лежала только
+ * выжимка без тегов, и письма с вёрсткой (банки, рассылки) превращались в
+ * кашу из ссылок и пустых строк. Теперь экран рендерит HTML, а выжимка
+ * остаётся в `bodyText`: она нужна там, где HTML показать нельзя.
  */
 data class MailBody(
     val subject: String,
     val from: String?,
     val bodyText: String,
     /** `Message-ID` — нужен для `In-Reply-To`/`References` в ответе и пересылке. */
-    val messageId: String? = null
+    val messageId: String? = null,
+    /** Исходный HTML письма; `null`, если письмо текстовое. */
+    val bodyHtml: String? = null
 )
