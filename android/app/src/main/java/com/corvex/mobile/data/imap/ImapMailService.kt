@@ -70,7 +70,7 @@ class ImapMailService @Inject constructor(
                 is Multipart -> firstTextPart(content)
                 else -> null
             }
-            val cleaned = text?.replace(Regex("\s+"), " ")?.trim().orEmpty()
+            val cleaned = text?.replace(Regex("""\s+"""), " ")?.trim().orEmpty()
             if (cleaned.length <= 120) cleaned else cleaned.take(120).trimEnd() + "…"
         }.getOrDefault("")
     }
@@ -227,10 +227,14 @@ class ImapMailService @Inject constructor(
         }
 
     private fun htmlToText(html: String): String =
-        // В регулярках здесь один бэкслэш: в Kotlin-строке `\s` — это литерал
-        // «обратный слэш + s», и регулярка его не поймёт как пробельный символ.
-        html.replace(Regex("(?is)<(script|style)[^>]*>.*?</\1>"), " ")
-            .replace(Regex("(?i)<br\s*/?>"), "\n")
+        // Raw-строки (`"""..."""`) здесь не украшение. В обычной Kotlin-строке
+        // `"\s"` — недопустимая escape-последовательность, и это ошибка
+        // компиляции «Unsupported escape sequence»; при этом `"\\s"` в
+        // регулярку приходит правильным `\s`. В raw-строке бэкслэш один и
+        // остаётся одним — ровно то, что ждёт регулярка. Сборка на этом уже
+        // падала: бэкслэши правились «на глаз» и стали одиночными.
+        html.replace(Regex("""(?is)<(script|style)[^>]*>.*?</\1>"""), " ")
+            .replace(Regex("""(?i)<br\s*/?>"""), "\n")
             .replace(Regex("(?i)</p>"), "\n\n")
             .replace(Regex("<[^>]+>"), " ")
             .replace("&nbsp;", " ")
