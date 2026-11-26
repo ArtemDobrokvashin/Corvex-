@@ -87,7 +87,7 @@ class SmtpMailService @Inject constructor(
                     // только мешает разбору на стороне получателя.
                     setText(mail.body, "UTF-8")
                 } else {
-                    setContent(bodyWithAttachments(session, mail))
+                    setContent(bodyWithAttachments(mail))
                 }
                 mail.inReplyTo?.let { setHeader("In-Reply-To", it) }
                 mail.references?.let { setHeader("References", it) }
@@ -110,23 +110,24 @@ class SmtpMailService @Inject constructor(
      * (человек выбрал их в системе), а не с диска по известному пути.
      * `base64` и кодировку имени файла выставляет сам Jakarta Mail.
      */
-    private fun bodyWithAttachments(session: Session, mail: OutgoingMail): MimeMultipart {
+    private fun bodyWithAttachments(mail: OutgoingMail): MimeMultipart {
         val multipart = MimeMultipart()
         multipart.addBodyPart(
             MimeBodyPart().apply { setText(mail.body, "UTF-8") }
         )
         mail.attachments.forEach { attachment ->
-            val part = MimeBodyPart().apply {
-                setFileName(attachment.name)
-                // `setFileName` экранирует не всё, а заголовок Part — отдельно.
-                setDisposition(Part.ATTACHMENT)
-                contentType = if (attachment.mimeType.isBlank()) {
-                    "application/octet-stream"
-                } else {
-                    attachment.mimeType
-                }
-                content = attachment.bytes
-            }
+            val part = MimeBodyPart()
+            part.fileName = attachment.name
+            // Вложение, а не часть вёрстки: получатель должен видеть файл в
+            // списке вложений, а не искать его в теле письма.
+            part.disposition = Part.ATTACHMENT
+            // `content` и `contentType` у Jakarta Mail — свойства только для
+            // чтения: присваивание даёт «'val' cannot be reassigned».
+            // `setContent(bytes, type)` выставляет и содержимое, и MIME-тип.
+            part.setContent(
+                attachment.bytes,
+                attachment.mimeType.ifBlank { "application/octet-stream" }
+            )
             multipart.addBodyPart(part)
         }
         return multipart
