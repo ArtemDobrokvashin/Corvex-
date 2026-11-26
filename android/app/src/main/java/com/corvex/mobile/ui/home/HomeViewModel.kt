@@ -39,7 +39,15 @@ data class HomeUiState(
     /** `Message-ID` открытого письма: без него ответ не соберётся в цепочку. */
     val openedMessageId: String? = null,
     /** Открыт экран написания: `null` — закрыт. */
-    val compose: ComposeState? = null
+    val compose: ComposeState? = null,
+    /** Строка поиска; пустая — обычный список. */
+    val query: String = "",
+    /** Результаты поиска на сервере; `null` — поиск не активен. */
+    val searchResults: List<MailModel>? = null,
+    val isSearching: Boolean = false,
+    /** Можно ли догрузить более старые письма: не в поиске и не все загружены. */
+    val canLoadMore: Boolean = true,
+    val isLoadingMore: Boolean = false
 )
 
 
@@ -69,6 +77,12 @@ class HomeViewModel @Inject constructor(
     private object Cache {
         var folders: List<FolderModel> = emptyList()
         val mails: MutableMap<String, List<MailModel>> = mutableMapOf()
+        /** Сколько писем запрошено для папки: растёт при догрузке. */
+        val limits: MutableMap<String, Int> = mutableMapOf()
+    }
+
+    private companion object {
+        const val PAGE = 25
     }
 
     fun selectFolder(folderId: String) {
@@ -78,7 +92,12 @@ class HomeViewModel @Inject constructor(
             it.copy(
                 selectedFolder = folderId,
                 mails = Cache.mails[folderId].orEmpty(),
-                error = null
+                error = null,
+                // Поиск живёт в пределах папки: при переходе в другую старые
+                // результаты не должны оставаться на экране.
+                query = "",
+                searchResults = null,
+                canLoadMore = true
             )
         }
         refresh()
@@ -97,11 +116,22 @@ class HomeViewModel @Inject constructor(
                 )
             }
             if (isImap) {
-                val res = imapMailService.fetchFoldersAndInbox(folder)
+                val limit = Cache.limits[folder] ?: PAGE
+                val res = imapMailService.fetchFoldersAndInbox(folder, limit)
                 res.onSuccess { (folders, mails) ->
                     Cache.folders = folders
                     Cache.mails[folder] = mails
-                    _uiState.update { it.copy(isLoading = false, folders = folders, mails = mails) }
+                    // Если пришло меньше, чем просили, — в папке больше нечего
+                    // грузить; кнопка «ещё» иначе нажималась бы вхолостую.
+                    val exhausted = mails.size < limit
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            folders = folders,
+                            mails = mails,
+                            canLoadMore = !exhausted
+                        )
+                    }
                 }.onFailure { err ->
                     _uiState.update {
                         it.copy(
@@ -355,6 +385,94 @@ class HomeViewModel @Inject constructor(
                 openedBody = if (wasOpen) null else state.openedBody,
                 openedHtml = if (wasOpen) null else state.openedHtml,
                 openedMessageId = if (wasOpen) null else state.openedMessageId
+            )
+        }
+    }
+
+    // --- Поиск ---------------------------------------------------------------
+
+    fun onQueryChange(value: String) {
+        _uiState.update { it.copy(query = value) }
+        if (value.isBlank()) {
+            _uiState.update { it.copy(searchResults = null, isSearching = false) }
+        }
+    }
+
+    fun submitSearch() {
+        val query = _uiState.value.query.trim()
+        if (query.isEmpty()) {
+            _uiState.update { it.copy(searchResults = null) }
+            return
+        }
+        val folder = _uiState.value.selectedFolder
+        _uiState.update { it.copy(isSearching = true, error = null) }
+
+        viewModelScope.launch {
+            if (tokenStore.accountType != AccountType.IMAP.name) {
+                // Для серверного аккаунта поиск делает сервер Corvex; пока
+                // такого вызова нет, честнее показать пустой результат, чем
+                // искать по кэшу и делать вид, что это весь ящик.
+                _uiState.update { it.copy(isSearching = false, searchResults = emptyList()) }
+                return@launch
+            }
+            imapMailService.search(folder, query).fold(
+                onSuccess = { found ->
+                    _uiState.update { it.copy(isSearching = false, searchResults = found) }
+                },
+                onFailure = { err ->
+                    _uiState.update {
+                        it.copy(
+                            isSearching = false,
+                            searchResults = null,
+                            error = err.message ?: "Поиск не удался"
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    fun clearSearch() {
+        _uiState.update { it.copy(query = "", searchResults = null, isSearching = false) }
+    }
+
+    // --- Догрузка ------------------------------------------------------------
+
+    /**
+     * Показать более старые письма.
+     *
+     * IMAP не умеет «дай следующие 25» без состояния: проще перезапросить
+     * пачку большего размера. Для ящика на несколько тысяч писем это
+     * неэкономно, но предсказуемо и не требует держать offset между
+     * перезагрузками экрана.
+     */
+    fun loadMore() {
+        val state = _uiState.value
+        if (state.isLoadingMore || !state.canLoadMore || state.searchResults != null) return
+        val folder = state.selectedFolder
+        val next = (Cache.limits[folder] ?: PAGE) + PAGE
+        Cache.limits[folder] = next
+        _uiState.update { it.copy(isLoadingMore = true) }
+        viewModelScope.launch {
+            imapMailService.fetchFoldersAndInbox(folder, next).fold(
+                onSuccess = { (folders, mails) ->
+                    Cache.folders = folders
+                    Cache.mails[folder] = mails
+                    _uiState.update {
+                        it.copy(
+                            isLoadingMore = false,
+                            mails = mails,
+                            folders = folders,
+                            canLoadMore = mails.size >= next
+                        )
+                    }
+                },
+                onFailure = {
+                    // Откатываем лимит: иначе следующее нажатие запросит
+                    // ещё больше и снова не покажет ничего нового.
+                    Cache.limits[folder] = next - PAGE
+                    _uiState.update { it.copy(isLoadingMore = false) }
+                }
             )
         }
     }

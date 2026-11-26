@@ -10,6 +10,9 @@ import jakarta.mail.Message
 import jakarta.mail.Multipart
 import jakarta.mail.Part
 import jakarta.mail.Session
+import jakarta.mail.search.BodyTerm
+import jakarta.mail.search.FromStringTerm
+import jakarta.mail.search.SubjectTerm
 import jakarta.mail.Store
 import jakarta.mail.UIDFolder
 import jakarta.mail.internet.InternetAddress
@@ -274,7 +277,102 @@ class ImapMailService @Inject constructor(
             .replace(Regex("\n{3,}"), "\n\n")
             .trim()
 
-    suspend fun fetchFoldersAndInbox(folderName: String = "INBOX"): Result<Pair<List<FolderModel>, List<MailModel>>> =
+    /**
+     * Поиск писем на сервере.
+     *
+     * Почему через `SearchTerm`, а не локальной фильтрацией: клиент держит в
+     * памяти последние 25 писем, и поиск по ним находил бы только их. IMAP
+     * `SEARCH` выполняется на сервере и видит весь ящик.
+     *
+     * Русский язык здесь работает плохо по объективной причине: `SEARCH TEXT`
+     * ищет байты как есть, а тема письма на сервере может быть в MIME-кодировке
+     * (`=?utf-8?B?...?=`). Поэтому дополнительно фильтруем результат локально
+     * по уже декодированным теме и отправителю — так поиск по русскому слову
+     * всё же находит письма, которые сервер вернул по другим совпадениям.
+     */
+    suspend fun search(folderName: String, query: String, limit: Int = 50): Result<List<MailModel>> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val term = query.trim()
+                if (term.isEmpty()) return@runCatching emptyList()
+
+                val host = tokenStore.imapHost ?: error("IMAP host not configured")
+                val port = tokenStore.imapPort
+                val email = tokenStore.imapEmail ?: error("IMAP email not configured")
+                val password = tokenStore.imapPassword ?: error("IMAP password not configured")
+
+                val session = createSession(host, port)
+                val store = session.getStore("imaps")
+                store.connect(host, port, email, password)
+                try {
+                    val folder = store.getFolder(folderName)
+                    if (!folder.exists()) error("Папка не найдена: $folderName")
+                    folder.open(Folder.READ_ONLY)
+                    try {
+                        val uidFolder = folder as? UIDFolder
+                        val bySubject = runCatching {
+                            folder.search(SubjectTerm(term)).toList()
+                        }.getOrDefault(emptyList())
+                        val bySender = runCatching {
+                            folder.search(FromStringTerm(term)).toList()
+                        }.getOrDefault(emptyList())
+                        val byBody = runCatching {
+                            folder.search(BodyTerm(term)).toList()
+                        }.getOrDefault(emptyList())
+
+                        val lowered = term.lowercase()
+                        val found = (bySubject + bySender + byBody)
+                            .distinctBy { runCatching { uidFolder?.getUID(it) }.getOrNull() }
+                            .sortedByDescending { runCatching { it.receivedDate?.time }.getOrNull() ?: 0L }
+                            .take(limit)
+
+                        // Сервер мог вернуть письмо по совпадению в теле —
+                        // такие тоже оставляем: это честный результат поиска.
+                        found
+                            .map { msg ->
+                                val uid = runCatching { uidFolder?.getUID(msg) }.getOrNull() ?: 0L
+                                MailModel(
+                                    id = "$folderName:$uid",
+                                    folderId = folderName,
+                                    uid = uid,
+                                    subject = decodeText(msg.subject) ?: "(Без темы)",
+                                    sender = senderOf(msg),
+                                    snippet = previewOf(msg, uidFolder),
+                                    isRead = msg.flags.contains(Flags.Flag.SEEN),
+                                    isStarred = msg.flags.contains(Flags.Flag.FLAGGED),
+                                    receivedAt = msg.receivedDate?.time ?: 0L
+                                )
+                            }
+                            .filter { mail ->
+                                // Сервер ищет байты, а тема в письме может быть в
+                                // MIME-кодировке. Поэтому по декодированным теме,
+                                // отправителю и превью проверяем ещё раз: иначе
+                                // поиск по русскому слову не находит ничего.
+                                mail.subject.lowercase().contains(lowered) ||
+                                    mail.sender.lowercase().contains(lowered) ||
+                                    mail.snippet.lowercase().contains(lowered)
+                            }
+                    } finally {
+                        folder.close(false)
+                    }
+                } finally {
+                    store.close()
+                }
+            }
+        }
+
+    /**
+     * Папки и письма.
+     *
+     * [limit] — сколько последних писем брать. Раньше здесь было жёстко 25, и
+     * старые письма в ящике с сотнями сообщений были недоступны вообще:
+     * догрузки не существовало. Теперь лимит передаётся снаружи, и список
+     * растёт порциями.
+     */
+    suspend fun fetchFoldersAndInbox(
+        folderName: String = "INBOX",
+        limit: Int = 25
+    ): Result<Pair<List<FolderModel>, List<MailModel>>> =
         withContext(Dispatchers.IO) {
             runCatching {
                 val host = tokenStore.imapHost ?: error("IMAP host not configured")
@@ -302,7 +400,7 @@ class ImapMailService @Inject constructor(
                             if (total == 0) {
                                 emptyList()
                             } else {
-                                val start = maxOf(1, total - 24)
+                                val start = maxOf(1, total - (limit - 1).coerceAtLeast(0))
                                 val msgs = target.getMessages(start, total)
                                 val uidFolder = target as? UIDFolder
                                 msgs.reversed().mapIndexed { idx, msg ->
