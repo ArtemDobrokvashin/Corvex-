@@ -69,8 +69,12 @@ class MailSyncWorker(
         return result.fold(
             onSuccess = { (_, mails) ->
                 val unread = mails.count { !it.isRead }
+                // Сравниваем не «сколько непрочитанных», а какие именно письма
+                // новые. Иначе после прочтения одного письма и прихода другого
+                // счётчик не меняется — и уведомление молчит.
+                val fresh = mails.map { it.id }.toSet() - previous.ids
                 rememberKnown(applicationContext, mails.map { it.id }.toSet(), unread)
-                notifyIfNew(applicationContext, previous.totalUnread, unread)
+                notifyIfNew(applicationContext, fresh.size)
                 Result.success()
             },
             onFailure = { error ->
@@ -80,9 +84,11 @@ class MailSyncWorker(
         )
     }
 
-    private fun notifyIfNew(context: Context, before: Int, after: Int) {
-        if (after <= before) return
-        val added = after - before
+    private fun notifyIfNew(context: Context, added: Int) {
+        // Список писем на сервере мог быть пуст при первом запуске — тогда все
+        // 25 писем «новые», и уведомление «25 новых писем» после установки
+        // выглядит как поломка. Первый запуск только запоминает состояние.
+        if (added <= 0 || added >= MAX_NOTIFY) return
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             manager.createNotificationChannel(
@@ -128,6 +134,9 @@ class MailSyncWorker(
         private const val KEY_LAST_RUN = "last_run"
         private const val CHANNEL_ID = "corvex_mail"
         private const val NOTIFICATION_ID = 1001
+
+        /** Больше этого — значит это первый запуск, а не «пачка новых писем». */
+        private const val MAX_NOTIFY = 10
 
         /**
          * 15 минут — минимальный интервал периодической задачи в WorkManager.
