@@ -19,7 +19,10 @@ import androidx.compose.material.icons.outlined.MarkEmailRead
 import androidx.compose.material.icons.outlined.MarkEmailUnread
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.*
+import android.widget.Toast
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,6 +60,8 @@ fun HomeScreen(
             onChange = viewModel::updateCompose,
             onAddRecipient = viewModel::addRecipient,
             onRemoveRecipient = viewModel::removeRecipient,
+            onRemoveAttachment = viewModel::removeAttachment,
+            onAttach = viewModel::addAttachment,
             onSend = viewModel::sendCompose,
             onClose = viewModel::closeCompose
         )
@@ -65,6 +70,15 @@ fun HomeScreen(
 
     val opened = state.openedMail
     if (opened != null) {
+        // Результат сохранения вложения: Toast, а не Snackbar — экран письма
+        // не содержит Scaffold со SnackbarHost, а перестраивать его ради
+        // одного сообщения не стоит.
+        val context = LocalContext.current
+        LaunchedEffect(state.attachmentNotice) {
+            val notice = state.attachmentNotice ?: return@LaunchedEffect
+            Toast.makeText(context, notice, Toast.LENGTH_LONG).show()
+            viewModel.clearAttachmentNotice()
+        }
         MailDetailScreen(
             mail = opened,
             bodyText = state.openedBody,
@@ -76,7 +90,10 @@ fun HomeScreen(
             onReplyAll = { viewModel.composeReply(opened, all = true) },
             onForward = { viewModel.composeForward(opened) },
             onArchive = { viewModel.archive(opened) },
-            onDelete = { viewModel.delete(opened) }
+            onDelete = { viewModel.delete(opened) },
+            attachments = state.openedAttachments,
+            downloadingAttachment = state.downloadingAttachment,
+            onDownloadAttachment = viewModel::downloadAttachment
         )
         return
     }

@@ -3,8 +3,11 @@ package com.corvex.mobile.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.corvex.mobile.data.imap.ImapMailService
+import com.corvex.mobile.data.imap.MailAttachment
+import com.corvex.mobile.data.imap.OutgoingAttachment
 import com.corvex.mobile.data.imap.OutgoingMail
 import com.corvex.mobile.data.imap.SmtpMailService
+import com.corvex.mobile.data.local.AttachmentStore
 import com.corvex.mobile.data.repository.MailRepository
 import com.corvex.mobile.data.security.TokenStore
 import com.corvex.mobile.domain.mail.AccountType
@@ -36,6 +39,12 @@ data class HomeUiState(
     val openedBodyError: String? = null,
     /** HTML открытого письма; `null` — письмо текстовое или ещё грузится. */
     val openedHtml: String? = null,
+    /** Вложения открытого письма: метаданные и, после загрузки, содержимое. */
+    val openedAttachments: List<MailAttachment> = emptyList(),
+    /** Имя вложения, которое сейчас скачивается. */
+    val downloadingAttachment: String? = null,
+    /** Сообщение о сохранённом файле или ошибке — то, что показываем тостом. */
+    val attachmentNotice: String? = null,
     /** `Message-ID` открытого письма: без него ответ не соберётся в цепочку. */
     val openedMessageId: String? = null,
     /** Открыт экран написания: `null` — закрыт. */
@@ -57,6 +66,7 @@ class HomeViewModel @Inject constructor(
     private val tokenStore: TokenStore,
     private val imapMailService: ImapMailService,
     private val smtpMailService: SmtpMailService,
+    private val attachmentStore: AttachmentStore,
     private val mailRepository: MailRepository
 ) : ViewModel() {
 
@@ -83,6 +93,9 @@ class HomeViewModel @Inject constructor(
 
     private companion object {
         const val PAGE = 25
+
+        /** 20 МБ: у mail.ru лимит письма 25 МБ, запас — на кодирование base64. */
+        const val MAX_ATTACHMENT_BYTES = 20L * 1024 * 1024
     }
 
     fun selectFolder(folderId: String) {
@@ -164,6 +177,7 @@ class HomeViewModel @Inject constructor(
                 openedMail = mail,
                 openedBody = null,
                 openedHtml = null,
+                openedAttachments = emptyList(),
                 openedBodyError = null,
                 openedMessageId = null
             )
@@ -175,6 +189,7 @@ class HomeViewModel @Inject constructor(
                     it.copy(
                         openedBody = body.bodyText,
                         openedHtml = body.bodyHtml,
+                        openedAttachments = body.attachments,
                         openedMessageId = body.messageId
                     )
                 }
@@ -291,6 +306,34 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Приложить файл к письму.
+     *
+     * Содержимое читается сразу, при выборе: если читать при отправке, файл
+     * может стать недоступен (человек удалил его или отозвал разрешение на
+     * доступ), и отправка упадёт уже после того, как письмо набрано.
+     *
+     * Лимит 20 МБ на всё письмо — не формальность: mail.ru отклоняет письма
+     * больше 25 МБ, и лучше сказать об этом сразу, чем получить отказ сервера.
+     */
+    fun addAttachment(name: String, mimeType: String, bytes: ByteArray) {
+        val current = _uiState.value.compose ?: return
+        val total = current.attachments.sumOf { it.bytes.size.toLong() } + bytes.size.toLong()
+        if (total > MAX_ATTACHMENT_BYTES) {
+            updateCompose {
+                it.copy(
+                    error = "Вложения больше 20 МБ не отправляются. Уберите файл или пришлите ссылку."
+                )
+            }
+            return
+        }
+        updateCompose { it.copy(attachments = it.attachments + OutgoingAttachment(name, mimeType, bytes)) }
+    }
+
+    fun removeAttachment(name: String) {
+        updateCompose { draft -> draft.copy(attachments = draft.attachments.filterNot { it.name == name }) }
+    }
+
     fun removeRecipient(field: ComposeField, address: String) {
         updateCompose { draft ->
             when (field) {
@@ -325,7 +368,8 @@ class HomeViewModel @Inject constructor(
                     cc = draft.cc + draft.bcc,
                     subject = draft.subject,
                     body = draft.body,
-                    inReplyTo = draft.inReplyTo
+                    inReplyTo = draft.inReplyTo,
+                    attachments = draft.attachments
                 )
             )
             res.onSuccess {
@@ -477,12 +521,67 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    // --- Вложения ------------------------------------------------------------
+
+    /**
+     * Скачать вложение и сохранить на устройство.
+     *
+     * Содержимое грузится по требованию и не кешируется между письмами:
+     * держать в памяти десятки мегабайт фотографий из старых писем — верный
+     * способ получить OutOfMemory на телефоне с 2 ГБ RAM.
+     */
+    fun downloadAttachment(attachment: MailAttachment) {
+        val mail = _uiState.value.openedMail ?: return
+        if (_uiState.value.downloadingAttachment != null) return
+        _uiState.update { it.copy(downloadingAttachment = attachment.name, attachmentNotice = null) }
+
+        viewModelScope.launch {
+            imapMailService.fetchAttachment(mail.folderId, mail.uid, attachment.name)
+                .fold(
+                    onSuccess = { bytes ->
+                        val where = attachmentStore
+                            .save(attachment.name, attachment.mimeType, bytes)
+                            .getOrNull()
+                            .orEmpty()
+                        _uiState.update { state ->
+                            state.copy(
+                                downloadingAttachment = null,
+                                attachmentNotice = if (where.isBlank()) {
+                                    "Не удалось сохранить файл"
+                                } else {
+                                    "Сохранено: $where"
+                                },
+                                // Содержимое кладём в состояние: превью картинки
+                                // дальше показывается без повторной загрузки.
+                                openedAttachments = state.openedAttachments.map {
+                                    if (it.name == attachment.name) it.copy(bytes = bytes) else it
+                                }
+                            )
+                        }
+                    },
+                    onFailure = { err ->
+                        _uiState.update {
+                            it.copy(
+                                downloadingAttachment = null,
+                                attachmentNotice = err.message ?: "Не удалось скачать вложение"
+                            )
+                        }
+                    }
+                )
+        }
+    }
+
+    fun clearAttachmentNotice() {
+        _uiState.update { it.copy(attachmentNotice = null) }
+    }
+
     fun closeOpenedMail() {
         _uiState.update {
             it.copy(
                 openedMail = null,
                 openedBody = null,
                 openedHtml = null,
+                openedAttachments = emptyList(),
                 openedBodyError = null,
                 openedMessageId = null
             )

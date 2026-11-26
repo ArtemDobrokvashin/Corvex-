@@ -101,6 +101,64 @@ class ImapMailService @Inject constructor(
     }
 
     /**
+     * Перечислить вложения письма: только метаданные, без содержимого.
+     *
+     * Вложениями считаются части с именем файла. Части `inline` (картинки,
+     * вставленные в вёрстку) тоже попадают сюда: иначе в письме с логотипом
+     * в подписи «вложений нет», хотя файл в письме есть и его можно
+     * сохранить. Мелкие картинки меньше 1 КБ пропускаем — это пиксели-трекеры
+     * и разделители, показывать их как файлы бессмысленно.
+     */
+    private fun attachmentsOf(part: Part, depth: Int = 0, sink: MutableList<MailAttachment> = mutableListOf()): List<MailAttachment> {
+        if (depth > 4) return sink
+        val name = runCatching { part.fileName }.getOrNull()
+        if (!name.isNullOrBlank()) {
+            val decoded = decodeText(name) ?: name
+            val size = runCatching { part.size }.getOrDefault(0)
+            val type = runCatching { part.contentType }.getOrNull().orEmpty()
+                .substringBefore(';').trim()
+                .ifBlank { "application/octet-stream" }
+            if (size >= 1024 || !type.startsWith("image/")) {
+                sink.add(MailAttachment(name = decoded, sizeBytes = size, mimeType = type))
+            }
+            // Внутрь вложения не спускаемся: attached .eml — это файл, а не
+            // часть письма, и его кишки показывать не нужно.
+            return sink
+        }
+        if (!runCatching { part.isMimeType("multipart/*") }.getOrDefault(false)) return sink
+        val multipart = runCatching { part.content as? Multipart }.getOrNull() ?: return sink
+        for (i in 0 until multipart.count) {
+            val child = runCatching { multipart.getBodyPart(i) }.getOrNull() ?: continue
+            attachmentsOf(child, depth + 1, sink)
+        }
+        return sink
+    }
+
+    /**
+     * Содержимое вложения по имени.
+     *
+     * Ищем по имени, а не по индексу части: индексы меняются от версии
+     * письма к версии, а имя файла — нет. Дубликаты имён (два `scan.pdf`)
+     * разрешаются в пользу первого — редкий случай, но честнее взять
+     * что-то, чем ничего.
+     */
+    private fun findAttachmentPart(part: Part, name: String, depth: Int = 0): Part? {
+        if (depth > 4) return null
+        val fileName = runCatching { part.fileName }.getOrNull()
+        if (!fileName.isNullOrBlank()) {
+            val decoded = decodeText(fileName) ?: fileName
+            return if (decoded == name) part else null
+        }
+        if (!runCatching { part.isMimeType("multipart/*") }.getOrDefault(false)) return null
+        val multipart = runCatching { part.content as? Multipart }.getOrNull() ?: return null
+        for (i in 0 until multipart.count) {
+            val child = runCatching { multipart.getBodyPart(i) }.getOrNull() ?: continue
+            findAttachmentPart(child, name, depth + 1)?.let { return it }
+        }
+        return null
+    }
+
+    /**
      * Найти часть письма нужного типа на любой глубине вложения.
      *
      * Вложения (`fileName != null`) пропускаются: приложенный файл тоже может
@@ -160,8 +218,44 @@ class ImapMailService @Inject constructor(
                             from = senderOf(message),
                             bodyText = text?.trim().orEmpty(),
                             messageId = runCatching { message.getHeader("Message-ID")?.firstOrNull() }.getOrNull(),
-                            bodyHtml = html?.takeIf { it.isNotBlank() }
+                            bodyHtml = html?.takeIf { it.isNotBlank() },
+                            attachments = attachmentsOf(message)
                         )
+                    } finally {
+                        folder.close(false)
+                    }
+                } finally {
+                    store.close()
+                }
+            }
+        }
+
+    /**
+     * Содержимое вложения. Грузится отдельно от письма: открытие письма не
+     * должно тянуть десятки мегабайт фотографий.
+     */
+    suspend fun fetchAttachment(folderName: String, uid: Long, name: String): Result<ByteArray> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val host = tokenStore.imapHost ?: error("IMAP host not configured")
+                val port = tokenStore.imapPort
+                val email = tokenStore.imapEmail ?: error("IMAP email not configured")
+                val password = tokenStore.imapPassword ?: error("IMAP password not configured")
+
+                val session = createSession(host, port)
+                val store = session.getStore("imaps")
+                store.connect(host, port, email, password)
+                try {
+                    val folder = store.getFolder(folderName)
+                    if (!folder.exists()) error("Папка не найдена: $folderName")
+                    folder.open(Folder.READ_ONLY)
+                    try {
+                        val message = (folder as? UIDFolder)?.getMessageByUID(uid)
+                            ?: error("Письмо не найдено")
+                        val part = findAttachmentPart(message, name)
+                            ?: error("Вложение не найдено: $name")
+                        runCatching { part.inputStream.use { it.readBytes() } }
+                            .getOrElse { error("Не удалось прочитать вложение: $name") }
                     } finally {
                         folder.close(false)
                     }

@@ -19,5 +19,7 @@ data class MailBody(
     /** `Message-ID` — нужен для `In-Reply-To`/`References` в ответе и пересылке. */
     val messageId: String? = null,
     /** Исходный HTML письма; `null`, если письмо текстовое. */
-    val bodyHtml: String? = null
+    val bodyHtml: String? = null,
+    /** Вложения без содержимого: его грузят отдельно и только при открытии. */
+    val attachments: List<MailAttachment> = emptyList()
 )
