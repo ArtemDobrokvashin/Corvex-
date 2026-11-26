@@ -1,5 +1,7 @@
 package com.corvex.mobile.ui.mail
 
+import com.corvex.mobile.data.imap.OutgoingAttachment
+
 /**
  * Вид письма, которое пишем. Один экран обслуживает все четыре случая:
  * разница только в начальном заполнении и заголовке.
@@ -32,7 +34,9 @@ data class ComposeState(
     val showCc: Boolean = false,
     val showBcc: Boolean = false,
     /** Поле ввода, которое сейчас заполняется: «Кому», «Копия» или «Скрытая». */
-    val activeField: ComposeField = ComposeField.TO
+    val activeField: ComposeField = ComposeField.TO,
+    /** Файлы, приложенные к письму. Содержимое читается сразу при выборе. */
+    val attachments: List<OutgoingAttachment> = emptyList()
 )
 
 enum class ComposeField { TO, CC, BCC }

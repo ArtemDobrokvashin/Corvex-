@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.corvex.mobile.data.imap.MailAttachment
 import com.corvex.mobile.domain.mail.MailModel
 import com.corvex.mobile.ui.common.MailFormatting
 import com.corvex.mobile.ui.theme.CorvexColors
@@ -48,7 +49,10 @@ fun MailDetailScreen(
     onReplyAll: () -> Unit,
     onForward: () -> Unit,
     onArchive: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    attachments: List<MailAttachment> = emptyList(),
+    downloadingAttachment: String? = null,
+    onDownloadAttachment: (MailAttachment) -> Unit = {}
 ) {
     Scaffold(
         containerColor = CorvexColors.Surface,
@@ -151,6 +155,12 @@ fun MailDetailScreen(
                     color = CorvexColors.InkSoft
                 )
             }
+
+            AttachmentsSection(
+                attachments = attachments,
+                downloadingName = downloadingAttachment,
+                onDownload = onDownloadAttachment
+            )
 
             // Действия под письмом: так же, как в вебе, палец идёт туда же,
             // куда смотрит взгляд — после прочитанного текста.

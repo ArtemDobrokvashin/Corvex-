@@ -2,9 +2,12 @@ package com.corvex.mobile.data.imap
 
 import com.corvex.mobile.data.security.TokenStore
 import jakarta.mail.Message
+import jakarta.mail.Part
 import jakarta.mail.Session
 import jakarta.mail.Transport
 import jakarta.mail.internet.InternetAddress
+import jakarta.mail.internet.MimeBodyPart
+import jakarta.mail.internet.MimeMultipart
 import jakarta.mail.internet.MimeMessage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -24,7 +27,8 @@ data class OutgoingMail(
     val body: String = "",
     /** `Message-ID` письма, на которое отвечаем: с ним переписка собирается в цепочку. */
     val inReplyTo: String? = null,
-    val references: String? = null
+    val references: String? = null,
+    val attachments: List<OutgoingAttachment> = emptyList()
 )
 
 /**
@@ -77,8 +81,14 @@ class SmtpMailService @Inject constructor(
                     setRecipients(Message.RecipientType.CC, mail.cc.toAddresses())
                 }
                 subject = mail.subject.ifBlank { "(без темы)" }
-                setText(mail.body, "UTF-8")
                 setSentDate(Date())
+                if (mail.attachments.isEmpty()) {
+                    // Без вложений — обычный текст: лишний multipart в письме
+                    // только мешает разбору на стороне получателя.
+                    setText(mail.body, "UTF-8")
+                } else {
+                    setContent(bodyWithAttachments(session, mail))
+                }
                 mail.inReplyTo?.let { setHeader("In-Reply-To", it) }
                 mail.references?.let { setHeader("References", it) }
             }
@@ -91,6 +101,35 @@ class SmtpMailService @Inject constructor(
                 runCatching { transport.close() }
             }
         }
+    }
+
+    /**
+     * Письмо с вложениями: текстовая часть + по одной части на файл.
+     *
+     * `MimeBodyPart.attachFile` не используем: файлы приходят из памяти
+     * (человек выбрал их в системе), а не с диска по известному пути.
+     * `base64` и кодировку имени файла выставляет сам Jakarta Mail.
+     */
+    private fun bodyWithAttachments(session: Session, mail: OutgoingMail): MimeMultipart {
+        val multipart = MimeMultipart()
+        multipart.addBodyPart(
+            MimeBodyPart().apply { setText(mail.body, "UTF-8") }
+        )
+        mail.attachments.forEach { attachment ->
+            val part = MimeBodyPart().apply {
+                setFileName(attachment.name)
+                // `setFileName` экранирует не всё, а заголовок Part — отдельно.
+                setDisposition(Part.ATTACHMENT)
+                contentType = if (attachment.mimeType.isBlank()) {
+                    "application/octet-stream"
+                } else {
+                    attachment.mimeType
+                }
+                content = attachment.bytes
+            }
+            multipart.addBodyPart(part)
+        }
+        return multipart
     }
 
     private fun List<String>.toAddresses(): Array<InternetAddress> =

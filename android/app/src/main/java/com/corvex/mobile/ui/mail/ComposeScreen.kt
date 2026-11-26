@@ -5,6 +5,8 @@
 
 package com.corvex.mobile.ui.mail
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -56,12 +58,14 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.corvex.mobile.data.imap.OutgoingAttachment
 import com.corvex.mobile.ui.theme.CorvexColors
 
 /**
@@ -85,9 +89,21 @@ fun ComposeScreen(
     onChange: ((ComposeState) -> ComposeState) -> Unit,
     onAddRecipient: (ComposeField, String) -> Unit,
     onRemoveRecipient: (ComposeField, String) -> Unit,
+    onRemoveAttachment: (String) -> Unit,
+    onAttach: (String, String, ByteArray) -> Unit,
     onSend: () -> Unit,
     onClose: () -> Unit
 ) {
+    // Системный выбор файла: разрешений на хранилище не требует — человек сам
+    // показывает, какой файл отдать приложению.
+    val context = LocalContext.current
+    val pickFile = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            readPickedFile(context, uri)?.let { (name, mime, bytes) -> onAttach(name, mime, bytes) }
+        }
+    }
     var toInput by remember { mutableStateOf("") }
     var ccInput by remember { mutableStateOf("") }
     var bccInput by remember { mutableStateOf("") }
@@ -296,7 +312,11 @@ fun ComposeScreen(
                 }
             }
 
-            ComposeToolbar()
+            if (state.attachments.isNotEmpty()) {
+                AttachedFilesRow(attachments = state.attachments, onRemove = onRemoveAttachment)
+            }
+
+            ComposeToolbar(onAttachClick = { pickFile.launch(arrayOf("*/*")) })
         }
     }
 }
@@ -421,7 +441,9 @@ private fun RecipientRow(
  * создавать впечатление, что вложения поддерживаются.
  */
 @Composable
-private fun ComposeToolbar() {
+private fun ComposeToolbar(
+    onAttachClick: () -> Unit
+) {
     HorizontalDivider(color = CorvexColors.LineSubtle)
     Row(
         modifier = Modifier
@@ -430,13 +452,14 @@ private fun ComposeToolbar() {
             .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Форматирование пока не работает и выключено честно: письмо уходит
+        // простым текстом. Вложение — работает.
         listOf(
             Icons.Filled.FormatBold to "Жирный",
             Icons.Filled.FormatItalic to "Курсив",
-            Icons.Filled.FormatUnderlined to "Подчёркнутый",
-            Icons.Filled.AttachFile to "Вложение"
+            Icons.Filled.FormatUnderlined to "Подчёркнутый"
         ).forEach { (icon, description) ->
-            IconButton(onClick = { /* форматирование и вложения — отдельная задача */ }, enabled = false) {
+            IconButton(onClick = { }, enabled = false) {
                 Icon(
                     icon,
                     contentDescription = description,
@@ -444,6 +467,14 @@ private fun ComposeToolbar() {
                     tint = CorvexColors.Faint
                 )
             }
+        }
+        IconButton(onClick = onAttachClick) {
+            Icon(
+                Icons.Filled.AttachFile,
+                contentDescription = "Приложить файл",
+                modifier = Modifier.size(20.dp),
+                tint = CorvexColors.Accent
+            )
         }
         Spacer(modifier = Modifier.weight(1f))
         Text(
@@ -454,3 +485,83 @@ private fun ComposeToolbar() {
         )
     }
 }
+
+/**
+ * Приложенные файлы над панелью: имя, размер, крестик.
+ *
+ * Крестик, а не «нажми, чтобы открыть»: файл уже в памяти, и единственное
+ * действие — убрать его, пока письмо не ушло.
+ */
+@Composable
+private fun AttachedFilesRow(
+    attachments: List<OutgoingAttachment>,
+    onRemove: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(CorvexColors.Canvas)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        attachments.forEach { file ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.AttachFile,
+                    contentDescription = null,
+                    tint = CorvexColors.AccentDark,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = file.name,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = CorvexColors.InkSoft,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = "${(file.bytes.size / 1024).coerceAtLeast(1)} КБ",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = CorvexColors.Faint
+                )
+                IconButton(onClick = { onRemove(file.name) }, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = "Убрать ${file.name}",
+                        modifier = Modifier.size(14.dp),
+                        tint = CorvexColors.Faint
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Чтение выбранного файла.
+ *
+ * Имя берётся из `OpenableColumns.DISPLAY_NAME`: у `content://`-URI нет
+ * файлового пути, и `uri.path` вернул бы что-то вроде `document/1234` —
+ * такое вложение человек не узнает.
+ */
+private fun readPickedFile(
+    context: android.content.Context,
+    uri: android.net.Uri
+): Triple<String, String, ByteArray>? = runCatching {
+    val resolver = context.contentResolver
+    val mime = resolver.getType(uri) ?: "application/octet-stream"
+    var name = "вложение"
+    resolver.query(uri, null, null, null, null)?.use { cursor ->
+        val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+        if (index >= 0 && cursor.moveToFirst()) {
+            name = cursor.getString(index) ?: name
+        }
+    }
+    val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+    if (bytes == null) null else Triple(name, mime, bytes)
+}.getOrNull()
