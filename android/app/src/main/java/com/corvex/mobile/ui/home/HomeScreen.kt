@@ -7,8 +7,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
@@ -26,8 +29,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.corvex.mobile.domain.mail.MailModel
 import com.corvex.mobile.ui.common.MailFormatting
@@ -216,8 +222,29 @@ fun HomeScreen(
                 EmptyState()
             }
 
+            // Поле поиска живёт над списком, а не в отдельном экране: в почте
+            // ищут «на месте», не теряя папку и контекст.
+            SearchField(
+                query = state.query,
+                isSearching = state.isSearching,
+                onQueryChange = viewModel::onQueryChange,
+                onSubmit = viewModel::submitSearch,
+                onClear = viewModel::clearSearch
+            )
+
+            val visible = state.searchResults ?: state.mails
+
+            if (state.searchResults != null && !state.isSearching && visible.isEmpty()) {
+                Text(
+                    text = "По запросу «${state.query}» ничего не найдено",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = CorvexColors.Faint,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 24.dp)
+                )
+            }
+
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(state.mails, key = { it.id }) { mail ->
+                items(visible, key = { it.id }) { mail ->
                     MailRow(
                         mail = mail,
                         onClick = { viewModel.open(mail) },
@@ -226,8 +253,102 @@ fun HomeScreen(
                     )
                     HorizontalDivider(color = CorvexColors.LineSubtle, thickness = 1.dp)
                 }
+
+                if (state.searchResults == null && state.canLoadMore && state.mails.isNotEmpty()) {
+                    item(key = "load_more") {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (state.isLoadingMore) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(22.dp),
+                                    strokeWidth = 2.dp,
+                                    color = CorvexColors.Accent
+                                )
+                            } else {
+                                OutlinedButton(onClick = viewModel::loadMore) {
+                                    Text("Показать ещё")
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
+    }
+}
+
+/**
+ * Поле поиска.
+ *
+ * Отправка по Enter и по кнопке-лупе: на телефоне клавиатура часто убирает
+ * нижнюю часть экрана, и без кнопки пришлось бы искать «ввод» вслепую.
+ */
+@Composable
+private fun SearchField(
+    query: String,
+    isSearching: Boolean,
+    onQueryChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onClear: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(CorvexColors.Chrome)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        TextField(
+            value = query,
+            onValueChange = onQueryChange,
+            singleLine = true,
+            placeholder = { Text("Поиск по почте", style = MaterialTheme.typography.bodyMedium) },
+            leadingIcon = {
+                Icon(
+                    Icons.Filled.Search,
+                    contentDescription = null,
+                    tint = CorvexColors.Faint,
+                    modifier = Modifier.size(18.dp)
+                )
+            },
+            trailingIcon = {
+                when {
+                    isSearching -> CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = CorvexColors.Accent
+                    )
+                    query.isNotEmpty() -> IconButton(onClick = onClear) {
+                        Icon(
+                            Icons.Filled.Close,
+                            contentDescription = "Очистить поиск",
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    else -> IconButton(onClick = onSubmit) {
+                        Icon(
+                            Icons.Filled.Search,
+                            contentDescription = "Найти",
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
+            shape = RoundedCornerShape(10.dp),
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = CorvexColors.Canvas,
+                unfocusedContainerColor = CorvexColors.Canvas,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
