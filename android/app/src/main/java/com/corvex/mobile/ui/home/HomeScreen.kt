@@ -207,27 +207,10 @@ fun HomeScreen(
                 }
             }
 
+            // В пустом ящике «Написать» уже есть — это FAB в Scaffold. Вторая
+            // кнопка здесь дублировала бы его и съедала место у EmptyState.
             if (state.mails.isEmpty() && !state.isLoading && state.error == null) {
                 EmptyState()
-            }
-
-            if (state.mails.isEmpty() && !state.isLoading) {
-                // Пусто — но кнопка «Написать» должна быть на месте: без неё
-                // из пустого ящика некуда деться.
-                Button(
-                    onClick = viewModel::composeNew,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = CorvexColors.Accent,
-                        contentColor = Color.White
-                    )
-                ) {
-                    Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.padding(horizontal = 3.dp))
-                    Text("Написать письмо")
-                }
             }
 
             LazyColumn(modifier = Modifier.fillMaxSize()) {
