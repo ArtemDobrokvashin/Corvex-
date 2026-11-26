@@ -45,6 +45,8 @@ data class HomeUiState(
     val downloadingAttachment: String? = null,
     /** Сообщение о сохранённом файле или ошибке — то, что показываем тостом. */
     val attachmentNotice: String? = null,
+    /** Короткое сообщение об успешном действии (перенос в папку). */
+    val notice: String? = null,
     /** `Message-ID` открытого письма: без него ответ не соберётся в цепочку. */
     val openedMessageId: String? = null,
     /** Открыт экран написания: `null` — закрыт. */
@@ -54,6 +56,8 @@ data class HomeUiState(
     /** Результаты поиска на сервере; `null` — поиск не активен. */
     val searchResults: List<MailModel>? = null,
     val isSearching: Boolean = false,
+    /** Письмо, для которого выбирают папку переноса; `null` — диалог закрыт. */
+    val movingMail: MailModel? = null,
     /** Можно ли догрузить более старые письма: не в поиске и не все загружены. */
     val canLoadMore: Boolean = true,
     val isLoadingMore: Boolean = false
@@ -387,6 +391,48 @@ class HomeViewModel @Inject constructor(
     }
 
     // --- Перемещение писем ---------------------------------------------------
+
+    // --- Перенос в папку -----------------------------------------------------
+
+    fun startMove(mail: MailModel) {
+        _uiState.update { it.copy(movingMail = mail) }
+    }
+
+    fun cancelMove() {
+        _uiState.update { it.copy(movingMail = null) }
+    }
+
+    /** Папки, в которые можно перенести: всё, кроме текущей и служебных. */
+    fun moveTargets(): List<FolderModel> {
+        val state = _uiState.value
+        return state.folders
+            .filter { it.id != state.selectedFolder }
+            // Папки с суммой писем и «невыбираемые» узлы IMAP (например
+            // \[Gmail\] без собственных писем) исключаем: перенос туда
+            // завершится ошибкой сервера.
+            .filterNot { it.name.isBlank() }
+    }
+
+    fun moveTo(mail: MailModel, targetFolderId: String, targetName: String) {
+        _uiState.update { it.copy(movingMail = null) }
+        viewModelScope.launch {
+            imapMailService.moveTo(mail.folderId, mail.uid, listOf(targetName)).fold(
+                onSuccess = {
+                    removeLocally(mail)
+                    _uiState.update { it.copy(notice = "Перенесено в «$targetName»") }
+                },
+                onFailure = { err ->
+                    _uiState.update {
+                        it.copy(error = err.message ?: "Не удалось перенести письмо в «$targetName»")
+                    }
+                }
+            )
+        }
+    }
+
+    fun clearNotice() {
+        _uiState.update { it.copy(notice = null) }
+    }
 
     /** В архив. Имена папок у провайдеров разные, поэтому список кандидатов. */
     fun archive(mail: MailModel) {
