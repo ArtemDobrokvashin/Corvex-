@@ -40,6 +40,7 @@ private val fullDateFormatter =
 fun MailDetailScreen(
     mail: MailModel,
     bodyText: String?,
+    bodyHtml: String? = null,
     bodyError: String?,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
@@ -143,6 +144,7 @@ fun MailDetailScreen(
                         trackColor = CorvexColors.AccentSoft
                     )
                 }
+                bodyHtml != null -> HtmlMailBody(html = bodyHtml)
                 else -> Text(
                     text = bodyText.ifBlank { mail.snippet }.ifBlank { "(пустое письмо)" },
                     style = MaterialTheme.typography.bodyMedium,

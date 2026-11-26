@@ -49,6 +49,8 @@ fun HomeScreen(
         ComposeScreen(
             state = draft,
             onChange = viewModel::updateCompose,
+            onAddRecipient = viewModel::addRecipient,
+            onRemoveRecipient = viewModel::removeRecipient,
             onSend = viewModel::sendCompose,
             onClose = viewModel::closeCompose
         )
@@ -60,6 +62,7 @@ fun HomeScreen(
         MailDetailScreen(
             mail = opened,
             bodyText = state.openedBody,
+            bodyHtml = state.openedHtml,
             bodyError = state.openedBodyError,
             onBack = viewModel::closeOpenedMail,
             onRefresh = { viewModel.open(opened) },

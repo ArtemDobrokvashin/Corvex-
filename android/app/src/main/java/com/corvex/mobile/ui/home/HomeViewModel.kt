@@ -12,6 +12,9 @@ import com.corvex.mobile.domain.mail.Flag
 import com.corvex.mobile.domain.mail.FolderModel
 import com.corvex.mobile.domain.mail.MailModel
 import com.corvex.mobile.ui.common.MailFormatting
+import com.corvex.mobile.ui.mail.ComposeField
+import com.corvex.mobile.ui.mail.ComposeKind
+import com.corvex.mobile.ui.mail.ComposeState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,31 +34,15 @@ data class HomeUiState(
     /** Тело открытого письма. `null` — ещё грузится; пустая строка — письмо без текста. */
     val openedBody: String? = null,
     val openedBodyError: String? = null,
+    /** HTML открытого письма; `null` — письмо текстовое или ещё грузится. */
+    val openedHtml: String? = null,
     /** `Message-ID` открытого письма: без него ответ не соберётся в цепочку. */
     val openedMessageId: String? = null,
     /** Открыт экран написания: `null` — закрыт. */
     val compose: ComposeState? = null
 )
 
-/**
- * Черновик на экране. Отдельный тип, потому что у него своё состояние отправки:
- * черновик может быть открыт, пока письмо отправляется, и ошибка отправки
- * не должна закрывать то, что человек написал.
- */
-data class ComposeState(
-    val kind: ComposeKind,
-    val to: String = "",
-    val cc: String = "",
-    val subject: String = "",
-    val body: String = "",
-    val originalId: String? = null,
-    val inReplyTo: String? = null,
-    val references: String? = null,
-    val isSending: Boolean = false,
-    val error: String? = null
-)
 
-enum class ComposeKind { NEW, REPLY, REPLY_ALL, FORWARD }
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
@@ -146,6 +133,7 @@ class HomeViewModel @Inject constructor(
             it.copy(
                 openedMail = mail,
                 openedBody = null,
+                openedHtml = null,
                 openedBodyError = null,
                 openedMessageId = null
             )
@@ -154,7 +142,11 @@ class HomeViewModel @Inject constructor(
             val res = imapMailService.fetchBody(mail.folderId, mail.uid)
             res.onSuccess { body ->
                 _uiState.update {
-                    it.copy(openedBody = body.bodyText, openedMessageId = body.messageId)
+                    it.copy(
+                        openedBody = body.bodyText,
+                        openedHtml = body.bodyHtml,
+                        openedMessageId = body.messageId
+                    )
                 }
             }.onFailure { err ->
                 _uiState.update {
@@ -217,11 +209,13 @@ class HomeViewModel @Inject constructor(
             it.copy(
                 compose = ComposeState(
                     kind = if (all) ComposeKind.REPLY_ALL else ComposeKind.REPLY,
-                    to = senderEmail,
+                    to = listOfNotNull(senderEmail.takeIf { a -> a.isNotBlank() }),
                     subject = withReplyPrefix(mail.subject),
+                    // Курсор сразу в теле: отвечающий пишет текст, а не правит адреса.
                     body = replyBody,
                     originalId = mail.id,
-                    inReplyTo = _uiState.value.openedMessageId
+                    inReplyTo = _uiState.value.openedMessageId,
+                    showCc = all
                 )
             )
         }
@@ -247,6 +241,36 @@ class HomeViewModel @Inject constructor(
         _uiState.update { state -> state.compose?.let { state.copy(compose = transform(it)) } ?: state }
     }
 
+    /**
+     * Добавить получателя из введённой строки.
+     *
+     * Адрес добавляется по запятой, точке с запятой или пробелу — так же, как
+     * в Gmail: набрал адрес, ткнул запятую, он стал «таблеткой». Строка без
+     * «@» не добавляется: это не адрес, и держать её в списке получателей
+     * бессмысленно (ошибку покажет отправка).
+     */
+    fun addRecipient(field: ComposeField, raw: String) {
+        val addresses = splitAddresses(raw)
+        if (addresses.isEmpty()) return
+        updateCompose { draft ->
+            when (field) {
+                ComposeField.TO -> draft.copy(to = (draft.to + addresses).distinct())
+                ComposeField.CC -> draft.copy(cc = (draft.cc + addresses).distinct())
+                ComposeField.BCC -> draft.copy(bcc = (draft.bcc + addresses).distinct())
+            }
+        }
+    }
+
+    fun removeRecipient(field: ComposeField, address: String) {
+        updateCompose { draft ->
+            when (field) {
+                ComposeField.TO -> draft.copy(to = draft.to - address)
+                ComposeField.CC -> draft.copy(cc = draft.cc - address)
+                ComposeField.BCC -> draft.copy(bcc = draft.bcc - address)
+            }
+        }
+    }
+
     fun closeCompose() {
         _uiState.update { it.copy(compose = null) }
     }
@@ -258,9 +282,8 @@ class HomeViewModel @Inject constructor(
     fun sendCompose() {
         val draft = _uiState.value.compose ?: return
         if (draft.isSending) return
-        val to = splitAddresses(draft.to)
-        if (to.isEmpty()) {
-            updateCompose { it.copy(error = "Укажите получателя") }
+        if (draft.to.isEmpty()) {
+            updateCompose { it.copy(error = "Укажите получателя", activeField = ComposeField.TO) }
             return
         }
 
@@ -268,8 +291,8 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             val res = smtpMailService.send(
                 OutgoingMail(
-                    to = to,
-                    cc = splitAddresses(draft.cc),
+                    to = draft.to,
+                    cc = draft.cc + draft.bcc,
                     subject = draft.subject,
                     body = draft.body,
                     inReplyTo = draft.inReplyTo
@@ -330,6 +353,7 @@ class HomeViewModel @Inject constructor(
                 mails = state.mails.filterNot { it.id == mail.id },
                 openedMail = if (wasOpen) null else state.openedMail,
                 openedBody = if (wasOpen) null else state.openedBody,
+                openedHtml = if (wasOpen) null else state.openedHtml,
                 openedMessageId = if (wasOpen) null else state.openedMessageId
             )
         }
@@ -340,6 +364,7 @@ class HomeViewModel @Inject constructor(
             it.copy(
                 openedMail = null,
                 openedBody = null,
+                openedHtml = null,
                 openedBodyError = null,
                 openedMessageId = null
             )

@@ -32,6 +32,16 @@ class ComposeHelpersTest {
     }
 
     @Test
+    fun splitAddressesTreatsSemicolonsAndSpacesAsSeparators() {
+        // Гmail и mail.ru принимают и «;», и запятую; человек копирует адреса
+        // из самых разных мест, и требовать один разделитель — лишний барьер.
+        assertEquals(
+            listOf("a@b.ru", "c@d.ru", "e@f.ru"),
+            splitAddresses("a@b.ru; c@d.ru e@f.ru")
+        )
+    }
+
+    @Test
     fun replyPrefixIsNotDoubled() {
         assertEquals("Re: Договор", withReplyPrefix("Договор"))
         assertEquals("Re: Договор", withReplyPrefix("Re: Договор"))
