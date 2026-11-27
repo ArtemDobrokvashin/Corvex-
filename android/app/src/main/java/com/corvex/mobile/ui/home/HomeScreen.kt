@@ -56,6 +56,12 @@ fun HomeScreen(
     onOpenCalendar: () -> Unit = {},
     onOpenFiles: () -> Unit = {},
     onOpenAdmin: () -> Unit = {},
+    /**
+     * Внешний ящик (IMAP): чат, календарь, файлы и админка — это сервер
+     * Corvex, а не mail.ru. Раздел, который заведомо не заработает, лучше
+     * не показывать, чем показать «не удалось загрузить».
+     */
+    serverFeatures: Boolean = true,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -168,34 +174,36 @@ fun HomeScreen(
                             Icon(Icons.Filled.MoreVert, contentDescription = "Ещё")
                         }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                            DropdownMenuItem(
-                                text = { Text("Чат") },
-                                onClick = {
-                                    menuOpen = false
-                                    onOpenChat()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Календарь") },
-                                onClick = {
-                                    menuOpen = false
-                                    onOpenCalendar()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Файлы") },
-                                onClick = {
-                                    menuOpen = false
-                                    onOpenFiles()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Администрирование") },
-                                onClick = {
-                                    menuOpen = false
-                                    onOpenAdmin()
-                                }
-                            )
+                            if (serverFeatures) {
+                                DropdownMenuItem(
+                                    text = { Text("Чат") },
+                                    onClick = {
+                                        menuOpen = false
+                                        onOpenChat()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Календарь") },
+                                    onClick = {
+                                        menuOpen = false
+                                        onOpenCalendar()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Файлы") },
+                                    onClick = {
+                                        menuOpen = false
+                                        onOpenFiles()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Администрирование") },
+                                    onClick = {
+                                        menuOpen = false
+                                        onOpenAdmin()
+                                    }
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text("Обновить") },
                                 onClick = {

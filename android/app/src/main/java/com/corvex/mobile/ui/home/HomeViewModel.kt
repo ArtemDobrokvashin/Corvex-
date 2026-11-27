@@ -28,6 +28,12 @@ import javax.inject.Inject
 
 data class HomeUiState(
     val accountLabel: String = "",
+    /**
+     * Есть ли сервер Corvex. У внешнего ящика (IMAP) его нет: чат, календарь,
+     * файлы и админка живут только на своём сервере, и кнопки, ведущие в
+     * заведомо нерабочие разделы, — обман.
+     */
+    val serverFeatures: Boolean = true,
     val selectedFolder: String = "INBOX",
     val folders: List<FolderModel> = emptyList(),
     val mails: List<MailModel> = emptyList(),
@@ -76,7 +82,8 @@ class HomeViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(
         HomeUiState(
-            accountLabel = tokenStore.imapEmail ?: tokenStore.serverUrl ?: "Corvex"
+            accountLabel = tokenStore.imapEmail ?: tokenStore.serverUrl ?: "Corvex",
+            serverFeatures = tokenStore.accountType != AccountType.IMAP.name
         )
     )
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
