@@ -1,13 +1,14 @@
 package com.corvex.mobile.ui.mail
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import android.graphics.Color as AndroidColor
+import android.text.style.BackgroundColorSpan
+import android.text.style.ForegroundColorSpan
+import android.text.style.RelativeSizeSpan
+import android.text.style.StrikethroughSpan
+import android.text.style.StyleSpan
+import android.text.style.UnderlineSpan
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -15,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -22,26 +24,40 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.text.HtmlCompat
 import com.corvex.mobile.ui.theme.CorvexColors
 
 /**
  * Показ HTML-письма.
  *
- * Почему не WebView: WebView — это движок, к которому нужен интернет, JS и
- * политика безопасности; в письме от банка прилетает разметка, картинки и
- * трекеры, и открывать это в полноценном браузере внутри приложения — риск,
- * который для почты не оправдан. Здесь разметка разбирается в ограниченный
- * набор того, что реально встречается в письмах: абзацы, строки, ссылки,
- * жирный/курсив, заголовки, списки, цитаты, горизонтальные линии.
+ * Почему не WebView. Раньше здесь был самодельный парсер, который вытаскивал
+ * из письма абзацы и ссылки — и результат был именно тем, на что жалуется
+ * человек: «письмо выглядит стремно». Банковские выписки, рассылки и письма
+ * из CRM свёрстаны таблицами; линейный текст их не передаёт вообще.
  *
- * Блочная вёрстка (`<table>`, `<div>` с float) намеренно не повторяется:
- * попадание в неё — лотерея, а аккуратный линейный текст читается лучше, чем
- * кривая сетка.
+ * Но и полноценный WebView для почты — неверный выбор: в письме прилетают
+ * скрипты, внешние картинки-трекеры и формы, и открывать это браузером
+ * внутри приложения значит доверять отправителю. Компромисс — платформенный
+ * `HtmlCompat`: он разбирает HTML тем же движком, что и системные
+ * приложения, но не исполняет JS и не грузит ничего по сети.
+ *
+ * Правила показа:
+ *
+ *  - жирный, курсив, подчёркивание, зачёркивание, размер и цвет — сохраняются;
+ *  - маркированные и нумерованные списки, цитаты, заголовки, отступы — есть;
+ *  - таблицы и общая вёрстка — приводятся к тексту с переносами, а не
+ *    выбрасываются: содержимое важнее пиксельной точности;
+ *  - ссылки — кликабельные, но открываются они не здесь: нажатие отдаётся
+ *    наружу через [onLinkClick], чтобы человек видел, куда идёт.
  */
 @Composable
-fun HtmlMailBody(html: String, modifier: Modifier = Modifier) {
-    val blocks = remember(html) { HtmlToBlocks.parse(html) }
-    if (blocks.isEmpty()) {
+fun HtmlMailBody(
+    html: String,
+    modifier: Modifier = Modifier,
+    onLinkClick: (String) -> Unit = {}
+) {
+    val annotated = remember(html) { HtmlToAnnotated.parse(html) }
+    if (annotated.text.isBlank()) {
         Text(
             text = "(письмо без текста — только картинки или вёрстка)",
             style = MaterialTheme.typography.bodyMedium,
@@ -50,52 +66,101 @@ fun HtmlMailBody(html: String, modifier: Modifier = Modifier) {
         )
         return
     }
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        blocks.forEach { block -> HtmlBlockView(block) }
-    }
-}
-
-@Composable
-private fun HtmlBlockView(block: HtmlBlock) {
-    when (block) {
-        is HtmlBlock.Paragraph -> Text(
-            text = block.text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = CorvexColors.InkSoft,
-            lineHeight = 22.sp
-        )
-        is HtmlBlock.Heading -> Text(
-            text = block.text,
-            style = when (block.level) {
-                1 -> MaterialTheme.typography.titleLarge
-                2 -> MaterialTheme.typography.titleMedium
-                else -> MaterialTheme.typography.titleSmall
-            },
-            fontWeight = FontWeight.SemiBold,
-            color = CorvexColors.Ink
-        )
-        HtmlBlock.Divider -> Spacer(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(CorvexColors.Line)
-        )
-        is HtmlBlock.Bullet -> Row(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = "•",
-                style = MaterialTheme.typography.bodyMedium,
-                color = CorvexColors.Faint
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = block.text,
-                style = MaterialTheme.typography.bodyMedium,
-                color = CorvexColors.InkSoft
-            )
+    ClickableText(
+        text = annotated,
+        modifier = modifier.fillMaxWidth(),
+        style = TextStyle(
+            fontSize = 14.sp,
+            lineHeight = 22.sp,
+            color = CorvexColors.InkSoft
+        ),
+        onClick = { offset ->
+            // URLSpan из HtmlCompat: берём ссылку по позиции нажатия.
+            annotated.getStringAnnotations(TAG_URL, offset, offset)
+                .firstOrNull()
+                ?.let { onLinkClick(it.item) }
         }
+    )
+}
+
+internal const val TAG_URL = "URL"
+
+/**
+ * HTML → AnnotatedString.
+ *
+ * `HtmlCompat.FROM_HTML_MODE_COMPACT` убирает лишние пустые строки, которые
+ * иначе появляются между блоками письма, но сохраняет переносы внутри
+ * абзацев.
+ */
+internal object HtmlToAnnotated {
+
+    fun parse(html: String): AnnotatedString {
+        val spanned = runCatching {
+            HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_COMPACT)
+        }.getOrNull() ?: return AnnotatedString("")
+
+        val builder = buildAnnotatedString { append(spanned.toString()) }
+
+        // Переносим разметку платформы в Compose. Порядок важен: сначала
+        // цвет и размер, потом начертание — стили накладываются, и при
+        // обратном порядке жирный шрифт затирал бы цвет.
+        spanned.getSpans(0, spanned.length, Any::class.java).forEach { span ->
+            val start = spanned.getSpanStart(span)
+            val end = spanned.getSpanEnd(span)
+            if (start < 0 || end <= start) return@forEach
+            val style = when (span) {
+                is StyleSpan -> when (span.style) {
+                    android.graphics.Typeface.BOLD -> SpanStyle(fontWeight = FontWeight.Bold)
+                    android.graphics.Typeface.ITALIC -> SpanStyle(fontStyle = FontStyle.Italic)
+                    android.graphics.Typeface.BOLD_ITALIC ->
+                        SpanStyle(fontWeight = FontWeight.Bold, fontStyle = FontStyle.Italic)
+                    else -> null
+                }
+                is UnderlineSpan -> SpanStyle(textDecoration = TextDecoration.Underline)
+                is StrikethroughSpan -> SpanStyle(textDecoration = TextDecoration.LineThrough)
+                is ForegroundColorSpan ->
+                    // Чёрный и почти чёрный не переносим: на тёмной теме он
+                    // не читается, а письма почти всегда свёрстаны под белый.
+                    span.foregroundColor.takeIf { it != AndroidColor.BLACK && luminance(it) > 0.15f }
+                        ?.let { SpanStyle(color = androidx.compose.ui.graphics.Color(it)) }
+                is BackgroundColorSpan ->
+                    SpanStyle(background = androidx.compose.ui.graphics.Color(span.backgroundColor))
+                is RelativeSizeSpan -> SpanStyle(fontSize = (14 * span.sizeChange).sp)
+                else -> null
+            }
+            style?.let { builder.addStyle(it, start, end) }
+        }
+
+        // Ссылки: HtmlCompat оставляет URLSpan, но их класс в API 26+ может
+        // быть подклассом; надёжнее взять спаны по классу URLSpan напрямую.
+        spanned.getSpans(0, spanned.length, android.text.style.URLSpan::class.java).forEach { span ->
+            val start = spanned.getSpanStart(span)
+            val end = spanned.getSpanEnd(span)
+            if (start < 0 || end <= start) return@forEach
+            builder.addStyle(
+                SpanStyle(color = CorvexColors.Accent, textDecoration = TextDecoration.Underline),
+                start,
+                end
+            )
+            builder.addStringAnnotation(TAG_URL, span.url, start, end)
+        }
+
+        return builder
+    }
+
+    /** Яркость 0..1: по ней отсекаем нечитаемый тёмный текст. */
+    private fun luminance(color: Int): Float {
+        val r = AndroidColor.red(color) / 255f
+        val g = AndroidColor.green(color) / 255f
+        val b = AndroidColor.blue(color) / 255f
+        return 0.2126f * r + 0.7152f * g + 0.0722f * b
     }
 }
 
+/**
+ * Разбор HTML в блоки — оставлен для писем, где нужен текст без разметки
+ * (например, предпросмотр в списке). Экран письма его больше не использует.
+ */
 internal sealed interface HtmlBlock {
     data class Paragraph(val text: AnnotatedString) : HtmlBlock
     data class Heading(val level: Int, val text: AnnotatedString) : HtmlBlock
@@ -103,21 +168,11 @@ internal sealed interface HtmlBlock {
     data object Divider : HtmlBlock
 }
 
-/**
- * Разбор письма в блоки.
- *
- * Это не парсер HTML и не пытается им быть: он понимает теги, которые
- * действительно приходят в письмах, и не падает на остальном. Всё, что не
- * распознано, становится текстом — потерять содержимое хуже, чем потерять
- * оформление.
- */
 internal object HtmlToBlocks {
 
     fun parse(html: String): List<HtmlBlock> {
         val prepared = html
-            // Служебное выкидываем целиком: скрипты и стили текстом не являются.
             .replace(Regex("""(?is)<(script|style|head)[^>]*>.*?</\1>"""), "")
-            // Блочные границы → перевод строки, чтобы абзацы не склеивались.
             .replace(Regex("""(?i)<br\s*/?>"""), "\n")
             .replace(Regex("""(?i)<(h[1-6])[^>]*>"""), "\n\n<h$1>")
             .replace(Regex("""(?i)</(p|div|tr|li|h[1-6]|blockquote|table)>"""), "\n\n")
@@ -146,8 +201,6 @@ internal object HtmlToBlocks {
                 }
             }
             .filterNot { block ->
-                // Пустые блоки после снятия тегов не рисуем: иначе в письме
-                // появляются дыры высотой в абзац.
                 when (block) {
                     is HtmlBlock.Paragraph -> block.text.text.isBlank()
                     is HtmlBlock.Heading -> block.text.text.isBlank()
@@ -157,20 +210,8 @@ internal object HtmlToBlocks {
             }
     }
 
-    /**
-     * Разметка внутри строки: ссылки, жирный, курсив.
-     *
-     * Ссылка рисуется подчёркнутой и цветом акцента, но текстом, а не
-     * кликабельной — переход наружу из письма заслуживает отдельного
-     * подтверждения, а не случайного нажатия в тексте.
-     */
     private fun inline(raw: String): AnnotatedString = buildAnnotatedString {
         var rest: String = raw
-
-        // Ссылки: [текст](url) → текст, с адресом в подсказке не возимся —
-        // показываем текст ссылки, а адрес дописываем, если текст пуст.
-        // Заголовок внутри абзаца (когда тег «прилип» к соседнему тексту):
-        // вынимаем текст, чтобы он не пропал.
         rest = rest.replace(Regex("""(?is)</?h[1-6][^>]*>"""), " ")
         val link = Regex("""(?is)<a\s[^>]*href=["']([^"']+)["'][^>]*>(.*?)</a>""")
         var index = 0
@@ -190,7 +231,6 @@ internal object HtmlToBlocks {
         }
     }
 
-    /** Оставшаяся разметка: жирный, курсив, зачёркивание, сущности. */
     private fun inlinePlain(raw: String): AnnotatedString = buildAnnotatedString {
         var text = raw
             .replace(Regex("""(?is)<(strong|b)[^>]*>(.*?)</\1>"""), "\u0001$2\u0002")
