@@ -25,7 +25,10 @@ data class CalendarEvent(
     val timeZone: String,
     val priority: String,
     val busyStatus: String,
-    val recurrence: String,
+    // `override` обязателен: свойство объявлено в CalendarTime.CalendarEventLike,
+    // и без него компилятор отвечает «hides member of supertype and needs
+    // 'override' modifier». Пока его не было, не собирался весь модуль.
+    override val recurrence: String,
     val reminderMinutes: Int?,
     val attendees: List<String>,
     val revision: Long,
