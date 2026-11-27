@@ -10,6 +10,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.compose.runtime.collectAsState
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.rememberNavController
 import com.corvex.mobile.data.security.TokenStore
 import com.corvex.mobile.ui.auth.LoginScreen
@@ -18,6 +20,7 @@ import com.corvex.mobile.ui.calendar.CalendarScreen
 import com.corvex.mobile.ui.chat.ChatScreen
 import com.corvex.mobile.ui.files.FilesScreen
 import com.corvex.mobile.ui.home.HomeScreen
+import com.corvex.mobile.ui.home.HomeViewModel
 import com.corvex.mobile.ui.theme.CorvexTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -67,6 +70,10 @@ class MainActivity : ComponentActivity() {
                         AdminScreen(onBack = { navController.popBackStack() })
                     }
                     composable("home") {
+                        // Тот же экземпляр ViewModel, что получит HomeScreen:
+                        // флаг «есть сервер» читаем из его состояния, а не
+                        // заводим второй источник правды.
+                        val homeState = hiltViewModel<HomeViewModel>().uiState.collectAsState().value
                         HomeScreen(
                             onLoggedOut = {
                                 navController.navigate("login") {
@@ -76,7 +83,8 @@ class MainActivity : ComponentActivity() {
                             onOpenChat = { navController.navigate("chat") },
                             onOpenCalendar = { navController.navigate("calendar") },
                             onOpenFiles = { navController.navigate("files") },
-                            onOpenAdmin = { navController.navigate("admin") }
+                            onOpenAdmin = { navController.navigate("admin") },
+                            serverFeatures = homeState.serverFeatures
                         )
                     }
                 }
