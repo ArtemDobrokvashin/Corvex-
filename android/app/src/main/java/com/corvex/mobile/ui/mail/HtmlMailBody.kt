@@ -22,7 +22,6 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.text.HtmlCompat
 import com.corvex.mobile.ui.theme.CorvexColors
@@ -99,7 +98,10 @@ internal object HtmlToAnnotated {
             HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_COMPACT)
         }.getOrNull() ?: return AnnotatedString("")
 
-        val builder = buildAnnotatedString { append(spanned.toString()) }
+        // Builder создаётся конструктором, а не через buildAnnotatedString:
+        // это форма, в которой builder доступен как переменная снаружи.
+        // Внутри лямбды buildAnnotatedString собственного имени ещё нет.
+        val builder = AnnotatedString.Builder(spanned.toString())
 
         // Переносим разметку платформы в Compose. Порядок важен: сначала
         // цвет и размер, потом начертание — стили накладываются, и при
@@ -145,7 +147,7 @@ internal object HtmlToAnnotated {
             builder.addStringAnnotation(TAG_URL, span.url, start, end)
         }
 
-        return builder
+        return builder.toAnnotatedString()
     }
 
     /** Яркость 0..1: по ней отсекаем нечитаемый тёмный текст. */
