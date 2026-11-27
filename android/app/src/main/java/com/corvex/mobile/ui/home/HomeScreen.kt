@@ -52,6 +52,7 @@ import com.corvex.mobile.ui.theme.CorvexColors
 @Composable
 fun HomeScreen(
     onLoggedOut: () -> Unit,
+    onOpenChat: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -164,6 +165,13 @@ fun HomeScreen(
                             Icon(Icons.Filled.MoreVert, contentDescription = "Ещё")
                         }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Чат") },
+                                onClick = {
+                                    menuOpen = false
+                                    onOpenChat()
+                                }
+                            )
                             DropdownMenuItem(
                                 text = { Text("Обновить") },
                                 onClick = {

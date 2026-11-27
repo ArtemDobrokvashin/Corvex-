@@ -4,6 +4,7 @@ import com.corvex.mobile.data.network.AuthCookieJar
 import com.corvex.mobile.data.network.AuthInterceptor
 import com.corvex.mobile.data.network.BaseUrlInterceptor
 import com.corvex.mobile.data.network.api.AuthApi
+import com.corvex.mobile.data.network.api.ChatApi
 import com.corvex.mobile.data.network.api.MailApi
 import com.corvex.mobile.data.security.TokenStore
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
@@ -44,6 +45,33 @@ object NetworkModule {
         ignoreUnknownKeys = true
         isLenient = true
     }
+
+    /**
+     * Клиент для WebSocket.
+     *
+     * Два отличия от обычного:
+     *
+     *  - `readTimeout = 0` — иначе OkHttp разорвёт соединение через 30 секунд
+     *    тишины, и чат будет переподключаться бесконечно;
+     *  - **без** [BaseUrlInterceptor]. Он подменяет схему на схему сервера, а
+     *    сервер — это `https`; `wss://...` превратился бы в `https://...`, и
+     *    `newWebSocket` упал бы с «Expected URL scheme 'http' or 'https'».
+     *    Адрес WebSocket StompClient собирает сам.
+     */
+    @Provides
+    @Singleton
+    @Named("StreamingClient")
+    fun provideStreamingOkHttpClient(
+        authInterceptor: AuthInterceptor,
+        cookieJar: AuthCookieJar,
+        certificatePinner: CertificatePinner
+    ): OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor(authInterceptor)
+        .cookieJar(cookieJar)
+        .certificatePinner(certificatePinner)
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(0, TimeUnit.MILLISECONDS)
+        .build()
 
     @Provides
     @Singleton
@@ -101,4 +129,8 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideMailApi(retrofit: Retrofit): MailApi = retrofit.create(MailApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideChatApi(retrofit: Retrofit): ChatApi = retrofit.create(ChatApi::class.java)
 }

@@ -15,6 +15,7 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import java.util.UUID
 import javax.inject.Inject
+import javax.inject.Named
 import javax.inject.Singleton
 import kotlin.math.min
 
@@ -47,7 +48,9 @@ object StompFrameParser {
 
 @Singleton
 class StompClient @Inject constructor(
-    private val okHttpClient: OkHttpClient,
+    // Именованный клиент: у обычного readTimeout 30 с, и он убивает
+    // WebSocket в тишине. Hilt различит их по @Named.
+    @Named("StreamingClient") private val okHttpClient: OkHttpClient,
     private val tokenStore: TokenStore
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -57,20 +60,37 @@ class StompClient @Inject constructor(
     private var isConnected = false
     private var shouldReconnect = false
     private var reconnectAttempt = 0
-    private val pendingSubscriptions = mutableListOf<Pair<String, String>>()
+    // destination -> subscription id. Живут до disconnect(): после обрыва
+    // связи RabbitMQ забывает подписки, и без повторной отправки комната
+    // молча перестала бы получать сообщения.
+    private val activeSubscriptions = mutableMapOf<String, String>()
     private var messageListener: ((StompFrame) -> Unit)? = null
     private var errorListener: ((Throwable) -> Unit)? = null
+
+    /** `true` после CONNECTED — до этого SEND/SUBSCRIBE молча терялись бы. */
+    fun isConnected(): Boolean = isConnected
 
     fun connect(onFrame: (StompFrame) -> Unit, onError: (Throwable) -> Unit) {
         messageListener = onFrame
         errorListener = onError
         shouldReconnect = true
+        // Повторный вход в комнату не должен открывать второе соединение:
+        // старый сокет остался бы жить со своими подписками, и каждое
+        // сообщение приходило бы дважды.
+        if (webSocket != null || reconnectJob?.isActive == true) return
         openSocket()
     }
 
     private fun openSocket() {
         val baseUrl = tokenStore.serverUrl?.trimEnd('/') ?: return
-        val wsUrl = baseUrl.replace("https://", "wss://").replace("http://", "ws://") + "/ws/chat/websocket"
+        // Адрес сырого WebSocket, а не SockJS.
+        //
+        // Прежний `/ws/chat/websocket` — это путь SockJS-транспорта, и сервер
+        // ждёт на нём SockJS-хендшейк (`/ws/chat/{server}/{session}/websocket`)
+        // и SockJS-кадры `a["CONNECT\n..."]`. Наш клиент шлёт чистый STOMP, и
+        // в ответ пришёл бы `Whoops! Lost connection`. Spring принимает сырой
+        // WebSocket на `/ws/chat` — туда и подключаемся.
+        val wsUrl = baseUrl.replace("https://", "wss://").replace("http://", "ws://") + "/ws/chat"
         val request = Request.Builder().url(wsUrl).build()
 
         webSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
@@ -81,6 +101,9 @@ class StompClient @Inject constructor(
                     append("accept-version:1.2\n")
                     append("heart-beat:10000,10000\n")
                     if (token.isNotBlank()) {
+                        // Bearer в `Authorization` — ровно то, что ищет
+                        // StompAuthChannelInterceptor. Без заголовка сервер
+                        // отклоняет CONNECT с «Для STOMP CONNECT нужен Bearer JWT».
                         append("Authorization:Bearer $token\n")
                     }
                     append("\n\u0000")
@@ -94,9 +117,8 @@ class StompClient @Inject constructor(
                     isConnected = true
                     reconnectAttempt = 0
                     startHeartbeat()
-                    synchronized(pendingSubscriptions) {
-                        pendingSubscriptions.forEach { (dest, id) -> sendSubscribe(dest, id) }
-                        pendingSubscriptions.clear()
+                    synchronized(activeSubscriptions) {
+                        activeSubscriptions.forEach { (dest, id) -> sendSubscribe(dest, id) }
                     }
                 } else {
                     messageListener?.invoke(frame)
@@ -105,6 +127,9 @@ class StompClient @Inject constructor(
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 isConnected = false
+                // Ссылку на мёртвый сокет надо отпустить: иначе следующий
+                // connect() решит, что соединение живо, и промолчит.
+                if (this@StompClient.webSocket === webSocket) this@StompClient.webSocket = null
                 heartbeatJob?.cancel()
                 errorListener?.invoke(t)
                 scheduleReconnect()
@@ -112,6 +137,7 @@ class StompClient @Inject constructor(
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 isConnected = false
+                if (this@StompClient.webSocket === webSocket) this@StompClient.webSocket = null
                 heartbeatJob?.cancel()
                 if (shouldReconnect) scheduleReconnect()
             }
@@ -141,13 +167,8 @@ class StompClient @Inject constructor(
 
     fun subscribeRoom(roomId: String, subscriptionId: String = "sub-$roomId") {
         val destination = "/topic/rooms.$roomId"
-        if (isConnected) {
-            sendSubscribe(destination, subscriptionId)
-        } else {
-            synchronized(pendingSubscriptions) {
-                pendingSubscriptions.add(destination to subscriptionId)
-            }
-        }
+        synchronized(activeSubscriptions) { activeSubscriptions[destination] = subscriptionId }
+        if (isConnected) sendSubscribe(destination, subscriptionId)
     }
 
     private fun sendSubscribe(destination: String, id: String) {
@@ -155,8 +176,20 @@ class StompClient @Inject constructor(
         webSocket?.send(frame)
     }
 
+    /**
+     * Отправка через STOMP.
+     *
+     * Поле называется `bodyMarkdown`, а не `content`: так объявлен
+     * `SendMessageRequest` в chat-service. С `content` сервер вернул бы 400
+     * «bodyMarkdown: must not be null», и сообщение молча пропало бы —
+     * ошибка привязки уходит в `/user/queue/errors`, куда клиент не смотрит.
+     *
+     * Сейчас путь не используется: экран отправляет по REST (см.
+     * `ChatRepository.send`). Метод оставлен рабочим, чтобы включить его не
+     * пришлось отлаживать заново.
+     */
     fun sendRoomMessage(roomId: String, content: String, clientMessageId: String = UUID.randomUUID().toString()) {
-        val body = """{"content":${escapeJson(content)},"clientMessageId":"$clientMessageId"}"""
+        val body = """{"bodyMarkdown":${escapeJson(content)},"clientMessageId":"$clientMessageId"}"""
         val frame = "SEND\ndestination:/app/rooms/$roomId/send\ncontent-type:application/json\n\n$body\u0000"
         webSocket?.send(frame)
     }
@@ -169,6 +202,7 @@ class StompClient @Inject constructor(
         webSocket?.send("DISCONNECT\n\n\u0000")
         webSocket?.close(1000, "Client closed")
         webSocket = null
+        synchronized(activeSubscriptions) { activeSubscriptions.clear() }
     }
 
     private fun escapeJson(s: String): String =
