@@ -20,7 +20,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
-import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody
+import okio.BufferedSink
+import okio.source
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -76,14 +78,28 @@ class DriveRepository @Inject constructor(
             val resolver = context.contentResolver
             val name = displayName(uri)
             val mime = resolver.getType(uri) ?: "application/octet-stream"
-            // Поток из content:// нельзя передать в OkHttp напрямую:
-            // RequestBody живёт дольше, чем открытый дескриптор. Поэтому файл
-            // читается в память. Для больших файлов это ограничение телефона,
-            // а не сервера: при вылете по OOM нужен потоковый RequestBody,
-            // который OkHttp 4 делает только вручную.
-            val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
-                ?: error("Не удалось прочитать файл")
-            val body = bytes.toRequestBody(mime.toMediaTypeOrNull())
+            // Поток из `content://` отдаётся в OkHttp лениво: тело читается
+            // уже во время отправки, а дескриптор открывается там же и там же
+            // закрывается. Читать файл в `ByteArray` нельзя — видео на 300 МБ
+            // уронит приложение по OOM ещё до начала отправки.
+            val body = object : RequestBody() {
+                override fun contentType() = mime.toMediaTypeOrNull()
+
+                // Длина известна заранее: без неё OkHttp шлёт chunked, и
+                // сервер не может отклонить слишком большой файл до чтения.
+                override fun contentLength(): Long = sizeOf(uri)
+
+                /**
+                 * OkHttp может вызвать `writeTo` повторно (редирект, повторная
+                 * попытка), поэтому поток открывается здесь, а не снаружи:
+                 * закрытый дескриптор на втором вызове дал бы пустое тело.
+                 */
+                override fun writeTo(sink: BufferedSink) {
+                    val input = resolver.openInputStream(uri)
+                        ?: error("Не удалось прочитать файл")
+                    input.use { stream -> sink.writeAll(stream.source()) }
+                }
+            }
             val part = MultipartBody.Part.createFormData("file", name, body)
             val response = driveApi.upload(parentId, part)
             if (!response.isSuccessful) error(errorText(response.code(), "файл"))
@@ -167,6 +183,13 @@ class DriveRepository @Inject constructor(
                 if (!response.isSuccessful) error("Сервер отклонил действие: ${response.code()}")
             }
         }
+
+    /** Размер файла из провайдера: `-1` означает «неизвестен», тогда chunked. */
+    private fun sizeOf(uri: Uri): Long = runCatching {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)
+            ?.use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else -1L }
+            ?: -1L
+    }.getOrDefault(-1L)
 
     private fun displayName(uri: Uri): String {
         val resolver = context.contentResolver
