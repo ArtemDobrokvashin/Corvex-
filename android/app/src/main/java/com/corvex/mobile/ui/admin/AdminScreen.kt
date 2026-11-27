@@ -365,6 +365,10 @@ private fun EmptyNote(text: String) {
     }
 }
 
+// @OptIn обязателен именно здесь: ModalBottomSheet помечен
+// @ExperimentalMaterial3Api, а @OptIn на AdminScreen на вложенную функцию не
+// распространяется — компилятор ответит «This material API is experimental».
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun UserSheet(
     user: AdminUserDto,

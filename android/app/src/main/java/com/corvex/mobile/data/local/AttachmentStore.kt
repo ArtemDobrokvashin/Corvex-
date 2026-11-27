@@ -9,6 +9,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.OutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -37,9 +38,9 @@ class AttachmentStore @Inject constructor(
             runCatching {
                 val safeName = sanitize(name)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    saveToDownloads(safeName, mimeType, bytes)
+                    writeToDownloads(safeName, mimeType, bytes)
                 } else {
-                    saveToAppFolder(safeName, bytes)
+                    writeToAppFolder(safeName, bytes)
                 }
             }
         }
@@ -54,25 +55,25 @@ class AttachmentStore @Inject constructor(
     suspend fun saveStream(
         name: String,
         mimeType: String,
-        bytesToWrite: (java.io.OutputStream) -> Unit
+        bytesToWrite: (OutputStream) -> Unit
     ): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
             val safeName = sanitize(name)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                saveToDownloads(safeName, mimeType, bytesToWrite)
+                writeToDownloads(safeName, mimeType, bytesToWrite)
             } else {
-                saveToAppFolder(safeName, bytesToWrite)
+                writeToAppFolder(safeName, bytesToWrite)
             }
         }
     }
 
-    private fun saveToDownloads(name: String, mimeType: String, bytes: ByteArray): String =
-        saveToDownloads(name, mimeType) { it.write(bytes) }
+    private fun writeToDownloads(name: String, mimeType: String, bytes: ByteArray): String =
+        writeToDownloads(name, mimeType, { it.write(bytes) })
 
-    private fun saveToDownloads(
+    private fun writeToDownloads(
         name: String,
         mimeType: String,
-        write: (java.io.OutputStream) -> Unit
+        write: (OutputStream) -> Unit
     ): String {
         val resolver = context.contentResolver
         val values = ContentValues().apply {
@@ -97,10 +98,10 @@ class AttachmentStore @Inject constructor(
         return name
     }
 
-    private fun saveToAppFolder(name: String, bytes: ByteArray): String =
-        saveToAppFolder(name) { it.write(bytes) }
+    private fun writeToAppFolder(name: String, bytes: ByteArray): String =
+        writeToAppFolder(name, { it.write(bytes) })
 
-    private fun saveToAppFolder(name: String, write: (java.io.OutputStream) -> Unit): String {
+    private fun writeToAppFolder(name: String, write: (OutputStream) -> Unit): String {
         val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
             ?: File(context.filesDir, "Download").apply { mkdirs() }
         val file = File(dir, name)

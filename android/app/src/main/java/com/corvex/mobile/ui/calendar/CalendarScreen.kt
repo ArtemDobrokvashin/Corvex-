@@ -155,7 +155,6 @@ fun CalendarScreen(
     if (state.isEditorOpen && state.editing != null) {
         EventEditorDialog(
             event = state.editing!!,
-            defaultDate = state.selectedDate,
             onSave = viewModel::save,
             onDelete = { viewModel.delete(it) },
             onDismiss = viewModel::closeEditor
