@@ -55,7 +55,13 @@ class CalendarRepository @Inject constructor(
         withContext(Dispatchers.IO) {
             runCatching {
                 val id = event.id ?: error("У события нет идентификатора")
-                val response = calendarApi.update(id, draft.toSave(revision = event.revision))
+                // Занятость переносим из текущего события: редактор её не
+                // меняет, а сервер заменяет событие целиком — иначе
+                // «под вопросом» молча превратилось бы в «занят».
+                val response = calendarApi.update(
+                    id,
+                    draft.toSave(revision = event.revision, busyStatus = event.busyStatus)
+                )
                 if (!response.isSuccessful) error(errorText(response.code(), "сохранить"))
                 response.body()?.toDomain() ?: error("Пустой ответ сервера")
             }
@@ -105,7 +111,10 @@ internal fun CalendarEventDto.toDomain(): CalendarEvent? {
 }
 
 /** Черновик → тело запроса. Время считается в зоне устройства. */
-internal fun CalendarDraft.toSave(revision: Long? = null): CalendarEventSaveDto {
+internal fun CalendarDraft.toSave(
+    revision: Long? = null,
+    busyStatus: String = "busy"
+): CalendarEventSaveDto {
     val zone = runCatching { ZoneId.of(timeZone) }.getOrDefault(CalendarTime.deviceZone())
     return CalendarEventSaveDto(
         title = title.trim(),
@@ -116,6 +125,9 @@ internal fun CalendarDraft.toSave(revision: Long? = null): CalendarEventSaveDto 
         allDay = allDay,
         timeZone = zone.id,
         priority = priority,
+        // В черновике `busyStatus` нет: редактор его не меняет. При создании
+        // сервер по умолчанию поставит "busy", при правке значение приходит
+        // из самого события.
         busyStatus = busyStatus,
         recurrence = recurrence,
         reminderMinutes = reminderMinutes,
