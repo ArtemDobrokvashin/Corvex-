@@ -58,6 +58,9 @@ fun AdminScreen(
 
     Scaffold(
         containerColor = CorvexColors.Canvas,
+        // Соответствует targetSdk 35: приложение рисуется под системными
+        // панелями, а клавиатура иначе закрывает поле ввода (админка: поле поиска).
+        contentWindowInsets = WindowInsets.safeDrawing,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
@@ -79,6 +82,7 @@ fun AdminScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .imePadding()
         ) {
             if (state.isLoading) {
                 LinearProgressIndicator(Modifier.fillMaxWidth(), color = CorvexColors.Accent)

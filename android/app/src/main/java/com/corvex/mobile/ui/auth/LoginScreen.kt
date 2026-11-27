@@ -1,6 +1,7 @@
 package com.corvex.mobile.ui.auth
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -31,10 +32,15 @@ fun LoginScreen(
         if (state.isAuthenticated) onAuthenticated()
     }
 
+    // `safeDrawingPadding` обязателен: с targetSdk 35 (Android 15) приложение
+    // по умолчанию рисуется под строкой статуса и панелью навигации, а этот
+    // экран — не Scaffold, и отступы системы ему никто не выдаёт. Без него
+    // верхние поля ввода уезжают под часы и батарею.
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(CorvexColors.Canvas)
+            .safeDrawingPadding()
             .verticalScroll(rememberScrollState())
             .padding(24.dp),
         verticalArrangement = Arrangement.Center

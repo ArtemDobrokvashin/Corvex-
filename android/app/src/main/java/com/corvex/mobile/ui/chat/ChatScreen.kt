@@ -54,6 +54,9 @@ fun ChatScreen(
 
     Scaffold(
         containerColor = CorvexColors.Canvas,
+        // Соответствует targetSdk 35: приложение рисуется под системными
+        // панелями, а клавиатура иначе закрывает поле ввода (чат: поле ввода внизу экрана).
+        contentWindowInsets = WindowInsets.safeDrawing,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
@@ -97,6 +100,7 @@ fun ChatScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .imePadding()
         ) {
             val room = state.openedRoom
             if (room == null) {

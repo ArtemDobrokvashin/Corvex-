@@ -8,6 +8,9 @@ package com.corvex.mobile.ui.mail
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -121,6 +124,9 @@ fun ComposeScreen(
 
     Scaffold(
         containerColor = CorvexColors.Surface,
+        // Без ime для contentWindowInsets тело письма уходит под клавиатуру:
+        // человек печатает и не видит, что написал. Здесь именно `ime`.
+        contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -173,6 +179,7 @@ fun ComposeScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .imePadding()
                 .padding(padding)
         ) {
             RecipientRow(

@@ -70,6 +70,9 @@ fun FilesScreen(
 
     Scaffold(
         containerColor = CorvexColors.Canvas,
+        // Соответствует targetSdk 35: приложение рисуется под системными
+        // панелями, а клавиатура иначе закрывает поле ввода (файлы: поле поиска).
+        contentWindowInsets = WindowInsets.safeDrawing,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
@@ -134,6 +137,7 @@ fun FilesScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .imePadding()
         ) {
             OutlinedTextField(
                 value = state.query,
