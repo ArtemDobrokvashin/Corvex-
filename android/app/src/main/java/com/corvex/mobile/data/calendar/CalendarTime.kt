@@ -3,6 +3,7 @@ package com.corvex.mobile.data.calendar
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.YearMonth
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeParseException
@@ -95,10 +96,12 @@ object CalendarTime {
      * Окно для запроса к серверу: сервер отдаёт события диапазоном и
      * отклоняет диапазон длиннее 400 дней.
      */
-    fun window(month: java.time.YearMonth, monthsBack: Long = 1, monthsForward: Long = 1):
+    fun window(month: YearMonth, monthsBack: Long = 1, monthsForward: Long = 1):
         Pair<LocalDate, LocalDate> = Pair(
         month.minusMonths(monthsBack).atDay(1),
-        month.plusMonths(monthsForward).atMonth(month.plusMonths(monthsForward).lengthOfMonth())
+        // Именно atEndOfMonth: у YearMonth нет atMonth(int), и попытка
+        // «atMonth(lengthOfMonth())» не компилируется.
+        month.plusMonths(monthsForward).atEndOfMonth()
     )
 
     /** Начало суток в ISO — то, что сервер ждёт параметром `from`. */
