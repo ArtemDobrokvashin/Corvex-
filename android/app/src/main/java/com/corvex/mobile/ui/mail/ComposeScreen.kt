@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -151,11 +152,19 @@ fun ComposeScreen(
                     )
                 },
                 actions = {
+                    // Круглая кнопка отправки, как в Gmail: главное действие
+                    // в шапке, всегда на одном месте.
                     FilledIconButton(
                         onClick = onSend,
                         enabled = !state.isSending,
+                        shape = CircleShape,
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = CorvexColors.Accent,
+                            contentColor = Color.White,
+                            disabledContainerColor = CorvexColors.LineSubtle
+                        ),
                         modifier = Modifier
-                            .padding(end = 8.dp)
+                            .padding(end = 12.dp)
                             .size(40.dp)
                     ) {
                         if (state.isSending) {

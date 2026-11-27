@@ -15,7 +15,10 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -23,6 +26,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.corvex.mobile.data.imap.MailAttachment
 import com.corvex.mobile.domain.mail.MailModel
+import com.corvex.mobile.ui.common.GmailPillButton
+import com.corvex.mobile.ui.common.GmailPillOutlinedButton
 import com.corvex.mobile.ui.common.MailFormatting
 import com.corvex.mobile.ui.theme.CorvexColors
 import java.time.Instant
@@ -153,7 +158,22 @@ fun MailDetailScreen(
                         trackColor = CorvexColors.AccentSoft
                     )
                 }
-                bodyHtml != null -> HtmlMailBody(html = bodyHtml)
+                bodyHtml != null -> {
+                    val context = LocalContext.current
+                    HtmlMailBody(
+                        html = bodyHtml,
+                        onLinkClick = { url ->
+                            // Наружу — как в Gmail: по нажатию на ссылку.
+                            // Ошибку глушим: кривой URL в письме не повод
+                            // показывать диалог об ошибке.
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                )
+                            }
+                        }
+                    )
+                }
                 else -> Text(
                     text = bodyText.ifBlank { mail.snippet }.ifBlank { "(пустое письмо)" },
                     style = MaterialTheme.typography.bodyMedium,
@@ -172,28 +192,31 @@ fun MailDetailScreen(
             Spacer(modifier = Modifier.height(22.dp))
             HorizontalDivider(color = CorvexColors.Line)
             Spacer(modifier = Modifier.height(12.dp))
+            // Кнопки в стиле Gmail: таблетки, иконка слева, один акцент.
+            // «Ответить» — заливка, остальные без: два равных акцента на
+            // экране спорят, а глаз ищет главное действие.
+            //
+            // Раскладка в две строки, потому что на узком экране три кнопки
+            // в ряд не влезают и текст обрезается.
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = onReply,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = CorvexColors.Accent,
-                        contentColor = Color.White
-                    )
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.Reply, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.padding(horizontal = 3.dp))
-                    Text("Ответить")
-                }
-                OutlinedButton(onClick = onReplyAll) {
-                    Icon(Icons.AutoMirrored.Filled.ReplyAll, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.padding(horizontal = 3.dp))
-                    Text("Всем")
-                }
-                OutlinedButton(onClick = onForward) {
-                    Icon(Icons.AutoMirrored.Filled.Forward, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.padding(horizontal = 3.dp))
-                    Text("Переслать")
-                }
+                GmailPillButton(
+                    text = "Ответить",
+                    icon = Icons.AutoMirrored.Filled.Reply,
+                    onClick = onReply
+                )
+                GmailPillOutlinedButton(
+                    text = "Всем",
+                    icon = Icons.AutoMirrored.Filled.ReplyAll,
+                    onClick = onReplyAll
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                GmailPillOutlinedButton(
+                    text = "Переслать",
+                    icon = Icons.AutoMirrored.Filled.Forward,
+                    onClick = onForward
+                )
             }
         }
     }

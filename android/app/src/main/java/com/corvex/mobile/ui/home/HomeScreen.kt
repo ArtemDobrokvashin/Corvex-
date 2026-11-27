@@ -224,13 +224,17 @@ fun HomeScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
+            // В Gmail это не круг с пером, а вытянутая таблетка «Написать»:
+            // подпись объясняет действие, а форма совпадает с остальными
+            // кнопками приложения.
+            ExtendedFloatingActionButton(
                 onClick = viewModel::composeNew,
                 containerColor = CorvexColors.Accent,
-                contentColor = Color.White
-            ) {
-                Icon(Icons.Filled.Edit, contentDescription = "Написать письмо")
-            }
+                contentColor = Color.White,
+                shape = RoundedCornerShape(16.dp),
+                icon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                text = { Text("Написать", style = MaterialTheme.typography.labelMedium) }
+            )
         }
     ) { padding ->
         Column(
@@ -414,7 +418,9 @@ private fun SearchField(
             },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
-            shape = RoundedCornerShape(10.dp),
+            // Таблетка как в Gmail: полностью скруглённая, серый фон, без
+            // рамки. Прямоугольное поле с рамкой читалось как форма ввода.
+            shape = CircleShape,
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = CorvexColors.Canvas,
                 unfocusedContainerColor = CorvexColors.Canvas,
