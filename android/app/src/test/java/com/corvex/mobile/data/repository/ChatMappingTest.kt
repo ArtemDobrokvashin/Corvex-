@@ -1,5 +1,6 @@
 package com.corvex.mobile.data.repository
 
+import com.corvex.mobile.data.parseInstant
 import com.corvex.mobile.data.network.api.ChatMessageDto
 import com.corvex.mobile.data.network.api.ChatMessagePageDto
 import com.corvex.mobile.data.network.api.ChatEventDto

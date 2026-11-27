@@ -53,6 +53,9 @@ import com.corvex.mobile.ui.theme.CorvexColors
 fun HomeScreen(
     onLoggedOut: () -> Unit,
     onOpenChat: () -> Unit = {},
+    onOpenCalendar: () -> Unit = {},
+    onOpenFiles: () -> Unit = {},
+    onOpenAdmin: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -170,6 +173,27 @@ fun HomeScreen(
                                 onClick = {
                                     menuOpen = false
                                     onOpenChat()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Календарь") },
+                                onClick = {
+                                    menuOpen = false
+                                    onOpenCalendar()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Файлы") },
+                                onClick = {
+                                    menuOpen = false
+                                    onOpenFiles()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Администрирование") },
+                                onClick = {
+                                    menuOpen = false
+                                    onOpenAdmin()
                                 }
                             )
                             DropdownMenuItem(

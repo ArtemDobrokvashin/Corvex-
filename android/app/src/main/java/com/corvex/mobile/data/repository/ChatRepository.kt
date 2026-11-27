@@ -6,9 +6,9 @@ import com.corvex.mobile.data.network.api.ChatRoomDto
 import com.corvex.mobile.data.network.api.SendChatMessageRequest
 import com.corvex.mobile.domain.chat.ChatMessage
 import com.corvex.mobile.domain.chat.ChatRoom
+import com.corvex.mobile.data.parseInstant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.time.Instant
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -92,20 +92,3 @@ internal fun ChatMessageDto.toDomain(ownUserId: String? = null): ChatMessage = C
     isDeleted = deleted,
     clientMessageId = clientMessageId
 )
-
-/**
- * Разбор времени ISO-8601.
- *
- * `Instant.parse` понимает `2026-11-26T10:00:00Z`, но не выдерживает
- * смещения вида `+03:00` без обработки — поэтому `OffsetDateTime` как
- * запасной вариант. Ноль вместо исключения: одно кривое время не должно
- * ронять весь список.
- */
-internal fun parseInstant(value: String?): Long {
-    if (value.isNullOrBlank()) return 0L
-    return runCatching { Instant.parse(value).toEpochMilli() }
-        .recoverCatching {
-            java.time.OffsetDateTime.parse(value).toInstant().toEpochMilli()
-        }
-        .getOrDefault(0L)
-}

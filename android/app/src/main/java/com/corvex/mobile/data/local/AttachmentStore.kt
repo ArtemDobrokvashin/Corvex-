@@ -44,7 +44,36 @@ class AttachmentStore @Inject constructor(
             }
         }
 
-    private fun saveToDownloads(name: String, mimeType: String, bytes: ByteArray): String {
+    /**
+     * Сохранение из потока: файл может быть больше, чем помещается в память.
+     *
+     * @param bytesToWrite принимает выходной поток и пишет в него данные —
+     *        так `AttachmentStore` остаётся единственным местом, которое знает
+     *        про MediaStore, а источник данных (сеть, диск) — снаружи.
+     */
+    suspend fun saveStream(
+        name: String,
+        mimeType: String,
+        bytesToWrite: (java.io.OutputStream) -> Unit
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val safeName = sanitize(name)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                saveToDownloads(safeName, mimeType, bytesToWrite)
+            } else {
+                saveToAppFolder(safeName, bytesToWrite)
+            }
+        }
+    }
+
+    private fun saveToDownloads(name: String, mimeType: String, bytes: ByteArray): String =
+        saveToDownloads(name, mimeType) { it.write(bytes) }
+
+    private fun saveToDownloads(
+        name: String,
+        mimeType: String,
+        write: (java.io.OutputStream) -> Unit
+    ): String {
         val resolver = context.contentResolver
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, name)
@@ -54,7 +83,7 @@ class AttachmentStore @Inject constructor(
         val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
             ?: error("Не удалось создать файл в «Загрузках»")
         try {
-            resolver.openOutputStream(uri)?.use { it.write(bytes) }
+            resolver.openOutputStream(uri)?.use { write(it) }
                 ?: error("Не удалось открыть файл для записи")
             values.clear()
             values.put(MediaStore.Downloads.IS_PENDING, 0)
@@ -68,11 +97,14 @@ class AttachmentStore @Inject constructor(
         return name
     }
 
-    private fun saveToAppFolder(name: String, bytes: ByteArray): String {
+    private fun saveToAppFolder(name: String, bytes: ByteArray): String =
+        saveToAppFolder(name) { it.write(bytes) }
+
+    private fun saveToAppFolder(name: String, write: (java.io.OutputStream) -> Unit): String {
         val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
             ?: File(context.filesDir, "Download").apply { mkdirs() }
         val file = File(dir, name)
-        file.writeBytes(bytes)
+        file.outputStream().use(write)
         return file.absolutePath
     }
 

@@ -13,7 +13,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.corvex.mobile.data.security.TokenStore
 import com.corvex.mobile.ui.auth.LoginScreen
+import com.corvex.mobile.ui.admin.AdminScreen
+import com.corvex.mobile.ui.calendar.CalendarScreen
 import com.corvex.mobile.ui.chat.ChatScreen
+import com.corvex.mobile.ui.files.FilesScreen
 import com.corvex.mobile.ui.home.HomeScreen
 import com.corvex.mobile.ui.theme.CorvexTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -54,6 +57,15 @@ class MainActivity : ComponentActivity() {
                     composable("chat") {
                         ChatScreen(onBack = { navController.popBackStack() })
                     }
+                    composable("calendar") {
+                        CalendarScreen(onBack = { navController.popBackStack() })
+                    }
+                    composable("files") {
+                        FilesScreen(onBack = { navController.popBackStack() })
+                    }
+                    composable("admin") {
+                        AdminScreen(onBack = { navController.popBackStack() })
+                    }
                     composable("home") {
                         HomeScreen(
                             onLoggedOut = {
@@ -61,7 +73,10 @@ class MainActivity : ComponentActivity() {
                                     popUpTo("home") { inclusive = true }
                                 }
                             },
-                            onOpenChat = { navController.navigate("chat") }
+                            onOpenChat = { navController.navigate("chat") },
+                            onOpenCalendar = { navController.navigate("calendar") },
+                            onOpenFiles = { navController.navigate("files") },
+                            onOpenAdmin = { navController.navigate("admin") }
                         )
                     }
                 }

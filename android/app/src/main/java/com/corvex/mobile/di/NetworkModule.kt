@@ -3,8 +3,11 @@ package com.corvex.mobile.di
 import com.corvex.mobile.data.network.AuthCookieJar
 import com.corvex.mobile.data.network.AuthInterceptor
 import com.corvex.mobile.data.network.BaseUrlInterceptor
+import com.corvex.mobile.data.network.api.AdminApi
 import com.corvex.mobile.data.network.api.AuthApi
+import com.corvex.mobile.data.network.api.CalendarApi
 import com.corvex.mobile.data.network.api.ChatApi
+import com.corvex.mobile.data.network.api.DriveApi
 import com.corvex.mobile.data.network.api.MailApi
 import com.corvex.mobile.data.security.TokenStore
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
@@ -133,4 +136,16 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideChatApi(retrofit: Retrofit): ChatApi = retrofit.create(ChatApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideCalendarApi(retrofit: Retrofit): CalendarApi = retrofit.create(CalendarApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideDriveApi(retrofit: Retrofit): DriveApi = retrofit.create(DriveApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideAdminApi(retrofit: Retrofit): AdminApi = retrofit.create(AdminApi::class.java)
 }
