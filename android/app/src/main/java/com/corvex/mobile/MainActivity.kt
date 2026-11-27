@@ -13,6 +13,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.corvex.mobile.data.security.TokenStore
 import com.corvex.mobile.ui.auth.LoginScreen
+import com.corvex.mobile.ui.chat.ChatScreen
 import com.corvex.mobile.ui.home.HomeScreen
 import com.corvex.mobile.ui.theme.CorvexTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -50,13 +51,17 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     }
+                    composable("chat") {
+                        ChatScreen(onBack = { navController.popBackStack() })
+                    }
                     composable("home") {
                         HomeScreen(
                             onLoggedOut = {
                                 navController.navigate("login") {
                                     popUpTo("home") { inclusive = true }
                                 }
-                            }
+                            },
+                            onOpenChat = { navController.navigate("chat") }
                         )
                     }
                 }
